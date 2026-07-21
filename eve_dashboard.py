@@ -17,7 +17,7 @@ import threading
 import time
 import urllib.request
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -163,7 +163,7 @@ def load_config():
     cfg = {"port": PORT_DEFAULT, "region": "10000002", "log_dir": None,
            "mode": "all", "install_ts": time.time(),
            "goal": None, "watchlist": [], "idle_warn": 240,
-           "update_url": "https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main"}
+           "update_url": "https://raw.githubusercontent.com/AENDERN/eve-canary/main"}
     if CONFIG_PATH.exists():
         try:
             cfg.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
@@ -284,8 +284,19 @@ def do_update():
         return {"ok": False, "error": "Neue Version fehlerhaft — Update abgebrochen, nichts geändert."}
     except Exception as e:
         return {"ok": False, "error": f"Download fehlgeschlagen: {e}"}
-    threading.Timer(1.0, lambda: os.execv(sys.executable,
-                                          [sys.executable, str(APP_DIR / "eve_dashboard.py")])).start()
+    def _restart():
+        import subprocess
+        kwargs = {"cwd": str(APP_DIR), "stdout": subprocess.DEVNULL,
+                  "stderr": subprocess.DEVNULL}
+        if os.name == "nt":
+            # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: ueberlebt das
+            # Schliessen des alten Konsolenfensters; Popen quotet Pfade
+            # mit Leerzeichen korrekt (os.execv tut das unter Windows nicht!)
+            kwargs["creationflags"] = 0x00000008 | 0x00000200
+        subprocess.Popen([sys.executable, str(APP_DIR / "eve_dashboard.py")], **kwargs)
+        os._exit(0)
+
+    threading.Timer(1.0, _restart).start()
     return {"ok": True, "updated": True,
             "message": f"Update auf {chk['latest']} installiert — Neustart läuft, Seite lädt gleich neu."}
 
