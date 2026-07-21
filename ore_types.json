@@ -1,0 +1,1842 @@
+{
+ "Arkonor": {
+  "typeID": 22,
+  "volume": 16.0
+ },
+ "Arkonor II-Grade": {
+  "typeID": 17425,
+  "volume": 16.0
+ },
+ "Arkonor III-Grade": {
+  "typeID": 17426,
+  "volume": 16.0
+ },
+ "Batch Compressed Arkonor": {
+  "typeID": 28367,
+  "volume": 8.8
+ },
+ "Batch Compressed Arkonor II-Grade": {
+  "typeID": 28385,
+  "volume": 8.8
+ },
+ "Batch Compressed Arkonor III-Grade": {
+  "typeID": 28387,
+  "volume": 8.8
+ },
+ "Polygypsum": {
+  "typeID": 28625,
+  "volume": 16.0
+ },
+ "Arkonor IV-Grade": {
+  "typeID": 46678,
+  "volume": 16.0
+ },
+ "Batch Compressed Arkonor IV-Grade": {
+  "typeID": 46691,
+  "volume": 8.8
+ },
+ "Compressed Arkonor": {
+  "typeID": 62568,
+  "volume": 0.16
+ },
+ "Compressed Arkonor II-Grade": {
+  "typeID": 62569,
+  "volume": 0.16
+ },
+ "Compressed Arkonor III-Grade": {
+  "typeID": 62570,
+  "volume": 0.16
+ },
+ "Compressed Arkonor IV-Grade": {
+  "typeID": 62571,
+  "volume": 0.16
+ },
+ "Bistot": {
+  "typeID": 1223,
+  "volume": 16.0
+ },
+ "Bistot II-Grade": {
+  "typeID": 17428,
+  "volume": 16.0
+ },
+ "Bistot III-Grade": {
+  "typeID": 17429,
+  "volume": 16.0
+ },
+ "Batch Compressed Bistot": {
+  "typeID": 28388,
+  "volume": 4.4
+ },
+ "Batch Compressed Bistot III-Grade": {
+  "typeID": 28389,
+  "volume": 4.4
+ },
+ "Batch Compressed Bistot II-Grade": {
+  "typeID": 28390,
+  "volume": 4.4
+ },
+ "Bistot IV-Grade": {
+  "typeID": 46676,
+  "volume": 16.0
+ },
+ "Batch Compressed Bistot IV-Grade": {
+  "typeID": 46692,
+  "volume": 4.4
+ },
+ "Compressed Bistot": {
+  "typeID": 62564,
+  "volume": 0.16
+ },
+ "Compressed Bistot II-Grade": {
+  "typeID": 62565,
+  "volume": 0.16
+ },
+ "Compressed Bistot III-Grade": {
+  "typeID": 62566,
+  "volume": 0.16
+ },
+ "Compressed Bistot IV-Grade": {
+  "typeID": 62567,
+  "volume": 0.16
+ },
+ "Crokite": {
+  "typeID": 1225,
+  "volume": 16.0
+ },
+ "Crokite II-Grade": {
+  "typeID": 17432,
+  "volume": 16.0
+ },
+ "Crokite III-Grade": {
+  "typeID": 17433,
+  "volume": 16.0
+ },
+ "Batch Compressed Crokite": {
+  "typeID": 28391,
+  "volume": 7.81
+ },
+ "Batch Compressed Crokite III-Grade": {
+  "typeID": 28392,
+  "volume": 7.81
+ },
+ "Batch Compressed Crokite II-Grade": {
+  "typeID": 28393,
+  "volume": 7.81
+ },
+ "Geodite": {
+  "typeID": 28624,
+  "volume": 16.0
+ },
+ "Crokite IV-Grade": {
+  "typeID": 46677,
+  "volume": 16.0
+ },
+ "Batch Compressed Crokite IV-Grade": {
+  "typeID": 46693,
+  "volume": 7.81
+ },
+ "Compressed Crokite": {
+  "typeID": 62560,
+  "volume": 0.16
+ },
+ "Compressed Crokite II-Grade": {
+  "typeID": 62561,
+  "volume": 0.16
+ },
+ "Compressed Crokite III-Grade": {
+  "typeID": 62562,
+  "volume": 0.16
+ },
+ "Compressed Crokite IV-Grade": {
+  "typeID": 62563,
+  "volume": 0.16
+ },
+ "Dark Ochre": {
+  "typeID": 1232,
+  "volume": 8.0
+ },
+ "Dark Ochre II-Grade": {
+  "typeID": 17436,
+  "volume": 8.0
+ },
+ "Dark Ochre III-Grade": {
+  "typeID": 17437,
+  "volume": 8.0
+ },
+ "Batch Compressed Dark Ochre": {
+  "typeID": 28394,
+  "volume": 4.2
+ },
+ "Batch Compressed Dark Ochre III-Grade": {
+  "typeID": 28395,
+  "volume": 4.2
+ },
+ "Batch Compressed Dark Ochre II-Grade": {
+  "typeID": 28396,
+  "volume": 4.2
+ },
+ "Oeryl": {
+  "typeID": 28623,
+  "volume": 8.0
+ },
+ "Dark Ochre IV-Grade": {
+  "typeID": 46675,
+  "volume": 8.0
+ },
+ "Batch Compressed Dark Ochre IV-Grade": {
+  "typeID": 46694,
+  "volume": 4.2
+ },
+ "Compressed Dark Ochre": {
+  "typeID": 62556,
+  "volume": 0.08
+ },
+ "Compressed Dark Ochre II-Grade": {
+  "typeID": 62557,
+  "volume": 0.08
+ },
+ "Compressed Dark Ochre III-Grade": {
+  "typeID": 62558,
+  "volume": 0.08
+ },
+ "Compressed Dark Ochre IV-Grade": {
+  "typeID": 62559,
+  "volume": 0.08
+ },
+ "Hedbergite": {
+  "typeID": 21,
+  "volume": 3.0
+ },
+ "Hedbergite II-Grade": {
+  "typeID": 17440,
+  "volume": 3.0
+ },
+ "Hedbergite III-Grade": {
+  "typeID": 17441,
+  "volume": 3.0
+ },
+ "Batch Compressed Hedbergite III-Grade": {
+  "typeID": 28400,
+  "volume": 0.47
+ },
+ "Batch Compressed Hedbergite": {
+  "typeID": 28401,
+  "volume": 0.47
+ },
+ "Batch Compressed Hedbergite II-Grade": {
+  "typeID": 28402,
+  "volume": 0.47
+ },
+ "Hedbergite IV-Grade": {
+  "typeID": 46680,
+  "volume": 3.0
+ },
+ "Batch Compressed Hedbergite IV-Grade": {
+  "typeID": 46696,
+  "volume": 0.47
+ },
+ "Compressed Hedbergite": {
+  "typeID": 62548,
+  "volume": 0.03
+ },
+ "Compressed Hedbergite II-Grade": {
+  "typeID": 62549,
+  "volume": 0.03
+ },
+ "Compressed Hedbergite III-Grade": {
+  "typeID": 62550,
+  "volume": 0.03
+ },
+ "Compressed Hedbergite IV-Grade": {
+  "typeID": 62551,
+  "volume": 0.03
+ },
+ "Hemorphite": {
+  "typeID": 1231,
+  "volume": 3.0
+ },
+ "Hemorphite II-Grade": {
+  "typeID": 17444,
+  "volume": 3.0
+ },
+ "Hemorphite III-Grade": {
+  "typeID": 17445,
+  "volume": 3.0
+ },
+ "Batch Compressed Hemorphite": {
+  "typeID": 28403,
+  "volume": 0.86
+ },
+ "Batch Compressed Hemorphite III-Grade": {
+  "typeID": 28404,
+  "volume": 0.86
+ },
+ "Batch Compressed Hemorphite II-Grade": {
+  "typeID": 28405,
+  "volume": 0.86
+ },
+ "Hemorphite IV-Grade": {
+  "typeID": 46681,
+  "volume": 3.0
+ },
+ "Batch Compressed Hemorphite IV-Grade": {
+  "typeID": 46697,
+  "volume": 0.86
+ },
+ "Compressed Hemorphite": {
+  "typeID": 62544,
+  "volume": 0.03
+ },
+ "Compressed Hemorphite II-Grade": {
+  "typeID": 62545,
+  "volume": 0.03
+ },
+ "Compressed Hemorphite III-Grade": {
+  "typeID": 62546,
+  "volume": 0.03
+ },
+ "Compressed Hemorphite IV-Grade": {
+  "typeID": 62547,
+  "volume": 0.03
+ },
+ "Jaspet": {
+  "typeID": 1226,
+  "volume": 2.0
+ },
+ "Jaspet II-Grade": {
+  "typeID": 17448,
+  "volume": 2.0
+ },
+ "Jaspet III-Grade": {
+  "typeID": 17449,
+  "volume": 2.0
+ },
+ "Batch Compressed Jaspet": {
+  "typeID": 28406,
+  "volume": 0.15
+ },
+ "Batch Compressed Jaspet III-Grade": {
+  "typeID": 28407,
+  "volume": 0.15
+ },
+ "Batch Compressed Jaspet II-Grade": {
+  "typeID": 28408,
+  "volume": 0.15
+ },
+ "Pithix": {
+  "typeID": 28621,
+  "volume": 2.0
+ },
+ "Jaspet IV-Grade": {
+  "typeID": 46682,
+  "volume": 2.0
+ },
+ "Batch Compressed Jaspet IV-Grade": {
+  "typeID": 46698,
+  "volume": 0.15
+ },
+ "Compressed Jaspet": {
+  "typeID": 62540,
+  "volume": 0.02
+ },
+ "Compressed Jaspet II-Grade": {
+  "typeID": 62541,
+  "volume": 0.02
+ },
+ "Compressed Jaspet III-Grade": {
+  "typeID": 62542,
+  "volume": 0.02
+ },
+ "Compressed Jaspet IV-Grade": {
+  "typeID": 62543,
+  "volume": 0.02
+ },
+ "Kernite": {
+  "typeID": 20,
+  "volume": 1.2
+ },
+ "Kernite II-Grade": {
+  "typeID": 17452,
+  "volume": 1.2
+ },
+ "Kernite III-Grade": {
+  "typeID": 17453,
+  "volume": 1.2
+ },
+ "Batch Compressed Kernite III-Grade": {
+  "typeID": 28409,
+  "volume": 0.19
+ },
+ "Batch Compressed Kernite": {
+  "typeID": 28410,
+  "volume": 0.19
+ },
+ "Batch Compressed Kernite II-Grade": {
+  "typeID": 28411,
+  "volume": 0.19
+ },
+ "Lyavite": {
+  "typeID": 28620,
+  "volume": 1.2
+ },
+ "Kernite IV-Grade": {
+  "typeID": 46683,
+  "volume": 1.2
+ },
+ "Batch Compressed Kernite IV-Grade": {
+  "typeID": 46699,
+  "volume": 0.19
+ },
+ "Compressed Kernite": {
+  "typeID": 62536,
+  "volume": 0.012
+ },
+ "Compressed Kernite II-Grade": {
+  "typeID": 62537,
+  "volume": 0.012
+ },
+ "Compressed Kernite III-Grade": {
+  "typeID": 62538,
+  "volume": 0.012
+ },
+ "Compressed Kernite IV-Grade": {
+  "typeID": 62539,
+  "volume": 0.012
+ },
+ "Plagioclase": {
+  "typeID": 18,
+  "volume": 0.35
+ },
+ "Plagioclase II-Grade": {
+  "typeID": 17455,
+  "volume": 0.35
+ },
+ "Plagioclase III-Grade": {
+  "typeID": 17456,
+  "volume": 0.35
+ },
+ "Batch Compressed Plagioclase II-Grade": {
+  "typeID": 28421,
+  "volume": 0.15
+ },
+ "Batch Compressed Plagioclase": {
+  "typeID": 28422,
+  "volume": 0.15
+ },
+ "Batch Compressed Plagioclase III-Grade": {
+  "typeID": 28423,
+  "volume": 0.15
+ },
+ "Plagioclase IV-Grade": {
+  "typeID": 46685,
+  "volume": 0.35
+ },
+ "Batch Compressed Plagioclase IV-Grade": {
+  "typeID": 46701,
+  "volume": 0.15
+ },
+ "Compressed Plagioclase": {
+  "typeID": 62528,
+  "volume": 0.0035
+ },
+ "Compressed Plagioclase II-Grade": {
+  "typeID": 62529,
+  "volume": 0.0035
+ },
+ "Compressed Plagioclase III-Grade": {
+  "typeID": 62530,
+  "volume": 0.0035
+ },
+ "Compressed Plagioclase IV-Grade": {
+  "typeID": 62531,
+  "volume": 0.0035
+ },
+ "Pyroxeres": {
+  "typeID": 1224,
+  "volume": 0.3
+ },
+ "Pyroxeres II-Grade": {
+  "typeID": 17459,
+  "volume": 0.3
+ },
+ "Pyroxeres III-Grade": {
+  "typeID": 17460,
+  "volume": 0.3
+ },
+ "Batch Compressed Pyroxeres": {
+  "typeID": 28424,
+  "volume": 0.16
+ },
+ "Batch Compressed Pyroxeres II-Grade": {
+  "typeID": 28425,
+  "volume": 0.16
+ },
+ "Batch Compressed Pyroxeres III-Grade": {
+  "typeID": 28426,
+  "volume": 0.16
+ },
+ "Augumene": {
+  "typeID": 28618,
+  "volume": 0.3
+ },
+ "Pyroxeres IV-Grade": {
+  "typeID": 46686,
+  "volume": 0.3
+ },
+ "Batch Compressed Pyroxeres IV-Grade": {
+  "typeID": 46702,
+  "volume": 0.16
+ },
+ "Compressed Pyroxeres": {
+  "typeID": 62524,
+  "volume": 0.003
+ },
+ "Compressed Pyroxeres II-Grade": {
+  "typeID": 62525,
+  "volume": 0.003
+ },
+ "Compressed Pyroxeres III-Grade": {
+  "typeID": 62526,
+  "volume": 0.003
+ },
+ "Compressed Pyroxeres IV-Grade": {
+  "typeID": 62527,
+  "volume": 0.003
+ },
+ "Pyroxeres 0-Grade": {
+  "typeID": 95395,
+  "volume": 0.3
+ },
+ "Scordite": {
+  "typeID": 1228,
+  "volume": 0.15
+ },
+ "Scordite II-Grade": {
+  "typeID": 17463,
+  "volume": 0.15
+ },
+ "Scordite III-Grade": {
+  "typeID": 17464,
+  "volume": 0.15
+ },
+ "Batch Compressed Scordite II-Grade": {
+  "typeID": 28427,
+  "volume": 0.19
+ },
+ "Batch Compressed Scordite III-Grade": {
+  "typeID": 28428,
+  "volume": 0.19
+ },
+ "Batch Compressed Scordite": {
+  "typeID": 28429,
+  "volume": 0.19
+ },
+ "Scordite IV-Grade": {
+  "typeID": 46687,
+  "volume": 0.15
+ },
+ "Batch Compressed Scordite IV-Grade": {
+  "typeID": 46703,
+  "volume": 0.19
+ },
+ "Compressed Scordite": {
+  "typeID": 62520,
+  "volume": 0.0015
+ },
+ "Compressed Scordite II-Grade": {
+  "typeID": 62521,
+  "volume": 0.0015
+ },
+ "Compressed Scordite III-Grade": {
+  "typeID": 62522,
+  "volume": 0.0015
+ },
+ "Compressed Scordite IV-Grade": {
+  "typeID": 62523,
+  "volume": 0.0015
+ },
+ "Scordite 0-Grade": {
+  "typeID": 92373,
+  "volume": 0.15
+ },
+ "Compressed Scordite 0-Grade": {
+  "typeID": 92374,
+  "volume": 0.0015
+ },
+ "Spodumain": {
+  "typeID": 19,
+  "volume": 16.0
+ },
+ "Spodumain II-Grade": {
+  "typeID": 17466,
+  "volume": 16.0
+ },
+ "Spodumain III-Grade": {
+  "typeID": 17467,
+  "volume": 16.0
+ },
+ "Batch Compressed Spodumain II-Grade": {
+  "typeID": 28418,
+  "volume": 28.0
+ },
+ "Batch Compressed Spodumain III-Grade": {
+  "typeID": 28419,
+  "volume": 28.0
+ },
+ "Batch Compressed Spodumain": {
+  "typeID": 28420,
+  "volume": 28.0
+ },
+ "Spodumain IV-Grade": {
+  "typeID": 46688,
+  "volume": 16.0
+ },
+ "Batch Compressed Spodumain IV-Grade": {
+  "typeID": 46704,
+  "volume": 28.0
+ },
+ "Compressed Spodumain": {
+  "typeID": 62572,
+  "volume": 0.16
+ },
+ "Compressed Spodumain II-Grade": {
+  "typeID": 62573,
+  "volume": 0.16
+ },
+ "Compressed Spodumain III-Grade": {
+  "typeID": 62574,
+  "volume": 0.16
+ },
+ "Compressed Spodumain IV-Grade": {
+  "typeID": 62575,
+  "volume": 0.16
+ },
+ "Veldspar": {
+  "typeID": 1230,
+  "volume": 0.1
+ },
+ "Veldspar II-Grade": {
+  "typeID": 17470,
+  "volume": 0.1
+ },
+ "Veldspar III-Grade": {
+  "typeID": 17471,
+  "volume": 0.1
+ },
+ "Batch Compressed Veldspar II-Grade": {
+  "typeID": 28430,
+  "volume": 0.15
+ },
+ "Batch Compressed Veldspar III-Grade": {
+  "typeID": 28431,
+  "volume": 0.15
+ },
+ "Batch Compressed Veldspar": {
+  "typeID": 28432,
+  "volume": 0.15
+ },
+ "Banidine": {
+  "typeID": 28617,
+  "volume": 0.1
+ },
+ "Veldspar IV-Grade": {
+  "typeID": 46689,
+  "volume": 0.1
+ },
+ "Batch Compressed Veldspar IV-Grade": {
+  "typeID": 46705,
+  "volume": 0.15
+ },
+ "Compressed Veldspar": {
+  "typeID": 62516,
+  "volume": 0.001
+ },
+ "Compressed Veldspar II-Grade": {
+  "typeID": 62517,
+  "volume": 0.001
+ },
+ "Compressed Veldspar III-Grade": {
+  "typeID": 62518,
+  "volume": 0.001
+ },
+ "Compressed Veldspar IV-Grade": {
+  "typeID": 62519,
+  "volume": 0.001
+ },
+ "Veldspar 0-Grade": {
+  "typeID": 92371,
+  "volume": 0.1
+ },
+ "Compressed Veldspar 0-Grade": {
+  "typeID": 92372,
+  "volume": 0.001
+ },
+ "Clear Icicle": {
+  "typeID": 16262,
+  "volume": 1000.0
+ },
+ "Glacial Mass": {
+  "typeID": 16263,
+  "volume": 1000.0
+ },
+ "Blue Ice": {
+  "typeID": 16264,
+  "volume": 1000.0
+ },
+ "White Glaze": {
+  "typeID": 16265,
+  "volume": 1000.0
+ },
+ "Glare Crust": {
+  "typeID": 16266,
+  "volume": 1000.0
+ },
+ "Dark Glitter": {
+  "typeID": 16267,
+  "volume": 1000.0
+ },
+ "Gelidus": {
+  "typeID": 16268,
+  "volume": 1000.0
+ },
+ "Krystallos": {
+  "typeID": 16269,
+  "volume": 1000.0
+ },
+ "Blue Ice IV-Grade": {
+  "typeID": 17975,
+  "volume": 1000.0
+ },
+ "White Glaze IV-Grade": {
+  "typeID": 17976,
+  "volume": 1000.0
+ },
+ "Glacial Mass IV-Grade": {
+  "typeID": 17977,
+  "volume": 1000.0
+ },
+ "Clear Icicle IV-Grade": {
+  "typeID": 17978,
+  "volume": 1000.0
+ },
+ "Compressed Blue Ice": {
+  "typeID": 28433,
+  "volume": 100.0
+ },
+ "Compressed Clear Icicle": {
+  "typeID": 28434,
+  "volume": 100.0
+ },
+ "Compressed Dark Glitter": {
+  "typeID": 28435,
+  "volume": 100.0
+ },
+ "Compressed Clear Icicle IV-Grade": {
+  "typeID": 28436,
+  "volume": 100.0
+ },
+ "Compressed Gelidus": {
+  "typeID": 28437,
+  "volume": 100.0
+ },
+ "Compressed Glacial Mass": {
+  "typeID": 28438,
+  "volume": 100.0
+ },
+ "Compressed Glare Crust": {
+  "typeID": 28439,
+  "volume": 100.0
+ },
+ "Compressed Krystallos": {
+  "typeID": 28440,
+  "volume": 100.0
+ },
+ "Compressed White Glaze IV-Grade": {
+  "typeID": 28441,
+  "volume": 100.0
+ },
+ "Compressed Glacial Mass IV-Grade": {
+  "typeID": 28442,
+  "volume": 100.0
+ },
+ "Compressed Blue Ice IV-Grade": {
+  "typeID": 28443,
+  "volume": 100.0
+ },
+ "Compressed White Glaze": {
+  "typeID": 28444,
+  "volume": 100.0
+ },
+ "Azure Ice": {
+  "typeID": 28627,
+  "volume": 1000.0
+ },
+ "Crystalline Icicle": {
+  "typeID": 28628,
+  "volume": 1000.0
+ },
+ "Gneiss": {
+  "typeID": 1229,
+  "volume": 5.0
+ },
+ "Gneiss II-Grade": {
+  "typeID": 17865,
+  "volume": 5.0
+ },
+ "Gneiss III-Grade": {
+  "typeID": 17866,
+  "volume": 5.0
+ },
+ "Batch Compressed Gneiss": {
+  "typeID": 28397,
+  "volume": 1.8
+ },
+ "Batch Compressed Gneiss II-Grade": {
+  "typeID": 28398,
+  "volume": 1.8
+ },
+ "Batch Compressed Gneiss III-Grade": {
+  "typeID": 28399,
+  "volume": 1.8
+ },
+ "Green Arisite": {
+  "typeID": 28622,
+  "volume": 5.0
+ },
+ "Gneiss IV-Grade": {
+  "typeID": 46679,
+  "volume": 5.0
+ },
+ "Batch Compressed Gneiss IV-Grade": {
+  "typeID": 46695,
+  "volume": 1.8
+ },
+ "Compressed Gneiss": {
+  "typeID": 62552,
+  "volume": 0.05
+ },
+ "Compressed Gneiss II-Grade": {
+  "typeID": 62553,
+  "volume": 0.05
+ },
+ "Compressed Gneiss III-Grade": {
+  "typeID": 62554,
+  "volume": 0.05
+ },
+ "Compressed Gneiss IV-Grade": {
+  "typeID": 62555,
+  "volume": 0.05
+ },
+ "Mercoxit": {
+  "typeID": 11396,
+  "volume": 40.0
+ },
+ "Mercoxit II-Grade": {
+  "typeID": 17869,
+  "volume": 40.0
+ },
+ "Mercoxit III-Grade": {
+  "typeID": 17870,
+  "volume": 40.0
+ },
+ "Batch Compressed Mercoxit II-Grade": {
+  "typeID": 28412,
+  "volume": 0.1
+ },
+ "Batch Compressed Mercoxit": {
+  "typeID": 28413,
+  "volume": 0.1
+ },
+ "Batch Compressed Mercoxit III-Grade": {
+  "typeID": 28414,
+  "volume": 0.1
+ },
+ "Zuthrine": {
+  "typeID": 28626,
+  "volume": 40.0
+ },
+ "Compressed Mercoxit": {
+  "typeID": 62586,
+  "volume": 0.4
+ },
+ "Compressed Mercoxit II-Grade": {
+  "typeID": 62587,
+  "volume": 0.4
+ },
+ "Compressed Mercoxit III-Grade": {
+  "typeID": 62588,
+  "volume": 0.4
+ },
+ "Omber": {
+  "typeID": 1227,
+  "volume": 0.6
+ },
+ "Omber II-Grade": {
+  "typeID": 17867,
+  "volume": 0.6
+ },
+ "Omber III-Grade": {
+  "typeID": 17868,
+  "volume": 0.6
+ },
+ "Batch Compressed Omber III-Grade": {
+  "typeID": 28415,
+  "volume": 0.3
+ },
+ "Batch Compressed Omber": {
+  "typeID": 28416,
+  "volume": 0.3
+ },
+ "Batch Compressed Omber II-Grade": {
+  "typeID": 28417,
+  "volume": 0.3
+ },
+ "Mercium": {
+  "typeID": 28619,
+  "volume": 0.6
+ },
+ "Omber IV-Grade": {
+  "typeID": 46684,
+  "volume": 0.6
+ },
+ "Batch Compressed Omber IV-Grade": {
+  "typeID": 46700,
+  "volume": 0.3
+ },
+ "Compressed Omber": {
+  "typeID": 62532,
+  "volume": 0.006
+ },
+ "Compressed Omber II-Grade": {
+  "typeID": 62533,
+  "volume": 0.006
+ },
+ "Compressed Omber III-Grade": {
+  "typeID": 62534,
+  "volume": 0.006
+ },
+ "Compressed Omber IV-Grade": {
+  "typeID": 62535,
+  "volume": 0.006
+ },
+ "Zeolites": {
+  "typeID": 45490,
+  "volume": 10.0
+ },
+ "Sylvite": {
+  "typeID": 45491,
+  "volume": 10.0
+ },
+ "Bitumens": {
+  "typeID": 45492,
+  "volume": 10.0
+ },
+ "Coesite": {
+  "typeID": 45493,
+  "volume": 10.0
+ },
+ "Brimful Zeolites": {
+  "typeID": 46280,
+  "volume": 10.0
+ },
+ "Glistening Zeolites": {
+  "typeID": 46281,
+  "volume": 10.0
+ },
+ "Brimful Sylvite": {
+  "typeID": 46282,
+  "volume": 10.0
+ },
+ "Glistening Sylvite": {
+  "typeID": 46283,
+  "volume": 10.0
+ },
+ "Brimful Bitumens": {
+  "typeID": 46284,
+  "volume": 10.0
+ },
+ "Glistening Bitumens": {
+  "typeID": 46285,
+  "volume": 10.0
+ },
+ "Brimful Coesite": {
+  "typeID": 46286,
+  "volume": 10.0
+ },
+ "Glistening Coesite": {
+  "typeID": 46287,
+  "volume": 10.0
+ },
+ "Compressed Bitumens": {
+  "typeID": 62454,
+  "volume": 0.1
+ },
+ "Compressed Brimful Bitumens": {
+  "typeID": 62455,
+  "volume": 0.1
+ },
+ "Compressed Glistening Bitumens": {
+  "typeID": 62456,
+  "volume": 0.1
+ },
+ "Compressed Coesite": {
+  "typeID": 62457,
+  "volume": 0.1
+ },
+ "Compressed Brimful Coesite": {
+  "typeID": 62458,
+  "volume": 0.1
+ },
+ "Compressed Glistening Coesite": {
+  "typeID": 62459,
+  "volume": 0.1
+ },
+ "Compressed Sylvite": {
+  "typeID": 62460,
+  "volume": 0.1
+ },
+ "Compressed Brimful Sylvite": {
+  "typeID": 62461,
+  "volume": 0.1
+ },
+ "Compressed Zeolites": {
+  "typeID": 62463,
+  "volume": 0.1
+ },
+ "Compressed Brimful Zeolites": {
+  "typeID": 62464,
+  "volume": 0.1
+ },
+ "Compressed Glistening Sylvite": {
+  "typeID": 62466,
+  "volume": 0.1
+ },
+ "Compressed Glistening Zeolites": {
+  "typeID": 62467,
+  "volume": 0.1
+ },
+ "Dense Moissanite": {
+  "typeID": 72935,
+  "volume": 0.1
+ },
+ "Cobaltite": {
+  "typeID": 45494,
+  "volume": 10.0
+ },
+ "Euxenite": {
+  "typeID": 45495,
+  "volume": 10.0
+ },
+ "Titanite": {
+  "typeID": 45496,
+  "volume": 10.0
+ },
+ "Scheelite": {
+  "typeID": 45497,
+  "volume": 10.0
+ },
+ "Copious Cobaltite": {
+  "typeID": 46288,
+  "volume": 10.0
+ },
+ "Twinkling Cobaltite": {
+  "typeID": 46289,
+  "volume": 10.0
+ },
+ "Copious Euxenite": {
+  "typeID": 46290,
+  "volume": 10.0
+ },
+ "Twinkling Euxenite": {
+  "typeID": 46291,
+  "volume": 10.0
+ },
+ "Copious Titanite": {
+  "typeID": 46292,
+  "volume": 10.0
+ },
+ "Twinkling Titanite": {
+  "typeID": 46293,
+  "volume": 10.0
+ },
+ "Copious Scheelite": {
+  "typeID": 46294,
+  "volume": 10.0
+ },
+ "Twinkling Scheelite": {
+  "typeID": 46295,
+  "volume": 10.0
+ },
+ "Compressed Scheelite": {
+  "typeID": 62468,
+  "volume": 0.1
+ },
+ "Compressed Copious Scheelite": {
+  "typeID": 62469,
+  "volume": 0.1
+ },
+ "Compressed Twinkling Scheelite": {
+  "typeID": 62470,
+  "volume": 0.1
+ },
+ "Compressed Euxenite": {
+  "typeID": 62471,
+  "volume": 0.1
+ },
+ "Compressed Copious Euxenite": {
+  "typeID": 62472,
+  "volume": 0.1
+ },
+ "Compressed Twinkling Euxenite": {
+  "typeID": 62473,
+  "volume": 0.1
+ },
+ "Compressed Cobaltite": {
+  "typeID": 62474,
+  "volume": 0.1
+ },
+ "Compressed Copious Cobaltite": {
+  "typeID": 62475,
+  "volume": 0.1
+ },
+ "Compressed Twinkling Cobaltite": {
+  "typeID": 62476,
+  "volume": 0.1
+ },
+ "Compressed Titanite": {
+  "typeID": 62477,
+  "volume": 0.1
+ },
+ "Compressed Copious Titanite": {
+  "typeID": 62478,
+  "volume": 0.1
+ },
+ "Compressed Twinkling Titanite": {
+  "typeID": 62479,
+  "volume": 0.1
+ },
+ "Otavite": {
+  "typeID": 45498,
+  "volume": 10.0
+ },
+ "Sperrylite": {
+  "typeID": 45499,
+  "volume": 10.0
+ },
+ "Vanadinite": {
+  "typeID": 45500,
+  "volume": 10.0
+ },
+ "Chromite": {
+  "typeID": 45501,
+  "volume": 10.0
+ },
+ "Lavish Otavite": {
+  "typeID": 46296,
+  "volume": 10.0
+ },
+ "Shimmering Otavite": {
+  "typeID": 46297,
+  "volume": 10.0
+ },
+ "Lavish Sperrylite": {
+  "typeID": 46298,
+  "volume": 10.0
+ },
+ "Shimmering Sperrylite": {
+  "typeID": 46299,
+  "volume": 10.0
+ },
+ "Lavish Vanadinite": {
+  "typeID": 46300,
+  "volume": 10.0
+ },
+ "Shimmering Vanadinite": {
+  "typeID": 46301,
+  "volume": 10.0
+ },
+ "Lavish Chromite": {
+  "typeID": 46302,
+  "volume": 10.0
+ },
+ "Shimmering Chromite": {
+  "typeID": 46303,
+  "volume": 10.0
+ },
+ "Compressed Chromite": {
+  "typeID": 62480,
+  "volume": 0.1
+ },
+ "Compressed Lavish Chromite": {
+  "typeID": 62481,
+  "volume": 0.1
+ },
+ "Compressed Shimmering Chromite": {
+  "typeID": 62482,
+  "volume": 0.1
+ },
+ "Compressed Otavite": {
+  "typeID": 62483,
+  "volume": 0.1
+ },
+ "Compressed Lavish Otavite": {
+  "typeID": 62484,
+  "volume": 0.1
+ },
+ "Compressed Shimmering Otavite": {
+  "typeID": 62485,
+  "volume": 0.1
+ },
+ "Compressed Sperrylite": {
+  "typeID": 62486,
+  "volume": 0.1
+ },
+ "Compressed Lavish Sperrylite": {
+  "typeID": 62487,
+  "volume": 0.1
+ },
+ "Compressed Shimmering Sperrylite": {
+  "typeID": 62488,
+  "volume": 0.1
+ },
+ "Compressed Vanadinite": {
+  "typeID": 62489,
+  "volume": 0.1
+ },
+ "Compressed Lavish Vanadinite": {
+  "typeID": 62490,
+  "volume": 0.1
+ },
+ "Compressed Shimmering Vanadinite": {
+  "typeID": 62491,
+  "volume": 0.1
+ },
+ "Carnotite": {
+  "typeID": 45502,
+  "volume": 10.0
+ },
+ "Zircon": {
+  "typeID": 45503,
+  "volume": 10.0
+ },
+ "Pollucite": {
+  "typeID": 45504,
+  "volume": 10.0
+ },
+ "Cinnabar": {
+  "typeID": 45506,
+  "volume": 10.0
+ },
+ "Replete Carnotite": {
+  "typeID": 46304,
+  "volume": 10.0
+ },
+ "Glowing Carnotite": {
+  "typeID": 46305,
+  "volume": 10.0
+ },
+ "Replete Zircon": {
+  "typeID": 46306,
+  "volume": 10.0
+ },
+ "Glowing Zircon": {
+  "typeID": 46307,
+  "volume": 10.0
+ },
+ "Replete Pollucite": {
+  "typeID": 46308,
+  "volume": 10.0
+ },
+ "Glowing Pollucite": {
+  "typeID": 46309,
+  "volume": 10.0
+ },
+ "Replete Cinnabar": {
+  "typeID": 46310,
+  "volume": 10.0
+ },
+ "Glowing Cinnabar": {
+  "typeID": 46311,
+  "volume": 10.0
+ },
+ "Compressed Carnotite": {
+  "typeID": 62492,
+  "volume": 0.1
+ },
+ "Compressed Replete Carnotite": {
+  "typeID": 62493,
+  "volume": 0.1
+ },
+ "Compressed Glowing Carnotite": {
+  "typeID": 62494,
+  "volume": 0.1
+ },
+ "Compressed Cinnabar": {
+  "typeID": 62495,
+  "volume": 0.1
+ },
+ "Compressed Replete Cinnabar": {
+  "typeID": 62496,
+  "volume": 0.1
+ },
+ "Compressed Glowing Cinnabar": {
+  "typeID": 62497,
+  "volume": 0.1
+ },
+ "Compressed Pollucite": {
+  "typeID": 62498,
+  "volume": 0.1
+ },
+ "Compressed Replete Pollucite": {
+  "typeID": 62499,
+  "volume": 0.1
+ },
+ "Compressed Glowing Pollucite": {
+  "typeID": 62500,
+  "volume": 0.1
+ },
+ "Compressed Zircon": {
+  "typeID": 62501,
+  "volume": 0.1
+ },
+ "Compressed Replete Zircon": {
+  "typeID": 62502,
+  "volume": 0.1
+ },
+ "Compressed Glowing Zircon": {
+  "typeID": 62503,
+  "volume": 0.1
+ },
+ "Xenotime": {
+  "typeID": 45510,
+  "volume": 10.0
+ },
+ "Monazite": {
+  "typeID": 45511,
+  "volume": 10.0
+ },
+ "Loparite": {
+  "typeID": 45512,
+  "volume": 10.0
+ },
+ "Ytterbite": {
+  "typeID": 45513,
+  "volume": 10.0
+ },
+ "Bountiful Xenotime": {
+  "typeID": 46312,
+  "volume": 10.0
+ },
+ "Shining Xenotime": {
+  "typeID": 46313,
+  "volume": 10.0
+ },
+ "Bountiful Monazite": {
+  "typeID": 46314,
+  "volume": 10.0
+ },
+ "Shining Monazite": {
+  "typeID": 46315,
+  "volume": 10.0
+ },
+ "Bountiful Loparite": {
+  "typeID": 46316,
+  "volume": 10.0
+ },
+ "Shining Loparite": {
+  "typeID": 46317,
+  "volume": 10.0
+ },
+ "Bountiful Ytterbite": {
+  "typeID": 46318,
+  "volume": 10.0
+ },
+ "Shining Ytterbite": {
+  "typeID": 46319,
+  "volume": 10.0
+ },
+ "Compressed Loparite": {
+  "typeID": 62504,
+  "volume": 0.1
+ },
+ "Compressed Bountiful Loparite": {
+  "typeID": 62505,
+  "volume": 0.1
+ },
+ "Compressed Shining Loparite": {
+  "typeID": 62506,
+  "volume": 0.1
+ },
+ "Compressed Monazite": {
+  "typeID": 62507,
+  "volume": 0.1
+ },
+ "Compressed Bountiful Monazite": {
+  "typeID": 62508,
+  "volume": 0.1
+ },
+ "Compressed Shining Monazite": {
+  "typeID": 62509,
+  "volume": 0.1
+ },
+ "Compressed Xenotime": {
+  "typeID": 62510,
+  "volume": 0.1
+ },
+ "Compressed Bountiful Xenotime": {
+  "typeID": 62511,
+  "volume": 0.1
+ },
+ "Compressed Shining Xenotime": {
+  "typeID": 62512,
+  "volume": 0.1
+ },
+ "Compressed Ytterbite": {
+  "typeID": 62513,
+  "volume": 0.1
+ },
+ "Compressed Bountiful Ytterbite": {
+  "typeID": 62514,
+  "volume": 0.1
+ },
+ "Compressed Shining Ytterbite": {
+  "typeID": 62515,
+  "volume": 0.1
+ },
+ "Hiemal Tricarboxyl Condensate": {
+  "typeID": 49789,
+  "volume": 6.0
+ },
+ "Amethystic Crystallite": {
+  "typeID": 50015,
+  "volume": 3.0
+ },
+ "Talassonite": {
+  "typeID": 52306,
+  "volume": 16.0
+ },
+ "Talassonite II-Grade": {
+  "typeID": 56625,
+  "volume": 16.0
+ },
+ "Talassonite III-Grade": {
+  "typeID": 56626,
+  "volume": 16.0
+ },
+ "Compressed Talassonite": {
+  "typeID": 62582,
+  "volume": 0.16
+ },
+ "Compressed Talassonite II-Grade": {
+  "typeID": 62583,
+  "volume": 0.16
+ },
+ "Compressed Talassonite III-Grade": {
+  "typeID": 62584,
+  "volume": 0.16
+ },
+ "Rakovene": {
+  "typeID": 52315,
+  "volume": 16.0
+ },
+ "Rakovene II-Grade": {
+  "typeID": 56629,
+  "volume": 16.0
+ },
+ "Rakovene III-Grade": {
+  "typeID": 56630,
+  "volume": 16.0
+ },
+ "Compressed Rakovene": {
+  "typeID": 62579,
+  "volume": 0.16
+ },
+ "Compressed Rakovene II-Grade": {
+  "typeID": 62580,
+  "volume": 0.16
+ },
+ "Compressed Rakovene III-Grade": {
+  "typeID": 62581,
+  "volume": 0.16
+ },
+ "Nesosilicate Rakovene": {
+  "typeID": 76373,
+  "volume": 0.5
+ },
+ "Bezdnacine": {
+  "typeID": 52316,
+  "volume": 16.0
+ },
+ "Bezdnacine II-Grade": {
+  "typeID": 56627,
+  "volume": 16.0
+ },
+ "Bezdnacine III-Grade": {
+  "typeID": 56628,
+  "volume": 16.0
+ },
+ "Compressed Bezdnacine": {
+  "typeID": 62576,
+  "volume": 0.16
+ },
+ "Compressed Bezdnacine II-Grade": {
+  "typeID": 62577,
+  "volume": 0.16
+ },
+ "Compressed Bezdnacine III-Grade": {
+  "typeID": 62578,
+  "volume": 0.16
+ },
+ "Nephrite": {
+  "typeID": 60771,
+  "volume": 0.1
+ },
+ "Mordunium": {
+  "typeID": 74521,
+  "volume": 0.1
+ },
+ "Mordunium II-Grade": {
+  "typeID": 74522,
+  "volume": 0.1
+ },
+ "Mordunium III-Grade": {
+  "typeID": 74523,
+  "volume": 0.1
+ },
+ "Mordunium IV-Grade": {
+  "typeID": 74524,
+  "volume": 0.1
+ },
+ "Compressed Mordunium": {
+  "typeID": 75275,
+  "volume": 0.001
+ },
+ "Compressed Mordunium II-Grade": {
+  "typeID": 75276,
+  "volume": 0.001
+ },
+ "Compressed Mordunium III-Grade": {
+  "typeID": 75277,
+  "volume": 0.001
+ },
+ "Compressed Mordunium IV-Grade": {
+  "typeID": 75278,
+  "volume": 0.001
+ },
+ "Ytirium": {
+  "typeID": 74525,
+  "volume": 0.6
+ },
+ "Ytirium II-Grade": {
+  "typeID": 74526,
+  "volume": 0.6
+ },
+ "Ytirium III-Grade": {
+  "typeID": 74527,
+  "volume": 0.6
+ },
+ "Ytirium IV-Grade": {
+  "typeID": 74528,
+  "volume": 0.6
+ },
+ "Compressed Ytirium": {
+  "typeID": 75279,
+  "volume": 0.006
+ },
+ "Compressed Ytirium II-Grade": {
+  "typeID": 75280,
+  "volume": 0.006
+ },
+ "Compressed Ytirium III-Grade": {
+  "typeID": 75281,
+  "volume": 0.006
+ },
+ "Compressed Ytirium IV-Grade": {
+  "typeID": 75282,
+  "volume": 0.006
+ },
+ "Eifyrium": {
+  "typeID": 74529,
+  "volume": 16.0
+ },
+ "Eifyrium II-Grade": {
+  "typeID": 74530,
+  "volume": 16.0
+ },
+ "Eifyrium III-Grade": {
+  "typeID": 74531,
+  "volume": 16.0
+ },
+ "Eifyrium IV-Grade": {
+  "typeID": 74532,
+  "volume": 16.0
+ },
+ "Compressed Eifyrium": {
+  "typeID": 75283,
+  "volume": 0.16
+ },
+ "Compressed Eifyrium II-Grade": {
+  "typeID": 75284,
+  "volume": 0.16
+ },
+ "Compressed Eifyrium III-Grade": {
+  "typeID": 75285,
+  "volume": 0.16
+ },
+ "Compressed Eifyrium IV-Grade": {
+  "typeID": 75286,
+  "volume": 0.16
+ },
+ "Ducinium": {
+  "typeID": 74533,
+  "volume": 16.0
+ },
+ "Ducinium II-Grade": {
+  "typeID": 74534,
+  "volume": 16.0
+ },
+ "Ducinium III-Grade": {
+  "typeID": 74535,
+  "volume": 16.0
+ },
+ "Ducinium IV-Grade": {
+  "typeID": 74536,
+  "volume": 16.0
+ },
+ "Compressed Ducinium": {
+  "typeID": 75287,
+  "volume": 0.16
+ },
+ "Compressed Ducinium II-Grade": {
+  "typeID": 75288,
+  "volume": 0.16
+ },
+ "Compressed Ducinium III-Grade": {
+  "typeID": 75289,
+  "volume": 0.16
+ },
+ "Compressed Ducinium IV-Grade": {
+  "typeID": 75290,
+  "volume": 0.16
+ },
+ "Amperum Mutanite": {
+  "typeID": 77118,
+  "volume": 4.0
+ },
+ "Peregrinus Mutanite": {
+  "typeID": 77418,
+  "volume": 4.0
+ },
+ "Conflagrati Mutanite": {
+  "typeID": 77419,
+  "volume": 4.0
+ },
+ "Solis Mutanite": {
+  "typeID": 77420,
+  "volume": 4.0
+ },
+ "Tenebraet Mutanite": {
+  "typeID": 77421,
+  "volume": 4.0
+ },
+ "Admixti Mutanite": {
+  "typeID": 77524,
+  "volume": 4.0
+ },
+ "Kylixium": {
+  "typeID": 81900,
+  "volume": 1.2
+ },
+ "Kylixium II-Grade": {
+  "typeID": 81901,
+  "volume": 1.2
+ },
+ "Kylixium III-Grade": {
+  "typeID": 81902,
+  "volume": 1.2
+ },
+ "Kylixium IV-Grade": {
+  "typeID": 81903,
+  "volume": 1.2
+ },
+ "Compressed Kylixium": {
+  "typeID": 82300,
+  "volume": 0.012
+ },
+ "Compressed Kylixium II-Grade": {
+  "typeID": 82301,
+  "volume": 0.012
+ },
+ "Compressed Kylixium III-Grade": {
+  "typeID": 82302,
+  "volume": 0.012
+ },
+ "Compressed Kylixium IV-Grade": {
+  "typeID": 82303,
+  "volume": 0.012
+ },
+ "Nocxite": {
+  "typeID": 82016,
+  "volume": 4.0
+ },
+ "Nocxite II-Grade": {
+  "typeID": 82017,
+  "volume": 4.0
+ },
+ "Nocxite III-Grade": {
+  "typeID": 82018,
+  "volume": 4.0
+ },
+ "Nocxite IV-Grade": {
+  "typeID": 82019,
+  "volume": 4.0
+ },
+ "Compressed Nocxite": {
+  "typeID": 82304,
+  "volume": 0.04
+ },
+ "Compressed Nocxite II-Grade": {
+  "typeID": 82305,
+  "volume": 0.04
+ },
+ "Compressed Nocxite III-Grade": {
+  "typeID": 82306,
+  "volume": 0.04
+ },
+ "Compressed Nocxite IV-Grade": {
+  "typeID": 82307,
+  "volume": 0.04
+ },
+ "Ueganite": {
+  "typeID": 82205,
+  "volume": 5.0
+ },
+ "Ueganite II-Grade": {
+  "typeID": 82206,
+  "volume": 5.0
+ },
+ "Ueganite III-Grade": {
+  "typeID": 82207,
+  "volume": 5.0
+ },
+ "Ueganite IV-Grade": {
+  "typeID": 82208,
+  "volume": 5.0
+ },
+ "Compressed Ueganite": {
+  "typeID": 82308,
+  "volume": 0.05
+ },
+ "Compressed Ueganite II-Grade": {
+  "typeID": 82309,
+  "volume": 0.05
+ },
+ "Compressed Ueganite III-Grade": {
+  "typeID": 82310,
+  "volume": 0.05
+ },
+ "Compressed Ueganite IV-Grade": {
+  "typeID": 82311,
+  "volume": 0.05
+ },
+ "Hezorime": {
+  "typeID": 82163,
+  "volume": 5.0
+ },
+ "Hezorime II-Grade": {
+  "typeID": 82164,
+  "volume": 5.0
+ },
+ "Hezorime III-Grade": {
+  "typeID": 82165,
+  "volume": 5.0
+ },
+ "Hezorime IV-Grade": {
+  "typeID": 82166,
+  "volume": 5.0
+ },
+ "Compressed Hezorime": {
+  "typeID": 82312,
+  "volume": 0.05
+ },
+ "Compressed Hezorime II-Grade": {
+  "typeID": 82313,
+  "volume": 0.05
+ },
+ "Compressed Hezorime III-Grade": {
+  "typeID": 82314,
+  "volume": 0.05
+ },
+ "Compressed Hezorime IV-Grade": {
+  "typeID": 82315,
+  "volume": 0.05
+ },
+ "Griemeer": {
+  "typeID": 81975,
+  "volume": 0.8
+ },
+ "Griemeer II-Grade": {
+  "typeID": 81976,
+  "volume": 0.8
+ },
+ "Griemeer III-Grade": {
+  "typeID": 81977,
+  "volume": 0.8
+ },
+ "Griemeer IV-Grade": {
+  "typeID": 81978,
+  "volume": 0.8
+ },
+ "Compressed Griemeer": {
+  "typeID": 82316,
+  "volume": 0.008
+ },
+ "Compressed Griemeer II-Grade": {
+  "typeID": 82317,
+  "volume": 0.008
+ },
+ "Compressed Griemeer III-Grade": {
+  "typeID": 82318,
+  "volume": 0.008
+ },
+ "Compressed Griemeer IV-Grade": {
+  "typeID": 82319,
+  "volume": 0.008
+ },
+ "Tyranite": {
+  "typeID": 88105,
+  "volume": 0.6
+ },
+ "Raspite X-Grade": {
+  "typeID": 92565,
+  "volume": 1.0
+ },
+ "Compressed Raspite X-Grade": {
+  "typeID": 92818,
+  "volume": 0.01
+ },
+ "Polycrase X-Grade": {
+  "typeID": 92566,
+  "volume": 1.0
+ },
+ "Compressed Polycrase X-Grade": {
+  "typeID": 92819,
+  "volume": 0.01
+ },
+ "Moissanite X-Grade": {
+  "typeID": 92567,
+  "volume": 1.0
+ },
+ "Compressed Moissanite X-Grade": {
+  "typeID": 92820,
+  "volume": 0.01
+ },
+ "Kangite X-Grade": {
+  "typeID": 92568,
+  "volume": 1.0
+ },
+ "Compressed Kangite X-Grade": {
+  "typeID": 92821,
+  "volume": 0.01
+ }
+}
