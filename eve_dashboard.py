@@ -17,7 +17,7 @@ import threading
 import time
 import urllib.request
 
-VERSION = "1.1.1"
+VERSION = "1.2.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -1147,6 +1147,8 @@ PAGE = """<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
 --txt:#2a3242;--dim:#7a8699;--cyan:#0e7ea3;--red:#c2372f;--green:#1e8f4d;--gold:#9a7a00;--white:#101828}
 *{margin:0;box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif}
 body{background:var(--bg);color:var(--txt);padding:18px;transition:background .2s}
+html[data-fs="2"] body{zoom:1.15}
+html[data-fs="3"] body{zoom:1.3}
 header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
 h1{font-size:14px;font-weight:600;letter-spacing:2px;color:var(--dim)}
 h1 b{color:var(--cyan)}
@@ -1225,6 +1227,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span class="pill" id="collapseAll">Alle einklappen</span>
  <div class="pills" id="regions"></div>
  <span class="pill" id="ovToggle" title="Always-on-top Mini-Overlay (Chrome/Edge)">◱ Overlay</span>
+ <span class="pill" id="fontsize" title="Schriftgröße (3 Stufen)">A</span>
  <span class="pill" id="theme" title="Dark/Light">◐</span>
  <span class="pill" id="gear">⚙ Optionen</span>
 </header>
@@ -1296,6 +1299,15 @@ if(savedTheme)document.documentElement.dataset.theme=savedTheme;
 else if(matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.dataset.theme='light';
 $('#theme').onclick=()=>{const t=document.documentElement.dataset.theme==='light'?'dark':'light';
  document.documentElement.dataset.theme=t;localStorage.setItem('theme',t);};
+
+const FS_LABEL={1:'A',2:'A+',3:'A++'};
+let fontsize=Number(localStorage.getItem('fontsize')||1);
+function applyFs(){
+ document.documentElement.dataset.fs=fontsize;
+ $('#fontsize').textContent=FS_LABEL[fontsize];
+}
+applyFs();
+$('#fontsize').onclick=()=>{fontsize=fontsize%3+1;localStorage.setItem('fontsize',fontsize);applyFs();};
 
 document.querySelectorAll('nav span').forEach(el=>el.onclick=()=>{
  document.querySelectorAll('nav span').forEach(x=>x.classList.remove('on'));
@@ -1650,6 +1662,7 @@ async function overlayTick(){
  try{
   const d=await (await fetch('/data?view=live')).json();
   const doc=pipWin.document, now=Date.now()/1000;
+  doc.body.style.zoom={1:'1',2:'1.15',3:'1.3'}[fontsize]||'1';
   const alerts=(d.state.alerts||[]).filter(a=>now-a.ts<180).slice(-3).reverse();
   const hot=alerts.some(a=>(a.kind==='pvp'||a.kind==='cargo'||a.kind==='drones')&&now-a.ts<45);
   doc.body.classList.toggle('alarm',hot);
