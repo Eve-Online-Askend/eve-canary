@@ -34,6 +34,22 @@ Wer lieber von Hand installiert, folgt den nächsten beiden Abschnitten.
   nach jedem Neustart still im Hintergrund und ist sofort unter
   http://localhost:8765 erreichbar.
 
+## Deinstallieren
+
+Im Canary-Ordner liegt **uninstall.ps1**. Rechtsklick darauf -> "Mit PowerShell
+ausfuehren", oder in einer PowerShell:
+
+```
+powershell -ExecutionPolicy Bypass -File uninstall.ps1
+```
+
+Das beendet Canary, entfernt den Autostart und beide Verknuepfungen und fragt,
+ob der Ordner (inkl. Statistik und Einstellungen) geloescht werden soll. Mit
+`-KeepData` bleiben Ordner und Daten erhalten und nur Autostart/Verknuepfungen
+gehen weg. Von Hand sind es diese vier Stellen: der Installationsordner, die
+Desktop- und Startmenue-Verknuepfung "EVE Canary" und die Datei
+`EVE-Canary-Autostart.vbs` im Autostart-Ordner (`shell:startup`).
+
 ## Voraussetzungen
 
 1. **Windows** mit EVE Online

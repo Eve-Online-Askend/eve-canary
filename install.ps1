@@ -8,6 +8,8 @@ param(
     [switch]$NoShortcut
 )
 $ErrorActionPreference = "Stop"
+# TLS 1.2 explizit erzwingen (aeltere Windows-Defaults scheitern sonst an GitHub)
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 
 Write-Host ""
 Write-Host "  ================================" -ForegroundColor DarkCyan
@@ -64,13 +66,19 @@ function Find-Python {
 
 $py = Find-Python
 if (-not $py) {
-    Write-Host "  Python 3 fehlt, Installation laeuft ueber winget (einmalig) ..."
-    try {
-        winget install -e --id Python.Python.3.12 --accept-package-agreements --accept-source-agreements | Out-Null
-    } catch {}
-    $env:Path = [Environment]::GetEnvironmentVariable("Path", "User") + ";" +
-                [Environment]::GetEnvironmentVariable("Path", "Machine")
-    $py = Find-Python
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        Write-Host "  Python 3 fehlt, Installation laeuft ueber winget (einmalig) ..."
+        try {
+            winget install -e --id Python.Python.3.12 --accept-package-agreements --accept-source-agreements | Out-Null
+        } catch {}
+        # neuen PATH anhaengen statt ersetzen (Session-Eintraege bleiben erhalten)
+        $env:Path = $env:Path + ";" +
+                    [Environment]::GetEnvironmentVariable("Path", "User") + ";" +
+                    [Environment]::GetEnvironmentVariable("Path", "Machine")
+        $py = Find-Python
+    } else {
+        Write-Host "  Python 3 fehlt und winget ist nicht verfuegbar (aelteres Windows)." -ForegroundColor Yellow
+    }
 }
 if (-not $py) {
     Write-Host ""
@@ -82,13 +90,29 @@ if (-not $py) {
 }
 Write-Host "  Python gefunden ($py)"
 
-New-Item -ItemType Directory -Force -Path $Dir | Out-Null
 $files = "eve_dashboard.py", "ore_types.json", "npc_names.json",
-         "mining_tools.json", "README_INSTALL.md", "start_dashboard.bat"
-foreach ($f in $files) {
-    Invoke-WebRequest -Uri "$Repo/$f" -OutFile (Join-Path $Dir $f) -UseBasicParsing
-    Write-Host "  geladen: $f"
+         "mining_tools.json", "README_INSTALL.md", "start_dashboard.bat", "uninstall.ps1"
+# Erst vollstaendig in einen Temp-Ordner laden, dann ans Ziel verschieben.
+# Bricht ein Download ab, bleibt keine halbe Installation am Zielort zurueck.
+$tmp = Join-Path ([IO.Path]::GetTempPath()) ("eve-canary-" + [Guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+try {
+    foreach ($f in $files) {
+        Invoke-WebRequest -Uri "$Repo/$f" -OutFile (Join-Path $tmp $f) -UseBasicParsing
+        Write-Host "  geladen: $f"
+    }
+} catch {
+    Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+    Write-Host ""
+    Write-Host "  Download fehlgeschlagen: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "  Es wurde nichts installiert. Bitte Internetverbindung pruefen und erneut versuchen." -ForegroundColor Yellow
+    return
 }
+New-Item -ItemType Directory -Force -Path $Dir | Out-Null
+foreach ($f in $files) {
+    Move-Item -Force (Join-Path $tmp $f) (Join-Path $Dir $f)
+}
+Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 
 if (-not $NoShortcut) {
     $ws = New-Object -ComObject WScript.Shell

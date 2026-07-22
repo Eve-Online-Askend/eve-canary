@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.5.6"
+VERSION = "1.6.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -174,7 +174,7 @@ def load_config():
            "mode": "all", "install_ts": time.time(),
            "goal": None, "watchlist": [], "idle_warn": 240, "heavy_water": {},
            "clip_watch": False,
-           "update_url": "https://raw.githubusercontent.com/AENDERN/eve-canary/main"}
+           "update_url": "https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main"}
     if CONFIG_PATH.exists():
         try:
             cfg.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
@@ -187,9 +187,17 @@ def load_config():
     return cfg
 
 
+CONFIG_LOCK = threading.RLock()
+
+
 def save_config(cfg=None):
-    CONFIG_PATH.write_text(json.dumps(cfg or CONFIG, indent=1, ensure_ascii=False),
-                           encoding="utf-8")
+    # Atomar und thread-sicher: mehrere Threads (hw_tick, Esi.poll, do_POST …)
+    # schreiben sonst gleichzeitig und hinterlassen kaputtes JSON.
+    with CONFIG_LOCK:
+        data = json.dumps(cfg or CONFIG, indent=1, ensure_ascii=False)
+        tmp = CONFIG_PATH.with_suffix(".tmp")
+        tmp.write_text(data, encoding="utf-8")
+        os.replace(tmp, CONFIG_PATH)
 
 
 CONFIG = load_config()
@@ -197,6 +205,13 @@ CONFIG = load_config()
 # ---------------------------------------------------------------- Datenbank
 DB_LOCK = threading.Lock()
 DB = sqlite3.connect(DB_PATH, check_same_thread=False)
+# WAL + kurzer Busy-Timeout: Leser sehen stets den letzten committeten Stand,
+# statt halbe Schreibtransaktionen anderer Threads (Dirty Reads).
+try:
+    DB.execute("PRAGMA journal_mode=WAL")
+    DB.execute("PRAGMA busy_timeout=4000")
+except sqlite3.OperationalError:
+    pass
 DB.executescript("""
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS files(name TEXT PRIMARY KEY, char_id TEXT, char_name TEXT,
@@ -284,8 +299,9 @@ def set_autostart(on):
     pyw = exe.with_name("pythonw.exe")
     runner = pyw if pyw.exists() else exe
     script = APP_DIR / "eve_dashboard.py"
+    # --no-browser: beim Windows-Login still starten, ohne Browser-Tab aufzupoppen
     p.write_text('CreateObject("WScript.Shell").Run '
-                 f'"""{runner}"" ""{script}""", 0\n', encoding="utf-8")
+                 f'"""{runner}"" ""{script}"" --no-browser", 0\n', encoding="utf-8")
 
 
 UPDATE_INFO = {"ts": 0, "available": False, "latest": None}
@@ -303,11 +319,13 @@ def refresh_update_info():
 
 
 def _ver(v):
-    """Versionsstring in vergleichbares Tupel, '1.5.2' -> (1, 5, 2)."""
-    try:
-        return tuple(int(x) for x in str(v).split("."))
-    except ValueError:
-        return (0,)
+    """Versionsstring in vergleichbares Tupel, '1.5.2' -> (1, 5, 2).
+    Pro Segment nur den fuehrenden Zahlteil (so bleibt '1.6.0-rc1' vergleichbar)."""
+    out = []
+    for seg in str(v).split("."):
+        m = re.match(r"\d+", seg)
+        out.append(int(m.group()) if m else 0)
+    return tuple(out)
 
 
 def check_update():
@@ -339,15 +357,38 @@ def do_update():
             blobs[name] = fetch_url(f"{base}/{name}", timeout=30)
         if "eve_dashboard.py" in blobs:
             compile(blobs["eve_dashboard.py"].decode("utf-8"), "eve_dashboard.py", "exec")
-        for name, data in blobs.items():
-            target = APP_DIR / name
-            if target.exists():
-                shutil.copy2(target, APP_DIR / (name + ".bak"))
-            target.write_bytes(data)
     except SyntaxError:
         return {"ok": False, "error": "Die neue Version war fehlerhaft. Update abgebrochen, es wurde nichts geändert."}
     except Exception as e:
         return {"ok": False, "error": f"Download fehlgeschlagen: {e}"}
+    # Atomar anwenden: erst alle Dateien komplett als .new schreiben, dann per
+    # os.replace einzeln tauschen. Bricht das Tauschen ab (z.B. Virenscanner-Lock),
+    # werden bereits getauschte Dateien aus dem .bak zurückgerollt -> keine Mischversion.
+    written = []
+    try:
+        for name, data in blobs.items():
+            (APP_DIR / (name + ".new")).write_bytes(data)
+        for name in blobs:
+            target = APP_DIR / name
+            if target.exists():
+                shutil.copy2(target, APP_DIR / (name + ".bak"))
+            os.replace(APP_DIR / (name + ".new"), target)
+            written.append(name)
+    except Exception as e:
+        for name in written:  # Rollback der schon getauschten Dateien
+            bak = APP_DIR / (name + ".bak")
+            if bak.exists():
+                try:
+                    shutil.copy2(bak, APP_DIR / name)
+                except OSError:
+                    pass
+        for name in blobs:  # verwaiste .new aufräumen
+            try:
+                (APP_DIR / (name + ".new")).unlink()
+            except OSError:
+                pass
+        return {"ok": False, "error": f"Update konnte nicht angewendet werden ({e}). "
+                "Vorheriger Stand wurde wiederhergestellt."}
     def _restart():
         import subprocess
         kwargs = {"cwd": str(APP_DIR), "stdout": subprocess.DEVNULL,
@@ -641,7 +682,8 @@ class Ingest(threading.Thread):
     def hw_tick(self):
         """Schweres-Wasser-Buchhaltung: Verbrauch seit letztem Checkpoint abziehen,
         Stand in der Config sichern (uebersteht Neustarts), bei <30 min warnen."""
-        hw = CONFIG.get("heavy_water") or {}
+        with CONFIG_LOCK:
+            hw = dict(CONFIG.get("heavy_water") or {})  # Kopie: do_POST/sync_ship mutieren parallel
         if not hw:
             return
         now = time.time()
@@ -811,16 +853,23 @@ class Ingest(threading.Thread):
                     done += 1
                     continue
                 new_offset = offset + cut + 1
-                for bline in data[:cut + 1].split(b"\n"):
-                    ev = parse_line(bline.decode("utf-8", "replace").lstrip("﻿"))
-                    if ev:
-                        batch.append(ev)
-                        if sess:
-                            sess.feed(ev, live=not catch_up)
-                        if not catch_up:
-                            self.live_alerts(ev, cname)
-                            if ev["kind"] == "ore":
-                                self.learn_mine_system(cid)
+                now = time.time()
+                # Session-Mutation unter self.lock, damit snapshot_live (HTTP-Thread)
+                # nicht mitten in der Iteration von mining/rate_min/win_out crasht.
+                with self.lock:
+                    for bline in data[:cut + 1].split(b"\n"):
+                        ev = parse_line(bline.decode("utf-8", "replace").lstrip("﻿"))
+                        if ev:
+                            batch.append(ev)
+                            if sess:
+                                sess.feed(ev, live=not catch_up)
+                            # Live-Alarme nur für wirklich frische Ereignisse (< 10 min).
+                            # Schaltet man später auf "alle Logs", werden sonst Jahre an
+                            # historischen PvP-Treffern als Alarm + zKill-Abfrage ausgelöst.
+                            if not catch_up and now - ev["ts"] < 600:
+                                self.live_alerts(ev, cname)
+                                if ev["kind"] == "ore":
+                                    self.learn_mine_system(cid)
                 with DB_LOCK:
                     for ev in batch:
                         if ev["kind"] in ("drone_engage", "hold_reset"):
@@ -934,8 +983,12 @@ class ChatWatch(threading.Thread):
                 with open(f, "rb") as fh:
                     fh.seek(off)
                     data = fh.read()
-                self.offsets[f] = off + len(data)
-                for line in data.decode("utf-16-le", "replace").splitlines():
+                # UTF-16 = 2 Byte je Zeichen. Erwischt read() einen noch nicht
+                # fertig geschriebenen Block mit ungerader Länge, nur die geraden
+                # Bytes konsumieren; das letzte Byte bleibt für den nächsten Tick.
+                usable = len(data) & ~1
+                self.offsets[f] = off + usable
+                for line in data[:usable].decode("utf-16-le", "replace").splitlines():
                     line = line.strip().lstrip("﻿").strip()
                     cm = CHAT_LINE_RE.match(line)
                     if not cm:
@@ -1079,6 +1132,9 @@ class Esi(threading.Thread):
             c["refresh"] = tok.get("refresh_token", c["refresh"])
             c["access"] = tok["access_token"]
             c["exp"] = time.time() + tok.get("expires_in", 1199) - 60
+            # Rotiertes Refresh-Token SOFORT sichern: CCP invalidiert das alte,
+            # ein späterer Fehler im selben poll dürfte es sonst nie speichern.
+            save_config()
         return c["access"]
 
     def _get(self, c, path, params=None):
@@ -1124,22 +1180,30 @@ class Esi(threading.Thread):
         units = sum(i["quantity"] for i in in_ship if i["type_id"] == HW_TYPE_ID)
         core = next((CORE_TYPES[i["type_id"]] for i in in_ship
                      if i["type_id"] in CORE_TYPES), None)
-        hw = CONFIG.setdefault("heavy_water", {})
-        prev = hw.get(name) or {}
-        if core is None and units == 0:
-            # Schiff ohne Industriekern (Barge, Hauler, ...) -> keine Anzeige
-            if prev.get("esi"):
-                hw.pop(name, None)
-        else:
-            hw[name] = {"units": float(units), "fill": max(float(units), prev.get("fill") or 0),
-                        "core": core or prev.get("core", "t1"),
-                        "ts": time.time(), "ck": 0, "esi": True,
-                        "warned": bool(prev.get("warned")) and units <= prev.get("units", 0)}
+        with CONFIG_LOCK:
+            hw = CONFIG.setdefault("heavy_water", {})
+            prev = hw.get(name) or {}
+            if core is None and units == 0:
+                # Schiff ohne Industriekern (Barge, Hauler, ...) -> keine Anzeige
+                if prev.get("esi"):
+                    hw.pop(name, None)
+            else:
+                hw[name] = {"units": float(units), "fill": max(float(units), prev.get("fill") or 0),
+                            "core": core or prev.get("core", "t1"),
+                            "ts": time.time(), "ck": 0, "esi": True,
+                            "warned": bool(prev.get("warned")) and units <= prev.get("units", 0)}
 
     def sync_journal(self, name, c):
         """Wallet-Journal einlesen: Missions-Belohnungen, Boni, Bounty-Ticks.
         Lokale Historie waechst unbegrenzt (ESI liefert nur ~30 Tage rueckwirkend)."""
         data, hdr = self._get(c, f"/characters/{c['char_id']}/wallet/journal/")
+        pages = int(hdr.get("X-Pages") or 1)
+        page = 2
+        while page <= pages:  # aktive Tage/lange Offline-Zeit füllen mehrere Seiten
+            more, _ = self._get(c, f"/characters/{c['char_id']}/wallet/journal/",
+                                {"page": page})
+            data += more
+            page += 1
         try:
             exp = email.utils.parsedate_to_datetime(hdr["Expires"]).timestamp()
         except Exception:
@@ -1542,8 +1606,8 @@ def snapshot_live():
     pm = prices.get(CONFIG["region"])
     chars = []
     with ingest.lock:
-        sessions = list(ingest.sessions.values())
-    for s in sessions:
+      sessions = list(ingest.sessions.values())
+      for s in sessions:
         ores, ore_isk, m3 = [], 0.0, 0.0
         for ore, units in sorted(s.mining.items(), key=lambda x: -x[1]):
             isk, vol = ore_value(ore, units, pm)
@@ -1968,14 +2032,46 @@ def query_missions():
                         key=lambda c: -c["total"])}
 
 
+def _csv_cell(s):
+    """Formel-Injection neutralisieren: Excel/Calc fuehren Zellen aus, die mit
+    = + - @ beginnen. Solche Namen (aus Logs) mit ' entschaerfen, ; quoten."""
+    s = str(s)
+    if s[:1] in ("=", "+", "-", "@"):
+        s = "'" + s
+    if ";" in s or '"' in s or "\n" in s:
+        s = '"' + s.replace('"', '""') + '"'
+    return s
+
+
 def export_csv():
     lines = ["day;char;kind;key;value"]
     for day, cid, cname, kind, key, value in all_rows():
-        lines.append(f"{day};{cname};{kind};{key};{value}")
+        lines.append(";".join(_csv_cell(x) for x in (day, cname, kind, key, value)))
     return "\n".join(lines)
 
 
 # ---------------------------------------------------------------- HTTP
+def _host_ok(headers):
+    """Schuetzt vor DNS-Rebinding: nur localhost-Hosts duerfen zugreifen.
+    Eine fremde Website, die per Rebinding auf 127.0.0.1 zeigt, sendet ihren
+    eigenen (fremden) Host-Header und wird hier abgewiesen."""
+    host = (headers.get("Host") or "").rsplit(":", 1)[0].strip("[]").lower()
+    return host in ("localhost", "127.0.0.1", "::1", "")
+
+
+def _origin_ok(headers):
+    """Schuetzt vor CSRF: Ein Origin (bei fetch/CORS gesetzt) muss localhost sein.
+    Gleiche-Ursprung-Requests der eigenen Seite senden localhost oder gar keinen."""
+    origin = headers.get("Origin")
+    if not origin:
+        return True  # klassische Navigation/Formular ohne Origin -> ok, Host-Check greift
+    try:
+        h = urllib.parse.urlparse(origin).hostname or ""
+    except ValueError:
+        return False
+    return h.lower() in ("localhost", "127.0.0.1", "::1")
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, body, ctype="application/json", download=None):
         if isinstance(body, str):
@@ -1988,7 +2084,14 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _deny(self, code=403):
+        self.send_response(code)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_GET(self):
+        if not _host_ok(self.headers):
+            return self._deny()
         p = self.path.split("?")[0]
         if p == "/data":
             view = (self.path.split("view=")[1].split("&")[0]
@@ -2033,6 +2136,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(PAGE, "text/html; charset=utf-8")
 
     def do_POST(self):
+        if not _host_ok(self.headers) or not _origin_ok(self.headers):
+            return self._deny()
         length = int(self.headers.get("Content-Length", 0))
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
@@ -2042,6 +2147,11 @@ class Handler(BaseHTTPRequestHandler):
         if action == "region" and str(body.get("region")) in REGIONS:
             CONFIG["region"] = str(body["region"])
         elif action == "mode" and body.get("mode") in ("all", "fresh"):
+            with ingest.lock:
+                # filecache leeren, damit ein Wechsel fresh->all die geskippten
+                # Alt-Logs wirklich nachimportiert (Cache-Check greift sonst davor).
+                ingest.filecache.clear()
+                ingest.last_scan = 0
             CONFIG["mode"] = body["mode"]
         elif action == "reset":
             do_reset_baseline()
@@ -2072,22 +2182,24 @@ class Handler(BaseHTTPRequestHandler):
             return
         elif action == "esi_forget":
             char = str(body.get("char") or "")
-            esi.cfg().get("chars", {}).pop(char, None)
-            esi.status.pop(char, None)
-            hw_entry = (CONFIG.get("heavy_water") or {}).get(char)
-            if hw_entry and hw_entry.get("esi"):
-                CONFIG["heavy_water"].pop(char, None)
+            with CONFIG_LOCK:
+                esi.cfg().get("chars", {}).pop(char, None)
+                esi.status.pop(char, None)
+                hw_entry = (CONFIG.get("heavy_water") or {}).get(char)
+                if hw_entry and hw_entry.get("esi"):
+                    CONFIG["heavy_water"].pop(char, None)
         elif action == "heavy_water":
             char = str(body.get("char") or "")
-            hw = CONFIG.setdefault("heavy_water", {})
             units = body.get("units")
-            if char and units is None:
-                hw.pop(char, None)
-            elif char:
-                hw[char] = {"units": max(0.0, float(units)),
-                            "fill": max(0.0, float(units)),
-                            "core": "t2" if body.get("core") == "t2" else "t1",
-                            "ts": time.time(), "warned": False, "ck": 0}
+            with CONFIG_LOCK:
+                hw = CONFIG.setdefault("heavy_water", {})
+                if char and units is None:
+                    hw.pop(char, None)
+                elif char:
+                    hw[char] = {"units": max(0.0, float(units)),
+                                "fill": max(0.0, float(units)),
+                                "core": "t2" if body.get("core") == "t2" else "t1",
+                                "ts": time.time(), "warned": False, "ck": 0}
         elif action == "laser_ok":
             with ingest.lock:
                 for s in ingest.sessions.values():
@@ -2445,6 +2557,10 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 const $=s=>document.querySelector(s);
 const fmt=n=>Math.round(n).toLocaleString();
 const fmtM=n=>n>=1e9?(n/1e9).toFixed(2)+' Mrd':n>=1e6?(n/1e6).toFixed(1)+' M':fmt(n);
+// HTML-Escape: Spieler-/Corp-/Schiffsnamen aus Logs, ESI und zKillboard sind
+// fremdbestimmt und dürfen nie ungefiltert in innerHTML landen (XSS).
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function lsGet(key,fallback){try{const v=localStorage.getItem(key);return v==null?fallback:JSON.parse(v);}catch(e){return fallback;}}
 const VIEWS=['live','month','total','analyse','intel','missionen','rechner'];
 let view=location.pathname.replace(/^\\//,'')||'live', state=null, lastAlertId=Number(localStorage.getItem('lastAlertId')||0);
 if(!VIEWS.includes(view))view='live';
@@ -2537,8 +2653,8 @@ function syncOpts(){
   $('#cbUrl').textContent=state.esi.cb;
   if(document.activeElement!==$('#esiClient'))$('#esiClient').value=state.esi.client_id||'';
   $('#esiChars').innerHTML=(state.esi.chars||[]).map(c=>
-   '👤 <b>'+c.name+'</b>: '+c.status+(c.ship?' · '+c.ship:'')+(c.wallet!=null?' · Wallet: '+fmtM(c.wallet)+' ISK':'')+
-   ' <span class="esiForget" data-char="'+c.name+'" style="cursor:pointer;text-decoration:underline">trennen</span>'
+   '👤 <b>'+esc(c.name)+'</b>: '+esc(c.status)+(c.ship?' · '+esc(c.ship):'')+(c.wallet!=null?' · Wallet: '+fmtM(c.wallet)+' ISK':'')+
+   ' <span class="esiForget" data-char="'+esc(c.name)+'" style="cursor:pointer;text-decoration:underline">trennen</span>'
   ).join('<br>')||'Noch kein Charakter verbunden.';
   document.querySelectorAll('.esiForget').forEach(b=>b.onclick=async()=>{
    const r=await post({action:'esi_forget',char:b.dataset.char});if(r.state)state=r.state;syncOpts();});
@@ -2548,6 +2664,7 @@ function syncOpts(){
 function beep(freq,times,dur){
  try{
   const ctx=beep.ctx||(beep.ctx=new (window.AudioContext||window.webkitAudioContext)());
+  if(ctx.state==='suspended')ctx.resume();  // Autoplay-Sperre: erst nach User-Geste hörbar
   for(let i=0;i<times;i++){
    const o=ctx.createOscillator(),g=ctx.createGain();
    o.frequency.value=freq;o.connect(g);g.connect(ctx.destination);
@@ -2555,13 +2672,19 @@ function beep(freq,times,dur){
    g.gain.setValueAtTime(0.15,t);g.gain.exponentialRampToValueAtTime(0.001,t+dur);
    o.start(t);o.stop(t+dur);}
  }catch(e){}}
+// AudioContext bei der ersten Nutzer-Geste anlegen/aufwecken, damit spätere
+// Alarme im Hintergrund-Tab wirklich tönen (Browser blockiert Autoplay sonst).
+window.addEventListener('pointerdown',()=>{
+ try{const ctx=beep.ctx||(beep.ctx=new (window.AudioContext||window.webkitAudioContext)());
+  if(ctx.state==='suspended')ctx.resume();}catch(e){}
+},{once:true});
 
 function handleAlerts(){
  const list=state.alerts||[];
  const now=Date.now()/1000;
  $('#alerts').innerHTML=list.filter(a=>now-a.ts<300).slice(-4).reverse().map(a=>{
   const t=new Date(a.ts*1000).toLocaleTimeString();
-  return `<div class="alert ${a.kind}">[${t}] ${a.text}</div>`}).join('');
+  return `<div class="alert ${a.kind}">[${t}] ${esc(a.text)}</div>`}).join('');
  for(const a of list){
   if(a.id<=lastAlertId)continue;
   if(a.kind==='pvp'){
@@ -2639,7 +2762,7 @@ function regionPills(){
   await post({action:'region',region:p.dataset.r});tick();});
 }
 
-let collapsed=new Set(JSON.parse(localStorage.getItem('collapsed')||'[]'));
+let collapsed=new Set(lsGet('collapsed',[]));
 function toggleChar(name){
  if(collapsed.has(name))collapsed.delete(name);else collapsed.add(name);
  localStorage.setItem('collapsed',JSON.stringify([...collapsed]));
@@ -2661,9 +2784,11 @@ function syncCharFilter(chars){
  const names=chars.map(c=>c.name);
  const want='Alle Charaktere|'+names.join('|');
  if(sel.dataset.opts!==want){
-  const cur=sel.value;
+  // Auswahl aus localStorage wiederherstellen (beim ersten Render war value=''
+  // gesetzt, bevor die Optionen existierten -> sonst Dropdown und Filter uneins).
+  const cur=localStorage.getItem('charFilter')||'';
   sel.innerHTML='<option value="">Alle Charaktere</option>'+
-   names.map(n=>`<option value="${n}">${n}</option>`).join('');
+   names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
   sel.value=names.includes(cur)?cur:'';
   sel.dataset.opts=want;
  }
@@ -2700,18 +2825,18 @@ function renderLive(chars,summary){
   const maxS=Math.max(1,...c.spark);
   const min=collapsed.has(c.name);
   return `<div class="card ${min?'min':''}">
-   <div class="chead" data-c="${c.name}">
+   <div class="chead" data-c="${esc(c.name)}">
     <span class="arr">▼</span>
     ${c.portrait?`<img class="pf" src="${c.portrait}" alt="">`:''}
-    <span class="char">${c.name} <span class="sys">· ${c.system}${c.ship?' · '+c.ship:''}</span></span>
+    <span class="char">${esc(c.name)} <span class="sys">· ${esc(c.system)}${c.ship?' · '+esc(c.ship):''}</span></span>
     <span class="mini">${c.cargo_full?'<span class="warnbadge drone">⚠ Frachtraum voll!</span> · ':''}${(c.tool_warns||[]).map(w=>'<span class="warnbadge'+(w.drone?' drone':'')+'">⚠ '+w.tool+(w.count>1?' ×'+w.count:'')+'</span> · ').join('')}${(c.lasers_off||[]).map(w=>'<span class="warnbadge">⛔ '+w.tool+' aus</span> · ').join('')}${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'<span class="warnbadge drone">⛽ HW ~'+c.heavy_water.min_left+' min</span> · ':''}${c.rate_low?'<span class="warnbadge">⚠ Rate '+c.rate_low+'%</span> · ':''}${mineIdle(c,state)?'<span class="warnbadge">⚠ Kein Erz seit '+Math.round(c.mine_idle/60)+' min</span> · ':''}${fmtM(c.total_isk)} ISK · ${fmt(c.m3h)} m³/h${c.dps_in>0?' · <span class=\"in\">⚠ '+c.dps_in+' DPS rein</span>':''}</span>
    </div>
    <div class="cbody">
    ${c.cargo_full?`<div class="cardwarn drone">⚠ Frachtraum voll! Erz verladen oder komprimieren.</div>`:''}
    ${(c.tool_warns||[]).map(w=>w.drone
-     ?`<div class="cardwarn drone">⚠ ${w.tool}${w.count>1?' ×'+w.count:''} abgeschaltet, Drohnen prüfen!</div>`
-     :`<div class="cardwarn">⚠ ${w.tool}${w.count>1?' ×'+w.count:''} abgeschaltet, Ziel prüfen</div>`).join('')}
-   ${(c.lasers_off||[]).map(w=>`<div class="cardwarn">⛔ ${w.tool} aus seit ${new Date(w.since*1000).toLocaleTimeString().slice(0,5)}. Neues Ziel erfassen! <span class="laserok" data-char="${c.name}" data-tool="${w.tool}">✓ erledigt</span></div>`).join('')}
+     ?`<div class="cardwarn drone">⚠ ${esc(w.tool)}${w.count>1?' ×'+w.count:''} abgeschaltet, Drohnen prüfen!</div>`
+     :`<div class="cardwarn">⚠ ${esc(w.tool)}${w.count>1?' ×'+w.count:''} abgeschaltet, Ziel prüfen</div>`).join('')}
+   ${(c.lasers_off||[]).map(w=>`<div class="cardwarn">⛔ ${esc(w.tool)} aus seit ${new Date(w.since*1000).toLocaleTimeString().slice(0,5)}. Neues Ziel erfassen! <span class="laserok" data-char="${esc(c.name)}" data-tool="${esc(w.tool)}">✓ erledigt</span></div>`).join('')}
    ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur noch ${c.rate_low}%. Vermutlich ist ein Modul oder eine Drohne aus.</div>`:''}
    ${mineIdle(c,state)?`<div class="cardwarn">⚠ Seit ${Math.round(c.mine_idle/60)} min kein Erz. Laser und Drohnen prüfen!</div>`:''}
    <div class="sub">${c.trips>0?'Trip '+(c.trips+1)+' · seit Abdocken':'Session'} ${c.session_min} min · ${c.depleted} Asteroiden leergebaggert · Preise: ${state.regions[state.region]}</div>
@@ -2724,7 +2849,7 @@ function renderLive(chars,summary){
        ?'<span style="color:var(--dim);font-size:12px;font-weight:400">keine Preisdaten</span>'
        :'~'+fmtM(c.hold_isk)+(c.hold_prices==='partial'?' <span style="color:var(--dim)" title="Für einzelne Erztypen fehlen Preisdaten">±</span>':'')
     }</div></div>
-    ${c.heavy_water||!c.esi_linked?`<div class="stat"><div class="l">Heavy Water${c.heavy_water?' · '+c.heavy_water.core.toUpperCase():''}${c.heavy_water&&c.heavy_water.esi?' · ESI':''} ${c.heavy_water&&c.heavy_water.esi?'':`<span class="hwset" data-char="${c.name}" data-core="${c.heavy_water?c.heavy_water.core:''}" data-fill="${c.heavy_water&&c.heavy_water.fill?c.heavy_water.fill:''}" title="Bestand im Laderaum setzen">⛽</span>`}</div><div class="v ${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'in':''}">${c.heavy_water?fmt(c.heavy_water.units):'—'}</div><div class="l">${c.heavy_water?(c.heavy_water.on&&c.heavy_water.eta?'reicht bis ~'+new Date(c.heavy_water.eta*1000).toLocaleTimeString().slice(0,5)+' Uhr':'Kern inaktiv, Verbrauch pausiert'):'per ⛽ setzen'}</div></div>`:''}
+    ${c.heavy_water||!c.esi_linked?`<div class="stat"><div class="l">Heavy Water${c.heavy_water?' · '+c.heavy_water.core.toUpperCase():''}${c.heavy_water&&c.heavy_water.esi?' · ESI':''} ${c.heavy_water&&c.heavy_water.esi?'':`<span class="hwset" data-char="${esc(c.name)}" data-core="${c.heavy_water?c.heavy_water.core:''}" data-fill="${c.heavy_water&&c.heavy_water.fill?c.heavy_water.fill:''}" title="Bestand im Laderaum setzen">⛽</span>`}</div><div class="v ${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'in':''}">${c.heavy_water?fmt(c.heavy_water.units):'—'}</div><div class="l">${c.heavy_water?(c.heavy_water.on&&c.heavy_water.eta?'reicht bis ~'+new Date(c.heavy_water.eta*1000).toLocaleTimeString().slice(0,5)+' Uhr':'Kern inaktiv, Verbrauch pausiert'):'per ⛽ setzen'}</div></div>`:''}
     <div class="stat"><div class="l">Bounties</div><div class="v grn">${fmtM(c.bounty)}</div></div>
     ${c.wallet!=null?`<div class="stat"><div class="l">Wallet (ESI)</div><div class="v grn">${fmtM(c.wallet)}</div></div>`:''}
     <div class="stat"><div class="l">Schaden raus/rein</div><div class="v"><span class="out">${fmtM(c.dmg_out)}</span> / <span class="in">${fmtM(c.dmg_in)}</span></div></div>
@@ -2737,11 +2862,11 @@ function renderLive(chars,summary){
    ${c.compressed.length?`<div class="sect">Komprimiert (Session)</div><table>`+c.compressed.map(k=>
      `<tr><td>${k.type}</td><td class="r">${fmt(k.units)} Stk</td><td class="r">${fmt(k.m3)} m³</td><td class="r isk">${fmtM(k.isk)}</td></tr>`).join('')+`</table>`:''}
    ${c.weapons.length?`<div class="sect">Waffen</div><table>`+c.weapons.map(w=>
-     `<tr><td>${w[0]}</td><td class="r">${fmt(w[1])} dmg</td></tr>`).join('')+`</table>`:''}
+     `<tr><td>${esc(w[0])}</td><td class="r">${fmt(w[1])} dmg</td></tr>`).join('')+`</table>`:''}
    ${c.top_targets.length?`<div class="sect">Top-Ziele</div><table>`+c.top_targets.map(t=>
-     `<tr><td>${t[0]}</td><td class="r">${fmt(t[1])}</td></tr>`).join('')+`</table>`:''}
+     `<tr><td>${esc(t[0])}</td><td class="r">${fmt(t[1])}</td></tr>`).join('')+`</table>`:''}
    ${c.top_attackers.length?`<div class="sect">Top-Angreifer</div><table>`+c.top_attackers.map(t=>
-     `<tr><td>${t[0]}</td><td class="r">${fmt(t[1])}</td></tr>`).join('')+`</table>`:''}
+     `<tr><td>${esc(t[0])}</td><td class="r">${fmt(t[1])}</td></tr>`).join('')+`</table>`:''}
    </div>
   </div>`}).join('');
  document.querySelectorAll('.chead').forEach(h=>h.onclick=()=>toggleChar(h.dataset.c));
@@ -2802,17 +2927,17 @@ function renderTotal(t){
    `<tr><td>${o.ore}<div class="bar" style="width:${100*o.isk/maxOre}%"></div></td>
     <td class="r">${fmt(o.units)}</td><td class="r">${fmt(o.m3)} m³</td><td class="r isk">${fmtM(o.isk)}</td></tr>`).join('')}</table></div>
   <div class="card"><div class="char">Pro Charakter</div><table>${Object.entries(t.chars).map(([n,c])=>
-   `<tr><td>${n}</td><td class="r">${fmt(c.m3)} m³</td><td class="r grn">${fmtM(c.bounty)}</td><td class="r isk">${fmtM(c.ore_isk+c.bounty)}</td></tr>`).join('')}</table></div>
+   `<tr><td>${esc(n)}</td><td class="r">${fmt(c.m3)} m³</td><td class="r grn">${fmtM(c.bounty)}</td><td class="r isk">${fmtM(c.ore_isk+c.bounty)}</td></tr>`).join('')}</table></div>
   <div class="card"><div class="char">Komprimiert pro Charakter</div>
    <div class="sub">Alles, was über die Schiffs-Kompression gelaufen ist</div>
    <table>${t.compressed.length?t.compressed.map(k=>
-   `<tr><td>${k.char}</td><td>${k.type}</td><td class="r">${fmt(k.units)} Stk</td><td class="r">${fmt(k.m3)} m³</td><td class="r isk">${fmtM(k.isk)}</td></tr>`).join(''):'<tr><td>Noch nichts komprimiert</td></tr>'}</table></div>`;
+   `<tr><td>${esc(k.char)}</td><td>${esc(k.type)}</td><td class="r">${fmt(k.units)} Stk</td><td class="r">${fmt(k.m3)} m³</td><td class="r isk">${fmtM(k.isk)}</td></tr>`).join(''):'<tr><td>Noch nichts komprimiert</td></tr>'}</table></div>`;
 }
 
 let compPeriod=localStorage.getItem('compPeriod')||'today';
 let lastAnalyse=null;
 const PERIODS={today:'Heute',week:'7 Tage',month:'30 Tage',year:'12 Monate'};
-let compOpen=new Set(JSON.parse(localStorage.getItem('compOpen')||'[]'));
+let compOpen=new Set(lsGet('compOpen',[]));
 function toggleComp(key){
  if(compOpen.has(key))compOpen.delete(key);else compOpen.add(key);
  localStorage.setItem('compOpen',JSON.stringify([...compOpen]));
@@ -2857,7 +2982,7 @@ function renderAnalyse(a){
    <div class="sub">Was lohnt sich am meisten pro Laderaum?</div><table>${a.efficiency.map(e=>
    `<tr><td>${e.ore}</td><td class="r">${e.isk_per_m3} ISK/m³</td><td class="r">${fmt(e.m3)} m³</td><td class="r isk">${fmtM(e.isk)}</td></tr>`).join('')}</table></div>
   <div class="card"><div class="char">Waffen-Bilanz</div><table>${a.weapons.length?a.weapons.map(w=>
-   `<tr><td>${w[0]}</td><td class="r out">${fmt(w[1])} dmg</td></tr>`).join(''):'<tr><td class="r">Noch keine Kampfdaten</td></tr>'}</table></div>
+   `<tr><td>${esc(w[0])}</td><td class="r out">${fmt(w[1])} dmg</td></tr>`).join(''):'<tr><td class="r">Noch keine Kampfdaten</td></tr>'}</table></div>
   <div class="card"><div class="char">Spielzeit</div><table>${a.playtime.slice(-14).reverse().map(p=>
    `<tr><td>${p.day}<div class="bar" style="width:${100*p.minutes/maxP}%"></div></td>
     <td class="r">${Math.floor(p.minutes/60)}h ${p.minutes%60}m</td></tr>`).join('')}</table></div>
@@ -2937,17 +3062,17 @@ async function overlayTick(){
    `<div class="hd"><span>🐤 <b>CANARY</b></span><span>${new Date().toLocaleTimeString()}</span></div>`+
    d.chars.map(c=>{const [cls,txt]=ovStatus(c,d.state);
     return `<div class="row"><span class="dot ${cls}"></span>
-     <span><div class="nm">${c.name} <span class="sys">· ${c.system}</span></div>
+     <span><div class="nm">${esc(c.name)} <span class="sys">· ${esc(c.system)}</span></div>
      ${txt?`<div class="st ${cls==='bad'?'bad':''}">${txt}</div>`:''}</span>
      <span class="val">${fmtM(c.total_isk)}<small>${fmt(c.m3h)} m³/h</small></span></div>`;}).join('')+
-   alerts.map(a=>`<div class="al ${a.kind}">[${new Date(a.ts*1000).toLocaleTimeString()}] ${a.text}</div>`).join('');
+   alerts.map(a=>`<div class="al ${a.kind}">[${new Date(a.ts*1000).toLocaleTimeString()}] ${esc(a.text)}</div>`).join('');
  }catch(e){}
 }
 setInterval(overlayTick,2000);
 $('#ovToggle').onclick=toggleOverlay;
 $('#ovBtn').onclick=toggleOverlay;
 
-let intelNames=JSON.parse(localStorage.getItem('intelNames')||'[]');
+let intelNames=lsGet('intelNames',[]),intelSettled=false;
 let intelBusy=false,intelAutoTs=Number(localStorage.getItem('intelAutoTs')||0);
 function renderIntel(auto){
  if(!document.getElementById('intelBox')){
@@ -2962,6 +3087,7 @@ function renderIntel(auto){
   $('#intelGo').onclick=()=>{
    intelNames=[...new Set($('#intelIn').value.split(/\\n/).map(s=>s.trim()).filter(s=>s&&!s.startsWith('[')))].slice(0,200);
    localStorage.setItem('intelNames',JSON.stringify(intelNames));
+   intelSettled=false;
    $('#intelTbl').innerHTML='';
    intelPoll();
   };
@@ -2969,21 +3095,26 @@ function renderIntel(auto){
   $('#clipWatch').onchange=()=>post({action:'clip_watch',on:$('#clipWatch').checked});
   if(intelNames.length)$('#intelIn').value=intelNames.join('\\n');
  }
- if(auto&&auto.ts>intelAutoTs&&auto.names&&auto.names.length){
+ if(auto&&auto.ts>intelAutoTs&&auto.names&&auto.names.length&&document.activeElement!==$('#intelIn')){
+  // nicht überschreiben, während der Nutzer gerade im Feld tippt
   intelAutoTs=auto.ts;localStorage.setItem('intelAutoTs',intelAutoTs);
   intelNames=auto.names;
   localStorage.setItem('intelNames',JSON.stringify(intelNames));
+  intelSettled=false;
   $('#intelIn').value=intelNames.join('\\n');
   $('#intelTbl').innerHTML='';
  }
  intelPoll();
 }
 async function intelPoll(){
- if(!intelNames.length||intelBusy||view!=='intel')return;
+ if(!intelNames.length||intelBusy||view!=='intel'||intelSettled)return;
  intelBusy=true;
  try{
   const r=await post({action:'threat_scan',names:intelNames});
   const res=r.results||{};
+  // Fertig (nichts mehr offen)? Dann nicht mehr alle 2s neu abfragen/rendern,
+  // sonst geht Textselektion und Link-Hover in der Tabelle laufend verloren.
+  intelSettled=!r.pending;
   const order={red:0,yellow:1,unknown:2,green:3};
   const ICON={red:'🔴',yellow:'🟡',green:'🟢',unknown:'⚪'};
   const rows=intelNames.map(n=>[n,res[n]]).sort((a,b)=>{
@@ -2997,12 +3128,12 @@ async function intelPoll(){
    <th class="r">Kills 60d</th><th class="r">Miner-Kills</th><th class="r">Kills/Verluste</th>
    <th class="r">Danger</th><th class="r">Sec</th></tr>`+
    rows.map(([n,d])=>{
-    if(!d)return '<tr><td>⏳</td><td>'+n+'</td><td colspan="7" style="color:var(--dim)">wird geprüft …</td></tr>';
-    if(d.level==='unknown')return '<tr><td>⚪</td><td>'+n+'</td><td colspan="7" style="color:var(--dim)">'+(d.note||'')+'</td></tr>';
-    const corp=(d.corp||'?')+(d.alliance?' · '+d.alliance:'');
+    if(!d)return '<tr><td>⏳</td><td>'+esc(n)+'</td><td colspan="7" style="color:var(--dim)">wird geprüft …</td></tr>';
+    if(d.level==='unknown')return '<tr><td>⚪</td><td>'+esc(n)+'</td><td colspan="7" style="color:var(--dim)">'+esc(d.note||'')+'</td></tr>';
+    const corp=esc((d.corp||'?')+(d.alliance?' · '+d.alliance:''));
     const age=d.age_days!=null?(d.age_days<365?d.age_days+' T':(d.age_days/365).toFixed(1)+' J'):'?';
     return `<tr class="lvl-${d.level}"><td>${ICON[d.level]}</td>
-     <td><a href="https://zkillboard.com/character/${d.id}/" target="_blank" rel="noopener">${n}</a></td>
+     <td><a href="https://zkillboard.com/character/${encodeURIComponent(d.id)}/" target="_blank" rel="noopener">${esc(n)}</a></td>
      <td>${age}</td><td>${corp}</td><td class="r">${d.recent_kills}</td>
      <td class="r${d.miner_kills>=3?' in':''}">${d.miner_kills}</td>
      <td class="r">${d.kills}/${d.losses}</td><td class="r">${d.danger}%</td>
@@ -3032,7 +3163,7 @@ function renderMissions(d){
   ${(m.mine_systems&&m.mine_systems.length)?`<div class="sub" style="margin-top:8px">Bounties aus deinen Mining-Systemen (${m.mine_systems.join(', ')}) zählen hier nicht mit, das sind Belt-Ratten.</div>`:''}
   ${m.linked?'':'<div class="cardwarn" style="margin-top:10px">⚠ Kein EVE-Login verbunden. Belohnungen und Boni kommen aus dem Wallet-Journal (ESI), einzurichten unter ⚙ Optionen.</div>'}
   ${live.length?'<div class="sect">Live-Session (aus den Gamelogs)</div>'+live.map(c=>
-   `<div class="sub">⚔ <b>${c.name}</b>${c.ship?' · '+c.ship:''} · ${c.kills} Kills · ${fmtM(c.bounty)} Bounties · DPS ${c.dps_out} raus / ${c.dps_in} rein · Session ${c.session_min} min</div>`).join(''):''}
+   `<div class="sub">⚔ <b>${esc(c.name)}</b>${c.ship?' · '+esc(c.ship):''} · ${c.kills} Kills · ${fmtM(c.bounty)} Bounties · DPS ${c.dps_out} raus / ${c.dps_in} rein · Session ${c.session_min} min</div>`).join(''):''}
  </div>
  <div class="card" style="grid-column:1/-1">
   <div class="sect">Letzte 30 Tage</div>
@@ -3044,7 +3175,7 @@ function renderMissions(d){
  ${(m.agents&&m.agents.length)?`<div class="card">
   <div class="sect">Top-Agenten</div><table>
   <tr><th>Agent</th><th class="r">Missionen</th><th class="r">ISK</th></tr>`+
-  m.agents.map(a=>`<tr><td>${a.agent}</td><td class="r">${a.missions}</td><td class="r isk">${fmtM(a.isk)}</td></tr>`).join('')+'</table></div>':''}
+  m.agents.map(a=>`<tr><td>${esc(a.agent)}</td><td class="r">${a.missions}</td><td class="r isk">${fmtM(a.isk)}</td></tr>`).join('')+'</table></div>':''}
  ${(m.chars&&m.chars.length)?`<div class="card">
   <div class="sect">Nach Charakter (gesamt)</div><table>
   <tr><th>Charakter</th><th class="r">Missionen</th><th class="r">ISK</th></tr>`+
@@ -3068,28 +3199,37 @@ async function doCalc(){
  localStorage.setItem('calcText',text);
  $('#calcStat').textContent='Hole Preise von allen Handelsplätzen …';
  let r;
- try{r=await post({action:'calc',text});}catch(e){$('#calcStat').textContent='Preisabfrage fehlgeschlagen.';return;}
+ try{r=await post({action:'calc',text});}catch(e){r=null;}
+ if(!$('#calcOut'))return;  // Nutzer hat die Ansicht während der Abfrage gewechselt
+ if(!r){$('#calcStat').textContent='Preisabfrage fehlgeschlagen.';return;}
  $('#calcStat').textContent='';
  if(!r.items||!r.items.length){
-  $('#calcOut').innerHTML='<div class="sub">Keine bekannten Erz-Typen erkannt.'+(r.unknown&&r.unknown.length?' Nicht zuzuordnen: '+r.unknown.join(' · '):'')+'</div>';
+  $('#calcOut').innerHTML='<div class="sub">Keine bekannten Erz-Typen erkannt.'+(r.unknown&&r.unknown.length?' Nicht zuzuordnen: '+esc(r.unknown.join(' · ')):'')+'</div>';
   return;}
  const hubs=Object.values(r.hubs||{}).filter(h=>!h.error);
+ if(!hubs.length){$('#calcOut').innerHTML='<div class="sub">Keine Preisdaten von den Handelsplätzen erhalten. Bitte später erneut versuchen.</div>';return;}
  const bestBuy=Math.max(...hubs.map(h=>h.buy));
  $('#calcOut').innerHTML=
   `<div class="stats" style="grid-template-columns:repeat(${hubs.length},1fr)">`+
   hubs.map(h=>`<div class="stat"${h.buy===bestBuy?' style="border-color:var(--gold)"':''}>
-   <div class="l">${h.name}${h.buy===bestBuy?' ★':''}</div>
+   <div class="l">${esc(h.name)}${h.buy===bestBuy?' ★':''}</div>
    <div class="v isk" style="font-size:20px">${fmtM(h.buy)}</div>
    <div class="l">Sofortverkauf · mit Sell-Order: ${fmtM(h.sell)}</div></div>`).join('')+`</div>
   <div class="sub" style="margin-top:8px">${fmt(r.m3)} m³ gesamt · ★ = bester Sofortverkauf · Einzelwerte zu Jita-Buy-Preisen:</div>
   <table><tr><th>Typ</th><th class="r">Menge</th><th class="r">m³</th><th class="r">ISK (Jita)</th></tr>`+
-  r.items.map(i=>`<tr><td>${i.name}</td><td class="r">${fmt(i.qty)}</td><td class="r">${fmt(i.m3)}</td><td class="r isk">${fmtM(i.isk)}</td></tr>`).join('')+'</table>'+
-  (r.unknown&&r.unknown.length?`<div class="sub" style="margin-top:8px">Nicht erkannt: ${r.unknown.join(' · ')}</div>`:'');
+  r.items.map(i=>`<tr><td>${esc(i.name)}</td><td class="r">${fmt(i.qty)}</td><td class="r">${fmt(i.m3)}</td><td class="r isk">${fmtM(i.isk)}</td></tr>`).join('')+'</table>'+
+  (r.unknown&&r.unknown.length?`<div class="sub" style="margin-top:8px">Nicht erkannt: ${esc(r.unknown.join(' · '))}</div>`:'');
 }
+let tickBusy=false;
 async function tick(){
+ if(tickBusy)return;  // kein Request-Stau bei langsamem /data
+ tickBusy=true;
+ const reqView=view;  // View einfrieren: nach dem await zählt der Stand von JETZT
  try{
-  const d=await (await fetch('/data?view='+view)).json();
+  const d=await (await fetch('/data?view='+reqView)).json();
+  if(reqView!==view)return;  // Nutzer hat inzwischen gewechselt -> Antwort verwerfen
   state=d.state;regionPills();handleAlerts();updateBadge();bootScreen();
+  if(view!=='live'&&view!=='month'&&view!=='total'&&view!=='analyse')$('#empty').hidden=true;
   if(view==='live')renderLive(d.chars,d.summary);
   else if(view==='missionen')renderMissions(d);
   else{
@@ -3101,6 +3241,7 @@ async function tick(){
    else renderTotal(d.total);
   }
  }catch(e){}
+ finally{tickBusy=false;}
 }
 tick();setInterval(tick,2000);
 </script></body></html>"""
@@ -3114,12 +3255,6 @@ if __name__ == "__main__":
             do_backup()
         except Exception:
             pass
-    ingest.start()
-    chatwatch.start()
-    prices.start()
-    esi.start()
-    threat.start()
-    clipwatch.start()
     port = int(CONFIG.get("port", PORT_DEFAULT))
 
     class Server(ThreadingHTTPServer):
@@ -3127,9 +3262,16 @@ if __name__ == "__main__":
         # binden und sich gegenseitig die Anfragen wegschnappen. Deshalb aus.
         allow_reuse_address = False
 
-    try:
-        srv = Server(("127.0.0.1", port), Handler)
-    except OSError:
+    # Bis zu 12s auf den Port warten: nach einem Auto-Update startet der neue
+    # Prozess evtl., bevor der alte den Socket (TIME_WAIT) freigegeben hat.
+    srv = None
+    for attempt in range(24):
+        try:
+            srv = Server(("127.0.0.1", port), Handler)
+            break
+        except OSError:
+            time.sleep(0.5)
+    if srv is None:
         print(f"EVE Canary läuft offenbar schon (Port {port} ist belegt).")
         print("Einfach das vorhandene Fenster nutzen: http://localhost:" + str(port))
         try:
@@ -3137,5 +3279,23 @@ if __name__ == "__main__":
         except EOFError:
             pass  # ohne Konsole (Autostart) einfach still beenden
         sys.exit(1)
+    if DB_PATH.exists():
+        try:
+            do_backup()
+        except Exception:
+            pass
+    ingest.start()
+    chatwatch.start()
+    prices.start()
+    esi.start()
+    threat.start()
+    clipwatch.start()
     print(f"EVE Canary läuft:  http://localhost:{port}")
+    if "--no-browser" not in sys.argv:
+        # Browser erst jetzt öffnen, wo der Port sicher gebunden ist
+        try:
+            import webbrowser
+            threading.Timer(0.5, lambda: webbrowser.open(f"http://localhost:{port}")).start()
+        except Exception:
+            pass
     srv.serve_forever()
