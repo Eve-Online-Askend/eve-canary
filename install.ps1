@@ -15,16 +15,38 @@ Write-Host "   EVE Canary wird installiert" -ForegroundColor Cyan
 Write-Host "  ================================" -ForegroundColor DarkCyan
 Write-Host ""
 
-# Installationsordner waehlen (Enter uebernimmt den Vorschlag)
+# Installationsordner per Windows-Dialog waehlen
 $default = "$env:LOCALAPPDATA\EVE-Canary"
 if (-not $Dir) {
-    Write-Host "  Wohin soll Canary installiert werden?"
-    Write-Host "  Enter uebernimmt den Vorschlag, oder einfach einen eigenen Pfad eintippen."
-    try { $inp = Read-Host "  Ordner [$default]" } catch { $inp = "" }
-    if ($inp) {
-        $Dir = [Environment]::ExpandEnvironmentVariables($inp.Trim().Trim('"'))
-    } else {
-        $Dir = $default
+    Write-Host "  Es oeffnet sich ein Fenster zur Ordner-Auswahl ..."
+    try {
+        Add-Type -AssemblyName System.Windows.Forms
+        $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
+        $dlg.Description = "Wohin soll EVE Canary installiert werden? Canary legt dort einen Unterordner 'EVE-Canary' an. Abbrechen nimmt den Standardordner."
+        $dlg.SelectedPath = $env:LOCALAPPDATA
+        $dlg.ShowNewFolderButton = $true
+        $owner = New-Object System.Windows.Forms.Form
+        $owner.TopMost = $true
+        $result = $dlg.ShowDialog($owner)
+        $owner.Dispose()
+        if ($result -eq [System.Windows.Forms.DialogResult]::OK -and $dlg.SelectedPath) {
+            if ((Split-Path $dlg.SelectedPath -Leaf) -ieq "EVE-Canary") {
+                $Dir = $dlg.SelectedPath
+            } else {
+                $Dir = Join-Path $dlg.SelectedPath "EVE-Canary"
+            }
+        } else {
+            Write-Host "  Keine Auswahl getroffen, es bleibt beim Standardordner."
+            $Dir = $default
+        }
+    } catch {
+        # Kein Fenster moeglich (z.B. Fernsitzung): Eingabe per Tastatur, sonst Standard
+        try { $inp = Read-Host "  Ordner [$default]" } catch { $inp = "" }
+        if ($inp) {
+            $Dir = [Environment]::ExpandEnvironmentVariables($inp.Trim().Trim('"'))
+        } else {
+            $Dir = $default
+        }
     }
 }
 Write-Host "  Installationsordner: $Dir"
