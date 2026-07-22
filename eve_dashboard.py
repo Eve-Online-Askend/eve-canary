@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.7.0"
+VERSION = "1.7.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -2259,12 +2259,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send(json.dumps({"ok": True, "results": results,
                                    "pending": threat.pending()}))
             return
-        elif action == "esi_client":
-            esi.cfg()["client_id"] = str(body.get("client_id") or "").strip()
         elif action == "esi_login":
             url = esi.login_url()
             self._send(json.dumps({"ok": bool(url), "url": url,
-                                   "error": None if url else "Zuerst Client-ID speichern."}))
+                                   "error": None if url else "Login konnte nicht gestartet werden."}))
             return
         elif action == "esi_forget":
             char = str(body.get("char") or "")
@@ -2491,12 +2489,6 @@ border:1px solid var(--line);color:var(--dim);font-size:11px;padding:4px 11px;bo
  font-size:12px;color:var(--txt);background:rgba(53,200,232,.08)}
 html[data-skin=photon] .esinudge{border-radius:1px}
 #esiChars{font-size:13px;line-height:1.7;margin-bottom:8px}
-#esiSetup{margin-top:8px}
-#esiSetup>summary{cursor:pointer;font-size:12px;color:var(--dim);user-select:none;list-style:none}
-#esiSetup>summary::-webkit-details-marker{display:none}
-#esiSetup>summary::before{content:"▸ ";color:var(--cyan)}
-#esiSetup[open]>summary::before{content:"▾ "}
-#esiSetup>summary:hover{color:var(--txt)}
 .chead .arr{color:var(--dim);font-size:11px;transition:transform .15s}
 .card.min .arr{transform:rotate(-90deg)}
 .card.min .cbody{display:none}
@@ -2626,15 +2618,6 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
    aktuelles Schiff, Wallet-Stand, Heavy Water und Missions-Einnahmen. Kein Setup nötig, einfach einloggen.</div>
   <div id="esiChars"></div>
   <div class="btnrow"><button class="btn" id="esiLogin">🔑 Mit EVE-Account verbinden</button></div>
-  <details id="esiSetup">
-   <summary>Eigene ESI-App verwenden (optional)</summary>
-   <div class="hint" style="margin-top:8px">Standardmäßig nutzt Canary seine eigene App, du musst nichts einrichten.
-   Nur wenn du eine eigene App auf <a href="https://developers.eveonline.com" target="_blank" rel="noopener">developers.eveonline.com</a>
-   verwenden willst (Scopes: <b>esi-assets.read_assets.v1, esi-location.read_ship_type.v1,
-   esi-wallet.read_character_wallet.v1</b>, Callback-URL: <b id="cbUrl"></b>), trage hier ihre Client-ID ein.</div>
-   <input type="text" id="esiClient" placeholder="Eigene Client-ID (optional)">
-   <div class="btnrow"><button class="btn" id="saveEsi">Speichern</button></div>
-  </details>
  </div>
 
  <div class="optgroup">
@@ -2719,7 +2702,6 @@ $('#clearGoal').onclick=async()=>{await post({action:'goal',isk:null});$('#goalI
 $('#saveWatch').onclick=async()=>{await post({action:'watchlist',names:$('#watchlist').value.split('\\n')});};
 $('#notifPerm').onclick=()=>Notification.requestPermission();
 $('#saveIdle').onclick=async()=>{await post({action:'idle_warn',seconds:Number($('#idleWarn').value)||0});syncOpts();};
-$('#saveEsi').onclick=async()=>{const r=await post({action:'esi_client',client_id:$('#esiClient').value.trim()});if(r.state)state=r.state;syncOpts();};
 $('#esiLogin').onclick=async()=>{
  const r=await post({action:'esi_login'});
  if(r.url)window.open(r.url,'_blank');
@@ -2754,13 +2736,7 @@ function syncOpts(){
  $('#verinfo').textContent='Installiert: EVE Canary v'+(state.version||'?')+' · by Askend';
  if(state.goal){$('#goalIsk').value=state.goal.isk;$('#goalDate').value=state.goal.deadline||'';}
  if(state.esi){
-  $('#cbUrl').textContent=state.esi.cb;
-  if(document.activeElement!==$('#esiClient'))$('#esiClient').value=state.esi.client_id||'';
-  const nchars=(state.esi.chars||[]).length;
-  $('#esiNudge').hidden=nchars>0;
-  // Anleitung nur aufklappen, solange noch nichts verbunden ist
-  // Einrichtungstext bleibt standardmäßig eingeklappt (aufklappbar bei Bedarf,
-  // oder automatisch beim Klick auf "Charakter verbinden" ohne Client-ID).
+  $('#esiNudge').hidden=(state.esi.chars||[]).length>0;
   $('#esiChars').innerHTML=(state.esi.chars||[]).map(c=>
    '👤 <b>'+esc(c.name)+'</b>: '+esc(c.status)+(c.ship?' · '+esc(c.ship):'')+(c.wallet!=null?' · Wallet: '+fmtM(c.wallet)+' ISK':'')+
    ' <span class="esiForget" data-char="'+esc(c.name)+'" style="cursor:pointer;text-decoration:underline">trennen</span>'
