@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.6.1"
+VERSION = "1.6.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -2398,6 +2398,12 @@ border:1px solid var(--line);color:var(--dim);font-size:11px;padding:4px 11px;bo
 .chead{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;flex-wrap:wrap}
 .chead .mini{margin-left:auto;font-size:12px;color:var(--dim);text-align:right;min-width:0}
 .pf{width:26px;height:26px;border-radius:5px;flex:none;background:var(--inset)}
+.pf-none{display:flex;align-items:center;justify-content:center;font-size:14px;
+ border:1px dashed var(--dim);color:var(--dim);cursor:pointer;opacity:.7}
+.pf-none:hover{opacity:1;border-color:var(--cyan);color:var(--cyan)}
+.esinudge{border:1px solid var(--cyan);border-radius:7px;padding:8px 11px;margin:2px 0 10px 0;
+ font-size:12px;color:var(--txt);background:rgba(53,200,232,.08)}
+html[data-skin=photon] .esinudge{border-radius:1px}
 .chead .arr{color:var(--dim);font-size:11px;transition:transform .15s}
 .card.min .arr{transform:rotate(-90deg)}
 .card.min .cbody{display:none}
@@ -2522,7 +2528,9 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  </div>
 
  <div class="optgroup">
-  <div class="sect">🔑 EVE-Login (ESI): automatischer Abgleich</div>
+  <div class="sect esi">🔑 EVE-Login (ESI): automatischer Abgleich</div>
+  <div class="esinudge" id="esiNudge" hidden>✨ Noch kein Charakter verbunden. Mit dem EVE-Login zeigt Canary
+   automatisch Portrait, aktuelles Schiff, Wallet-Stand und den Heavy-Water-Vorrat, ganz ohne manuelles Eintragen.</div>
   <div class="hint">Liest per offiziellem EVE-Login automatisch: Heavy Water im Schiff, Kern-Typ (T1/T2),
   aktuelles Schiff und Wallet-Stand. Einmalige Einrichtung: auf <a href="https://developers.eveonline.com" target="_blank" rel="noopener">developers.eveonline.com</a>
   eine Anwendung anlegen („Authentication &amp; API Access", Scopes: <b>esi-assets.read_assets.v1,
@@ -2655,6 +2663,7 @@ function syncOpts(){
  if(state.esi){
   $('#cbUrl').textContent=state.esi.cb;
   if(document.activeElement!==$('#esiClient'))$('#esiClient').value=state.esi.client_id||'';
+  $('#esiNudge').hidden=(state.esi.chars||[]).length>0;
   $('#esiChars').innerHTML=(state.esi.chars||[]).map(c=>
    '👤 <b>'+esc(c.name)+'</b>: '+esc(c.status)+(c.ship?' · '+esc(c.ship):'')+(c.wallet!=null?' · Wallet: '+fmtM(c.wallet)+' ISK':'')+
    ' <span class="esiForget" data-char="'+esc(c.name)+'" style="cursor:pointer;text-decoration:underline">trennen</span>'
@@ -2830,7 +2839,8 @@ function renderLive(chars,summary){
   return `<div class="card ${min?'min':''}">
    <div class="chead" data-c="${esc(c.name)}">
     <span class="arr">▼</span>
-    ${c.portrait?`<img class="pf" src="${c.portrait}" alt="">`:''}
+    ${c.portrait?`<img class="pf" src="${c.portrait}" alt="">`
+      :(!c.esi_linked?`<span class="pf pf-none" data-esihint="1" title="Noch nicht mit EVE-Login verbunden. Klick für Portrait, Schiff, Wallet und automatisches Heavy Water.">👤</span>`:'')}
     <span class="char">${esc(c.name)} <span class="sys">· ${esc(c.system)}${c.ship?' · '+esc(c.ship):''}</span></span>
     <span class="mini">${c.cargo_full?'<span class="warnbadge drone">⚠ Frachtraum voll!</span> · ':''}${(c.tool_warns||[]).map(w=>'<span class="warnbadge'+(w.drone?' drone':'')+'">⚠ '+w.tool+(w.count>1?' ×'+w.count:'')+'</span> · ').join('')}${(c.lasers_off||[]).map(w=>'<span class="warnbadge">⛔ '+w.tool+' aus</span> · ').join('')}${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'<span class="warnbadge drone">⛽ HW ~'+c.heavy_water.min_left+' min</span> · ':''}${c.rate_low?'<span class="warnbadge">⚠ Rate '+c.rate_low+'%</span> · ':''}${mineIdle(c,state)?'<span class="warnbadge">⚠ Kein Erz seit '+Math.round(c.mine_idle/60)+' min</span> · ':''}${fmtM(c.total_isk)} ISK · ${fmt(c.m3h)} m³/h${c.dps_in>0?' · <span class=\"in\">⚠ '+c.dps_in+' DPS rein</span>':''}</span>
    </div>
@@ -2873,6 +2883,10 @@ function renderLive(chars,summary){
    </div>
   </div>`}).join('');
  document.querySelectorAll('.chead').forEach(h=>h.onclick=()=>toggleChar(h.dataset.c));
+ document.querySelectorAll('[data-esihint]').forEach(el=>el.onclick=e=>{
+  e.stopPropagation();syncOpts();$('#opts').showModal();
+  const s=$('#opts .sect.esi');if(s)s.scrollIntoView({block:'center'});
+ });
  document.querySelectorAll('.laserok').forEach(b=>b.onclick=async e=>{
   e.stopPropagation();
   await post({action:'laser_ok',char:b.dataset.char,tool:b.dataset.tool});
