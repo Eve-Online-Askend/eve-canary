@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.8.1"
+VERSION = "1.8.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -90,10 +90,19 @@ def parse_line(raw):
     day = f"{y}-{mo}-{d}"
     base = {"ts": ts, "day": day}
     if tag == "mining":
+        text = STRIP_RE.sub("", body)
+        n = NUM_RE.search(text)
         hint = HINT_RE.search(body)
-        n = NUM_RE.search(STRIP_RE.sub("", body))
-        if hint and n:
-            return {**base, "kind": "ore", "key": hint.group(1), "value": num(n.group(1))}
+        # Lokalisierte Clients wrappen den Erznamen in <localized hint="EnglName">.
+        # Der ENGLISCHE Client lokalisiert nicht -> kein hint, Name als Klartext:
+        # "You mined 42 units of Coesite".
+        ore = hint.group(1) if hint else None
+        if ore is None:
+            me = re.search(r"units of\s+(.+?)\s*$", text)
+            if me:
+                ore = me.group(1).strip().rstrip("*").strip()
+        if ore and n:
+            return {**base, "kind": "ore", "key": ore, "value": num(n.group(1))}
     elif tag == "combat":
         low = body.lower()
         direction = "dmg_out" if OUT_COLOR in low else ("dmg_in" if IN_COLOR in low else None)
@@ -120,6 +129,13 @@ def parse_line(raw):
                 raw_ore = next((h for h in hints if not h.startswith("Compressed")), None)
                 return {**base, "kind": "compressed", "key": comp,
                         "raw": raw_ore, "value": num(n.group(1))}
+        # Englischer Client (kein hint): "Successfully compressed Coesite into 41 Compressed Coesite."
+        mc = re.search(r"compressed (.+?) into (\d[\d.,]*) (Compressed .+?)\.?\s*$", text)
+        if mc:
+            return {**base, "kind": "compressed",
+                    "key": mc.group(3).strip().rstrip("*").strip(),
+                    "raw": mc.group(1).strip().rstrip("*").strip(),
+                    "value": num(mc.group(2))}
         if any(t in text for t in TRADE_TEXTS):
             return {**base, "kind": "hold_reset", "key": "trade", "value": 1}
         for tool in MINING_TOOLS:
