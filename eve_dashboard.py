@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.8.3"
+VERSION = "1.8.4"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -253,6 +253,26 @@ except sqlite3.OperationalError:
 def meta_get(key, default=None):
     r = DB.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
     return r[0] if r else default
+
+
+# Parser-Version: hochzaehlen, wenn eine Parser-Aenderung ein Neu-Einlesen aller
+# Logs noetig macht. "2" = englischer Client (Mining/Kompr. ohne hint) wird erfasst.
+PARSE_VER = "2"
+
+
+def rebuild_if_needed():
+    """Einmaliges Neu-Aufbereiten nach einem Parser-Update: Tages-Statistik und
+    Datei-Offsets loeschen, damit alle Logs frisch mit dem neuen Parser gelesen
+    werden. So werden zuvor verpasste Erze (z.B. englischer Client) rueckwirkend
+    erfasst, ohne Doppelzaehlung (daily startet leer). Baseline bleibt erhalten."""
+    if meta_get("parse_ver") == PARSE_VER:
+        return
+    with DB_LOCK:
+        DB.execute("DELETE FROM daily")
+        DB.execute("DELETE FROM files")
+        DB.execute("INSERT OR REPLACE INTO meta VALUES('parse_ver', ?)", (PARSE_VER,))
+        DB.commit()
+    print("Parser aktualisiert: Logs werden einmalig neu eingelesen …")
 
 
 def db_add(day, char_id, char_name, kind, key, value):
@@ -3451,6 +3471,7 @@ if __name__ == "__main__":
             do_backup()
         except Exception:
             pass
+    rebuild_if_needed()   # nach Parser-Update einmal alle Logs frisch neu einlesen
     ingest.start()
     chatwatch.start()
     prices.start()
