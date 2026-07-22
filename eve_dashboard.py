@@ -17,7 +17,7 @@ import threading
 import time
 import urllib.request
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -47,6 +47,7 @@ REGIONS = {"10000002": "Jita", "10000043": "Amarr", "10000030": "Rens",
            "10000032": "Dodixie", "10000042": "Hek"}
 PRICE_REFRESH = 900
 PORT_DEFAULT = 8765
+SESSION_MAX_AGE = 3 * 3600  # Log länger unverändert -> Session gilt als beendet, keine Live-Karte
 
 TS_RE = re.compile(r"^\[ (\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2}):(\d{2}) \] \((\w+)\) (.*)$")
 HINT_RE = re.compile(r'hint="([^"]+)"')
@@ -576,9 +577,17 @@ class Ingest(threading.Thread):
             live_file = newest.get(cid) == f
             sess = None
             if live_file and not skipped:
+                fresh = time.time() - f.stat().st_mtime <= SESSION_MAX_AGE
                 with self.lock:
                     sess = self.sessions.get(cid)
-                    if sess is None or sess.file != f:
+                    if not fresh:
+                        # Log seit Stunden unverändert (z.B. Session von gestern):
+                        # keine Live-Karte aufbauen bzw. verwaiste entfernen.
+                        # Kommen wieder Einträge, wird die Session beim nächsten
+                        # Tick vollständig aus dem Dateikopf rekonstruiert.
+                        self.sessions.pop(cid, None)
+                        sess = None
+                    elif sess is None or sess.file != f:
                         sess = CharSession(cid, cname, f)
                         self.sessions[cid] = sess
                         if offset > 0:
