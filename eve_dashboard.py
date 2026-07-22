@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.5.1"
+VERSION = "1.5.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -266,6 +266,28 @@ def fetch_url(url, timeout=15):
         return r.read()
 
 
+UPDATE_INFO = {"ts": 0, "available": False, "latest": None}
+
+
+def refresh_update_info():
+    """Alle 6 Stunden still nach einer neuen Version schauen (für den Kopfleisten-Badge)."""
+    if time.time() - UPDATE_INFO["ts"] < 6 * 3600:
+        return
+    UPDATE_INFO["ts"] = time.time()
+    chk = check_update()
+    if chk.get("ok"):
+        UPDATE_INFO["available"] = bool(chk.get("available"))
+        UPDATE_INFO["latest"] = chk.get("latest")
+
+
+def _ver(v):
+    """Versionsstring in vergleichbares Tupel, '1.5.2' -> (1, 5, 2)."""
+    try:
+        return tuple(int(x) for x in str(v).split("."))
+    except ValueError:
+        return (0,)
+
+
 def check_update():
     base = (CONFIG.get("update_url") or "").rstrip("/")
     if not base.startswith("https://"):
@@ -274,7 +296,7 @@ def check_update():
         info = json.loads(fetch_url(f"{base}/version.json").decode("utf-8"))
         latest = str(info.get("version", "?"))
         return {"ok": True, "current": VERSION, "latest": latest,
-                "available": latest != VERSION,
+                "available": _ver(latest) > _ver(VERSION),
                 "files": info.get("files", UPDATE_FILES)}
     except Exception as e:
         return {"ok": False, "error": f"Update-Server nicht erreichbar: {e}"}
@@ -586,6 +608,7 @@ class Ingest(threading.Thread):
                 self.tick()
                 self.check_idle()
                 self.hw_tick()
+                refresh_update_info()
             except Exception:
                 pass
             time.sleep(2)
@@ -1810,6 +1833,8 @@ def state_info():
             "baseline_day": meta_get("baseline_day"), "log_dir": CONFIG["log_dir"],
             "idle_warn": int(CONFIG.get("idle_warn", 240) or 0),
             "clip_watch": bool(CONFIG.get("clip_watch")),
+            "update": {"available": UPDATE_INFO["available"],
+                       "latest": UPDATE_INFO["latest"]},
             "version": VERSION,
             "progress": ingest.progress, "prices_loaded": bool(prices.get(CONFIG["region"])),
             "watchlist": CONFIG.get("watchlist", []), "goal": CONFIG.get("goal"),
@@ -2135,6 +2160,8 @@ padding:7px 10px;font-size:12px;font-weight:600;margin-bottom:8px}
 .cardwarn.drone{border-color:var(--red);color:var(--red)}
 .warnbadge{color:var(--gold);font-weight:600}
 .warnbadge.drone{color:var(--red)}
+.pill.upd{border-color:var(--gold);color:var(--gold);animation:updpulse 2.4s ease-in-out infinite}
+@keyframes updpulse{0%,100%{box-shadow:0 0 0 rgba(232,198,69,0)}50%{box-shadow:0 0 9px rgba(232,198,69,.45)}}
 .laserok{float:right;border:1px solid var(--line);border-radius:20px;padding:1px 9px;
 color:var(--dim);cursor:pointer;font-weight:400}
 .laserok:hover{color:var(--fg);border-color:var(--fg)}
@@ -2196,6 +2223,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <select class="pill" id="charFilter" title="Charakter-Filter"><option value="">Alle Charaktere</option></select>
  <span class="pill" id="collapseAll">Alle einklappen</span>
  <div class="pills" id="regions"></div>
+ <span class="pill upd" id="updBadge" hidden title="Neue Version verfügbar, Klick installiert sie"></span>
  <span class="pill" id="ovToggle" title="Always-on-top Mini-Overlay (Chrome/Edge)">◱ Overlay</span>
  <span class="pill" id="fontsize" title="Schriftgröße (3 Stufen)">A</span>
  <span class="pill" id="theme" title="Dark/Light">◐</span>
@@ -2432,6 +2460,20 @@ function handleAlerts(){
  localStorage.setItem('lastAlertId',lastAlertId);
 }
 
+function updateBadge(){
+ const u=(state&&state.update)||{};
+ const b=$('#updBadge');
+ if(u.available&&u.latest){b.hidden=false;b.textContent='⬆ Update v'+u.latest;}
+ else b.hidden=true;
+}
+$('#updBadge').onclick=async()=>{
+ const v=(state&&state.update&&state.update.latest)||'?';
+ if(!confirm('Update auf v'+v+' installieren? Canary startet danach automatisch neu.'))return;
+ $('#updBadge').textContent='Update läuft …';
+ const r=await post({action:'do_update'});
+ if(r.ok&&r.updated)setTimeout(()=>location.reload(),4000);
+ else{alert(r.error||r.message||'Update fehlgeschlagen.');updateBadge();}
+};
 function regionPills(){
  $('#regions').innerHTML=Object.entries(state.regions).map(([id,n])=>
   `<span class="pill ${id===state.region?'on':''}" data-r="${id}">${n}</span>`).join('');
@@ -2886,7 +2928,7 @@ async function doCalc(){
 async function tick(){
  try{
   const d=await (await fetch('/data?view='+view)).json();
-  state=d.state;regionPills();handleAlerts();
+  state=d.state;regionPills();handleAlerts();updateBadge();
   if(view==='live')renderLive(d.chars,d.summary);
   else if(view==='month')renderMonth(d.days);
   else if(view==='analyse')renderAnalyse(d.analyse);
@@ -2915,5 +2957,18 @@ if __name__ == "__main__":
     threat.start()
     clipwatch.start()
     port = int(CONFIG.get("port", PORT_DEFAULT))
+
+    class Server(ThreadingHTTPServer):
+        # Windows: mit SO_REUSEADDR koennten mehrere Instanzen denselben Port
+        # binden und sich gegenseitig die Anfragen wegschnappen. Deshalb aus.
+        allow_reuse_address = False
+
+    try:
+        srv = Server(("127.0.0.1", port), Handler)
+    except OSError:
+        print(f"EVE Canary läuft offenbar schon (Port {port} ist belegt).")
+        print("Einfach das vorhandene Fenster nutzen: http://localhost:" + str(port))
+        input("Enter zum Schließen ...")
+        sys.exit(1)
     print(f"EVE Canary läuft:  http://localhost:{port}")
-    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    srv.serve_forever()
