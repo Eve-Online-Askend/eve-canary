@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -208,6 +208,8 @@ CREATE TABLE IF NOT EXISTS baseline_offsets(day TEXT, char_id TEXT, kind TEXT,
     key TEXT, value REAL, PRIMARY KEY(day, char_id, kind, key));
 CREATE TABLE IF NOT EXISTS threat(name TEXT PRIMARY KEY COLLATE NOCASE,
     data TEXT, ts REAL);
+CREATE TABLE IF NOT EXISTS journal(id INTEGER, char TEXT, ts REAL,
+    ref_type TEXT, amount REAL, party TEXT, PRIMARY KEY(id, char));
 """)
 DB.commit()
 
@@ -372,6 +374,7 @@ class CharSession:
         self.low_alerted = False
         self.gaps = deque(maxlen=40)  # letzte Abstaende zwischen Erz-Events (lernt Drohnen-Zyklen)
         self.dmg_out = self.dmg_in = self.bounty = 0
+        self.kills = 0  # NPC-Abschuesse (eine Bounty-Zeile = ein Kill)
         self.targets = {}
         self.attackers = {}
         self.win_out = deque()
@@ -422,6 +425,7 @@ class CharSession:
                 self.win_in.append((now, ev["value"]))
         elif k == "bounty":
             self.bounty += ev["value"]
+            self.kills += 1
         elif k == "compressed":
             self.cargo_full = False  # Kompression schafft Platz
             # Kern-Laufzeit aus Kompressions-Kadenz: Luecken > HW_CORE_GAP
@@ -456,6 +460,7 @@ class CharSession:
                 self.targets = {}
                 self.attackers = {}
                 self.bounty = 0
+                self.kills = 0
                 self.dmg_out = self.dmg_in = 0
                 self.depleted = 0
                 self.start = time.time()
@@ -890,6 +895,9 @@ ESI_SCOPES = ("esi-assets.read_assets.v1 esi-location.read_ship_type.v1 "
               "esi-wallet.read_character_wallet.v1")
 ESI_UA = f"EVE-Canary/{VERSION} (https://github.com/Eve-Online-Askend/eve-canary)"
 HW_TYPE_ID = 16272  # Heavy Water
+# Wallet-Journal-Typen fuer die Missions-Statistik
+JOURNAL_TYPES = {"agent_mission_reward", "agent_mission_time_bonus_reward",
+                 "bounty_prizes", "bounty_prize"}
 CORE_TYPES = {62590: "t1", 62591: "t2",   # Medium Industrial Core I/II (Porpoise)
               58945: "t1", 58950: "t2"}   # Large Industrial Core I/II (Orca)
 
@@ -904,6 +912,7 @@ class Esi(threading.Thread):
         self.pending = {}     # state -> code_verifier laufender Logins
         self.status = {}      # char -> Klartext-Status fuer die Optionen-Seite
         self.type_cache = {}  # type_id -> Name (Schiffstypen, öffentlicher Endpunkt)
+        self.party_names = {} # id -> Name (Agenten aus dem Wallet-Journal)
 
     def cfg(self):
         return CONFIG.setdefault("esi", {"client_id": "", "chars": {}})
@@ -1021,12 +1030,41 @@ class Esi(threading.Thread):
                         "ts": time.time(), "ck": 0, "esi": True,
                         "warned": bool(prev.get("warned")) and units <= prev.get("units", 0)}
 
+    def sync_journal(self, name, c):
+        """Wallet-Journal einlesen: Missions-Belohnungen, Boni, Bounty-Ticks.
+        Lokale Historie waechst unbegrenzt (ESI liefert nur ~30 Tage rueckwirkend)."""
+        data, hdr = self._get(c, f"/characters/{c['char_id']}/wallet/journal/")
+        try:
+            exp = email.utils.parsedate_to_datetime(hdr["Expires"]).timestamp()
+        except Exception:
+            exp = time.time() + 3600
+        c["journal_next"] = exp + 10
+        keep = [e for e in data if e.get("ref_type") in JOURNAL_TYPES
+                and (e.get("amount") or 0) > 0]
+        ids = {e.get("first_party_id") for e in keep
+               if str(e.get("ref_type", "")).startswith("agent_")}
+        ids -= set(self.party_names)
+        try:
+            self.party_names.update(self._names(list(ids)))
+        except Exception:
+            pass
+        with DB_LOCK:
+            for e in keep:
+                ts = datetime.fromisoformat(
+                    e["date"].replace("Z", "+00:00")).timestamp()
+                DB.execute("INSERT OR IGNORE INTO journal VALUES(?,?,?,?,?,?)",
+                           (e["id"], name, ts, e["ref_type"], e["amount"],
+                            self.party_names.get(e.get("first_party_id"), "")))
+            DB.commit()
+
     def poll(self):
         changed = False
         for name, c in list(self.cfg().get("chars", {}).items()):
             try:
                 bal, _ = self._get(c, f"/characters/{c['char_id']}/wallet/")
                 c["wallet"] = bal
+                if time.time() >= c.get("journal_next", 0):
+                    self.sync_journal(name, c)
                 ship, _ = self._get(c, f"/characters/{c['char_id']}/ship/")
                 new_ship = ship["ship_type_id"] != c.get("ship_type_id")
                 c["ship_type_id"] = ship["ship_type_id"]
@@ -1425,7 +1463,7 @@ def snapshot_live():
             "name": s.name, "session_min": round(mins),
             "system": chatwatch.systems.get(s.char_id, "?"),
             "ores": ores, "m3": round(m3), "ore_isk": round(ore_isk),
-            "m3h": round(m3 / mins * 60), "bounty": s.bounty,
+            "m3h": round(m3 / mins * 60), "bounty": s.bounty, "kills": s.kills,
             "total_isk": round(ore_isk + s.bounty),
             "dmg_out": s.dmg_out, "dmg_in": s.dmg_in,
             "dps_out": s.dps(s.win_out), "dps_in": s.dps(s.win_in),
@@ -1638,6 +1676,46 @@ def state_info():
             "alerts": alerts.list()}
 
 
+def query_missions():
+    """Missions-Statistik aus dem Wallet-Journal: Tage, Quellen, Agenten, Chars."""
+    rows = DB.execute(
+        "SELECT char, ts, ref_type, amount, party FROM journal").fetchall()
+    days, agents, chars = {}, {}, {}
+    for char, ts, ref, amount, party in rows:
+        day = datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%d")
+        d = days.setdefault(day, {"day": day, "missions": 0, "reward": 0,
+                                  "bonus": 0, "bounty": 0, "total": 0})
+        c = chars.setdefault(char, {"char": char, "missions": 0, "total": 0})
+        d["total"] += amount
+        c["total"] += amount
+        if ref == "agent_mission_reward":
+            d["missions"] += 1
+            d["reward"] += amount
+            c["missions"] += 1
+            if party:
+                a = agents.setdefault(party, {"agent": party, "missions": 0, "isk": 0})
+                a["missions"] += 1
+                a["isk"] += amount
+        elif ref == "agent_mission_time_bonus_reward":
+            d["bonus"] += amount
+            if party:
+                agents.setdefault(party, {"agent": party, "missions": 0, "isk": 0})["isk"] += amount
+        else:
+            d["bounty"] += amount
+    day_list = sorted(days.values(), key=lambda d: d["day"], reverse=True)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return {
+        "linked": bool((CONFIG.get("esi") or {}).get("chars")),
+        "today": days.get(today) or {"day": today, "missions": 0, "reward": 0,
+                                     "bonus": 0, "bounty": 0, "total": 0},
+        "days": [{k: (round(v) if isinstance(v, float) else v) for k, v in d.items()}
+                 for d in day_list[:30]],
+        "agents": sorted(({**a, "isk": round(a["isk"])} for a in agents.values()),
+                         key=lambda a: -a["isk"])[:10],
+        "chars": sorted(({**c, "total": round(c["total"])} for c in chars.values()),
+                        key=lambda c: -c["total"])}
+
+
 def export_csv():
     lines = ["day;char;kind;key;value"]
     for day, cid, cname, kind, key, value in all_rows():
@@ -1672,6 +1750,9 @@ class Handler(BaseHTTPRequestHandler):
                 data["analyse"] = query_analyse()
             elif view == "intel":
                 data["intel_auto"] = {"ts": clipwatch.ts, "names": clipwatch.names}
+            elif view == "missionen":
+                data["missions"] = query_missions()
+                data["chars"] = snapshot_live()
             else:
                 data["total"] = query_total()
             self._send(json.dumps(data))
@@ -1885,6 +1966,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="total">Gesamt</span>
  <span data-v="analyse">Analyse</span>
  <span data-v="intel">🚦 Intel</span>
+ <span data-v="missionen">🎯 Missionen</span>
 </nav>
 <div id="alerts"></div>
 <div id="grid"></div>
@@ -1951,7 +2033,15 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 const $=s=>document.querySelector(s);
 const fmt=n=>Math.round(n).toLocaleString();
 const fmtM=n=>n>=1e9?(n/1e9).toFixed(2)+' Mrd':n>=1e6?(n/1e6).toFixed(1)+' M':fmt(n);
-let view='live', state=null, lastAlertId=Number(localStorage.getItem('lastAlertId')||0);
+const VIEWS=['live','month','total','analyse','intel','missionen'];
+let view=location.pathname.replace(/^\\//,'')||'live', state=null, lastAlertId=Number(localStorage.getItem('lastAlertId')||0);
+if(!VIEWS.includes(view))view='live';
+window.addEventListener('popstate',()=>{
+ view=location.pathname.replace(/^\\//,'')||'live';
+ if(!VIEWS.includes(view))view='live';
+ document.querySelectorAll('nav span').forEach(x=>x.classList.toggle('on',x.dataset.v===view));
+ tick();
+});
 
 const savedTheme=localStorage.getItem('theme');
 if(savedTheme)document.documentElement.dataset.theme=savedTheme;
@@ -1970,7 +2060,9 @@ $('#fontsize').onclick=()=>{fontsize=fontsize%3+1;localStorage.setItem('fontsize
 
 document.querySelectorAll('nav span').forEach(el=>el.onclick=()=>{
  document.querySelectorAll('nav span').forEach(x=>x.classList.remove('on'));
- el.classList.add('on');view=el.dataset.v;tick();});
+ el.classList.add('on');view=el.dataset.v;
+ history.pushState(null,'','/'+(view==='live'?'':view));tick();});
+document.querySelectorAll('nav span').forEach(x=>x.classList.toggle('on',x.dataset.v===view));
 
 ['sndPvp','sndDep','sndWatch'].forEach(id=>{
  const el=$('#'+id);
@@ -2448,6 +2540,39 @@ async function intelPoll(){
  }catch(e){}
  intelBusy=false;
 }
+function renderMissions(d){
+ const m=d.missions||{},t=m.today||{};
+ const live=(d.chars||[]).filter(c=>c.bounty>0||c.kills>0);
+ $('#grid').innerHTML=`
+ <div class="card" style="grid-column:1/-1">
+  <b>🎯 Missionen — Heute (EVE-Zeit)</b>
+  <div class="stats" style="margin-top:10px">
+   <div class="stat"><div class="l">Missionen erledigt</div><div class="v out">${t.missions||0}</div></div>
+   <div class="stat"><div class="l">Belohnungen</div><div class="v isk">${fmtM(t.reward||0)}</div></div>
+   <div class="stat"><div class="l">Zeitboni</div><div class="v isk">${fmtM(t.bonus||0)}</div></div>
+   <div class="stat"><div class="l">Bounties</div><div class="v grn">${fmtM(t.bounty||0)}</div></div>
+   <div class="stat"><div class="l">Gesamt heute</div><div class="v isk">${fmtM(t.total||0)}</div></div>
+  </div>
+  ${m.linked?'':'<div class="cardwarn" style="margin-top:10px">⚠ Kein EVE-Login verbunden — Belohnungen &amp; Boni kommen aus dem Wallet-Journal (ESI). Einrichtung: ⚙ Optionen → EVE-Login.</div>'}
+  ${live.length?'<div class="sect">Live-Session (aus den Gamelogs)</div>'+live.map(c=>
+   `<div class="sub">⚔ <b>${c.name}</b>${c.ship?' · '+c.ship:''} — ${c.kills} Kills · ${fmtM(c.bounty)} Bounties · DPS ${c.dps_out} raus / ${c.dps_in} rein · Session ${c.session_min} min</div>`).join(''):''}
+ </div>
+ <div class="card" style="grid-column:1/-1">
+  <div class="sect">Letzte 30 Tage</div>
+  ${(m.days&&m.days.length)?`<div style="overflow-x:auto"><table>
+   <tr><th>Tag</th><th class="r">Missionen</th><th class="r">Belohnung</th><th class="r">Zeitbonus</th><th class="r">Bounties</th><th class="r">Gesamt</th></tr>`+
+   m.days.map(x=>`<tr><td>${x.day}</td><td class="r">${x.missions}</td><td class="r isk">${fmtM(x.reward)}</td><td class="r isk">${fmtM(x.bonus)}</td><td class="r grn">${fmtM(x.bounty)}</td><td class="r isk"><b>${fmtM(x.total)}</b></td></tr>`).join('')+
+   '</table></div>':'<div class="sub">Noch keine Journal-Daten — nach dem ersten ESI-Abgleich (max. 1 h) erscheinen hier die letzten ~30 Tage.</div>'}
+ </div>
+ ${(m.agents&&m.agents.length)?`<div class="card">
+  <div class="sect">Top-Agenten</div><table>
+  <tr><th>Agent</th><th class="r">Missionen</th><th class="r">ISK</th></tr>`+
+  m.agents.map(a=>`<tr><td>${a.agent}</td><td class="r">${a.missions}</td><td class="r isk">${fmtM(a.isk)}</td></tr>`).join('')+'</table></div>':''}
+ ${(m.chars&&m.chars.length)?`<div class="card">
+  <div class="sect">Nach Charakter (gesamt)</div><table>
+  <tr><th>Charakter</th><th class="r">Missionen</th><th class="r">ISK</th></tr>`+
+  m.chars.map(c=>`<tr><td>${c.char}</td><td class="r">${c.missions}</td><td class="r isk">${fmtM(c.total)}</td></tr>`).join('')+'</table></div>':''}`;
+}
 async function tick(){
  try{
   const d=await (await fetch('/data?view='+view)).json();
@@ -2456,6 +2581,7 @@ async function tick(){
   else if(view==='month')renderMonth(d.days);
   else if(view==='analyse')renderAnalyse(d.analyse);
   else if(view==='intel')renderIntel(d.intel_auto);
+  else if(view==='missionen')renderMissions(d);
   else renderTotal(d.total);
  }catch(e){}
 }
