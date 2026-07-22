@@ -7,6 +7,9 @@ historisch im Browser. Alles lokal, SQLite-Historie, Backups.
 
 Start:  python eve_dashboard.py   ->  http://localhost:8765
 """
+import base64
+import email.utils
+import hashlib
 import json
 import os
 import re
@@ -15,9 +18,11 @@ import sqlite3
 import sys
 import threading
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 
-VERSION = "1.2.1"
+VERSION = "1.3.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -48,6 +53,10 @@ REGIONS = {"10000002": "Jita", "10000043": "Amarr", "10000030": "Rens",
 PRICE_REFRESH = 900
 PORT_DEFAULT = 8765
 SESSION_MAX_AGE = 3 * 3600  # Log länger unverändert -> Session gilt als beendet, keine Live-Karte
+# Schweres Wasser pro Sekunde Kernlaufzeit (ESI-Dogma: Medium/Large Industrial Core,
+# T1 = 100/min, T2 = 200/min — gilt für Porpoise und Orca gleichermassen)
+HW_RATE = {"t1": 100 / 60.0, "t2": 200 / 60.0}
+HW_CORE_GAP = 300  # laengere Kompressions-Pause -> Kern gilt als aus (Verbrauch pausiert)
 
 TS_RE = re.compile(r"^\[ (\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2}):(\d{2}) \] \((\w+)\) (.*)$")
 HINT_RE = re.compile(r'hint="([^"]+)"')
@@ -163,7 +172,7 @@ def find_log_dir():
 def load_config():
     cfg = {"port": PORT_DEFAULT, "region": "10000002", "log_dir": None,
            "mode": "all", "install_ts": time.time(),
-           "goal": None, "watchlist": [], "idle_warn": 240,
+           "goal": None, "watchlist": [], "idle_warn": 240, "heavy_water": {},
            "update_url": "https://raw.githubusercontent.com/AENDERN/eve-canary/main"}
     if CONFIG_PATH.exists():
         try:
@@ -315,6 +324,19 @@ class Alerts:
                                "kind": kind, "char": char, "text": text})
             self.next_id += 1
 
+    def resolve(self, kinds, char, min_age=0):
+        """Alarme eines Chars entfernen, deren Ursache behoben ist
+        (z.B. Erz fliesst wieder -> Frachtraum/Asteroid/Stillstand hinfaellig).
+        min_age: Alarme juenger als X Sekunden bleiben stehen, damit die
+        Warnung nicht verschwindet, bevor man sie gesehen hat."""
+        cutoff = time.time() - min_age
+        with self.lock:
+            kept = [a for a in self.items
+                    if a["char"] != char or a["kind"] not in kinds
+                    or a["ts"] > cutoff]
+            if len(kept) != len(self.items):
+                self.items = deque(kept, maxlen=self.items.maxlen)
+
     def list(self):
         with self.lock:
             return list(self.items)[-20:]
@@ -337,6 +359,8 @@ class CharSession:
         self.weapons = {}
         self.depleted = 0
         self.tool_off = {}    # Werkzeug -> [Anzahl, letzter ts] — verfaellt nach 240s
+        self.lasers_off = {}  # Laser -> {"since": ts, "before": m3/min} — bleibt bis Erholung/Dock/Klick
+        self.core_timeline = []  # (ts, kumulative Kern-Sekunden) je Kompressions-Event
         self.cargo_full = False
         self.cargo_ts = 0
         self.last_ore_ts = None   # fuer Stillstand-Erkennung
@@ -369,6 +393,15 @@ class CharSession:
             vol = ORE_TYPES.get(ev["key"], {}).get("volume", 0.0)
             minute = int(ev["ts"] // 60) * 60
             if not self.rate_min or self.rate_min[-1][0] != minute:
+                if self.rate_min and self.lasers_off:
+                    # Abgeschlossene Minute auswerten: Rate wieder auf Normal-
+                    # niveau -> abgeschalteter Laser wurde offenbar neu gezielt
+                    pm, pmix = self.rate_min[-1]
+                    ptotal = sum(pmix.values())
+                    for tool, info in list(self.lasers_off.items()):
+                        if (info["before"] and pm > info["since"]
+                                and ptotal >= 0.85 * info["before"]):
+                            del self.lasers_off[tool]
                 self.rate_min.append([minute, {}])
             mix = self.rate_min[-1][1]
             mix[ev["key"]] = mix.get(ev["key"], 0) + ev["value"] * vol
@@ -388,6 +421,17 @@ class CharSession:
             self.bounty += ev["value"]
         elif k == "compressed":
             self.cargo_full = False  # Kompression schafft Platz
+            # Kern-Laufzeit aus Kompressions-Kadenz: Luecken > HW_CORE_GAP
+            # zaehlen nicht (Kern war vermutlich aus / angedockt)
+            tl = self.core_timeline
+            cum = tl[-1][1] if tl else 0.0
+            if tl:
+                gap = ev["ts"] - tl[-1][0]
+                if 0 < gap < HW_CORE_GAP:
+                    cum += gap
+            tl.append((ev["ts"], cum))
+            if len(tl) > 6000:
+                del tl[:1000]
             self.compressed[ev["key"]] = self.compressed.get(ev["key"], 0) + ev["value"]
             self.hold_comp[ev["key"]] = self.hold_comp.get(ev["key"], 0) + ev["value"]
             raw_ore = ev.get("raw")
@@ -397,6 +441,7 @@ class CharSession:
             self.hold_raw = {}
             self.hold_comp = {}
             self.cargo_full = False  # angedockt/gehandelt -> Frachtraum-Warnung hinfaellig
+            self.lasers_off = {}     # an der Station sind alle Module ohnehin aus
             if ev["key"] == "dock":
                 # Station-Stopp: Karte beginnt einen neuen Trip, sonst zeigen
                 # ISK/Erz-Werte laengst abgeladene Ladung an. Historie (DB)
@@ -414,6 +459,15 @@ class CharSession:
                 self.first_ts = ev["ts"]
         elif k == "depleted":
             self.depleted += 1
+            if "Drone" not in ev["key"]:
+                # Dauerstatus "Laser aus": Normalrate vor dem Ausfall merken
+                # (Median der letzten vollen Minuten), damit die Erholung
+                # erkannt werden kann, sobald die Rate wieder stimmt.
+                completed = [t for t in (sum(mix.values())
+                                         for _, mix in list(self.rate_min)[:-1]) if t > 0]
+                tail = sorted(completed[-6:])
+                before = tail[len(tail) // 2] if len(tail) >= 3 else None
+                self.lasers_off[ev["key"]] = {"since": ev["ts"], "before": before}
             e = self.tool_off.setdefault(ev["key"], [0, 0])
             if ev["ts"] - e[1] > 60:
                 e[0] = 0  # alter Vorfall abgelaufen -> neu zaehlen
@@ -469,6 +523,21 @@ class CharSession:
             return None
         return hist[len(hist) // 2], cur
 
+    def core_active_since(self, t0):
+        """Sekunden mit laufendem Industriekern seit t0 (aus Kompressions-Kadenz)."""
+        tl = self.core_timeline
+        if not tl or tl[-1][0] <= t0:
+            return 0.0
+        base = 0.0
+        for ts, cum in reversed(tl):
+            if ts <= t0:
+                base = cum
+                break
+        return tl[-1][1] - base
+
+    def core_on(self):
+        return bool(self.core_timeline) and time.time() - self.core_timeline[-1][0] < HW_CORE_GAP
+
     def idle_threshold(self, base):
         """Effektive Stillstand-Schwelle: 3x Median der Lieferabstaende,
         mindestens die konfigurierte Basis — passt sich Drohnen-Booten an."""
@@ -503,9 +572,43 @@ class Ingest(threading.Thread):
             try:
                 self.tick()
                 self.check_idle()
+                self.hw_tick()
             except Exception:
                 pass
             time.sleep(2)
+
+    def hw_tick(self):
+        """Schweres-Wasser-Buchhaltung: Verbrauch seit letztem Checkpoint abziehen,
+        Stand in der Config sichern (uebersteht Neustarts), bei <30 min warnen."""
+        hw = CONFIG.get("heavy_water") or {}
+        if not hw:
+            return
+        now = time.time()
+        changed = False
+        with self.lock:
+            by_name = {s.name: s for s in self.sessions.values()}
+        for char, e in hw.items():
+            if now - e.get("ck", 0) < 60:
+                continue
+            e["ck"] = now
+            s = by_name.get(char)
+            if s is None:
+                continue
+            rate = HW_RATE.get(e.get("core"), HW_RATE["t1"])
+            active = s.core_active_since(e.get("ts", now))
+            if active > 0:
+                e["units"] = max(0.0, e["units"] - active * rate)
+                e["ts"] = now
+                changed = True
+            if (s.core_on() and not e.get("warned")
+                    and e["units"] < rate * 1800):
+                e["warned"] = True
+                changed = True
+                mins = int(e["units"] / rate / 60)
+                alerts.push("hw", char,
+                            f"{char}: Heavy Water fast leer — reicht noch ~{mins} min!")
+        if changed:
+            save_config()
 
     def check_idle(self):
         """Warnt, wenn ein aktiver Miner laenger als idle_warn kein Erz mehr liefert."""
@@ -647,6 +750,19 @@ class Ingest(threading.Thread):
         self.started_full = True
 
     def live_alerts(self, ev, cname):
+        # Entwarnung: Gegensignal im Log macht alte Alarme sofort hinfaellig
+        if ev["kind"] == "ore":
+            alerts.resolve(("cargo", "idle", "rate"), cname)
+            # Asteroid-leer erst nach 60s Anzeige loeschen: der zweite Laser
+            # liefert evtl. weiter Erz, obwohl der erste noch neu gezielt
+            # werden muss — die Warnung soll sichtbar bleiben.
+            alerts.resolve(("depleted",), cname, min_age=60)
+        elif ev["kind"] == "compressed":
+            alerts.resolve(("cargo",), cname)
+        elif ev["kind"] == "hold_reset":
+            alerts.resolve(("cargo", "depleted", "idle"), cname)
+        elif ev["kind"] == "drone_engage":
+            alerts.resolve(("drones",), cname)
         if ev["kind"] == "depleted":
             if "Drone" in ev["key"]:
                 alerts.push("drones", cname,
@@ -759,9 +875,183 @@ class Prices(threading.Thread):
             time.sleep(3)
 
 
+# ---------------------------------------------------------------- ESI (offizielles EVE-SSO, PKCE)
+SSO_AUTH = "https://login.eveonline.com/v2/oauth/authorize"
+SSO_TOKEN = "https://login.eveonline.com/v2/oauth/token"
+ESI_BASE = "https://esi.evetech.net/latest"
+ESI_SCOPES = ("esi-assets.read_assets.v1 esi-location.read_ship_type.v1 "
+              "esi-wallet.read_character_wallet.v1")
+ESI_UA = f"EVE-Canary/{VERSION} (https://github.com/Eve-Online-Askend/eve-canary)"
+HW_TYPE_ID = 16272  # Heavy Water
+CORE_TYPES = {62590: "t1", 62591: "t2",   # Medium Industrial Core I/II (Porpoise)
+              58945: "t1", 58950: "t2"}   # Large Industrial Core I/II (Orca)
+
+
+class Esi(threading.Thread):
+    """EVE-SSO-Login (PKCE, ohne Client-Secret) + periodischer Abgleich:
+    Schweres Wasser im aktuellen Schiff, Kern-Typ aus der Fitting, Wallet."""
+    daemon = True
+
+    def __init__(self):
+        super().__init__()
+        self.pending = {}     # state -> code_verifier laufender Logins
+        self.status = {}      # char -> Klartext-Status fuer die Optionen-Seite
+        self.type_cache = {}  # type_id -> Name (Schiffstypen, öffentlicher Endpunkt)
+
+    def cfg(self):
+        return CONFIG.setdefault("esi", {"client_id": "", "chars": {}})
+
+    def redirect_uri(self):
+        return f"http://localhost:{CONFIG.get('port', PORT_DEFAULT)}/sso/callback"
+
+    def login_url(self):
+        if not self.cfg().get("client_id"):
+            return None
+        verifier = base64.urlsafe_b64encode(os.urandom(32)).rstrip(b"=").decode()
+        challenge = base64.urlsafe_b64encode(
+            hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+        state = base64.urlsafe_b64encode(os.urandom(12)).rstrip(b"=").decode()
+        self.pending[state] = verifier
+        return SSO_AUTH + "?" + urllib.parse.urlencode({
+            "response_type": "code", "redirect_uri": self.redirect_uri(),
+            "client_id": self.cfg()["client_id"], "scope": ESI_SCOPES,
+            "code_challenge": challenge, "code_challenge_method": "S256",
+            "state": state})
+
+    def _token_request(self, data):
+        req = urllib.request.Request(
+            SSO_TOKEN, data=urllib.parse.urlencode(data).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded",
+                     "User-Agent": ESI_UA})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read())
+
+    def callback(self, code, state):
+        """Auth-Code gegen Tokens tauschen. Liefert None bei Erfolg, sonst Fehlertext."""
+        verifier = self.pending.pop(state, None)
+        if not verifier:
+            return "Login-Anfrage unbekannt oder abgelaufen — bitte erneut starten."
+        try:
+            tok = self._token_request({
+                "grant_type": "authorization_code", "code": code,
+                "client_id": self.cfg()["client_id"], "code_verifier": verifier})
+            pay = tok["access_token"].split(".")[1]
+            pay = json.loads(base64.urlsafe_b64decode(pay + "==="))
+            name = pay["name"]
+            self.cfg()["chars"][name] = {
+                "char_id": int(pay["sub"].split(":")[-1]),
+                "refresh": tok["refresh_token"], "access": tok["access_token"],
+                "exp": time.time() + tok.get("expires_in", 1199) - 60,
+                "assets_next": 0}
+            save_config()
+            self.status[name] = "verbunden"
+            return None
+        except Exception as e:
+            return f"Token-Tausch fehlgeschlagen: {e}"
+
+    def _access(self, c):
+        if time.time() >= c.get("exp", 0) or not c.get("access"):
+            tok = self._token_request({
+                "grant_type": "refresh_token", "refresh_token": c["refresh"],
+                "client_id": self.cfg()["client_id"]})
+            c["refresh"] = tok.get("refresh_token", c["refresh"])
+            c["access"] = tok["access_token"]
+            c["exp"] = time.time() + tok.get("expires_in", 1199) - 60
+        return c["access"]
+
+    def _get(self, c, path, params=None):
+        url = ESI_BASE + path + ("?" + urllib.parse.urlencode(params) if params else "")
+        req = urllib.request.Request(url, headers={
+            "Authorization": "Bearer " + self._access(c), "User-Agent": ESI_UA})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read()), r.headers
+
+    def type_name(self, tid):
+        n = self.type_cache.get(tid)
+        if n:
+            return n
+        try:
+            req = urllib.request.Request(f"{ESI_BASE}/universe/types/{tid}/",
+                                         headers={"User-Agent": ESI_UA})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                n = json.loads(r.read()).get("name")
+        except Exception:
+            return None
+        if n:
+            self.type_cache[tid] = n
+        return n
+
+    def sync_ship(self, name, c):
+        """Heavy Water + Kern-Typ aus dem aktuellen Schiff uebernehmen."""
+        ship, _ = self._get(c, f"/characters/{c['char_id']}/ship/")
+        items, page = [], 1
+        while True:
+            data, hdr = self._get(c, f"/characters/{c['char_id']}/assets/",
+                                  {"page": page})
+            items += data
+            if page >= int(hdr.get("X-Pages") or 1):
+                break
+            page += 1
+        # Asset-Cache: erst nach Ablauf erneut fragen (ESI cached bis zu 1h)
+        try:
+            exp = email.utils.parsedate_to_datetime(hdr["Expires"]).timestamp()
+        except Exception:
+            exp = time.time() + 3600
+        c["assets_next"] = exp + 10
+        in_ship = [i for i in items if i.get("location_id") == ship["ship_item_id"]]
+        units = sum(i["quantity"] for i in in_ship if i["type_id"] == HW_TYPE_ID)
+        core = next((CORE_TYPES[i["type_id"]] for i in in_ship
+                     if i["type_id"] in CORE_TYPES), None)
+        hw = CONFIG.setdefault("heavy_water", {})
+        prev = hw.get(name) or {}
+        if core is None and units == 0:
+            # Schiff ohne Industriekern (Barge, Hauler, ...) -> keine Anzeige
+            if prev.get("esi"):
+                hw.pop(name, None)
+        else:
+            hw[name] = {"units": float(units), "fill": max(float(units), prev.get("fill") or 0),
+                        "core": core or prev.get("core", "t1"),
+                        "ts": time.time(), "ck": 0, "esi": True,
+                        "warned": bool(prev.get("warned")) and units <= prev.get("units", 0)}
+
+    def poll(self):
+        changed = False
+        for name, c in list(self.cfg().get("chars", {}).items()):
+            try:
+                bal, _ = self._get(c, f"/characters/{c['char_id']}/wallet/")
+                c["wallet"] = bal
+                ship, _ = self._get(c, f"/characters/{c['char_id']}/ship/")
+                new_ship = ship["ship_type_id"] != c.get("ship_type_id")
+                c["ship_type_id"] = ship["ship_type_id"]
+                c["ship"] = self.type_name(ship["ship_type_id"]) or c.get("ship") or "?"
+                if new_ship:
+                    c["assets_next"] = 0  # Schiffswechsel -> Laderaum sofort neu abgleichen
+                if time.time() >= c.get("assets_next", 0):
+                    self.sync_ship(name, c)
+                self.status[name] = "verbunden"
+                changed = True
+            except urllib.error.HTTPError as e:
+                self.status[name] = f"HTTP-Fehler {e.code}" + (
+                    " — Login abgelaufen? Bitte neu verbinden." if e.code in (400, 401) else "")
+            except Exception as e:
+                self.status[name] = f"Fehler: {str(e)[:80]}"
+        if changed:
+            save_config()
+
+    def run(self):
+        time.sleep(6)
+        while True:
+            try:
+                self.poll()
+            except Exception:
+                pass
+            time.sleep(120)
+
+
 ingest = Ingest()
 chatwatch = ChatWatch()
 prices = Prices()
+esi = Esi()
 
 
 # ---------------------------------------------------------------- Abfragen
@@ -840,9 +1130,27 @@ def snapshot_live():
         else:
             hold_prices = "partial"
         mins = max((time.time() - (s.first_ts or s.start)) / 60, 1)
+        hw_cfg = (CONFIG.get("heavy_water") or {}).get(s.name)
+        hw = None
+        if hw_cfg:
+            rate = HW_RATE.get(hw_cfg.get("core"), HW_RATE["t1"])
+            rem = max(0.0, hw_cfg["units"]
+                      - s.core_active_since(hw_cfg.get("ts", 0)) * rate)
+            on = s.core_on()
+            hw = {"units": round(rem), "core": hw_cfg.get("core", "t1"), "on": on,
+                  "fill": round(hw_cfg.get("fill") or 0), "esi": bool(hw_cfg.get("esi")),
+                  "min_left": round(rem / rate / 60),
+                  "eta": round(time.time() + rem / rate) if on else None}
+        esi_char = (CONFIG.get("esi") or {}).get("chars", {}).get(s.name)
         chars.append({
+            "heavy_water": hw,
+            "esi_linked": esi_char is not None,
+            "ship": (esi_char or {}).get("ship"),
+            "wallet": (esi_char or {}).get("wallet"),
             "trips": s.trips,
             "compressed": comp, "tool_warns": s.tool_warns(),
+            "lasers_off": [{"tool": t, "since": int(i["since"])}
+                           for t, i in sorted(s.lasers_off.items())],
             "rate_low": (lambda rs: round(100 * rs[1] / rs[0])
                          if rs and 0 < rs[1] < 0.55 * rs[0] else None)(s.rate_status()),
             "cargo_full": s.cargo_full and (time.time() - s.cargo_ts) < 300,
@@ -1057,6 +1365,11 @@ def state_info():
             "version": VERSION,
             "progress": ingest.progress, "prices_loaded": bool(prices.get(CONFIG["region"])),
             "watchlist": CONFIG.get("watchlist", []), "goal": CONFIG.get("goal"),
+            "esi": {"client_id": (CONFIG.get("esi") or {}).get("client_id", ""),
+                    "cb": esi.redirect_uri(),
+                    "chars": [{"name": n, "status": esi.status.get(n, "warte auf Abgleich …"),
+                               "ship": c.get("ship"), "wallet": c.get("wallet")}
+                              for n, c in (CONFIG.get("esi") or {}).get("chars", {}).items()]},
             "alerts": alerts.list()}
 
 
@@ -1095,6 +1408,18 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 data["total"] = query_total()
             self._send(json.dumps(data))
+        elif p == "/sso/callback":
+            qs = urllib.parse.parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
+            err = esi.callback(qs.get("code", [""])[0], qs.get("state", [""])[0])
+            ok = err is None
+            self._send("<html><head><meta charset='utf-8'><title>EVE Canary</title></head>"
+                       "<body style='font-family:sans-serif;background:#101418;color:#dfe7ef;"
+                       "text-align:center;padding-top:90px'><div style='font-size:42px'>"
+                       + ("🐤" if ok else "⚠️") + "</div><h2>"
+                       + ("Charakter verbunden!" if ok else "Login fehlgeschlagen")
+                       + "</h2><p>" + (err or "Dieses Fenster kann geschlossen werden — "
+                       "Canary gleicht Laderaum und Wallet ab sofort automatisch ab.")
+                       + "</p></body></html>", "text/html; charset=utf-8")
         elif p == "/export.csv":
             self._send(export_csv(), "text/csv; charset=utf-8", "eve_dashboard_export.csv")
         elif p == "/export.json":
@@ -1121,6 +1446,36 @@ class Handler(BaseHTTPRequestHandler):
             clear_baseline()
         elif action == "idle_warn":
             CONFIG["idle_warn"] = max(0, int(body.get("seconds") or 0))
+        elif action == "esi_client":
+            esi.cfg()["client_id"] = str(body.get("client_id") or "").strip()
+        elif action == "esi_login":
+            url = esi.login_url()
+            self._send(json.dumps({"ok": bool(url), "url": url,
+                                   "error": None if url else "Zuerst Client-ID speichern."}))
+            return
+        elif action == "esi_forget":
+            char = str(body.get("char") or "")
+            esi.cfg().get("chars", {}).pop(char, None)
+            esi.status.pop(char, None)
+            hw_entry = (CONFIG.get("heavy_water") or {}).get(char)
+            if hw_entry and hw_entry.get("esi"):
+                CONFIG["heavy_water"].pop(char, None)
+        elif action == "heavy_water":
+            char = str(body.get("char") or "")
+            hw = CONFIG.setdefault("heavy_water", {})
+            units = body.get("units")
+            if char and units is None:
+                hw.pop(char, None)
+            elif char:
+                hw[char] = {"units": max(0.0, float(units)),
+                            "fill": max(0.0, float(units)),
+                            "core": "t2" if body.get("core") == "t2" else "t1",
+                            "ts": time.time(), "warned": False, "ck": 0}
+        elif action == "laser_ok":
+            with ingest.lock:
+                for s in ingest.sessions.values():
+                    if s.name == body.get("char"):
+                        s.lasers_off.pop(body.get("tool"), None)
         elif action == "watchlist":
             CONFIG["watchlist"] = [str(n).strip() for n in body.get("names", []) if str(n).strip()][:50]
         elif action == "goal":
@@ -1182,6 +1537,11 @@ padding:7px 10px;font-size:12px;font-weight:600;margin-bottom:8px}
 .cardwarn.drone{border-color:var(--red);color:var(--red)}
 .warnbadge{color:var(--gold);font-weight:600}
 .warnbadge.drone{color:var(--red)}
+.laserok{float:right;border:1px solid var(--line);border-radius:20px;padding:1px 9px;
+color:var(--dim);cursor:pointer;font-weight:400}
+.laserok:hover{color:var(--fg);border-color:var(--fg)}
+.hwset{cursor:pointer;opacity:.55}
+.hwset:hover{opacity:1}
 #grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;align-items:start}
 select.pill{appearance:none;-webkit-appearance:none;outline:none;background:var(--card);
 border:1px solid var(--line);color:var(--dim);font-size:11px;padding:4px 11px;border-radius:20px;cursor:pointer}
@@ -1269,6 +1629,16 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <div class="sect">Watchlist (Local-Chat, ein Name pro Zeile)</div>
  <textarea id="watchlist" rows="3" placeholder="Bekannte Ganker..."></textarea>
  <button class="btn" id="saveWatch">Watchlist speichern</button>
+ <div class="sect">EVE-Login (ESI) — automatischer Abgleich</div>
+ <div class="hint">Liest per offiziellem EVE-Login automatisch: Heavy Water im Schiff, Kern-Typ (T1/T2),
+ aktuelles Schiff und Wallet-Stand. Einmalige Einrichtung: auf <a href="https://developers.eveonline.com" target="_blank" rel="noopener">developers.eveonline.com</a>
+ eine Anwendung anlegen („Authentication &amp; API Access", Scopes: <b>esi-assets.read_assets.v1,
+ esi-location.read_ship_type.v1, esi-wallet.read_character_wallet.v1</b>,
+ Callback-URL: <b id="cbUrl"></b>) und die Client-ID hier eintragen.</div>
+ <input type="text" id="esiClient" placeholder="Client-ID deiner ESI-Anwendung">
+ <button class="btn" id="saveEsi">Client-ID speichern</button>
+ <button class="btn" id="esiLogin">+ Charakter verbinden</button>
+ <div class="hint" id="esiChars"></div>
  <div class="sect">Mining-Stillstand-Warnung</div>
  <div style="display:flex;gap:6px;align-items:center">
   <input type="number" id="idleWarn" min="0" step="30" style="width:110px"> <span class="hint" style="margin:0">Sekunden ohne Erz bis zur Warnung (0 = aus)</span>
@@ -1337,6 +1707,12 @@ $('#clearGoal').onclick=async()=>{await post({action:'goal',isk:null});$('#goalI
 $('#saveWatch').onclick=async()=>{await post({action:'watchlist',names:$('#watchlist').value.split('\\n')});};
 $('#notifPerm').onclick=()=>Notification.requestPermission();
 $('#saveIdle').onclick=async()=>{await post({action:'idle_warn',seconds:Number($('#idleWarn').value)||0});syncOpts();};
+$('#saveEsi').onclick=async()=>{const r=await post({action:'esi_client',client_id:$('#esiClient').value.trim()});if(r.state)state=r.state;syncOpts();};
+$('#esiLogin').onclick=async()=>{
+ const r=await post({action:'esi_login'});
+ if(r.url)window.open(r.url,'_blank');
+ else alert(r.error||'Zuerst Client-ID speichern.');
+};
 $('#checkUpd').onclick=async()=>{
  $('#updstatus').textContent='Prüfe …';$('#doUpd').hidden=true;
  const r=await post({action:'check_update'});
@@ -1363,6 +1739,16 @@ function syncOpts(){
  $('#idleWarn').value=state.idle_warn??240;
  $('#verinfo').textContent='Installiert: EVE Canary v'+(state.version||'?');
  if(state.goal){$('#goalIsk').value=state.goal.isk;$('#goalDate').value=state.goal.deadline||'';}
+ if(state.esi){
+  $('#cbUrl').textContent=state.esi.cb;
+  if(document.activeElement!==$('#esiClient'))$('#esiClient').value=state.esi.client_id||'';
+  $('#esiChars').innerHTML=(state.esi.chars||[]).map(c=>
+   '👤 <b>'+c.name+'</b> — '+c.status+(c.ship?' · '+c.ship:'')+(c.wallet!=null?' · Wallet: '+fmtM(c.wallet)+' ISK':'')+
+   ' <span class="esiForget" data-char="'+c.name+'" style="cursor:pointer;text-decoration:underline">trennen</span>'
+  ).join('<br>')||'Noch kein Charakter verbunden.';
+  document.querySelectorAll('.esiForget').forEach(b=>b.onclick=async()=>{
+   const r=await post({action:'esi_forget',char:b.dataset.char});if(r.state)state=r.state;syncOpts();});
+ }
 }
 
 function beep(freq,times,dur){
@@ -1467,14 +1853,15 @@ function renderLive(chars){
   return `<div class="card ${min?'min':''}">
    <div class="chead" data-c="${c.name}">
     <span class="arr">▼</span>
-    <span class="char">${c.name} <span class="sys">· ${c.system}</span></span>
-    <span class="mini">${c.cargo_full?'<span class="warnbadge drone">⚠ Frachtraum voll!</span> · ':''}${(c.tool_warns||[]).map(w=>'<span class="warnbadge'+(w.drone?' drone':'')+'">⚠ '+w.tool+(w.count>1?' ×'+w.count:'')+'</span> · ').join('')}${c.rate_low?'<span class="warnbadge">⚠ Rate '+c.rate_low+'%</span> · ':''}${mineIdle(c,state)?'<span class="warnbadge">⚠ Kein Erz seit '+Math.round(c.mine_idle/60)+' min</span> · ':''}${fmtM(c.total_isk)} ISK · ${fmt(c.m3h)} m³/h${c.dps_in>0?' · <span class=\"in\">⚠ '+c.dps_in+' DPS rein</span>':''}</span>
+    <span class="char">${c.name} <span class="sys">· ${c.system}${c.ship?' · '+c.ship:''}</span></span>
+    <span class="mini">${c.cargo_full?'<span class="warnbadge drone">⚠ Frachtraum voll!</span> · ':''}${(c.tool_warns||[]).map(w=>'<span class="warnbadge'+(w.drone?' drone':'')+'">⚠ '+w.tool+(w.count>1?' ×'+w.count:'')+'</span> · ').join('')}${(c.lasers_off||[]).map(w=>'<span class="warnbadge">⛔ '+w.tool+' aus</span> · ').join('')}${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'<span class="warnbadge drone">⛽ HW ~'+c.heavy_water.min_left+' min</span> · ':''}${c.rate_low?'<span class="warnbadge">⚠ Rate '+c.rate_low+'%</span> · ':''}${mineIdle(c,state)?'<span class="warnbadge">⚠ Kein Erz seit '+Math.round(c.mine_idle/60)+' min</span> · ':''}${fmtM(c.total_isk)} ISK · ${fmt(c.m3h)} m³/h${c.dps_in>0?' · <span class=\"in\">⚠ '+c.dps_in+' DPS rein</span>':''}</span>
    </div>
    <div class="cbody">
    ${c.cargo_full?`<div class="cardwarn drone">⚠ Frachtraum voll — Erz verladen oder komprimieren!</div>`:''}
    ${(c.tool_warns||[]).map(w=>w.drone
      ?`<div class="cardwarn drone">⚠ ${w.tool}${w.count>1?' ×'+w.count:''} abgeschaltet — Drohnen prüfen!</div>`
      :`<div class="cardwarn">⚠ ${w.tool}${w.count>1?' ×'+w.count:''} abgeschaltet — Ziel prüfen</div>`).join('')}
+   ${(c.lasers_off||[]).map(w=>`<div class="cardwarn">⛔ ${w.tool} aus seit ${new Date(w.since*1000).toLocaleTimeString().slice(0,5)} — neues Ziel erfassen! <span class="laserok" data-char="${c.name}" data-tool="${w.tool}">✓ erledigt</span></div>`).join('')}
    ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur ${c.rate_low}% des Normalwerts — vermutlich Modul oder Drohnen inaktiv</div>`:''}
    ${mineIdle(c,state)?`<div class="cardwarn">⚠ Seit ${Math.round(c.mine_idle/60)} min kein Erz — Mining prüfen (Laser/Drohnen)</div>`:''}
    <div class="sub">${c.trips>0?'Trip '+(c.trips+1)+' · seit Abdocken':'Session'} ${c.session_min} min · ${c.depleted} Asteroiden leergebaggert · Preise: ${state.regions[state.region]}</div>
@@ -1487,7 +1874,9 @@ function renderLive(chars){
        ?'<span style="color:var(--dim);font-size:12px;font-weight:400">keine Preisdaten</span>'
        :'~'+fmtM(c.hold_isk)+(c.hold_prices==='partial'?' <span style="color:var(--dim)" title="Für einzelne Erztypen fehlen Preisdaten">±</span>':'')
     }</div></div>
+    ${c.heavy_water||!c.esi_linked?`<div class="stat"><div class="l">Heavy Water${c.heavy_water?' · '+c.heavy_water.core.toUpperCase():''}${c.heavy_water&&c.heavy_water.esi?' · ESI':''} ${c.heavy_water&&c.heavy_water.esi?'':`<span class="hwset" data-char="${c.name}" data-core="${c.heavy_water?c.heavy_water.core:''}" data-fill="${c.heavy_water&&c.heavy_water.fill?c.heavy_water.fill:''}" title="Bestand im Laderaum setzen">⛽</span>`}</div><div class="v ${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'in':''}">${c.heavy_water?fmt(c.heavy_water.units):'—'}</div><div class="l">${c.heavy_water?(c.heavy_water.on&&c.heavy_water.eta?'reicht bis ~'+new Date(c.heavy_water.eta*1000).toLocaleTimeString().slice(0,5)+' Uhr':'Kern inaktiv — Verbrauch pausiert'):'per ⛽ setzen'}</div></div>`:''}
     <div class="stat"><div class="l">Bounties</div><div class="v grn">${fmtM(c.bounty)}</div></div>
+    ${c.wallet!=null?`<div class="stat"><div class="l">Wallet (ESI)</div><div class="v grn">${fmtM(c.wallet)}</div></div>`:''}
     <div class="stat"><div class="l">Schaden raus/rein</div><div class="v"><span class="out">${fmtM(c.dmg_out)}</span> / <span class="in">${fmtM(c.dmg_in)}</span></div></div>
     <div class="stat"><div class="l">DPS raus/rein</div><div class="v"><span class="out">${c.dps_out}</span> / <span class="in">${c.dps_in}</span></div></div>
    </div>
@@ -1506,6 +1895,22 @@ function renderLive(chars){
    </div>
   </div>`}).join('');
  document.querySelectorAll('.chead').forEach(h=>h.onclick=()=>toggleChar(h.dataset.c));
+ document.querySelectorAll('.laserok').forEach(b=>b.onclick=async e=>{
+  e.stopPropagation();
+  await post({action:'laser_ok',char:b.dataset.char,tool:b.dataset.tool});
+  tick();
+ });
+ document.querySelectorAll('.hwset').forEach(b=>b.onclick=async e=>{
+  e.stopPropagation();
+  const v=prompt('Heavy Water im Laderaum (Stück) — nach dem Nachfüllen einfach Enter, 0 zum Entfernen:',b.dataset.fill||'');
+  if(v===null)return;
+  if(v.trim()===''&&!b.dataset.fill)return;
+  if(v.trim()==='0'){await post({action:'heavy_water',char:b.dataset.char});tick();return;}
+  if(v.trim()===''){await post({action:'heavy_water',char:b.dataset.char,units:Number(b.dataset.fill),core:b.dataset.core||'t1'});tick();return;}
+  const core=b.dataset.core||(confirm('Industrial Core II (T2, 200/min)?\\nOK = T2 · Abbrechen = T1 (100/min)')?'t2':'t1');
+  await post({action:'heavy_water',char:b.dataset.char,units:Number(v.replace(/[^\\d]/g,''))||0,core});
+  tick();
+ });
 }
 
 function renderMonth(days){
@@ -1662,6 +2067,9 @@ function ovStatus(c,st){
  const dr=tw.find(w=>w.drone);
  if(dr)return['bad','DROHNEN PRÜFEN ('+dr.tool+')'];
  if(tw.length)return['warn',tw[0].tool.toUpperCase()+(tw[0].count>1?' ×'+tw[0].count:'')+' AUS'];
+ const lo=c.lasers_off||[];
+ if(lo.length)return['warn',lo[0].tool.toUpperCase()+' AUS'];
+ if(c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30)return['warn','HEAVY WATER ~'+c.heavy_water.min_left+' MIN'];
  if(c.rate_low)return['warn','ABBAURATE '+c.rate_low+'%'];
  if(mineIdle(c,st))return['warn','KEIN ERZ SEIT '+Math.round(c.mine_idle/60)+' MIN'];
  return['ok',''];
@@ -1714,6 +2122,7 @@ if __name__ == "__main__":
     ingest.start()
     chatwatch.start()
     prices.start()
+    esi.start()
     port = int(CONFIG.get("port", PORT_DEFAULT))
     print(f"EVE Canary läuft:  http://localhost:{port}")
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
