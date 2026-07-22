@@ -22,6 +22,18 @@ danach wie gewohnt ueber den eingebauten Auto-Updater.
 
 Wer lieber von Hand installiert, folgt den nächsten beiden Abschnitten.
 
+## Wo liegt Canary und wie starte ich es wieder?
+
+- Der Installer fragt nach dem Zielordner. Enter uebernimmt den Vorschlag
+  `%LOCALAPPDATA%\EVE-Canary` (also `C:\Benutzer\DEINNAME\AppData\Local\EVE-Canary`),
+  oder du tippst einen eigenen Pfad ein, zum Beispiel `D:\Spiele\EVE-Canary`.
+- Nach einem Windows-Neustart einfach die **Desktop-Verknuepfung "EVE Canary"**
+  doppelklicken, oder Windows-Taste druecken, "EVE Canary" tippen, Enter.
+- Bequemer: In den Canary-Optionen (Zahnrad) unter **System** den Haken
+  **"beim Windows-Start automatisch mitstarten"** setzen. Dann laeuft Canary
+  nach jedem Neustart still im Hintergrund und ist sofort unter
+  http://localhost:8765 erreichbar.
+
 ## Voraussetzungen
 
 1. **Windows** mit EVE Online

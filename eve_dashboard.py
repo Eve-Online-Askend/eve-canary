@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.5.2"
+VERSION = "1.5.3"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -264,6 +264,28 @@ def clear_baseline():
 def fetch_url(url, timeout=15):
     with urllib.request.urlopen(url, timeout=timeout) as r:
         return r.read()
+
+
+def autostart_path():
+    return (Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows"
+            / "Start Menu" / "Programs" / "Startup" / "EVE-Canary-Autostart.vbs")
+
+
+def set_autostart(on):
+    """Startet Canary beim Windows-Login still im Hintergrund (VBS, kein Konsolenfenster)."""
+    p = autostart_path()
+    if not on:
+        try:
+            p.unlink()
+        except FileNotFoundError:
+            pass
+        return
+    exe = Path(sys.executable)
+    pyw = exe.with_name("pythonw.exe")
+    runner = pyw if pyw.exists() else exe
+    script = APP_DIR / "eve_dashboard.py"
+    p.write_text('CreateObject("WScript.Shell").Run '
+                 f'"""{runner}"" ""{script}""", 0\n', encoding="utf-8")
 
 
 UPDATE_INFO = {"ts": 0, "available": False, "latest": None}
@@ -1833,6 +1855,7 @@ def state_info():
             "baseline_day": meta_get("baseline_day"), "log_dir": CONFIG["log_dir"],
             "idle_warn": int(CONFIG.get("idle_warn", 240) or 0),
             "clip_watch": bool(CONFIG.get("clip_watch")),
+            "autostart": autostart_path().exists(),
             "update": {"available": UPDATE_INFO["available"],
                        "latest": UPDATE_INFO["latest"]},
             "version": VERSION,
@@ -1973,6 +1996,8 @@ class Handler(BaseHTTPRequestHandler):
             clear_baseline()
         elif action == "idle_warn":
             CONFIG["idle_warn"] = max(0, int(body.get("seconds") or 0))
+        elif action == "autostart":
+            set_autostart(bool(body.get("on")))
         elif action == "clip_watch":
             CONFIG["clip_watch"] = bool(body.get("on"))
         elif action == "calc":
@@ -2247,6 +2272,10 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <div class="sect">Design</div>
  <label><input type="radio" name="skin" value=""> Klassisch (das gewohnte Canary-Design)</label>
  <label><input type="radio" name="skin" value="photon"> Photon (angelehnt ans EVE-Interface: dunkel, kantig, Gold-Akzente)</label>
+ <div class="sect">System</div>
+ <label><input type="checkbox" id="autostart"> Canary beim Windows-Start automatisch mitstarten</label>
+ <div class="hint">Läuft dann still im Hintergrund, ohne Konsolenfenster. Das Dashboard ist
+ jederzeit unter http://localhost:8765 erreichbar, die Desktop-Verknüpfung funktioniert weiterhin.</div>
  <div class="sect">Datenbasis</div>
  <label><input type="radio" name="mode" value="all"> Alle vorhandenen Logs auswerten</label>
  <label><input type="radio" name="mode" value="fresh"> Nur ab Installation zählen</label>
@@ -2321,6 +2350,7 @@ if(savedTheme)document.documentElement.dataset.theme=savedTheme;
 else if(matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.dataset.theme='light';
 const savedSkin=localStorage.getItem('skin');
 if(savedSkin)document.documentElement.dataset.skin=savedSkin;
+$('#autostart').onchange=async()=>{const r=await post({action:'autostart',on:$('#autostart').checked});if(r.state)state=r.state;syncOpts();};
 document.querySelectorAll('#opts input[name=skin]').forEach(r=>r.onchange=()=>{
  if(r.value)document.documentElement.dataset.skin=r.value;
  else delete document.documentElement.dataset.skin;
@@ -2386,6 +2416,7 @@ function syncOpts(){
  if(!state)return;
  document.querySelectorAll('#opts input[name=mode]').forEach(r=>r.checked=r.value===state.mode);
  document.querySelectorAll('#opts input[name=skin]').forEach(r=>r.checked=r.value===(document.documentElement.dataset.skin||''));
+ $('#autostart').checked=!!state.autostart;
  $('#baseinfo').textContent=state.baseline_day?('Aktive Baseline: zählt seit '+state.baseline_day+' (UTC).'):'Keine Baseline aktiv.';
  $('#loginfo').textContent='Log-Ordner: '+(state.log_dir||'nicht gefunden!')+' · Dateien: '+state.progress.done+'/'+state.progress.total;
  $('#watchlist').value=(state.watchlist||[]).join('\\n');

@@ -2,7 +2,7 @@
 # Ein Befehl in PowerShell genuegt:
 #   irm https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main/install.ps1 | iex
 param(
-    [string]$Dir = "$env:LOCALAPPDATA\EVE-Canary",
+    [string]$Dir = "",
     [string]$Repo = "https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main",
     [switch]$NoStart,
     [switch]$NoShortcut
@@ -13,6 +13,21 @@ Write-Host ""
 Write-Host "  ================================" -ForegroundColor DarkCyan
 Write-Host "   EVE Canary wird installiert" -ForegroundColor Cyan
 Write-Host "  ================================" -ForegroundColor DarkCyan
+Write-Host ""
+
+# Installationsordner waehlen (Enter uebernimmt den Vorschlag)
+$default = "$env:LOCALAPPDATA\EVE-Canary"
+if (-not $Dir) {
+    Write-Host "  Wohin soll Canary installiert werden?"
+    Write-Host "  Enter uebernimmt den Vorschlag, oder einfach einen eigenen Pfad eintippen."
+    try { $inp = Read-Host "  Ordner [$default]" } catch { $inp = "" }
+    if ($inp) {
+        $Dir = [Environment]::ExpandEnvironmentVariables($inp.Trim().Trim('"'))
+    } else {
+        $Dir = $default
+    }
+}
+Write-Host "  Installationsordner: $Dir"
 Write-Host ""
 
 function Find-Python {
@@ -55,12 +70,14 @@ foreach ($f in $files) {
 
 if (-not $NoShortcut) {
     $ws = New-Object -ComObject WScript.Shell
-    $lnk = $ws.CreateShortcut((Join-Path $ws.SpecialFolders.Item("Desktop") "EVE Canary.lnk"))
-    $lnk.TargetPath = Join-Path $Dir "start_dashboard.bat"
-    $lnk.WorkingDirectory = $Dir
-    $lnk.IconLocation = "$env:SystemRoot\System32\shell32.dll,13"
-    $lnk.Save()
-    Write-Host "  Desktop-Verknuepfung 'EVE Canary' angelegt"
+    foreach ($folder in "Desktop", "Programs") {
+        $lnk = $ws.CreateShortcut((Join-Path $ws.SpecialFolders.Item($folder) "EVE Canary.lnk"))
+        $lnk.TargetPath = Join-Path $Dir "start_dashboard.bat"
+        $lnk.WorkingDirectory = $Dir
+        $lnk.IconLocation = "$env:SystemRoot\System32\shell32.dll,13"
+        $lnk.Save()
+    }
+    Write-Host "  Verknuepfungen angelegt: Desktop und Startmenue"
 }
 
 Write-Host ""
