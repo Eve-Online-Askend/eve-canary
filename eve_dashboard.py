@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.5.3"
+VERSION = "1.5.4"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -1487,6 +1487,17 @@ def all_rows(days=None, kinds=None):
     return baseline_filter(DB.execute(q, args).fetchall())
 
 
+def portrait_url(name):
+    """Charakter-Portrait über den öffentlichen EVE-Bilderdienst. Die ID kommt
+    vom ESI-Login oder aus dem Bedrohungs-Cache, sonst gibt es kein Bild."""
+    c = (CONFIG.get("esi") or {}).get("chars", {}).get(name)
+    cid = c.get("char_id") if c else None
+    if not cid:
+        hit = threat.cached(name)
+        cid = hit.get("id") if hit else None
+    return f"https://images.evetech.net/characters/{cid}/portrait?size=64" if cid else None
+
+
 def snapshot_live():
     pm = prices.get(CONFIG["region"])
     chars = []
@@ -1541,6 +1552,7 @@ def snapshot_live():
         esi_char = (CONFIG.get("esi") or {}).get("chars", {}).get(s.name)
         chars.append({
             "heavy_water": hw,
+            "portrait": portrait_url(s.name),
             "esi_linked": esi_char is not None,
             "ship": (esi_char or {}).get("ship"),
             "wallet": (esi_char or {}).get("wallet"),
@@ -2130,6 +2142,7 @@ html[data-skin=photon] th{text-transform:uppercase;font-size:10px;letter-spacing
 html[data-skin=photon] .stat .l{text-transform:uppercase;letter-spacing:.6px;font-size:9.5px}
 html[data-skin=photon] .stat .v{font-weight:300;letter-spacing:.3px}
 /* Zeilen-Hover wie Overview-Selektion */
+html[data-skin=photon] .pf{border-radius:1px;border:1px solid var(--line)}
 html[data-skin=photon] tr:hover td{background:rgba(95,193,212,.07)}
 html[data-skin=photon] td{border-top-color:rgba(130,150,158,.10)}
 /* Bedienelemente */
@@ -2181,27 +2194,30 @@ nav span.on{color:var(--cyan);border-bottom:2px solid var(--cyan)}
 .alert.drones{border-color:var(--red);color:var(--red);font-weight:600}
 .alert.cargo{border-color:var(--red);color:var(--red);font-weight:600}
 .cardwarn{border:1px solid var(--gold);color:var(--gold);border-radius:7px;
-padding:7px 10px;font-size:12px;font-weight:600;margin-bottom:8px}
+padding:7px 10px;font-size:12px;font-weight:600;margin-bottom:8px;overflow:hidden}
 .cardwarn.drone{border-color:var(--red);color:var(--red)}
 .warnbadge{color:var(--gold);font-weight:600}
 .warnbadge.drone{color:var(--red)}
 .pill.upd{border-color:var(--gold);color:var(--gold);animation:updpulse 2.4s ease-in-out infinite}
 @keyframes updpulse{0%,100%{box-shadow:0 0 0 rgba(232,198,69,0)}50%{box-shadow:0 0 9px rgba(232,198,69,.45)}}
 .laserok{float:right;border:1px solid var(--line);border-radius:20px;padding:1px 9px;
-color:var(--dim);cursor:pointer;font-weight:400}
+color:var(--dim);cursor:pointer;font-weight:400;margin-left:8px}
 .laserok:hover{color:var(--fg);border-color:var(--fg)}
 .hwset{cursor:pointer;opacity:.55}
 .hwset:hover{opacity:1}
 tr.lvl-red td{background:rgba(232,86,79,.10)}
 tr.lvl-yellow td{background:rgba(228,179,76,.07)}
 #intelTbl a{color:inherit}
-#grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;align-items:start}
+#grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px;align-items:start}
+@media (max-width:900px){#grid{grid-template-columns:1fr}}
+#hero:not(:empty){margin-bottom:14px}
 select.pill{appearance:none;-webkit-appearance:none;outline:none;background:var(--card);
 border:1px solid var(--line);color:var(--dim);font-size:11px;padding:4px 11px;border-radius:20px;cursor:pointer}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
 .char{font-size:15px;font-weight:600;color:var(--white)}
-.chead{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
-.chead .mini{margin-left:auto;font-size:12px;color:var(--dim);white-space:nowrap}
+.chead{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;flex-wrap:wrap}
+.chead .mini{margin-left:auto;font-size:12px;color:var(--dim);text-align:right;min-width:0}
+.pf{width:26px;height:26px;border-radius:5px;flex:none;background:var(--inset)}
 .chead .arr{color:var(--dim);font-size:11px;transition:transform .15s}
 .card.min .arr{transform:rotate(-90deg)}
 .card.min .cbody{display:none}
@@ -2264,6 +2280,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="rechner">🧮 Ore Calculator</span>
 </nav>
 <div id="alerts"></div>
+<div id="hero"></div>
 <div id="grid"></div>
 <div id="empty" hidden></div>
 
@@ -2563,17 +2580,19 @@ function renderLive(chars,summary){
  syncCharFilter(chars);
  const f=localStorage.getItem('charFilter')||'';
  if(f&&chars.some(c=>c.name===f))chars=chars.filter(c=>c.name===f);
+ $('#hero').innerHTML=heroBar(summary);
  if(!chars.length){$('#empty').hidden=false;
   $('#empty').textContent='Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern" aktivieren.)';
-  $('#grid').innerHTML=heroBar(summary);return;}
+  $('#grid').innerHTML='';return;}
  $('#empty').hidden=true;
- $('#grid').innerHTML=heroBar(summary)+chars.map(c=>{
+ $('#grid').innerHTML=chars.map(c=>{
   const maxOre=Math.max(1,...c.ores.map(o=>o.isk));
   const maxS=Math.max(1,...c.spark);
   const min=collapsed.has(c.name);
   return `<div class="card ${min?'min':''}">
    <div class="chead" data-c="${c.name}">
     <span class="arr">▼</span>
+    ${c.portrait?`<img class="pf" src="${c.portrait}" alt="">`:''}
     <span class="char">${c.name} <span class="sys">· ${c.system}${c.ship?' · '+c.ship:''}</span></span>
     <span class="mini">${c.cargo_full?'<span class="warnbadge drone">⚠ Frachtraum voll!</span> · ':''}${(c.tool_warns||[]).map(w=>'<span class="warnbadge'+(w.drone?' drone':'')+'">⚠ '+w.tool+(w.count>1?' ×'+w.count:'')+'</span> · ').join('')}${(c.lasers_off||[]).map(w=>'<span class="warnbadge">⛔ '+w.tool+' aus</span> · ').join('')}${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'<span class="warnbadge drone">⛽ HW ~'+c.heavy_water.min_left+' min</span> · ':''}${c.rate_low?'<span class="warnbadge">⚠ Rate '+c.rate_low+'%</span> · ':''}${mineIdle(c,state)?'<span class="warnbadge">⚠ Kein Erz seit '+Math.round(c.mine_idle/60)+' min</span> · ':''}${fmtM(c.total_isk)} ISK · ${fmt(c.m3h)} m³/h${c.dps_in>0?' · <span class=\"in\">⚠ '+c.dps_in+' DPS rein</span>':''}</span>
    </div>
@@ -2889,8 +2908,9 @@ function renderMissions(d){
  const y=byDay[iso(1)]||{};
  let wIsk=0,wMis=0;
  for(let n=0;n<7;n++){const x=byDay[iso(n)];if(x){wIsk+=x.total;wMis+=x.missions;}}
- $('#grid').innerHTML=heroTiles('🎯 Verdient heute',t.total||0,y.total||0,wIsk,
-  (t.missions||0)+' Missionen',wMis+' Missionen · Ø '+fmtM(wIsk/7)+'/Tag')+`
+ $('#hero').innerHTML=heroTiles('🎯 Verdient heute',t.total||0,y.total||0,wIsk,
+  (t.missions||0)+' Missionen',wMis+' Missionen · Ø '+fmtM(wIsk/7)+'/Tag');
+ $('#grid').innerHTML=`
  <div class="card" style="grid-column:1/-1">
   <b>Heute im Detail (EVE-Zeit)</b>
   <div class="stats" style="margin-top:10px">
@@ -2961,12 +2981,15 @@ async function tick(){
   const d=await (await fetch('/data?view='+view)).json();
   state=d.state;regionPills();handleAlerts();updateBadge();
   if(view==='live')renderLive(d.chars,d.summary);
-  else if(view==='month')renderMonth(d.days);
-  else if(view==='analyse')renderAnalyse(d.analyse);
-  else if(view==='intel')renderIntel(d.intel_auto);
   else if(view==='missionen')renderMissions(d);
-  else if(view==='rechner')renderRechner();
-  else renderTotal(d.total);
+  else{
+   $('#hero').innerHTML='';
+   if(view==='month')renderMonth(d.days);
+   else if(view==='analyse')renderAnalyse(d.analyse);
+   else if(view==='intel')renderIntel(d.intel_auto);
+   else if(view==='rechner')renderRechner();
+   else renderTotal(d.total);
+  }
  }catch(e){}
 }
 tick();setInterval(tick,2000);
