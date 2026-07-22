@@ -37,6 +37,22 @@ auch bei OneDrive-Dokumenten. Falls nicht: Pfad in `config.json` unter
   (benötigt Chrome oder Edge; EVE im Fenster-/randlosen Modus).
 - **Desktop-Benachrichtigungen** in den Optionen erlauben, wenn gewünscht.
 
+## 🚦 Bedrohungs-Ampel (Intel-Tab)
+
+Stuft Piloten aus dem Local automatisch ein — über öffentliche APIs (zKillboard
++ ESI), ganz ohne Login: 🔴 Ganker-Verdacht (Miner-Kills, Outlaw-Sec-Status,
+junger Char mit frischen Kills) · 🟡 PvP-aktiv · 🟢 unauffällig.
+
+- **Local-Scan:** Im EVE-Local in die Mitgliederliste klicken → Strg+A →
+  Strg+C → im Intel-Tab einfügen → Scannen.
+- **Auto-Scan (empfohlen):** Checkbox im Intel-Tab aktivieren — dann genügt
+  Strg+A/C im Spiel, Canary erkennt die kopierte Liste selbst und alarmiert
+  bei 🔴 sogar, wenn das Dashboard im Hintergrund liegt. (Die Zwischenablage
+  wird nur lokal gelesen; nur erkannte Pilotennamen werden nachgeschlagen.)
+- Zusätzlich automatisch: Wer dich angreift oder im Local schreibt, wird im
+  Hintergrund eingestuft — Angreifer melden sich ab 🟡, Sprecher nur bei 🔴.
+- Ergebnisse werden 12 h zwischengespeichert (Tabelle `threat` in der lokalen DB).
+
 ## EVE-Login (ESI) — optional, für Automatik-Features
 
 Mit dem offiziellen EVE-Login liest Canary zusätzlich (nur lesend!): aktuelles

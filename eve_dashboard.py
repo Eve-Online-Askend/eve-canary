@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -173,6 +173,7 @@ def load_config():
     cfg = {"port": PORT_DEFAULT, "region": "10000002", "log_dir": None,
            "mode": "all", "install_ts": time.time(),
            "goal": None, "watchlist": [], "idle_warn": 240, "heavy_water": {},
+           "clip_watch": False,
            "update_url": "https://raw.githubusercontent.com/AENDERN/eve-canary/main"}
     if CONFIG_PATH.exists():
         try:
@@ -205,6 +206,8 @@ CREATE TABLE IF NOT EXISTS daily(day TEXT, char_id TEXT, char_name TEXT, kind TE
     key TEXT, value REAL, PRIMARY KEY(day, char_id, kind, key));
 CREATE TABLE IF NOT EXISTS baseline_offsets(day TEXT, char_id TEXT, kind TEXT,
     key TEXT, value REAL, PRIMARY KEY(day, char_id, kind, key));
+CREATE TABLE IF NOT EXISTS threat(name TEXT PRIMARY KEY COLLATE NOCASE,
+    data TEXT, ts REAL);
 """)
 DB.commit()
 
@@ -777,6 +780,8 @@ class Ingest(threading.Thread):
                         f"{cname}: Mining-Drohnen voll — Erz verladen, Drohnen prüfen!")
         elif ev["kind"] == "dmg_in" and ev["key"] not in NPC_NAMES:
             alerts.push("pvp", cname, f"SPIELER-ANGRIFF: {ev['key']} schießt auf {cname}!")
+            # Täterprofil sofort nachladen — Ergebnis kommt als eigener Intel-Alarm
+            threat.request([ev["key"]], prio=True, alert="yellow")
 
 
 # ---------------------------------------------------------------- Local-Chat (System + Watchlist)
@@ -830,10 +835,12 @@ class ChatWatch(threading.Thread):
                     sender, msg = cm.group(1).strip(), cm.group(2).strip()
                     if "EVE" in sender and ":" in msg:
                         self.systems[cid] = msg.rsplit(":", 1)[1].strip().rstrip("*")
-                    elif (self.started_full and watch
-                          and sender.lower() in watch):
-                        alerts.push("watch", sender,
-                                    f"Watchlist: {sender} ist im Local aktiv!")
+                    elif self.started_full:
+                        if watch and sender.lower() in watch:
+                            alerts.push("watch", sender,
+                                        f"Watchlist: {sender} ist im Local aktiv!")
+                        # Jeden Local-Sprecher still einstufen; Alarm nur bei Rot
+                        threat.request([sender], alert="red")
             except OSError:
                 pass
 
@@ -1048,10 +1055,267 @@ class Esi(threading.Thread):
             time.sleep(120)
 
 
+# ---------------------------------------------------------------- Bedrohungs-Ampel (öffentliche APIs)
+# Opfer-Schiffsgruppen, die auf Miner-/Hauler-Ganks hindeuten
+MINER_GROUPS = {463, 543,        # Mining Barge, Exhumer
+                941, 883,        # Industrial Command Ship (Orca/Porpoise), Capital Industrial (Rorqual)
+                28, 380, 1202,   # Hauler, Deep Space Transport, Blockade Runner
+                513, 902}        # Freighter, Jump Freighter
+THREAT_TTL = 12 * 3600           # Cache-Lebensdauer eines Profils
+
+
+class ThreatIntel(threading.Thread):
+    """Bedrohungs-Einstufung von Piloten über öffentliche APIs (ESI + zKillboard).
+    Kein Login nötig. Ergebnisse landen im SQLite-Cache (Tabelle threat)."""
+    daemon = True
+
+    def __init__(self):
+        super().__init__()
+        self.queue = []          # [Name, ...] FIFO
+        self.queued = set()      # lower(Name) zum Dedupen
+        self.alert_on = {}       # lower(Name) -> Mindest-Stufe fuer Alarm ("red"/"yellow")
+        self.lock = threading.Lock()
+        self.wake = threading.Event()
+
+    # ---------- oeffentliche Schnittstelle
+    def request(self, names, prio=False, alert=None):
+        """Namen zur Pruefung einreihen (nur unbekannte/abgelaufene). Liefert Cache-Treffer.
+        alert: "yellow" = ab Gelb alarmieren (Angreifer), "red" = nur bei Rot (Sprecher)."""
+        results, missing = {}, []
+        for n in names:
+            n = n.strip()
+            if not n or len(n) > 37:
+                continue
+            hit = self.cached(n)
+            if hit is not None:
+                results[n] = hit
+            else:
+                missing.append(n)
+        with self.lock:
+            for n in missing:
+                k = n.lower()
+                if alert:
+                    self.alert_on[k] = alert
+                if k not in self.queued:
+                    self.queued.add(k)
+                    if prio:
+                        self.queue.insert(0, n)
+                    else:
+                        self.queue.append(n)
+        if missing:
+            self.wake.set()
+        return results
+
+    def cached(self, name):
+        row = DB.execute("SELECT data, ts FROM threat WHERE name=?", (name,)).fetchone()
+        if row and time.time() - row[1] < THREAT_TTL:
+            return json.loads(row[0])
+        return None
+
+    def pending(self):
+        with self.lock:
+            return len(self.queue)
+
+    # ---------- Verarbeitung
+    def _http(self, url, timeout=20):
+        req = urllib.request.Request(url, headers={
+            "User-Agent": ESI_UA, "Accept-Encoding": "gzip"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read()
+            if r.headers.get("Content-Encoding") == "gzip":
+                import gzip
+                raw = gzip.decompress(raw)
+            return json.loads(raw)
+
+    def _post_ids(self, names):
+        """ESI: Namen -> Charakter-IDs (exakte Treffer, oeffentlich)."""
+        req = urllib.request.Request(
+            ESI_BASE + "/universe/ids/", data=json.dumps(names).encode(),
+            headers={"Content-Type": "application/json", "User-Agent": ESI_UA})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read())
+        return {c["name"]: c["id"] for c in data.get("characters", [])}
+
+    def _names(self, ids):
+        """ESI: IDs -> Namen (Corp/Allianz, oeffentlich)."""
+        ids = [i for i in ids if i]
+        if not ids:
+            return {}
+        req = urllib.request.Request(
+            ESI_BASE + "/universe/names/", data=json.dumps(ids).encode(),
+            headers={"Content-Type": "application/json", "User-Agent": ESI_UA})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return {e["id"]: e["name"] for e in json.loads(r.read())}
+
+    @staticmethod
+    def _classify(age_days, sec, recent_kills, miner_kills, total_kills, danger):
+        if (miner_kills >= 3 and recent_kills >= 1) or sec <= -2.0 \
+                or (age_days is not None and age_days < 60 and recent_kills >= 1):
+            return "red"
+        if recent_kills >= 3 or danger >= 60 or miner_kills >= 3:
+            return "yellow"
+        if recent_kills >= 1 or total_kills >= 10:
+            return "yellow" if danger >= 30 else "green"
+        return "green"
+
+    def _store(self, name, data):
+        with DB_LOCK:
+            DB.execute("INSERT OR REPLACE INTO threat VALUES(?,?,?)",
+                       (name, json.dumps(data), time.time()))
+            DB.commit()
+        k = name.lower()
+        with self.lock:
+            min_lvl = self.alert_on.pop(k, None)
+        lvl = data.get("level")
+        if min_lvl and (lvl == "red" or (lvl == "yellow" and min_lvl == "yellow")):
+            lbl = "GANKER-VERDACHT" if lvl == "red" else "PvP-aktiv"
+            alerts.push("intel", name,
+                        f"⚠ {lbl}: {name} ({data.get('corp') or '?'}) — "
+                        f"{data.get('recent_kills', 0)} Kills (60 Tage), "
+                        f"{data.get('miner_kills', 0)} Miner-Kills gesamt")
+
+    def _profile(self, name, cid):
+        pub = self._http(f"{ESI_BASE}/characters/{cid}/")
+        age = None
+        try:
+            born = datetime.fromisoformat(pub["birthday"].replace("Z", "+00:00"))
+            age = int((datetime.now(timezone.utc) - born).days)
+        except Exception:
+            pass
+        z = self._http(f"https://zkillboard.com/api/stats/characterID/{cid}/") or {}
+        months = z.get("months") or {}
+        now = datetime.now(timezone.utc)
+        keys = {(now.year, now.month)}
+        for back in (1, 2):
+            y, m = now.year, now.month - back
+            while m < 1:
+                m += 12
+                y -= 1
+            keys.add((y, m))
+        recent = sum((v or {}).get("shipsDestroyed", 0) for k, v in months.items()
+                     if (int(str(k)[:4]), int(str(k)[4:])) in keys)
+        miner = sum((g or {}).get("shipsDestroyed", 0)
+                    for gid, g in (z.get("groups") or {}).items()
+                    if int(gid) in MINER_GROUPS)
+        info = z.get("info") or {}
+        nm = self._names([pub.get("corporation_id"), pub.get("alliance_id")])
+        sec = float(info.get("secStatus") or 0.0)
+        total = int(z.get("shipsDestroyed") or 0)
+        danger = int(z.get("dangerRatio") or 0)
+        return {
+            "id": cid, "age_days": age, "sec": round(sec, 1),
+            "corp": nm.get(pub.get("corporation_id")),
+            "alliance": nm.get(pub.get("alliance_id")),
+            "kills": total, "losses": int(z.get("shipsLost") or 0),
+            "recent_kills": recent, "miner_kills": miner,
+            "danger": danger, "gang": int(z.get("gangRatio") or 0),
+            "level": self._classify(age, sec, recent, miner, total, danger)}
+
+    def run(self):
+        while True:
+            self.wake.wait()
+            with self.lock:
+                batch = self.queue[:20]
+                del self.queue[:20]
+                if not self.queue:
+                    self.wake.clear()
+            if not batch:
+                continue
+            try:
+                ids = self._post_ids(batch)
+            except Exception:
+                ids = {}
+            idmap = {n.lower(): (n, i) for n, i in ids.items()}
+            for raw in batch:
+                real, cid = idmap.get(raw.lower(), (raw, None))
+                try:
+                    if cid is None:
+                        data = {"level": "unknown", "note": "kein Charakter mit diesem Namen"}
+                    else:
+                        data = self._profile(real, cid)
+                except Exception as e:
+                    data = {"level": "unknown", "note": f"Abfrage fehlgeschlagen: {str(e)[:60]}"}
+                self._store(raw, data)
+                with self.lock:
+                    self.queued.discard(raw.lower())
+                time.sleep(1.1)  # zKillboard-Etikette: nicht schneller als ~1 Request/s
+
+
+NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9' .-]{1,36}$")
+
+
+class ClipWatch(threading.Thread):
+    """Beobachtet die Windows-Zwischenablage (opt-in): Kopiert man im EVE-Local
+    die Mitgliederliste (Strg+A, Strg+C), erkennt Canary die Namensliste und
+    startet automatisch den Bedrohungs-Scan — ohne Alt-Tab. Der Inhalt bleibt
+    lokal; nur als Pilotennamen erkannte Zeilen gehen zur Auflösung an ESI."""
+    daemon = True
+
+    def __init__(self):
+        super().__init__()
+        self.last = None
+        self.names = []   # letzter automatisch erkannter Satz
+        self.ts = 0
+
+    @staticmethod
+    def read_clipboard():
+        import ctypes
+        from ctypes import wintypes
+        u32, k32 = ctypes.windll.user32, ctypes.windll.kernel32
+        # 64-Bit-Handles: ohne explizite restypes stutzt ctypes auf 32 Bit!
+        u32.GetClipboardData.restype = wintypes.HANDLE
+        k32.GlobalLock.restype = ctypes.c_void_p
+        k32.GlobalLock.argtypes = [wintypes.HANDLE]
+        k32.GlobalUnlock.argtypes = [wintypes.HANDLE]
+        if not u32.OpenClipboard(0):
+            return None
+        try:
+            h = u32.GetClipboardData(13)  # CF_UNICODETEXT
+            if not h:
+                return None
+            ptr = k32.GlobalLock(h)
+            if not ptr:
+                return None
+            try:
+                return ctypes.wstring_at(ptr)
+            finally:
+                k32.GlobalUnlock(h)
+        finally:
+            u32.CloseClipboard()
+
+    def check(self):
+        text = self.read_clipboard()
+        if text is None or text == self.last or len(text) > 20000:
+            self.last = text if text is not None and len(text) <= 20000 else self.last
+            return
+        self.last = text
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
+        if not 2 <= len(lines) <= 300:
+            return
+        good = [l for l in lines if NAME_RE.match(l)]
+        # nur reagieren, wenn der Inhalt klar wie eine Mitgliederliste aussieht
+        if len(good) < 2 or len(good) / len(lines) < 0.8:
+            return
+        self.names = list(dict.fromkeys(good))[:200]
+        self.ts = time.time()
+        threat.request(self.names, alert="red")
+
+    def run(self):
+        while sys.platform == "win32":
+            time.sleep(2)
+            try:
+                if CONFIG.get("clip_watch"):
+                    self.check()
+            except Exception:
+                pass
+
+
 ingest = Ingest()
 chatwatch = ChatWatch()
 prices = Prices()
 esi = Esi()
+threat = ThreatIntel()
+clipwatch = ClipWatch()
 
 
 # ---------------------------------------------------------------- Abfragen
@@ -1362,6 +1626,7 @@ def state_info():
     return {"region": CONFIG["region"], "regions": REGIONS, "mode": CONFIG["mode"],
             "baseline_day": meta_get("baseline_day"), "log_dir": CONFIG["log_dir"],
             "idle_warn": int(CONFIG.get("idle_warn", 240) or 0),
+            "clip_watch": bool(CONFIG.get("clip_watch")),
             "version": VERSION,
             "progress": ingest.progress, "prices_loaded": bool(prices.get(CONFIG["region"])),
             "watchlist": CONFIG.get("watchlist", []), "goal": CONFIG.get("goal"),
@@ -1405,6 +1670,8 @@ class Handler(BaseHTTPRequestHandler):
                 data["days"] = query_month()
             elif view == "analyse":
                 data["analyse"] = query_analyse()
+            elif view == "intel":
+                data["intel_auto"] = {"ts": clipwatch.ts, "names": clipwatch.names}
             else:
                 data["total"] = query_total()
             self._send(json.dumps(data))
@@ -1446,6 +1713,15 @@ class Handler(BaseHTTPRequestHandler):
             clear_baseline()
         elif action == "idle_warn":
             CONFIG["idle_warn"] = max(0, int(body.get("seconds") or 0))
+        elif action == "clip_watch":
+            CONFIG["clip_watch"] = bool(body.get("on"))
+        elif action == "threat_scan":
+            names = [str(n).strip() for n in body.get("names", [])][:200]
+            names = [n for n in names if n]
+            results = threat.request(names, prio=True)
+            self._send(json.dumps({"ok": True, "results": results,
+                                   "pending": threat.pending()}))
+            return
         elif action == "esi_client":
             esi.cfg()["client_id"] = str(body.get("client_id") or "").strip()
         elif action == "esi_login":
@@ -1542,6 +1818,9 @@ color:var(--dim);cursor:pointer;font-weight:400}
 .laserok:hover{color:var(--fg);border-color:var(--fg)}
 .hwset{cursor:pointer;opacity:.55}
 .hwset:hover{opacity:1}
+tr.lvl-red td{background:rgba(232,86,79,.10)}
+tr.lvl-yellow td{background:rgba(228,179,76,.07)}
+#intelTbl a{color:inherit}
 #grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;align-items:start}
 select.pill{appearance:none;-webkit-appearance:none;outline:none;background:var(--card);
 border:1px solid var(--line);color:var(--dim);font-size:11px;padding:4px 11px;border-radius:20px;cursor:pointer}
@@ -1605,6 +1884,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="month">30 Tage</span>
  <span data-v="total">Gesamt</span>
  <span data-v="analyse">Analyse</span>
+ <span data-v="intel">🚦 Intel</span>
 </nav>
 <div id="alerts"></div>
 <div id="grid"></div>
@@ -1793,6 +2073,14 @@ function handleAlerts(){
   else if(a.kind==='watch'){
    if($('#sndWatch').checked)beep(660,2,0.15);
    if(Notification.permission==='granted')new Notification('EVE: Watchlist',{body:a.text});
+  }
+  else if(a.kind==='intel'){
+   if($('#sndWatch').checked)beep(770,3,0.16);
+   if(Notification.permission==='granted')new Notification('EVE: Bedrohung erkannt!',{body:a.text});
+  }
+  else if(a.kind==='hw'){
+   if($('#sndDep').checked)beep(430,2,0.2);
+   if(Notification.permission==='granted')new Notification('EVE: Heavy Water fast leer!',{body:a.text});
   }
   lastAlertId=a.id;
  }
@@ -2097,6 +2385,69 @@ setInterval(overlayTick,2000);
 $('#ovToggle').onclick=toggleOverlay;
 $('#ovBtn').onclick=toggleOverlay;
 
+let intelNames=JSON.parse(localStorage.getItem('intelNames')||'[]');
+let intelBusy=false,intelAutoTs=Number(localStorage.getItem('intelAutoTs')||0);
+function renderIntel(auto){
+ if(!document.getElementById('intelBox')){
+  $('#grid').innerHTML=`<div class="card" id="intelBox" style="grid-column:1/-1">
+   <b>🚦 Local-Scan — Bedrohungs-Ampel</b>
+   <div style="font-size:12px;color:var(--dim);margin:6px 0">Im EVE-Local-Fenster in die Mitgliederliste klicken → <b>Strg+A</b> → <b>Strg+C</b> — mit Auto-Scan wars das schon, Canary erkennt die kopierte Liste selbst.
+   Alternativ hier einfügen und Scannen. Quellen: zKillboard + ESI (öffentlich, ohne Login) · ~1 Pilot/Sekunde, Ergebnisse 12h zwischengespeichert.</div>
+   <label style="font-size:12px;display:block;margin:6px 0"><input type="checkbox" id="clipWatch"> <b>Auto-Scan:</b> Zwischenablage überwachen — Strg+A/C im Local genügt, Alarm bei 🔴 auch ohne offenen Intel-Tab. <span style="color:var(--dim)">(Inhalt bleibt lokal; nur erkannte Pilotennamen werden bei ESI/zKillboard nachgeschlagen)</span></label>
+   <textarea id="intelIn" rows="5" style="width:100%" placeholder="Piloten-Namen einfügen …"></textarea>
+   <div style="margin:8px 0"><button class="btn" id="intelGo">Scannen</button> <span id="intelStat" style="font-size:12px;color:var(--dim)"></span></div>
+   <div id="intelTbl" style="overflow-x:auto"></div></div>`;
+  $('#intelGo').onclick=()=>{
+   intelNames=[...new Set($('#intelIn').value.split(/\\n/).map(s=>s.trim()).filter(s=>s&&!s.startsWith('[')))].slice(0,200);
+   localStorage.setItem('intelNames',JSON.stringify(intelNames));
+   $('#intelTbl').innerHTML='';
+   intelPoll();
+  };
+  $('#clipWatch').checked=!!(state&&state.clip_watch);
+  $('#clipWatch').onchange=()=>post({action:'clip_watch',on:$('#clipWatch').checked});
+  if(intelNames.length)$('#intelIn').value=intelNames.join('\\n');
+ }
+ if(auto&&auto.ts>intelAutoTs&&auto.names&&auto.names.length){
+  intelAutoTs=auto.ts;localStorage.setItem('intelAutoTs',intelAutoTs);
+  intelNames=auto.names;
+  localStorage.setItem('intelNames',JSON.stringify(intelNames));
+  $('#intelIn').value=intelNames.join('\\n');
+  $('#intelTbl').innerHTML='';
+ }
+ intelPoll();
+}
+async function intelPoll(){
+ if(!intelNames.length||intelBusy||view!=='intel')return;
+ intelBusy=true;
+ try{
+  const r=await post({action:'threat_scan',names:intelNames});
+  const res=r.results||{};
+  const order={red:0,yellow:1,unknown:2,green:3};
+  const ICON={red:'🔴',yellow:'🟡',green:'🟢',unknown:'⚪'};
+  const rows=intelNames.map(n=>[n,res[n]]).sort((a,b)=>{
+   const ra=a[1]?(order[a[1].level]??2):4,rb=b[1]?(order[b[1].level]??2):4;
+   return ra-rb||a[0].localeCompare(b[0]);});
+  const cnt={red:0,yellow:0,green:0,unknown:0};
+  rows.forEach(([n,d])=>{if(d&&cnt[d.level]!=null)cnt[d.level]++;});
+  $('#intelStat').textContent=(r.pending?'prüfe … noch '+r.pending+' offen · ':'')+
+   cnt.red+' rot · '+cnt.yellow+' gelb · '+cnt.green+' grün · '+cnt.unknown+' unbekannt';
+  $('#intelTbl').innerHTML=`<table><tr><th></th><th>Pilot</th><th>Alter</th><th>Corp · Allianz</th>
+   <th class="r">Kills 60d</th><th class="r">Miner-Kills</th><th class="r">Kills/Verluste</th>
+   <th class="r">Danger</th><th class="r">Sec</th></tr>`+
+   rows.map(([n,d])=>{
+    if(!d)return '<tr><td>⏳</td><td>'+n+'</td><td colspan="7" style="color:var(--dim)">wird geprüft …</td></tr>';
+    if(d.level==='unknown')return '<tr><td>⚪</td><td>'+n+'</td><td colspan="7" style="color:var(--dim)">'+(d.note||'')+'</td></tr>';
+    const corp=(d.corp||'?')+(d.alliance?' · '+d.alliance:'');
+    const age=d.age_days!=null?(d.age_days<365?d.age_days+' T':(d.age_days/365).toFixed(1)+' J'):'?';
+    return `<tr class="lvl-${d.level}"><td>${ICON[d.level]}</td>
+     <td><a href="https://zkillboard.com/character/${d.id}/" target="_blank" rel="noopener">${n}</a></td>
+     <td>${age}</td><td>${corp}</td><td class="r">${d.recent_kills}</td>
+     <td class="r${d.miner_kills>=3?' in':''}">${d.miner_kills}</td>
+     <td class="r">${d.kills}/${d.losses}</td><td class="r">${d.danger}%</td>
+     <td class="r">${d.sec}</td></tr>`;}).join('')+'</table>';
+ }catch(e){}
+ intelBusy=false;
+}
 async function tick(){
  try{
   const d=await (await fetch('/data?view='+view)).json();
@@ -2104,6 +2455,7 @@ async function tick(){
   if(view==='live')renderLive(d.chars);
   else if(view==='month')renderMonth(d.days);
   else if(view==='analyse')renderAnalyse(d.analyse);
+  else if(view==='intel')renderIntel(d.intel_auto);
   else renderTotal(d.total);
  }catch(e){}
 }
@@ -2123,6 +2475,8 @@ if __name__ == "__main__":
     chatwatch.start()
     prices.start()
     esi.start()
+    threat.start()
+    clipwatch.start()
     port = int(CONFIG.get("port", PORT_DEFAULT))
     print(f"EVE Canary läuft:  http://localhost:{port}")
     ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
