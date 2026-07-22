@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.8.5"
+VERSION = "1.8.6"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -1167,7 +1167,7 @@ SSO_AUTH = "https://login.eveonline.com/v2/oauth/authorize"
 SSO_TOKEN = "https://login.eveonline.com/v2/oauth/token"
 ESI_BASE = "https://esi.evetech.net/latest"
 ESI_SCOPES = ("esi-assets.read_assets.v1 esi-location.read_ship_type.v1 "
-              "esi-wallet.read_character_wallet.v1")
+              "esi-wallet.read_character_wallet.v1 esi-location.read_online.v1")
 ESI_UA = f"EVE-Canary/{VERSION} (https://github.com/Eve-Online-Askend/eve-canary)"
 # Eingebaute Canary-ESI-App: so muss kein Nutzer eine eigene App registrieren,
 # er klickt nur "Mit EVE-Account verbinden". Die ID ist bei PKCE bauartbedingt
@@ -1396,6 +1396,14 @@ class Esi(threading.Thread):
                     c["assets_next"] = 0  # Schiffswechsel -> Laderaum sofort neu abgleichen
                 if time.time() >= c.get("assets_next", 0):
                     self.sync_ship(name, c)
+                # Online-Status (Scope esi-location.read_online.v1). Fehlt der Scope
+                # (Char noch nicht neu verbunden), liefert ESI 403 -> still ignorieren,
+                # dann greift der Log-Aktivitäts-Fallback.
+                try:
+                    onl, _ = self._get(c, f"/characters/{c['char_id']}/online/")
+                    c["online"] = bool(onl.get("online"))
+                except Exception:
+                    c.pop("online", None)  # Scope fehlt/Fehler -> Log-Aktivität greift
                 self.status[name] = "verbunden"
                 changed = True
             except urllib.error.HTTPError as e:
