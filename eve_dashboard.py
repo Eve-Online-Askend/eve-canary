@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.8.2"
+VERSION = "1.8.3"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -1098,6 +1098,7 @@ class Prices(threading.Thread):
         super().__init__()
         self.cache = {}
         self.fetched = {}
+        self.requested = {}   # region -> Set bereits angefragter typeIDs
 
     def wanted_ids(self):
         ids = set()
@@ -1117,7 +1118,13 @@ class Prices(threading.Thread):
         while True:
             region = CONFIG["region"]
             ids = self.wanted_ids()
-            if ids and time.time() - self.fetched.get(region, 0) > PRICE_REFRESH:
+            # Sofort nachladen, wenn eine neue Erzsorte auftaucht (noch nie angefragt)
+            # — sonst bliebe frisch abgebautes Erz bis zu 15 min ohne Preis. Wir merken
+            # uns ANGEFRAGTE IDs (nicht nur zurückgelieferte), damit Erze ohne Markt
+            # nicht alle 3s neu abgefragt werden.
+            new_ids = ids - self.requested.get(region, set())
+            due = time.time() - self.fetched.get(region, 0) > PRICE_REFRESH
+            if ids and (due or new_ids):
                 try:
                     url = (f"https://market.fuzzwork.co.uk/aggregates/"
                            f"?region={region}&types={','.join(map(str, sorted(ids)))}")
@@ -1125,6 +1132,7 @@ class Prices(threading.Thread):
                         data = json.load(r)
                     self.cache[region] = {int(k): float(v["buy"]["max"]) for k, v in data.items()}
                     self.fetched[region] = time.time()
+                    self.requested[region] = set(ids)
                 except Exception:
                     self.fetched[region] = time.time() - PRICE_REFRESH + 60
             time.sleep(3)
