@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.8.7"
+VERSION = "1.8.8"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -1186,6 +1186,12 @@ JOURNAL_TYPES = {"agent_mission_reward", "agent_mission_time_bonus_reward",
                  "bounty_prizes", "bounty_prize"}
 CORE_TYPES = {62590: "t1", 62591: "t2",   # Medium Industrial Core I/II (Porpoise)
               58945: "t1", 58950: "t2"}   # Large Industrial Core I/II (Orca)
+# Reine Drohnen-/Boost-Schiffe: haben KEINE Strip Miner, minern nur mit Drohnen.
+# Für sie darf die "Strip Miner aus"-Warnung nie kommen.
+DRONE_ONLY_SHIP_IDS = {42244,  # Porpoise
+                       28606,  # Orca
+                       28352}  # Rorqual
+DRONE_ONLY_SHIP_NAMES = ("Porpoise", "Orca", "Rorqual")
 
 
 class Esi(threading.Thread):
@@ -1803,6 +1809,12 @@ def snapshot_live():
         esi_online = (esi_char or {}).get("online")
         log_active = s.last_event_ts is not None and (time.time() - s.last_event_ts) < ACTIVE_WINDOW
         active = esi_online if isinstance(esi_online, bool) else log_active
+        # Porpoise/Orca/Rorqual minern nur mit Drohnen (kein Strip Miner) -> keine
+        # Laser-Warnungen. Läuft ein Industriekern, ist es ebenfalls so ein Boost-Schiff.
+        _shipname = (esi_char or {}).get("ship") or ""
+        drone_only = ((esi_char or {}).get("ship_type_id") in DRONE_ONLY_SHIP_IDS
+                      or any(n in _shipname for n in DRONE_ONLY_SHIP_NAMES)
+                      or s.core_on())
         chars.append({
             "heavy_water": hw,
             "active": active,
@@ -1813,13 +1825,13 @@ def snapshot_live():
             "wallet": (esi_char or {}).get("wallet"),
             "trips": s.trips,
             "compressed": comp, "tool_warns": s.tool_warns(),
-            "lasers_off": [{"tool": t, "since": int(i["since"])}
+            "lasers_off": [] if drone_only else [{"tool": t, "since": int(i["since"])}
                            for t, i in sorted(s.lasers_off.items())],
             "rate_low": (lambda rs: round(100 * rs[1] / rs[0])
                          if rs and 0 < rs[1] < 0.55 * rs[0] else None)(s.rate_status()),
             "cargo_full": s.cargo_full and (time.time() - s.cargo_ts) < 300,
             "drones_idle": s.drones_idle(),
-            "laser_stalled": s.laser_stalled(),
+            "laser_stalled": False if drone_only else s.laser_stalled(),
             "hold_isk": round(hold_isk), "hold_m3": round(hold_m3),
             "hold_prices": hold_prices,
             "mine_idle": round(time.time() - s.last_ore_ts) if s.last_ore_ts else None,
