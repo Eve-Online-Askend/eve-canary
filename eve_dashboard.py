@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.5.4"
+VERSION = "1.5.6"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -620,6 +620,9 @@ class Ingest(threading.Thread):
         self.lock = threading.Lock()
         self.progress = {"done": 0, "total": 0}
         self.started_full = False
+        self.filecache = {}  # name -> (size, mtime) fertig verarbeiteter Dateien
+        self.live_files = []  # [(Pfad, cid)] der neuesten Datei je Char
+        self.last_scan = 0.0  # Zeitpunkt des letzten Voll-Scans des Log-Ordners
 
     def log_dir(self):
         return Path(CONFIG["log_dir"]) if CONFIG["log_dir"] else None
@@ -705,30 +708,58 @@ class Ingest(threading.Thread):
         d = self.log_dir()
         if not d or not d.exists():
             return
-        files = []
-        for f in d.glob("*.txt"):
-            m = CHAR_FILE_RE.match(f.name)
-            if m:
-                files.append((f, m.group(1)))
-        newest = {}
-        for f, cid in files:
-            if cid not in newest or f.stat().st_mtime > newest[cid].stat().st_mtime:
-                newest[cid] = f
-        self.progress["total"] = len(files)
+        # Voll-Scan des Ordners nur alle 15s (neue Dateien entstehen nur beim
+        # EVE-Login). Dazwischen werden nur die Live-Dateien der Chars geprüft:
+        # bei Jahren an Logs spart das den Grossteil der Dauerlast.
+        full = time.time() - self.last_scan >= 15 or not self.live_files
+        if full:
+            self.last_scan = time.time()
+            files = []
+            for f in d.glob("*.txt"):
+                m = CHAR_FILE_RE.match(f.name)
+                if m:
+                    try:
+                        files.append((f, m.group(1), f.stat()))
+                    except OSError:
+                        continue
+            newest = {}
+            for f, cid, st in files:
+                if cid not in newest or st.st_mtime > newest[cid][1]:
+                    newest[cid] = (f, st.st_mtime)
+            newest = {cid: f for cid, (f, _) in newest.items()}
+            self.live_files = [(f, cid) for cid, f in newest.items()]
+            self.progress["total"] = len(files)
+        else:
+            files = []
+            for f, cid in self.live_files:
+                try:
+                    files.append((f, cid, f.stat()))
+                except OSError:
+                    self.last_scan = 0  # Datei weg? Beim nächsten Tick voll scannen
+                    return
+            newest = {cid: f for f, cid in self.live_files}
         done = 0
-        for f, cid in sorted(files, key=lambda x: x[0].stat().st_mtime):
+        for f, cid, st in sorted(files, key=lambda x: x[2].st_mtime):
+            # Fertig gelesene Alt-Dateien ohne Datenbank-Zugriff überspringen.
+            # Bei Jahren an Logs (zigtausend Dateien) macht das den Takt erst bezahlbar.
+            if (self.filecache.get(f.name) == (st.st_size, st.st_mtime)
+                    and newest.get(cid) != f):
+                done += 1
+                if full:
+                    self.progress["done"] = done
+                continue
             row = DB.execute("SELECT offset, skipped, char_name, first_ts, last_ts "
                              "FROM files WHERE name=?", (f.name,)).fetchone()
             if row is None:
                 skip = (CONFIG["mode"] == "fresh"
-                        and f.stat().st_mtime < float(CONFIG["install_ts"])
+                        and st.st_mtime < float(CONFIG["install_ts"])
                         and newest.get(cid) != f)
                 name = read_char_name(f)
                 with DB_LOCK:
                     DB.execute("INSERT OR REPLACE INTO files VALUES(?,?,?,?,?,NULL,NULL)",
-                               (f.name, cid, name, f.stat().st_size if skip else 0, int(skip)))
+                               (f.name, cid, name, st.st_size if skip else 0, int(skip)))
                     DB.commit()
-                row = (f.stat().st_size if skip else 0, int(skip), name, None, None)
+                row = (st.st_size if skip else 0, int(skip), name, None, None)
             offset, skipped, cname, first_ts, last_ts = row
             if CONFIG["mode"] == "all" and skipped:
                 with DB_LOCK:
@@ -738,7 +769,7 @@ class Ingest(threading.Thread):
             live_file = newest.get(cid) == f
             sess = None
             if live_file and not skipped:
-                fresh = time.time() - f.stat().st_mtime <= SESSION_MAX_AGE
+                fresh = time.time() - st.st_mtime <= SESSION_MAX_AGE
                 with self.lock:
                     sess = self.sessions.get(cid)
                     if not fresh:
@@ -762,8 +793,12 @@ class Ingest(threading.Thread):
                                         sess.feed(ev, live=False)
                             except OSError:
                                 pass
-            if skipped or f.stat().st_size <= offset:
+            if skipped or st.st_size <= offset:
+                if newest.get(cid) != f:
+                    self.filecache[f.name] = (st.st_size, st.st_mtime)
                 done += 1
+                if full:
+                    self.progress["done"] = done
                 continue
             try:
                 catch_up = not self.started_full
@@ -806,8 +841,13 @@ class Ingest(threading.Thread):
             except OSError:
                 pass
             done += 1
-        self.progress["done"] = done
-        self.started_full = True
+            # Fortschritt live mitschreiben: beim Erst-Einlesen grosser Bestaende
+            # (Jahre an Logs) soll die Anzeige nicht minutenlang auf 0 stehen
+            if full:
+                self.progress["done"] = done
+        if full:
+            self.progress["done"] = done
+            self.started_full = True
 
     def learn_mine_system(self, cid):
         """Merkt sich Systeme, in denen aktiv gemint wird. Bounties aus diesen
@@ -1871,6 +1911,7 @@ def state_info():
             "update": {"available": UPDATE_INFO["available"],
                        "latest": UPDATE_INFO["latest"]},
             "version": VERSION,
+            "ingesting": not ingest.started_full,
             "progress": ingest.progress, "prices_loaded": bool(prices.get(CONFIG["region"])),
             "watchlist": CONFIG.get("watchlist", []), "goal": CONFIG.get("goal"),
             "esi": {"client_id": (CONFIG.get("esi") or {}).get("client_id", ""),
@@ -2177,6 +2218,30 @@ html[data-fs="3"] body{zoom:1.3}
 header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
 h1{font-size:14px;font-weight:600;letter-spacing:2px;color:var(--dim)}
 h1 b{color:var(--cyan)}
+.byline{font-size:10px;color:var(--dim);letter-spacing:1.6px;font-weight:400;text-transform:uppercase;opacity:.8}
+/* ---------- Boot-Screen beim Erst-Einlesen */
+#boot{position:fixed;inset:0;z-index:2000;background:var(--bg);display:flex;
+ align-items:center;justify-content:center;opacity:1;transition:opacity .8s}
+#boot.fade{opacity:0;pointer-events:none}
+.bootbox{text-align:center;width:min(440px,84vw)}
+.bootbird{font-size:64px;animation:bootpulse 1.6s ease-in-out infinite}
+@keyframes bootpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.14)}}
+.bootbox h2{letter-spacing:7px;font-weight:300;color:var(--txt);margin:12px 0 2px;font-size:22px}
+.bootbox h2 b{color:var(--cyan);font-weight:600}
+.bootby{color:var(--gold);font-size:11px;letter-spacing:2.5px;text-transform:uppercase;margin-bottom:26px}
+.boottext{color:var(--dim);font-size:13px;margin-bottom:12px}
+.bootbar{height:10px;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--card)}
+#bootfill{height:100%;width:0%;background:linear-gradient(90deg,var(--cyan),var(--gold));
+ transition:width .5s;box-shadow:0 0 12px rgba(53,200,232,.4)}
+.bootnum{color:var(--txt);font-size:13px;margin-top:10px}
+.boothint{color:var(--dim);font-size:11px;margin-top:18px;line-height:1.5}
+html[data-skin=photon] .bootbar,html[data-skin=photon] #bootfill{border-radius:1px}
+/* ---------- Optionen-Gruppen */
+.optgroup{background:var(--inset);border:1px solid var(--line);border-radius:8px;
+ padding:12px 14px;margin-bottom:10px}
+.optgroup .sect{margin-top:0}
+.btnrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+html[data-skin=photon] .optgroup{border-radius:1px}
 .pills{display:flex;gap:4px;margin-left:auto}
 .pill{background:var(--card);border:1px solid var(--line);color:var(--dim);font-size:11px;
 padding:4px 11px;border-radius:20px;cursor:pointer;user-select:none}
@@ -2246,7 +2311,7 @@ td.r{text-align:right;color:var(--dim)}
 .progress div{background:var(--gold);height:100%;transition:width .5s}
 #empty{color:var(--dim);font-size:13px;margin-top:30px}
 dialog{background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:12px;
-padding:20px 22px;max-width:460px;width:94%}
+padding:20px 22px;max-width:620px;width:94%}
 dialog::backdrop{background:rgba(0,0,0,.55)}
 dialog h2{font-size:14px;margin-bottom:12px;color:var(--white)}
 dialog label{display:block;font-size:13px;margin:8px 0;cursor:pointer}
@@ -2259,8 +2324,20 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 .btn.warn{color:var(--red);border-color:var(--red)}
 .note{font-size:11px;color:var(--dim);margin-top:10px}
 </style></head><body>
+<div id="boot" hidden>
+ <div class="bootbox">
+  <div class="bootbird">🐤</div>
+  <h2>EVE <b>CANARY</b></h2>
+  <div class="bootby">by Askend</div>
+  <div class="boottext">Logdateien werden gelesen und analysiert …</div>
+  <div class="bootbar"><div id="bootfill"></div></div>
+  <div class="bootnum" id="bootnum"></div>
+  <div class="boothint">Das passiert nur beim ersten Start. Je nach Log-Bestand kann es ein paar Minuten dauern,
+  danach öffnet sich das Dashboard von selbst.</div>
+ </div>
+</div>
 <header>
- <h1>🐤 EVE <b>CANARY</b></h1>
+ <h1>🐤 EVE <b>CANARY</b> <span class="byline">by Askend</span></h1>
  <select class="pill" id="charFilter" title="Charakter-Filter"><option value="">Alle Charaktere</option></select>
  <span class="pill" id="collapseAll">Alle einklappen</span>
  <div class="pills" id="regions"></div>
@@ -2285,67 +2362,83 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 <div id="empty" hidden></div>
 
 <dialog id="opts">
- <h2>Optionen</h2>
- <div class="sect">Design</div>
- <label><input type="radio" name="skin" value=""> Klassisch (das gewohnte Canary-Design)</label>
- <label><input type="radio" name="skin" value="photon"> Photon (angelehnt ans EVE-Interface: dunkel, kantig, Gold-Akzente)</label>
- <div class="sect">System</div>
- <label><input type="checkbox" id="autostart"> Canary beim Windows-Start automatisch mitstarten</label>
- <div class="hint">Läuft dann still im Hintergrund, ohne Konsolenfenster. Das Dashboard ist
- jederzeit unter http://localhost:8765 erreichbar, die Desktop-Verknüpfung funktioniert weiterhin.</div>
- <div class="sect">Datenbasis</div>
- <label><input type="radio" name="mode" value="all"> Alle vorhandenen Logs auswerten</label>
- <label><input type="radio" name="mode" value="fresh"> Nur ab Installation zählen</label>
- <div class="sect">Zähler</div>
- <button class="btn warn" id="reset">Auswertung ab jetzt neu lesen</button>
- <button class="btn" id="unreset">Baseline aufheben</button>
- <div class="hint" id="baseinfo"></div>
- <div class="sect">Ziel</div>
- <div style="display:flex;gap:6px">
-  <input type="number" id="goalIsk" placeholder="ISK-Ziel, z.B. 1000000000">
-  <input type="date" id="goalDate">
+ <h2>⚙ Optionen <span class="byline">EVE Canary by Askend</span></h2>
+
+ <div class="optgroup">
+  <div class="sect">🎨 Darstellung</div>
+  <label><input type="radio" name="skin" value=""> Klassisch (das gewohnte Canary-Design)</label>
+  <label><input type="radio" name="skin" value="photon"> Photon (angelehnt ans EVE-Interface: dunkel, kantig, Gold-Akzente)</label>
+  <div class="btnrow"><button class="btn" id="ovBtn">◱ Mini-Overlay öffnen/schließen</button></div>
+  <div class="hint">Das Overlay ist ein schwebendes Always-on-top-Fenster mit Status und Alarmen,
+  bleibt über dem EVE-Client (Fenstermodus/randlos). Benötigt Chrome oder Edge, Start nur per Klick.</div>
  </div>
- <button class="btn" id="saveGoal">Ziel speichern</button>
- <button class="btn" id="clearGoal">Ziel löschen</button>
- <div class="sect">Watchlist (Local-Chat, ein Name pro Zeile)</div>
- <textarea id="watchlist" rows="3" placeholder="Bekannte Ganker..."></textarea>
- <button class="btn" id="saveWatch">Watchlist speichern</button>
- <div class="sect">EVE-Login (ESI): automatischer Abgleich</div>
- <div class="hint">Liest per offiziellem EVE-Login automatisch: Heavy Water im Schiff, Kern-Typ (T1/T2),
- aktuelles Schiff und Wallet-Stand. Einmalige Einrichtung: auf <a href="https://developers.eveonline.com" target="_blank" rel="noopener">developers.eveonline.com</a>
- eine Anwendung anlegen („Authentication &amp; API Access", Scopes: <b>esi-assets.read_assets.v1,
- esi-location.read_ship_type.v1, esi-wallet.read_character_wallet.v1</b>,
- Callback-URL: <b id="cbUrl"></b>) und die Client-ID hier eintragen.</div>
- <input type="text" id="esiClient" placeholder="Client-ID deiner ESI-Anwendung">
- <button class="btn" id="saveEsi">Client-ID speichern</button>
- <button class="btn" id="esiLogin">+ Charakter verbinden</button>
- <div class="hint" id="esiChars"></div>
- <div class="sect">Mining-Stillstand-Warnung</div>
- <div style="display:flex;gap:6px;align-items:center">
-  <input type="number" id="idleWarn" min="0" step="30" style="width:110px"> <span class="hint" style="margin:0">Sekunden ohne Erz bis zur Warnung (0 = aus)</span>
+
+ <div class="optgroup">
+  <div class="sect">🔔 Alarme &amp; Wachen</div>
+  <label><input type="checkbox" id="sndPvp" checked> Sound bei Spieler-Angriff</label>
+  <label><input type="checkbox" id="sndDep" checked> Sound bei leerem Asteroiden</label>
+  <label><input type="checkbox" id="sndWatch" checked> Sound bei Watchlist-Treffer</label>
+  <div style="display:flex;gap:6px;align-items:center;margin-top:8px">
+   <input type="number" id="idleWarn" min="0" step="30" style="width:110px">
+   <span class="hint" style="margin:0">Sekunden ohne Erz bis zur Stillstand-Warnung (0 = aus)</span>
+   <button class="btn" id="saveIdle">Speichern</button>
+  </div>
+  <div class="sect" style="margin-top:12px">Watchlist (Local-Chat, ein Name pro Zeile)</div>
+  <textarea id="watchlist" rows="3" placeholder="Bekannte Ganker..."></textarea>
+  <div class="btnrow">
+   <button class="btn" id="saveWatch">Watchlist speichern</button>
+   <button class="btn" id="notifPerm">Desktop-Benachrichtigungen erlauben</button>
+  </div>
  </div>
- <button class="btn" id="saveIdle">Speichern</button>
- <div class="sect">Mini-Overlay</div>
- <button class="btn" id="ovBtn">Mini-Overlay öffnen/schließen</button>
- <div class="hint">Schwebendes Always-on-top-Fenster mit Status aller Charaktere und Alarmen.
- Es bleibt über dem EVE-Client (Fenstermodus/randlos). Benötigt Chrome oder Edge.
- Browser-seitig kann es nur per Klick geöffnet werden, nicht automatisch beim Start.</div>
- <div class="sect">Alarme</div>
- <label><input type="checkbox" id="sndPvp" checked> Sound bei Spieler-Angriff</label>
- <label><input type="checkbox" id="sndDep" checked> Sound bei leerem Asteroiden</label>
- <label><input type="checkbox" id="sndWatch" checked> Sound bei Watchlist-Treffer</label>
- <button class="btn" id="notifPerm">Desktop-Benachrichtigungen erlauben</button>
- <div class="sect">Version &amp; Update</div>
- <div class="hint" id="verinfo"></div>
- <button class="btn" id="checkUpd">Nach Update suchen</button>
- <button class="btn" id="doUpd" hidden>Update installieren</button>
- <div class="hint" id="updstatus"></div>
- <div class="sect">Daten</div>
- <button class="btn" id="backup">Backup erstellen</button>
- <a class="btn" href="/export.csv" style="text-decoration:none">Export CSV</a>
- <a class="btn" href="/export.json" style="text-decoration:none">Export JSON</a>
- <div class="note" id="loginfo"></div>
- <div style="text-align:right;margin-top:12px"><button class="btn" id="close">Schließen</button></div>
+
+ <div class="optgroup">
+  <div class="sect">🎯 Ziel &amp; Zähler</div>
+  <div style="display:flex;gap:6px">
+   <input type="number" id="goalIsk" placeholder="ISK-Ziel, z.B. 1000000000">
+   <input type="date" id="goalDate">
+  </div>
+  <div class="btnrow">
+   <button class="btn" id="saveGoal">Ziel speichern</button>
+   <button class="btn" id="clearGoal">Ziel löschen</button>
+   <button class="btn warn" id="reset">Auswertung ab jetzt neu lesen</button>
+   <button class="btn" id="unreset">Baseline aufheben</button>
+  </div>
+  <div class="hint" id="baseinfo"></div>
+ </div>
+
+ <div class="optgroup">
+  <div class="sect">🔑 EVE-Login (ESI): automatischer Abgleich</div>
+  <div class="hint">Liest per offiziellem EVE-Login automatisch: Heavy Water im Schiff, Kern-Typ (T1/T2),
+  aktuelles Schiff und Wallet-Stand. Einmalige Einrichtung: auf <a href="https://developers.eveonline.com" target="_blank" rel="noopener">developers.eveonline.com</a>
+  eine Anwendung anlegen („Authentication &amp; API Access", Scopes: <b>esi-assets.read_assets.v1,
+  esi-location.read_ship_type.v1, esi-wallet.read_character_wallet.v1</b>,
+  Callback-URL: <b id="cbUrl"></b>) und die Client-ID hier eintragen.</div>
+  <input type="text" id="esiClient" placeholder="Client-ID deiner ESI-Anwendung">
+  <div class="btnrow">
+   <button class="btn" id="saveEsi">Client-ID speichern</button>
+   <button class="btn" id="esiLogin">+ Charakter verbinden</button>
+  </div>
+  <div class="hint" id="esiChars"></div>
+ </div>
+
+ <div class="optgroup">
+  <div class="sect">🖥 System &amp; Daten</div>
+  <label><input type="checkbox" id="autostart"> Canary beim Windows-Start automatisch mitstarten (still im Hintergrund, ohne Konsolenfenster)</label>
+  <label style="margin-top:8px"><input type="radio" name="mode" value="all"> Alle vorhandenen Logs auswerten</label>
+  <label><input type="radio" name="mode" value="fresh"> Nur ab Installation zählen</label>
+  <div class="btnrow">
+   <button class="btn" id="checkUpd">Nach Update suchen</button>
+   <button class="btn" id="doUpd" hidden>Update installieren</button>
+   <button class="btn" id="backup">Backup erstellen</button>
+   <a class="btn" href="/export.csv" style="text-decoration:none">Export CSV</a>
+   <a class="btn" href="/export.json" style="text-decoration:none">Export JSON</a>
+  </div>
+  <div class="hint" id="verinfo"></div>
+  <div class="hint" id="updstatus"></div>
+  <div class="note" id="loginfo"></div>
+ </div>
+
+ <div style="text-align:right"><button class="btn" id="close">Schließen</button></div>
 </dialog>
 
 <script>
@@ -2438,7 +2531,7 @@ function syncOpts(){
  $('#loginfo').textContent='Log-Ordner: '+(state.log_dir||'nicht gefunden!')+' · Dateien: '+state.progress.done+'/'+state.progress.total;
  $('#watchlist').value=(state.watchlist||[]).join('\\n');
  $('#idleWarn').value=state.idle_warn??240;
- $('#verinfo').textContent='Installiert: EVE Canary v'+(state.version||'?');
+ $('#verinfo').textContent='Installiert: EVE Canary v'+(state.version||'?')+' · by Askend';
  if(state.goal){$('#goalIsk').value=state.goal.isk;$('#goalDate').value=state.goal.deadline||'';}
  if(state.esi){
   $('#cbUrl').textContent=state.esi.cb;
@@ -2508,6 +2601,23 @@ function handleAlerts(){
  localStorage.setItem('lastAlertId',lastAlertId);
 }
 
+let bootDone=false;
+function bootScreen(){
+ if(bootDone)return;
+ const b=$('#boot'),p=(state&&state.progress)||{};
+ if(state&&state.ingesting&&p.total>0&&p.done<p.total){
+  b.hidden=false;
+  const pct=Math.round(100*p.done/p.total);
+  $('#bootfill').style.width=pct+'%';
+  $('#bootnum').textContent=fmt(p.done)+' / '+fmt(p.total)+' Logdateien · '+pct+'%';
+ }else if(!b.hidden){
+  $('#bootfill').style.width='100%';
+  $('#bootnum').textContent=fmt(p.total||0)+' Logdateien analysiert. Willkommen!';
+  setTimeout(()=>b.classList.add('fade'),450);
+  setTimeout(()=>{b.hidden=true;},1400);
+  bootDone=true;
+ }else bootDone=true;
+}
 function updateBadge(){
  const u=(state&&state.update)||{};
  const b=$('#updBadge');
@@ -2979,7 +3089,7 @@ async function doCalc(){
 async function tick(){
  try{
   const d=await (await fetch('/data?view='+view)).json();
-  state=d.state;regionPills();handleAlerts();updateBadge();
+  state=d.state;regionPills();handleAlerts();updateBadge();bootScreen();
   if(view==='live')renderLive(d.chars,d.summary);
   else if(view==='missionen')renderMissions(d);
   else{
@@ -3022,7 +3132,10 @@ if __name__ == "__main__":
     except OSError:
         print(f"EVE Canary läuft offenbar schon (Port {port} ist belegt).")
         print("Einfach das vorhandene Fenster nutzen: http://localhost:" + str(port))
-        input("Enter zum Schließen ...")
+        try:
+            input("Enter zum Schließen ...")
+        except EOFError:
+            pass  # ohne Konsole (Autostart) einfach still beenden
         sys.exit(1)
     print(f"EVE Canary läuft:  http://localhost:{port}")
     srv.serve_forever()
