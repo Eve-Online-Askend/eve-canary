@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.6.4"
+VERSION = "1.6.5"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -470,6 +470,8 @@ class CharSession:
         self.drone_last = None           # ts des letzten erkannten Drohnen-Bursts
         self.drone_gaps = deque(maxlen=15)  # Abstaende zwischen Drohnen-Bursts
         self.drone_alerted = False
+        self.ore_hist = deque(maxlen=400)  # alle Erz-ts (fuer Laser/Drohnen-Strom-Analyse)
+        self.laser_alerted = False
         self.dmg_out = self.dmg_in = self.bounty = 0
         self.kills = 0  # NPC-Abschuesse (eine Bounty-Zeile = ein Kill)
         self.targets = {}
@@ -495,6 +497,7 @@ class CharSession:
             # hoechstens 3 Strip Miner, also sind 4+ gleichzeitige Lieferungen
             # zwangslaeufig Mining-Drohnen (kein Fehlalarm bei reinen Laser-Setups).
             self.ore_ts.append(ev["ts"])
+            self.ore_hist.append(ev["ts"])
             recent = [t for t in self.ore_ts if ev["ts"] - t <= 6]
             if len(recent) >= 4:
                 # Neuer Zyklus nur, wenn >15s seit letztem Burst (sonst zaehlen die
@@ -676,6 +679,35 @@ class CharSession:
         med = sorted(self.drone_gaps)[len(self.drone_gaps) // 2]
         return max(90, med * 2.5) < now - self.drone_last < 1800
 
+    def laser_stalled(self, now=None):
+        """True, wenn der Strip-Miner-/Laser-Strom abreisst, waehrend Drohnen
+        weiterliefern (Laser manuell aus oder haengt). Dichte-Analyse: isolierte
+        Lieferungen = Laser, dichte 4er-Cluster = Drohnen. Braucht ein gelerntes
+        Laser-Muster; Erschoepfungs-Faelle deckt bereits lasers_off ab."""
+        if self.lasers_off:
+            return False   # Erschoepfung ist bereits erkannt -> keine Doppelmeldung
+        now = now or time.time()
+        ts = list(self.ore_hist)
+        if len(ts) < 12:
+            return False
+        laser, drone = [], []
+        for i, t in enumerate(ts):
+            near = sum(1 for u in ts if abs(u - t) <= 6)
+            (drone if near >= 4 else laser).append(t)
+        if len(laser) < 5 or not drone:
+            return False   # kein klares Laser-Muster oder gar keine Drohnen als Referenz
+        # Drohnen muessen noch aktiv sein (sonst ist es Gesamt-Stillstand -> mine_idle)
+        if now - drone[-1] > 180:
+            return False
+        gaps = sorted(b - a for a, b in zip(laser, laser[1:]) if 0 < b - a < 400)
+        if len(gaps) < 4:
+            return False
+        # 25%-Perzentil als Takt: Laser-Lieferungen, die zufaellig mit einem
+        # Drohnen-Burst zusammenfallen, werden als Drohne fehlklassifiziert und
+        # blaehen den Median auf — das Perzentil bleibt beim echten Takt.
+        p25 = gaps[len(gaps) // 4]
+        return max(75, p25 * 3) < now - laser[-1] < 1800
+
     def dps(self, win):
         cut = time.time() - 60
         while win and win[0][0] < cut:
@@ -760,6 +792,15 @@ class Ingest(threading.Thread):
                         s.drone_alerted = True
                         alerts.push("drones", s.name,
                                     f"{s.name}: Mining-Drohnen liefern kein Erz mehr. Drohnen prüfen!")
+                else:
+                    s.drone_alerted = False
+                if s.laser_stalled(now):
+                    if not s.laser_alerted:
+                        s.laser_alerted = True
+                        alerts.push("drones", s.name,
+                                    f"{s.name}: Strip Miner liefert kein Erz mehr (Drohnen laufen weiter). Laser prüfen!")
+                else:
+                    s.laser_alerted = False
                 if thr <= 0:
                     continue
                 if s.last_ore_ts is None or s.idle_alerted:
@@ -1709,6 +1750,7 @@ def snapshot_live():
                          if rs and 0 < rs[1] < 0.55 * rs[0] else None)(s.rate_status()),
             "cargo_full": s.cargo_full and (time.time() - s.cargo_ts) < 300,
             "drones_idle": s.drones_idle(),
+            "laser_stalled": s.laser_stalled(),
             "hold_isk": round(hold_isk), "hold_m3": round(hold_m3),
             "hold_prices": hold_prices,
             "mine_idle": round(time.time() - s.last_ore_ts) if s.last_ore_ts else None,
@@ -2895,7 +2937,7 @@ function renderLive(chars,summary){
     ${c.portrait?`<img class="pf" src="${c.portrait}" alt="">`
       :(!c.esi_linked?`<span class="pf pf-none" data-esihint="1" title="Noch nicht mit EVE-Login verbunden. Klick für Portrait, Schiff, Wallet und automatisches Heavy Water.">👤</span>`:'')}
     <span class="char">${esc(c.name)} <span class="sys">· ${esc(c.system)}${c.ship?' · '+esc(c.ship):''}</span></span>
-    <span class="mini">${c.cargo_full?'<span class="warnbadge drone">⚠ Frachtraum voll!</span> · ':''}${(c.tool_warns||[]).map(w=>'<span class="warnbadge'+(w.drone?' drone':'')+'">⚠ '+w.tool+(w.count>1?' ×'+w.count:'')+'</span> · ').join('')}${(c.lasers_off||[]).map(w=>'<span class="warnbadge">⛔ '+w.tool+' aus</span> · ').join('')}${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'<span class="warnbadge drone">⛽ HW ~'+c.heavy_water.min_left+' min</span> · ':''}${c.drones_idle?'<span class="warnbadge drone">🤖 Drohnen stehen</span> · ':''}${c.rate_low?'<span class="warnbadge">⚠ Rate '+c.rate_low+'%</span> · ':''}${mineIdle(c,state)?'<span class="warnbadge">⚠ Kein Erz seit '+Math.round(c.mine_idle/60)+' min</span> · ':''}${fmtM(c.total_isk)} ISK · ${fmt(c.m3h)} m³/h${c.dps_in>0?' · <span class=\"in\">⚠ '+c.dps_in+' DPS rein</span>':''}</span>
+    <span class="mini">${c.cargo_full?'<span class="warnbadge drone">⚠ Frachtraum voll!</span> · ':''}${(c.tool_warns||[]).map(w=>'<span class="warnbadge'+(w.drone?' drone':'')+'">⚠ '+w.tool+(w.count>1?' ×'+w.count:'')+'</span> · ').join('')}${(c.lasers_off||[]).map(w=>'<span class="warnbadge">⛔ '+w.tool+' aus</span> · ').join('')}${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'<span class="warnbadge drone">⛽ HW ~'+c.heavy_water.min_left+' min</span> · ':''}${c.drones_idle?'<span class="warnbadge drone">🤖 Drohnen stehen</span> · ':''}${c.laser_stalled?'<span class="warnbadge drone">⛏ Laser steht</span> · ':''}${c.rate_low?'<span class="warnbadge">⚠ Rate '+c.rate_low+'%</span> · ':''}${mineIdle(c,state)?'<span class="warnbadge">⚠ Kein Erz seit '+Math.round(c.mine_idle/60)+' min</span> · ':''}${fmtM(c.total_isk)} ISK · ${fmt(c.m3h)} m³/h${c.dps_in>0?' · <span class=\"in\">⚠ '+c.dps_in+' DPS rein</span>':''}</span>
    </div>
    <div class="cbody">
    ${c.cargo_full?`<div class="cardwarn drone">⚠ Frachtraum voll! Erz verladen oder komprimieren.</div>`:''}
@@ -2904,6 +2946,7 @@ function renderLive(chars,summary){
      :`<div class="cardwarn">⚠ ${esc(w.tool)}${w.count>1?' ×'+w.count:''} abgeschaltet, Ziel prüfen</div>`).join('')}
    ${(c.lasers_off||[]).map(w=>`<div class="cardwarn">⛔ ${esc(w.tool)} aus seit ${new Date(w.since*1000).toLocaleTimeString().slice(0,5)}. Neues Ziel erfassen! <span class="laserok" data-char="${esc(c.name)}" data-tool="${esc(w.tool)}">✓ erledigt</span></div>`).join('')}
    ${c.drones_idle?`<div class="cardwarn drone">🤖 Mining-Drohnen liefern kein Erz mehr, während der Laser weiterläuft. Drohnen prüfen und neu ansetzen!</div>`:''}
+   ${c.laser_stalled?`<div class="cardwarn drone">⛏ Strip Miner liefert kein Erz mehr, während die Drohnen weiterlaufen. Laser prüfen und neu ansetzen!</div>`:''}
    ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur noch ${c.rate_low}%. Vermutlich ist ein Modul oder eine Drohne aus.</div>`:''}
    ${mineIdle(c,state)?`<div class="cardwarn">⚠ Seit ${Math.round(c.mine_idle/60)} min kein Erz. Laser und Drohnen prüfen!</div>`:''}
    <div class="sub">${c.trips>0?'Trip '+(c.trips+1)+' · seit Abdocken':'Session'} ${c.session_min} min · ${c.depleted} Asteroiden leergebaggert · Preise: ${state.regions[state.region]}</div>
@@ -3116,6 +3159,7 @@ function ovStatus(c,st){
  const lo=c.lasers_off||[];
  if(lo.length)return['warn',lo[0].tool.toUpperCase()+' AUS'];
  if(c.drones_idle)return['bad','DROHNEN STEHEN'];
+ if(c.laser_stalled)return['bad','LASER STEHT'];
  if(c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30)return['warn','HEAVY WATER ~'+c.heavy_water.min_left+' MIN'];
  if(c.rate_low)return['warn','ABBAURATE '+c.rate_low+'%'];
  if(mineIdle(c,st))return['warn','KEIN ERZ SEIT '+Math.round(c.mine_idle/60)+' MIN'];
