@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.6.5"
+VERSION = "1.6.6"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -493,12 +493,12 @@ class CharSession:
                     self.gaps.append(gap)
             self.last_ore_ts = ev["ts"]
             self.idle_alerted = False
-            # Drohnen-Burst: >=4 Erz-Lieferungen innerhalb von 6s. Ein Schiff hat
-            # hoechstens 3 Strip Miner, also sind 4+ gleichzeitige Lieferungen
-            # zwangslaeufig Mining-Drohnen (kein Fehlalarm bei reinen Laser-Setups).
+            # Drohnen-Burst: >=4 Erz-Lieferungen innerhalb von 8s. Ein Schiff hat
+            # hoechstens 3 Strip Miner, also sind 4+ dicht aufeinanderfolgende
+            # Lieferungen zwangslaeufig Mining-Drohnen (kein Fehlalarm bei Lasern).
             self.ore_ts.append(ev["ts"])
             self.ore_hist.append(ev["ts"])
-            recent = [t for t in self.ore_ts if ev["ts"] - t <= 6]
+            recent = [t for t in self.ore_ts if ev["ts"] - t <= 8]
             if len(recent) >= 4:
                 # Neuer Zyklus nur, wenn >15s seit letztem Burst (sonst zaehlen die
                 # 5 Drohnen EINES Zyklus als 5 Bursts -> falsche Mini-Gaps).
@@ -677,7 +677,9 @@ class CharSession:
         if self.last_ore_ts is None or now - self.last_ore_ts > 180:
             return False   # gar kein Erz mehr -> Stillstand-Warnung greift, nicht drohnenspezifisch
         med = sorted(self.drone_gaps)[len(self.drone_gaps) // 2]
-        return max(90, med * 2.5) < now - self.drone_last < 1800
+        # "erwarteter naechster Burst + 20s Puffer": Drohnen-Timer sind sehr
+        # regelmaessig, ein ausgefallener Zyklus reicht als Signal (statt 2,5x).
+        return max(50, med + 20) < now - self.drone_last < 1800
 
     def laser_stalled(self, now=None):
         """True, wenn der Strip-Miner-/Laser-Strom abreisst, waehrend Drohnen
