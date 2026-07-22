@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.6.0"
+VERSION = "1.6.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -2334,6 +2334,9 @@ h1 b{color:var(--cyan)}
 /* ---------- Boot-Screen beim Erst-Einlesen */
 #boot{position:fixed;inset:0;z-index:2000;background:var(--bg);display:flex;
  align-items:center;justify-content:center;opacity:1;transition:opacity .8s}
+/* hidden-Attribut MUSS gewinnen: sonst überdeckt der Boot-Screen beim
+   Schnellstart (DB schon gefüllt) dauerhaft das fertige Dashboard. */
+#boot[hidden]{display:none}
 #boot.fade{opacity:0;pointer-events:none}
 .bootbox{text-align:center;width:min(440px,84vw)}
 .bootbird{font-size:64px;animation:bootpulse 1.6s ease-in-out infinite}
