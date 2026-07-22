@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.8.4"
+VERSION = "1.8.5"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -53,6 +53,7 @@ REGIONS = {"10000002": "Jita", "10000043": "Amarr", "10000030": "Rens",
 PRICE_REFRESH = 900
 PORT_DEFAULT = 8765
 SESSION_MAX_AGE = 3 * 3600  # Log länger unverändert -> Session gilt als beendet, keine Live-Karte
+ACTIVE_WINDOW = 300  # ohne Log-Ereignis in den letzten X s gilt ein Char als inaktiv
 # Schweres Wasser pro Sekunde Kernlaufzeit (ESI-Dogma: Medium/Large Industrial Core,
 # T1 = 100/min, T2 = 200/min — gilt für Porpoise und Orca gleichermassen)
 HW_RATE = {"t1": 100 / 60.0, "t2": 200 / 60.0}
@@ -495,6 +496,7 @@ class CharSession:
         self.cargo_full = False
         self.cargo_ts = 0
         self.last_ore_ts = None   # fuer Stillstand-Erkennung
+        self.last_event_ts = None # letztes Log-Ereignis (Aktivitaets-/Online-Heuristik)
         self.idle_alerted = False
         self.low_since = None     # Raten-Waechter (Teilausfall-Erkennung)
         self.low_alerted = False
@@ -520,6 +522,8 @@ class CharSession:
         now = time.time()
         if self.first_ts is None or ev["ts"] < self.first_ts:
             self.first_ts = ev["ts"]
+        if self.last_event_ts is None or ev["ts"] > self.last_event_ts:
+            self.last_event_ts = ev["ts"]
         k = ev["kind"]
         if k == "ore":
             self.cargo_full = False
@@ -1786,8 +1790,14 @@ def snapshot_live():
                   "min_left": round(rem / rate / 60),
                   "eta": round(time.time() + rem / rate) if on else None}
         esi_char = (CONFIG.get("esi") or {}).get("chars", {}).get(s.name)
+        # Aktiv/Online: ESI-Online-Status falls vorhanden (Scope granted), sonst
+        # Log-Aktivität (letztes Ereignis < ACTIVE_WINDOW). Fallback deckt alle Chars ab.
+        esi_online = (esi_char or {}).get("online")
+        log_active = s.last_event_ts is not None and (time.time() - s.last_event_ts) < ACTIVE_WINDOW
+        active = esi_online if isinstance(esi_online, bool) else log_active
         chars.append({
             "heavy_water": hw,
+            "active": active,
             "role": (CONFIG.get("roles") or {}).get(s.name, ""),
             "portrait": portrait_url(s.name),
             "esi_linked": esi_char is not None,
@@ -2612,6 +2622,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span class="pill rolef" data-role="mining" title="Nur Mining-Charaktere">⛏</span>
  <span class="pill rolef" data-role="mission" title="Nur Mission-Runner">🎯</span>
  <span class="pill rolef" data-role="pvp" title="Nur PvP-Charaktere">⚔</span>
+ <span class="pill" id="activeOnly" title="Offline/inaktive Charaktere ausblenden">🟢 Nur aktive</span>
  <select class="pill" id="charFilter" title="Charakter-Filter"><option value="">Alle Charaktere</option></select>
  <span class="pill" id="collapseAll">Alle einklappen</span>
  <div class="pills" id="regions"></div>
@@ -2939,6 +2950,12 @@ $('#collapseAll').onclick=()=>{
   p.onclick=()=>{localStorage.setItem('roleFilter',p.dataset.role);
    document.querySelectorAll('.rolef').forEach(x=>x.classList.toggle('on',x===p));
    if(lastChars)renderLive(lastChars,lastSummary);};});})();
+// "Nur aktive" umschalten
+$('#activeOnly').classList.toggle('on',localStorage.getItem('activeOnly')==='1');
+$('#activeOnly').onclick=()=>{const on=localStorage.getItem('activeOnly')!=='1';
+ localStorage.setItem('activeOnly',on?'1':'0');
+ $('#activeOnly').classList.toggle('on',on);
+ if(lastChars)renderLive(lastChars,lastSummary);};
 function syncCharFilter(chars){
  const sel=$('#charFilter');
  const names=chars.map(c=>c.name);
@@ -2979,9 +2996,11 @@ function renderLive(chars,summary){
  // Rollen-Filter: nur Chars der gewählten Rolle zeigen (Alle = kein Filter)
  const rf=localStorage.getItem('roleFilter')||'';
  if(rf)chars=chars.filter(c=>c.role===rf);
+ // Nur-aktive-Filter: offline/inaktive Chars ausblenden
+ if(localStorage.getItem('activeOnly')==='1')chars=chars.filter(c=>c.active);
  $('#hero').innerHTML=heroBar(summary);
  if(!chars.length){$('#empty').hidden=false;
-  $('#empty').textContent=rf?'Kein Charakter mit dieser Rolle. Tippe auf einer Karte auf das Rollen-Symbol, um sie zuzuweisen.':'Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern" aktivieren.)';
+  $('#empty').textContent=localStorage.getItem('activeOnly')==='1'?'Kein aktiver Charakter gerade. „Nur aktive" ausschalten, um alle zu sehen.':(rf?'Kein Charakter mit dieser Rolle. Tippe auf einer Karte auf das Rollen-Symbol, um sie zuzuweisen.':'Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern" aktivieren.)');
   $('#grid').innerHTML='';return;}
  $('#empty').hidden=true;
  $('#grid').innerHTML=chars.map(c=>{
