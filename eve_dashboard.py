@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.7.1"
+VERSION = "1.8.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -173,7 +173,7 @@ def load_config():
     cfg = {"port": PORT_DEFAULT, "region": "10000002", "log_dir": None,
            "mode": "all", "install_ts": time.time(),
            "goal": None, "watchlist": [], "idle_warn": 240, "heavy_water": {},
-           "clip_watch": False,
+           "clip_watch": False, "roles": {},
            "update_url": "https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main"}
     if CONFIG_PATH.exists():
         try:
@@ -1740,6 +1740,7 @@ def snapshot_live():
         esi_char = (CONFIG.get("esi") or {}).get("chars", {}).get(s.name)
         chars.append({
             "heavy_water": hw,
+            "role": (CONFIG.get("roles") or {}).get(s.name, ""),
             "portrait": portrait_url(s.name),
             "esi_linked": esi_char is not None,
             "ship": (esi_char or {}).get("ship"),
@@ -2245,6 +2246,16 @@ class Handler(BaseHTTPRequestHandler):
             clear_baseline()
         elif action == "idle_warn":
             CONFIG["idle_warn"] = max(0, int(body.get("seconds") or 0))
+        elif action == "set_role":
+            char = str(body.get("char") or "")
+            role = body.get("role") if body.get("role") in ("mining", "mission", "pvp") else ""
+            if char:
+                with CONFIG_LOCK:
+                    roles = CONFIG.setdefault("roles", {})
+                    if role:
+                        roles[char] = role
+                    else:
+                        roles.pop(char, None)
         elif action == "autostart":
             set_autostart(bool(body.get("on")))
         elif action == "clip_watch":
@@ -2445,6 +2456,11 @@ html[data-skin=photon] .optgroup{border-radius:1px}
 .pill{background:var(--card);border:1px solid var(--line);color:var(--dim);font-size:11px;
 padding:4px 11px;border-radius:20px;cursor:pointer;user-select:none}
 .pill.on{background:var(--cyan);color:var(--bg);border-color:var(--cyan)}
+.pill.rolef{padding:4px 9px}
+.rolesel{appearance:none;-webkit-appearance:none;background:var(--inset);border:1px solid var(--line);
+ color:var(--dim);font-size:10px;padding:2px 6px;border-radius:20px;cursor:pointer;flex:none}
+.rolesel:hover{color:var(--txt);border-color:var(--cyan)}
+html[data-skin=photon] .rolesel{border-radius:1px}
 nav{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:14px}
 nav span{color:var(--dim);font-size:12px;padding:7px 16px;cursor:pointer;user-select:none}
 nav span.on{color:var(--cyan);border-bottom:2px solid var(--cyan)}
@@ -2544,6 +2560,10 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 </div>
 <header>
  <h1>🐤 EVE <b>CANARY</b> <span class="byline">by Askend</span></h1>
+ <span class="pill rolef on" data-role="" title="Alle Charaktere">Alle</span>
+ <span class="pill rolef" data-role="mining" title="Nur Mining-Charaktere">⛏</span>
+ <span class="pill rolef" data-role="mission" title="Nur Mission-Runner">🎯</span>
+ <span class="pill rolef" data-role="pvp" title="Nur PvP-Charaktere">⚔</span>
  <select class="pill" id="charFilter" title="Charakter-Filter"><option value="">Alle Charaktere</option></select>
  <span class="pill" id="collapseAll">Alle einklappen</span>
  <div class="pills" id="regions"></div>
@@ -2853,17 +2873,24 @@ function toggleChar(name){
  localStorage.setItem('collapsed',JSON.stringify([...collapsed]));
  if(lastChars)renderLive(lastChars);
 }
-let lastChars=null;
+let lastChars=null,lastSummary=null;
 $('#charFilter').value=localStorage.getItem('charFilter')||'';
 $('#charFilter').onchange=()=>{
  localStorage.setItem('charFilter',$('#charFilter').value);
- if(lastChars)renderLive(lastChars);};
+ if(lastChars)renderLive(lastChars,lastSummary);};
 $('#collapseAll').onclick=()=>{
  const names=(lastChars||[]).map(c=>c.name);
  if(names.length&&names.every(n=>collapsed.has(n)))names.forEach(n=>collapsed.delete(n));
  else names.forEach(n=>collapsed.add(n));
  localStorage.setItem('collapsed',JSON.stringify([...collapsed]));
- if(lastChars)renderLive(lastChars);};
+ if(lastChars)renderLive(lastChars,lastSummary);};
+// Rollen-Filter-Pills (Alle / Mining / Missionen / PvP)
+(function(){const rf=localStorage.getItem('roleFilter')||'';
+ document.querySelectorAll('.rolef').forEach(p=>{
+  p.classList.toggle('on',p.dataset.role===rf);
+  p.onclick=()=>{localStorage.setItem('roleFilter',p.dataset.role);
+   document.querySelectorAll('.rolef').forEach(x=>x.classList.toggle('on',x===p));
+   if(lastChars)renderLive(lastChars,lastSummary);};});})();
 function syncCharFilter(chars){
  const sel=$('#charFilter');
  const names=chars.map(c=>c.name);
@@ -2897,12 +2924,16 @@ function heroBar(s){
 }
 function renderLive(chars,summary){
  lastChars=chars;
+ if(summary!==undefined)lastSummary=summary;
  syncCharFilter(chars);
  const f=localStorage.getItem('charFilter')||'';
  if(f&&chars.some(c=>c.name===f))chars=chars.filter(c=>c.name===f);
+ // Rollen-Filter: nur Chars der gewählten Rolle zeigen (Alle = kein Filter)
+ const rf=localStorage.getItem('roleFilter')||'';
+ if(rf)chars=chars.filter(c=>c.role===rf);
  $('#hero').innerHTML=heroBar(summary);
  if(!chars.length){$('#empty').hidden=false;
-  $('#empty').textContent='Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern" aktivieren.)';
+  $('#empty').textContent=rf?'Kein Charakter mit dieser Rolle. Tippe auf einer Karte auf das Rollen-Symbol, um sie zuzuweisen.':'Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern" aktivieren.)';
   $('#grid').innerHTML='';return;}
  $('#empty').hidden=true;
  $('#grid').innerHTML=chars.map(c=>{
@@ -2915,6 +2946,12 @@ function renderLive(chars,summary){
     ${c.portrait?`<img class="pf" src="${c.portrait}" alt="">`
       :(!c.esi_linked?`<span class="pf pf-none" data-esihint="1" title="Noch nicht mit EVE-Login verbunden. Klick für Portrait, Schiff, Wallet und automatisches Heavy Water.">👤</span>`:'')}
     <span class="char">${esc(c.name)} <span class="sys">· ${esc(c.system)}${c.ship?' · '+esc(c.ship):''}</span></span>
+    <select class="rolesel" data-c="${esc(c.name)}" title="Rolle zuweisen (für die Filter oben)">
+     <option value=""${c.role?'':' selected'}>Rolle …</option>
+     <option value="mining"${c.role==='mining'?' selected':''}>⛏ Mining</option>
+     <option value="mission"${c.role==='mission'?' selected':''}>🎯 Missionen</option>
+     <option value="pvp"${c.role==='pvp'?' selected':''}>⚔ PvP</option>
+    </select>
     <span class="mini">${c.cargo_full?'<span class="warnbadge drone">⚠ Frachtraum voll!</span> · ':''}${(c.tool_warns||[]).map(w=>'<span class="warnbadge'+(w.drone?' drone':'')+'">⚠ '+w.tool+(w.count>1?' ×'+w.count:'')+'</span> · ').join('')}${(c.lasers_off||[]).map(w=>'<span class="warnbadge">⛔ '+w.tool+' aus</span> · ').join('')}${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'<span class="warnbadge drone">⛽ HW ~'+c.heavy_water.min_left+' min</span> · ':''}${c.drones_idle?'<span class="warnbadge">🤖 Drohnen ohne Erz</span> · ':''}${c.laser_stalled?'<span class="warnbadge">⛏ Laser ohne Erz</span> · ':''}${c.rate_low?'<span class="warnbadge">⚠ Rate '+c.rate_low+'%</span> · ':''}${mineIdle(c,state)?'<span class="warnbadge">⚠ Kein Erz seit '+Math.round(c.mine_idle/60)+' min</span> · ':''}${fmtM(c.total_isk)} ISK · ${fmt(c.m3h)} m³/h${c.dps_in>0?' · <span class=\"in\">⚠ '+c.dps_in+' DPS rein</span>':''}</span>
    </div>
    <div class="cbody">
@@ -2958,6 +2995,11 @@ function renderLive(chars,summary){
    </div>
   </div>`}).join('');
  document.querySelectorAll('.chead').forEach(h=>h.onclick=()=>toggleChar(h.dataset.c));
+ document.querySelectorAll('.rolesel').forEach(s=>{
+  s.onclick=e=>e.stopPropagation();  // Klick soll die Karte nicht ein-/ausklappen
+  s.onchange=async()=>{await post({action:'set_role',char:s.dataset.c,role:s.value});
+   if(lastChars){lastChars.forEach(c=>{if(c.name===s.dataset.c)c.role=s.value;});renderLive(lastChars,lastSummary);}};
+ });
  document.querySelectorAll('[data-esihint]').forEach(el=>el.onclick=e=>{
   e.stopPropagation();syncOpts();$('#opts').showModal();
   const s=$('#opts .sect.esi');if(s)s.scrollIntoView({block:'center'});
