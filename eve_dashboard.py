@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.6.6"
+VERSION = "1.6.7"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -785,24 +785,10 @@ class Ingest(threading.Thread):
             return
         thr = int(CONFIG.get("idle_warn", 240) or 0)
         now = time.time()
+        # Drohnen- und Strip-Miner-Stillstand erscheinen NUR als Info in der
+        # Charakter-Karte (Felder drones_idle/laser_stalled), nicht im Alarm-Banner.
         with self.lock:
             for s in self.sessions.values():
-                # Drohnen-Stillstand (unabhaengig von idle_warn): Drohnen liefern
-                # nicht mehr, obwohl der Laser weiter Erz bringt.
-                if s.drones_idle(now):
-                    if not s.drone_alerted:
-                        s.drone_alerted = True
-                        alerts.push("drones", s.name,
-                                    f"{s.name}: Mining-Drohnen liefern kein Erz mehr. Drohnen prüfen!")
-                else:
-                    s.drone_alerted = False
-                if s.laser_stalled(now):
-                    if not s.laser_alerted:
-                        s.laser_alerted = True
-                        alerts.push("drones", s.name,
-                                    f"{s.name}: Strip Miner liefert kein Erz mehr (Drohnen laufen weiter). Laser prüfen!")
-                else:
-                    s.laser_alerted = False
                 if thr <= 0:
                     continue
                 if s.last_ore_ts is None or s.idle_alerted:
@@ -1007,18 +993,12 @@ class Ingest(threading.Thread):
             alerts.resolve(("cargo", "depleted", "idle"), cname)
         elif ev["kind"] == "drone_engage":
             alerts.resolve(("drones",), cname)
-        if ev["kind"] == "depleted":
-            if "Drone" in ev["key"]:
-                alerts.push("drones", cname,
-                            f"{cname}: Mining-Drohnen abgeschaltet ({ev['key']}). Drohnen prüfen!")
-            else:
-                alerts.push("depleted", cname,
-                            f"{cname}: Asteroid leer, {ev['key']} hat abgeschaltet")
-        elif ev["kind"] == "cargo":
+        # Drohnen-/Modul-Status (depleted, drone_idle) landet NICHT im oberen
+        # Alarm-Banner — nur als Info in der jeweiligen Charakter-Karte (tool_warns).
+        # Grund: 5 Drohnen erzeugten 5 fast identische Banner-Eintraege, und beim
+        # Zurückfliegen der Drohnen ist ein kurzer Lieferstopp kein echtes Problem.
+        if ev["kind"] == "cargo":
             alerts.push("cargo", cname, f"{cname}: Frachtraum voll, Mining gestoppt!")
-        elif ev["kind"] == "drone_idle":
-            alerts.push("drones", cname,
-                        f"{cname}: Mining-Drohnen voll. Erz verladen und Drohnen prüfen!")
         elif ev["kind"] == "dmg_in" and ev["key"] not in NPC_NAMES:
             alerts.push("pvp", cname, f"SPIELER-ANGRIFF: {ev['key']} schießt auf {cname}!")
             # Täterprofil sofort nachladen — Ergebnis kommt als eigener Intel-Alarm
@@ -2939,7 +2919,7 @@ function renderLive(chars,summary){
     ${c.portrait?`<img class="pf" src="${c.portrait}" alt="">`
       :(!c.esi_linked?`<span class="pf pf-none" data-esihint="1" title="Noch nicht mit EVE-Login verbunden. Klick für Portrait, Schiff, Wallet und automatisches Heavy Water.">👤</span>`:'')}
     <span class="char">${esc(c.name)} <span class="sys">· ${esc(c.system)}${c.ship?' · '+esc(c.ship):''}</span></span>
-    <span class="mini">${c.cargo_full?'<span class="warnbadge drone">⚠ Frachtraum voll!</span> · ':''}${(c.tool_warns||[]).map(w=>'<span class="warnbadge'+(w.drone?' drone':'')+'">⚠ '+w.tool+(w.count>1?' ×'+w.count:'')+'</span> · ').join('')}${(c.lasers_off||[]).map(w=>'<span class="warnbadge">⛔ '+w.tool+' aus</span> · ').join('')}${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'<span class="warnbadge drone">⛽ HW ~'+c.heavy_water.min_left+' min</span> · ':''}${c.drones_idle?'<span class="warnbadge drone">🤖 Drohnen stehen</span> · ':''}${c.laser_stalled?'<span class="warnbadge drone">⛏ Laser steht</span> · ':''}${c.rate_low?'<span class="warnbadge">⚠ Rate '+c.rate_low+'%</span> · ':''}${mineIdle(c,state)?'<span class="warnbadge">⚠ Kein Erz seit '+Math.round(c.mine_idle/60)+' min</span> · ':''}${fmtM(c.total_isk)} ISK · ${fmt(c.m3h)} m³/h${c.dps_in>0?' · <span class=\"in\">⚠ '+c.dps_in+' DPS rein</span>':''}</span>
+    <span class="mini">${c.cargo_full?'<span class="warnbadge drone">⚠ Frachtraum voll!</span> · ':''}${(c.tool_warns||[]).map(w=>'<span class="warnbadge'+(w.drone?' drone':'')+'">⚠ '+w.tool+(w.count>1?' ×'+w.count:'')+'</span> · ').join('')}${(c.lasers_off||[]).map(w=>'<span class="warnbadge">⛔ '+w.tool+' aus</span> · ').join('')}${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'<span class="warnbadge drone">⛽ HW ~'+c.heavy_water.min_left+' min</span> · ':''}${c.drones_idle?'<span class="warnbadge">🤖 Drohnen ohne Erz</span> · ':''}${c.laser_stalled?'<span class="warnbadge">⛏ Laser ohne Erz</span> · ':''}${c.rate_low?'<span class="warnbadge">⚠ Rate '+c.rate_low+'%</span> · ':''}${mineIdle(c,state)?'<span class="warnbadge">⚠ Kein Erz seit '+Math.round(c.mine_idle/60)+' min</span> · ':''}${fmtM(c.total_isk)} ISK · ${fmt(c.m3h)} m³/h${c.dps_in>0?' · <span class=\"in\">⚠ '+c.dps_in+' DPS rein</span>':''}</span>
    </div>
    <div class="cbody">
    ${c.cargo_full?`<div class="cardwarn drone">⚠ Frachtraum voll! Erz verladen oder komprimieren.</div>`:''}
@@ -2947,8 +2927,8 @@ function renderLive(chars,summary){
      ?`<div class="cardwarn drone">⚠ ${esc(w.tool)}${w.count>1?' ×'+w.count:''} abgeschaltet, Drohnen prüfen!</div>`
      :`<div class="cardwarn">⚠ ${esc(w.tool)}${w.count>1?' ×'+w.count:''} abgeschaltet, Ziel prüfen</div>`).join('')}
    ${(c.lasers_off||[]).map(w=>`<div class="cardwarn">⛔ ${esc(w.tool)} aus seit ${new Date(w.since*1000).toLocaleTimeString().slice(0,5)}. Neues Ziel erfassen! <span class="laserok" data-char="${esc(c.name)}" data-tool="${esc(w.tool)}">✓ erledigt</span></div>`).join('')}
-   ${c.drones_idle?`<div class="cardwarn drone">🤖 Mining-Drohnen liefern kein Erz mehr, während der Laser weiterläuft. Drohnen prüfen und neu ansetzen!</div>`:''}
-   ${c.laser_stalled?`<div class="cardwarn drone">⛏ Strip Miner liefert kein Erz mehr, während die Drohnen weiterlaufen. Laser prüfen und neu ansetzen!</div>`:''}
+   ${c.drones_idle?`<div class="cardwarn">🤖 Drohnen liefern gerade kein Erz (gestoppt, voll oder auf dem Rückweg).</div>`:''}
+   ${c.laser_stalled?`<div class="cardwarn">⛏ Strip Miner liefert gerade kein Erz, während die Drohnen weiterlaufen.</div>`:''}
    ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur noch ${c.rate_low}%. Vermutlich ist ein Modul oder eine Drohne aus.</div>`:''}
    ${mineIdle(c,state)?`<div class="cardwarn">⚠ Seit ${Math.round(c.mine_idle/60)} min kein Erz. Laser und Drohnen prüfen!</div>`:''}
    <div class="sub">${c.trips>0?'Trip '+(c.trips+1)+' · seit Abdocken':'Session'} ${c.session_min} min · ${c.depleted} Asteroiden leergebaggert · Preise: ${state.regions[state.region]}</div>
@@ -3160,8 +3140,8 @@ function ovStatus(c,st){
  if(tw.length)return['warn',tw[0].tool.toUpperCase()+(tw[0].count>1?' ×'+tw[0].count:'')+' AUS'];
  const lo=c.lasers_off||[];
  if(lo.length)return['warn',lo[0].tool.toUpperCase()+' AUS'];
- if(c.drones_idle)return['bad','DROHNEN STEHEN'];
- if(c.laser_stalled)return['bad','LASER STEHT'];
+ if(c.drones_idle)return['warn','DROHNEN OHNE ERZ'];
+ if(c.laser_stalled)return['warn','LASER OHNE ERZ'];
  if(c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30)return['warn','HEAVY WATER ~'+c.heavy_water.min_left+' MIN'];
  if(c.rate_low)return['warn','ABBAURATE '+c.rate_low+'%'];
  if(mineIdle(c,st))return['warn','KEIN ERZ SEIT '+Math.round(c.mine_idle/60)+' MIN'];
