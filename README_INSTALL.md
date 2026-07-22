@@ -101,27 +101,22 @@ junger Char mit frischen Kills) · 🟡 PvP-aktiv · 🟢 unauffällig.
 
 Mit dem offiziellen EVE-Login liest Canary zusätzlich (nur lesend!): aktuelles
 Schiff, Heavy Water im Laderaum inkl. Kern-Typ (für die „reicht bis…"-Anzeige
-bei Orca/Porpoise) und den Wallet-Stand. Ohne ESI funktioniert alles andere
-ganz normal; Heavy Water lässt sich dann per ⛽ manuell setzen.
+bei Orca/Porpoise), den Wallet-Stand, Portrait und Missions-Einnahmen. Ohne ESI
+funktioniert alles andere ganz normal; Heavy Water lässt sich dann per ⛽ manuell setzen.
 
-Einrichtung (einmalig, etwa 5 Minuten; jeder Nutzer braucht seine **eigene** Client-ID):
+**Kein Setup nötig.** In den Optionen unter „EVE-Account verbinden" auf
+**„🔑 Mit EVE-Account verbinden"** klicken, im EVE-Login den Charakter wählen,
+fertig. Für weitere Charaktere (auch andere Accounts) einfach wiederholen; auf
+der Login-Seite ggf. „Switch accounts" nutzen.
 
-1. Auf https://developers.eveonline.com mit dem EVE-Account einloggen
-   (Developer-Lizenz beim ersten Mal akzeptieren).
-2. „Manage Applications" → „Create New Application":
-   - Connection Type: **Authentication & API Access**
-   - Permissions (Scopes): `esi-assets.read_assets.v1`,
-     `esi-location.read_ship_type.v1`, `esi-wallet.read_character_wallet.v1`
-   - Callback URL: **http://localhost:8765/sso/callback**
-3. Die angezeigte **Client ID** kopieren → Canary → ⚙ Optionen →
-   „EVE-Login (ESI)" → einfügen → speichern.
-4. „+ Charakter verbinden" → EVE-Login → Charakter wählen → fertig.
-   Für weitere Charaktere wiederholen (auch andere Accounts: auf der
-   Login-Seite „Switch accounts" oder die URL im Inkognito-Fenster öffnen).
+Sicherheit: offizieller CCP-OAuth-Login (PKCE). Canary sieht nie dein Passwort,
+bekommt nur Lese-Rechte, die Zugangs-Tokens bleiben lokal in `config.json`.
+Zugriff jederzeit widerrufbar unter
+https://community.eveonline.com/support/third-party-applications/
 
-Sicherheit: offizieller CCP-OAuth-Login (PKCE). Canary sieht nie das Passwort,
-bekommt nur Lese-Rechte, Tokens bleiben lokal in `config.json`. Zugriff jederzeit
-widerrufbar unter https://community.eveonline.com/support/third-party-applications/
+Fortgeschritten: Wer lieber seine eigene ESI-App nutzt, trägt deren Client-ID
+in den Optionen unter „Eigene ESI-App verwenden" ein (Callback
+`http://localhost:8765/sso/callback`).
 
 ## Hinweise
 

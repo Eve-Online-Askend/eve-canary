@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.6.9"
+VERSION = "1.7.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -1121,6 +1121,17 @@ ESI_BASE = "https://esi.evetech.net/latest"
 ESI_SCOPES = ("esi-assets.read_assets.v1 esi-location.read_ship_type.v1 "
               "esi-wallet.read_character_wallet.v1")
 ESI_UA = f"EVE-Canary/{VERSION} (https://github.com/Eve-Online-Askend/eve-canary)"
+# Eingebaute Canary-ESI-App: so muss kein Nutzer eine eigene App registrieren,
+# er klickt nur "Mit EVE-Account verbinden". Die ID ist bei PKCE bauartbedingt
+# KEIN Geheimnis (steht beim Login ohnehin in der URL) — hier nur verschleiert
+# abgelegt, damit sie nicht im Klartext im Code oder in der Oberflaeche steht.
+def _canary_cid():
+    key = b"canary"
+    raw = base64.b64decode("WwIKUkoaUlRcUEZNV1hcVUpPVlBbA0McVQQNUkVMU1Y=")
+    return bytes(b ^ key[i % len(key)] for i, b in enumerate(raw)).decode()
+
+
+CANARY_CID = _canary_cid()
 HW_TYPE_ID = 16272  # Heavy Water
 # Wallet-Journal-Typen fuer die Missions-Statistik
 JOURNAL_TYPES = {"agent_mission_reward", "agent_mission_time_bonus_reward",
@@ -1144,11 +1155,16 @@ class Esi(threading.Thread):
     def cfg(self):
         return CONFIG.setdefault("esi", {"client_id": "", "chars": {}})
 
+    def client_id(self):
+        # Eigene Client-ID (Override fuer Fortgeschrittene) hat Vorrang, sonst
+        # die eingebaute Canary-App -> Nutzer muss nichts registrieren/eintragen.
+        return self.cfg().get("client_id") or CANARY_CID
+
     def redirect_uri(self):
         return f"http://localhost:{CONFIG.get('port', PORT_DEFAULT)}/sso/callback"
 
     def login_url(self):
-        if not self.cfg().get("client_id"):
+        if not self.client_id():
             return None
         verifier = base64.urlsafe_b64encode(os.urandom(32)).rstrip(b"=").decode()
         challenge = base64.urlsafe_b64encode(
@@ -1157,7 +1173,7 @@ class Esi(threading.Thread):
         self.pending[state] = verifier
         return SSO_AUTH + "?" + urllib.parse.urlencode({
             "response_type": "code", "redirect_uri": self.redirect_uri(),
-            "client_id": self.cfg()["client_id"], "scope": ESI_SCOPES,
+            "client_id": self.client_id(), "scope": ESI_SCOPES,
             "code_challenge": challenge, "code_challenge_method": "S256",
             "state": state})
 
@@ -1177,7 +1193,7 @@ class Esi(threading.Thread):
         try:
             tok = self._token_request({
                 "grant_type": "authorization_code", "code": code,
-                "client_id": self.cfg()["client_id"], "code_verifier": verifier})
+                "client_id": self.client_id(), "code_verifier": verifier})
             pay = tok["access_token"].split(".")[1]
             pay = json.loads(base64.urlsafe_b64decode(pay + "==="))
             name = pay["name"]
@@ -1196,7 +1212,7 @@ class Esi(threading.Thread):
         if time.time() >= c.get("exp", 0) or not c.get("access"):
             tok = self._token_request({
                 "grant_type": "refresh_token", "refresh_token": c["refresh"],
-                "client_id": self.cfg()["client_id"]})
+                "client_id": self.client_id()})
             c["refresh"] = tok.get("refresh_token", c["refresh"])
             c["access"] = tok["access_token"]
             c["exp"] = time.time() + tok.get("expires_in", 1199) - 60
@@ -2605,19 +2621,19 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  </div>
 
  <div class="optgroup">
-  <div class="sect esi">🔑 EVE-Login (ESI): automatischer Abgleich</div>
-  <div class="esinudge" id="esiNudge" hidden>✨ Noch kein Charakter verbunden. Mit dem EVE-Login zeigt Canary
-   automatisch Portrait, aktuelles Schiff, Wallet-Stand und den Heavy-Water-Vorrat, ganz ohne manuelles Eintragen.</div>
+  <div class="sect esi">🔑 EVE-Account verbinden</div>
+  <div class="esinudge" id="esiNudge" hidden>✨ Verbinde deinen EVE-Account, dann zeigt Canary automatisch Portrait,
+   aktuelles Schiff, Wallet-Stand, Heavy Water und Missions-Einnahmen. Kein Setup nötig, einfach einloggen.</div>
   <div id="esiChars"></div>
-  <div class="btnrow"><button class="btn" id="esiLogin">+ Charakter verbinden</button></div>
+  <div class="btnrow"><button class="btn" id="esiLogin">🔑 Mit EVE-Account verbinden</button></div>
   <details id="esiSetup">
-   <summary>Einrichtung &amp; Client-ID</summary>
-   <div class="hint" style="margin-top:8px">Einmalig auf <a href="https://developers.eveonline.com" target="_blank" rel="noopener">developers.eveonline.com</a>
-   eine Anwendung anlegen („Authentication &amp; API Access", Scopes: <b>esi-assets.read_assets.v1,
-   esi-location.read_ship_type.v1, esi-wallet.read_character_wallet.v1</b>,
-   Callback-URL: <b id="cbUrl"></b>), dann die Client-ID hier eintragen.</div>
-   <input type="text" id="esiClient" placeholder="Client-ID deiner ESI-Anwendung">
-   <div class="btnrow"><button class="btn" id="saveEsi">Client-ID speichern</button></div>
+   <summary>Eigene ESI-App verwenden (optional)</summary>
+   <div class="hint" style="margin-top:8px">Standardmäßig nutzt Canary seine eigene App, du musst nichts einrichten.
+   Nur wenn du eine eigene App auf <a href="https://developers.eveonline.com" target="_blank" rel="noopener">developers.eveonline.com</a>
+   verwenden willst (Scopes: <b>esi-assets.read_assets.v1, esi-location.read_ship_type.v1,
+   esi-wallet.read_character_wallet.v1</b>, Callback-URL: <b id="cbUrl"></b>), trage hier ihre Client-ID ein.</div>
+   <input type="text" id="esiClient" placeholder="Eigene Client-ID (optional)">
+   <div class="btnrow"><button class="btn" id="saveEsi">Speichern</button></div>
   </details>
  </div>
 
@@ -2706,11 +2722,8 @@ $('#saveIdle').onclick=async()=>{await post({action:'idle_warn',seconds:Number($
 $('#saveEsi').onclick=async()=>{const r=await post({action:'esi_client',client_id:$('#esiClient').value.trim()});if(r.state)state=r.state;syncOpts();};
 $('#esiLogin').onclick=async()=>{
  const r=await post({action:'esi_login'});
- if(r.url){window.open(r.url,'_blank');return;}
- // Keine Client-ID hinterlegt: gezielt zur Einrichtung führen statt nur meckern
- $('#esiSetup').open=true;
- $('#esiClient').focus();
- $('#esiClient').scrollIntoView({block:'center'});
+ if(r.url)window.open(r.url,'_blank');
+ else alert(r.error||'Login konnte nicht gestartet werden.');
 };
 $('#checkUpd').onclick=async()=>{
  $('#updstatus').textContent='Prüfe …';$('#doUpd').hidden=true;
