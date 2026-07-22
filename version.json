@@ -1,5 +1,5 @@
 {
- "version": "1.6.2",
+ "version": "1.6.3",
  "files": [
   "eve_dashboard.py",
   "ore_types.json",

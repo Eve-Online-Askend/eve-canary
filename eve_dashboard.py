@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.6.2"
+VERSION = "1.6.3"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -2404,6 +2404,13 @@ border:1px solid var(--line);color:var(--dim);font-size:11px;padding:4px 11px;bo
 .esinudge{border:1px solid var(--cyan);border-radius:7px;padding:8px 11px;margin:2px 0 10px 0;
  font-size:12px;color:var(--txt);background:rgba(53,200,232,.08)}
 html[data-skin=photon] .esinudge{border-radius:1px}
+#esiChars{font-size:13px;line-height:1.7;margin-bottom:8px}
+#esiSetup{margin-top:8px}
+#esiSetup>summary{cursor:pointer;font-size:12px;color:var(--dim);user-select:none;list-style:none}
+#esiSetup>summary::-webkit-details-marker{display:none}
+#esiSetup>summary::before{content:"▸ ";color:var(--cyan)}
+#esiSetup[open]>summary::before{content:"▾ "}
+#esiSetup>summary:hover{color:var(--txt)}
 .chead .arr{color:var(--dim);font-size:11px;transition:transform .15s}
 .card.min .arr{transform:rotate(-90deg)}
 .card.min .cbody{display:none}
@@ -2531,17 +2538,17 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   <div class="sect esi">🔑 EVE-Login (ESI): automatischer Abgleich</div>
   <div class="esinudge" id="esiNudge" hidden>✨ Noch kein Charakter verbunden. Mit dem EVE-Login zeigt Canary
    automatisch Portrait, aktuelles Schiff, Wallet-Stand und den Heavy-Water-Vorrat, ganz ohne manuelles Eintragen.</div>
-  <div class="hint">Liest per offiziellem EVE-Login automatisch: Heavy Water im Schiff, Kern-Typ (T1/T2),
-  aktuelles Schiff und Wallet-Stand. Einmalige Einrichtung: auf <a href="https://developers.eveonline.com" target="_blank" rel="noopener">developers.eveonline.com</a>
-  eine Anwendung anlegen („Authentication &amp; API Access", Scopes: <b>esi-assets.read_assets.v1,
-  esi-location.read_ship_type.v1, esi-wallet.read_character_wallet.v1</b>,
-  Callback-URL: <b id="cbUrl"></b>) und die Client-ID hier eintragen.</div>
-  <input type="text" id="esiClient" placeholder="Client-ID deiner ESI-Anwendung">
-  <div class="btnrow">
-   <button class="btn" id="saveEsi">Client-ID speichern</button>
-   <button class="btn" id="esiLogin">+ Charakter verbinden</button>
-  </div>
-  <div class="hint" id="esiChars"></div>
+  <div id="esiChars"></div>
+  <div class="btnrow"><button class="btn" id="esiLogin">+ Charakter verbinden</button></div>
+  <details id="esiSetup">
+   <summary>Einrichtung &amp; Client-ID</summary>
+   <div class="hint" style="margin-top:8px">Einmalig auf <a href="https://developers.eveonline.com" target="_blank" rel="noopener">developers.eveonline.com</a>
+   eine Anwendung anlegen („Authentication &amp; API Access", Scopes: <b>esi-assets.read_assets.v1,
+   esi-location.read_ship_type.v1, esi-wallet.read_character_wallet.v1</b>,
+   Callback-URL: <b id="cbUrl"></b>), dann die Client-ID hier eintragen.</div>
+   <input type="text" id="esiClient" placeholder="Client-ID deiner ESI-Anwendung">
+   <div class="btnrow"><button class="btn" id="saveEsi">Client-ID speichern</button></div>
+  </details>
  </div>
 
  <div class="optgroup">
@@ -2627,6 +2634,7 @@ $('#saveWatch').onclick=async()=>{await post({action:'watchlist',names:$('#watch
 $('#notifPerm').onclick=()=>Notification.requestPermission();
 $('#saveIdle').onclick=async()=>{await post({action:'idle_warn',seconds:Number($('#idleWarn').value)||0});syncOpts();};
 $('#saveEsi').onclick=async()=>{const r=await post({action:'esi_client',client_id:$('#esiClient').value.trim()});if(r.state)state=r.state;syncOpts();};
+$('#esiSetup').addEventListener('toggle',()=>{$('#esiSetup').dataset.touched='1';});
 $('#esiLogin').onclick=async()=>{
  const r=await post({action:'esi_login'});
  if(r.url)window.open(r.url,'_blank');
@@ -2663,11 +2671,14 @@ function syncOpts(){
  if(state.esi){
   $('#cbUrl').textContent=state.esi.cb;
   if(document.activeElement!==$('#esiClient'))$('#esiClient').value=state.esi.client_id||'';
-  $('#esiNudge').hidden=(state.esi.chars||[]).length>0;
+  const nchars=(state.esi.chars||[]).length;
+  $('#esiNudge').hidden=nchars>0;
+  // Anleitung nur aufklappen, solange noch nichts verbunden ist
+  if(!$('#esiSetup').dataset.touched)$('#esiSetup').open=nchars===0;
   $('#esiChars').innerHTML=(state.esi.chars||[]).map(c=>
    '👤 <b>'+esc(c.name)+'</b>: '+esc(c.status)+(c.ship?' · '+esc(c.ship):'')+(c.wallet!=null?' · Wallet: '+fmtM(c.wallet)+' ISK':'')+
    ' <span class="esiForget" data-char="'+esc(c.name)+'" style="cursor:pointer;text-decoration:underline">trennen</span>'
-  ).join('<br>')||'Noch kein Charakter verbunden.';
+  ).join('<br>')||'';
   document.querySelectorAll('.esiForget').forEach(b=>b.onclick=async()=>{
    const r=await post({action:'esi_forget',char:b.dataset.char});if(r.state)state=r.state;syncOpts();});
  }
