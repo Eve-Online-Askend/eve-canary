@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.8.6"
+VERSION = "1.8.7"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -2630,7 +2630,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span class="pill rolef" data-role="mining" title="Nur Mining-Charaktere">⛏</span>
  <span class="pill rolef" data-role="mission" title="Nur Mission-Runner">🎯</span>
  <span class="pill rolef" data-role="pvp" title="Nur PvP-Charaktere">⚔</span>
- <span class="pill" id="activeOnly" title="Offline/inaktive Charaktere ausblenden">🟢 Nur aktive</span>
+ <span class="pill" id="showOffline" title="Standardmäßig zeigt Live nur eingeloggte Charaktere. Hier einschalten, um auch Offline-Charaktere zu sehen.">💤 Offline zeigen</span>
  <select class="pill" id="charFilter" title="Charakter-Filter"><option value="">Alle Charaktere</option></select>
  <span class="pill" id="collapseAll">Alle einklappen</span>
  <div class="pills" id="regions"></div>
@@ -2958,11 +2958,11 @@ $('#collapseAll').onclick=()=>{
   p.onclick=()=>{localStorage.setItem('roleFilter',p.dataset.role);
    document.querySelectorAll('.rolef').forEach(x=>x.classList.toggle('on',x===p));
    if(lastChars)renderLive(lastChars,lastSummary);};});})();
-// "Nur aktive" umschalten
-$('#activeOnly').classList.toggle('on',localStorage.getItem('activeOnly')==='1');
-$('#activeOnly').onclick=()=>{const on=localStorage.getItem('activeOnly')!=='1';
- localStorage.setItem('activeOnly',on?'1':'0');
- $('#activeOnly').classList.toggle('on',on);
+// "Offline zeigen" umschalten (Live blendet Offline-Chars standardmäßig aus)
+$('#showOffline').classList.toggle('on',localStorage.getItem('showOffline')==='1');
+$('#showOffline').onclick=()=>{const on=localStorage.getItem('showOffline')!=='1';
+ localStorage.setItem('showOffline',on?'1':'0');
+ $('#showOffline').classList.toggle('on',on);
  if(lastChars)renderLive(lastChars,lastSummary);};
 function syncCharFilter(chars){
  const sel=$('#charFilter');
@@ -3004,11 +3004,12 @@ function renderLive(chars,summary){
  // Rollen-Filter: nur Chars der gewählten Rolle zeigen (Alle = kein Filter)
  const rf=localStorage.getItem('roleFilter')||'';
  if(rf)chars=chars.filter(c=>c.role===rf);
- // Nur-aktive-Filter: offline/inaktive Chars ausblenden
- if(localStorage.getItem('activeOnly')==='1')chars=chars.filter(c=>c.active);
+ // Live zeigt nur eingeloggte Chars. Offline nur, wenn ausdrücklich gewünscht.
+ const showOff=localStorage.getItem('showOffline')==='1';
+ if(!showOff)chars=chars.filter(c=>c.active);
  $('#hero').innerHTML=heroBar(summary);
  if(!chars.length){$('#empty').hidden=false;
-  $('#empty').textContent=localStorage.getItem('activeOnly')==='1'?'Kein aktiver Charakter gerade. „Nur aktive" ausschalten, um alle zu sehen.':(rf?'Kein Charakter mit dieser Rolle. Tippe auf einer Karte auf das Rollen-Symbol, um sie zuzuweisen.':'Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern" aktivieren.)');
+  $('#empty').textContent=!showOff?'Gerade ist kein Charakter eingeloggt. Mit „💤 Offline zeigen" siehst du auch die abgemeldeten.':(rf?'Kein Charakter mit dieser Rolle. Tippe auf einer Karte auf das Rollen-Symbol, um sie zuzuweisen.':'Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern" aktivieren.)');
   $('#grid').innerHTML='';return;}
  $('#empty').hidden=true;
  $('#grid').innerHTML=chars.map(c=>{
