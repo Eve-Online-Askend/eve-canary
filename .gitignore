@@ -1,0 +1,9 @@
+# Niemals persoenliche/lokale Daten committen
+config.json
+dashboard.db
+dashboard.db-shm
+dashboard.db-wal
+backups/
+*.bak
+*.new
+__pycache__/
