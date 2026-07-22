@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.6.7"
+VERSION = "1.6.8"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -676,10 +676,14 @@ class CharSession:
         now = now or time.time()
         if self.last_ore_ts is None or now - self.last_ore_ts > 180:
             return False   # gar kein Erz mehr -> Stillstand-Warnung greift, nicht drohnenspezifisch
-        med = sorted(self.drone_gaps)[len(self.drone_gaps) // 2]
-        # "erwarteter naechster Burst + 20s Puffer": Drohnen-Timer sind sehr
-        # regelmaessig, ein ausgefallener Zyklus reicht als Signal (statt 2,5x).
-        return max(50, med + 20) < now - self.drone_last < 1800
+        # Schwelle an die SCHWANKUNG der Abstaende anpassen: Drohnen fliegen je
+        # nach Asteroiden-Distanz unterschiedlich lange (Rueckweg!), der Abstand
+        # schwankt stark. 90%-Perzentil + 30s Puffer sitzt knapp ueber dem
+        # normalen Maximal-Abstand -> kein Fehlalarm beim langen Rueckflug,
+        # trotzdem schnelle Meldung bei gleichmaessigen Drohnen.
+        g = sorted(self.drone_gaps)
+        p90 = g[min(len(g) - 1, int(len(g) * 0.9))]
+        return max(90, p90 + 30) < now - self.drone_last < 1800
 
     def laser_stalled(self, now=None):
         """True, wenn der Strip-Miner-/Laser-Strom abreisst, waehrend Drohnen
