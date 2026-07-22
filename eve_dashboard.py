@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.8.0"
+VERSION = "1.8.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -1697,8 +1697,12 @@ def snapshot_live():
             isk, vol = ore_value(ore, units, pm)
             ore_isk += isk
             m3 += vol
-            ores.append({"ore": ore, "units": units, "m3": round(vol), "isk": round(isk)})
-        ores.sort(key=lambda o: -o["isk"])
+            # known=False: Erz-Typ nicht in ORE_TYPES -> kein m3/ISK berechenbar.
+            # Trotzdem sichtbar machen (mit Namen), statt still mit 0 zu verschlucken.
+            ores.append({"ore": ore, "units": units, "m3": round(vol), "isk": round(isk),
+                         "known": ore in ORE_TYPES})
+        # Unbekannte Erze nach oben (zum Melden), sonst nach ISK-Wert
+        ores.sort(key=lambda o: (0 if not o["known"] else 1, -o["isk"]))
         comp = []
         for ctype, units in sorted(s.compressed.items(), key=lambda x: -x[1]):
             t = ORE_TYPES.get(ctype, {})
@@ -2981,9 +2985,12 @@ function renderLive(chars,summary){
     <div class="stat"><div class="l">DPS raus/rein</div><div class="v"><span class="out">${c.dps_out}</span> / <span class="in">${c.dps_in}</span></div></div>
    </div>
    ${c.spark.length>1?`<div class="spark">${c.spark.map(v=>`<div style="height:${Math.max(3,100*v/maxS)}%"></div>`).join('')}</div><div class="sub">Mining m³/min</div>`:''}
-   ${c.ores.length?`<div class="sect">Mining</div><table>`+c.ores.map(o=>
-     `<tr><td>${o.ore}<div class="bar" style="width:${100*o.isk/maxOre}%"></div></td>
-      <td class="r">${fmt(o.units)} Stk</td><td class="r isk">${fmtM(o.isk)}</td></tr>`).join('')+`</table>`:''}
+   ${c.ores.length?`<div class="sect">Mining</div><table>`+c.ores.map(o=>o.known
+     ?`<tr><td>${esc(o.ore)}<div class="bar" style="width:${100*o.isk/maxOre}%"></div></td>
+      <td class="r">${fmt(o.units)} Stk</td><td class="r isk">${fmtM(o.isk)}</td></tr>`
+     :`<tr title="Dieses Erz kennt Canary noch nicht, daher kein Wert. Bitte den Namen im Discord melden."><td>⚠ ${esc(o.ore)}</td>
+      <td class="r">${fmt(o.units)} Stk</td><td class="r" style="color:var(--gold)">unbekannt</td></tr>`).join('')+`</table>`
+     +(c.ores.some(o=>!o.known)?`<div class="sub" style="color:var(--gold)">⚠ Ein Erz ist Canary unbekannt (oben markiert). Bitte den Namen im Discord melden, dann nehme ich es auf.</div>`:''):''}
    ${c.compressed.length?`<div class="sect">Komprimiert (Session)</div><table>`+c.compressed.map(k=>
      `<tr><td>${k.type}</td><td class="r">${fmt(k.units)} Stk</td><td class="r">${fmt(k.m3)} m³</td><td class="r isk">${fmtM(k.isk)}</td></tr>`).join('')+`</table>`:''}
    ${c.weapons.length?`<div class="sect">Waffen</div><table>`+c.weapons.map(w=>
