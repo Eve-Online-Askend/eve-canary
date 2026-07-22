@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.6.8"
+VERSION = "1.6.9"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -2704,11 +2704,13 @@ $('#saveWatch').onclick=async()=>{await post({action:'watchlist',names:$('#watch
 $('#notifPerm').onclick=()=>Notification.requestPermission();
 $('#saveIdle').onclick=async()=>{await post({action:'idle_warn',seconds:Number($('#idleWarn').value)||0});syncOpts();};
 $('#saveEsi').onclick=async()=>{const r=await post({action:'esi_client',client_id:$('#esiClient').value.trim()});if(r.state)state=r.state;syncOpts();};
-$('#esiSetup').addEventListener('toggle',()=>{$('#esiSetup').dataset.touched='1';});
 $('#esiLogin').onclick=async()=>{
  const r=await post({action:'esi_login'});
- if(r.url)window.open(r.url,'_blank');
- else alert(r.error||'Zuerst Client-ID speichern.');
+ if(r.url){window.open(r.url,'_blank');return;}
+ // Keine Client-ID hinterlegt: gezielt zur Einrichtung führen statt nur meckern
+ $('#esiSetup').open=true;
+ $('#esiClient').focus();
+ $('#esiClient').scrollIntoView({block:'center'});
 };
 $('#checkUpd').onclick=async()=>{
  $('#updstatus').textContent='Prüfe …';$('#doUpd').hidden=true;
@@ -2744,7 +2746,8 @@ function syncOpts(){
   const nchars=(state.esi.chars||[]).length;
   $('#esiNudge').hidden=nchars>0;
   // Anleitung nur aufklappen, solange noch nichts verbunden ist
-  if(!$('#esiSetup').dataset.touched)$('#esiSetup').open=nchars===0;
+  // Einrichtungstext bleibt standardmäßig eingeklappt (aufklappbar bei Bedarf,
+  // oder automatisch beim Klick auf "Charakter verbinden" ohne Client-ID).
   $('#esiChars').innerHTML=(state.esi.chars||[]).map(c=>
    '👤 <b>'+esc(c.name)+'</b>: '+esc(c.status)+(c.ship?' · '+esc(c.ship):'')+(c.wallet!=null?' · Wallet: '+fmtM(c.wallet)+' ISK':'')+
    ' <span class="esiForget" data-char="'+esc(c.name)+'" style="cursor:pointer;text-decoration:underline">trennen</span>'
