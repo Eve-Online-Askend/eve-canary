@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.5.0"
+VERSION = "1.5.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -212,6 +212,11 @@ CREATE TABLE IF NOT EXISTS journal(id INTEGER, char TEXT, ts REAL,
     ref_type TEXT, amount REAL, party TEXT, PRIMARY KEY(id, char));
 """)
 DB.commit()
+try:  # v1.5.1: System-Kontext je Journal-Eintrag (filtert Belt-Bounties aus der Missions-Statistik)
+    DB.execute("ALTER TABLE journal ADD COLUMN ctx INTEGER")
+    DB.commit()
+except sqlite3.OperationalError:
+    pass
 
 
 def meta_get(key, default=None):
@@ -296,7 +301,7 @@ def do_update():
                 shutil.copy2(target, APP_DIR / (name + ".bak"))
             target.write_bytes(data)
     except SyntaxError:
-        return {"ok": False, "error": "Neue Version fehlerhaft — Update abgebrochen, nichts geändert."}
+        return {"ok": False, "error": "Die neue Version war fehlerhaft. Update abgebrochen, es wurde nichts geändert."}
     except Exception as e:
         return {"ok": False, "error": f"Download fehlgeschlagen: {e}"}
     def _restart():
@@ -313,7 +318,7 @@ def do_update():
 
     threading.Timer(1.0, _restart).start()
     return {"ok": True, "updated": True,
-            "message": f"Update auf {chk['latest']} installiert — Neustart läuft, Seite lädt gleich neu."}
+            "message": f"Update auf {chk['latest']} installiert. Neustart läuft, die Seite lädt gleich neu."}
 
 
 # ---------------------------------------------------------------- Alarme
@@ -614,7 +619,7 @@ class Ingest(threading.Thread):
                 changed = True
                 mins = int(e["units"] / rate / 60)
                 alerts.push("hw", char,
-                            f"{char}: Heavy Water fast leer — reicht noch ~{mins} min!")
+                            f"{char}: Heavy Water fast leer, reicht noch etwa {mins} Minuten!")
         if changed:
             save_config()
 
@@ -633,7 +638,7 @@ class Ingest(threading.Thread):
                 if eff < idle < 1800:
                     s.idle_alerted = True
                     alerts.push("idle", s.name,
-                                f"{s.name}: Seit {round(idle / 60)} min kein Erz — Mining prüfen (Laser/Drohnen)!")
+                                f"{s.name}: Seit {round(idle / 60)} Minuten kein Erz. Laser und Drohnen prüfen!")
                 # Raten-Waechter: Teilausfall (z.B. 1 von 2 Strip Minern aus)
                 rs = s.rate_status()
                 if rs:
@@ -644,8 +649,8 @@ class Ingest(threading.Thread):
                         elif now - s.low_since > 120 and not s.low_alerted:
                             s.low_alerted = True
                             alerts.push("rate", s.name,
-                                        f"{s.name}: Abbaurate nur noch {round(100 * cur / base)}% "
-                                        f"— vermutlich Modul oder Drohnen inaktiv!")
+                                        f"{s.name}: Abbaurate nur noch {round(100 * cur / base)}%. "
+                                        f"Vermutlich ist ein Modul oder eine Drohne aus!")
                     else:
                         s.low_since = None
                         if cur >= 0.75 * base:
@@ -734,6 +739,8 @@ class Ingest(threading.Thread):
                             sess.feed(ev, live=not catch_up)
                         if not catch_up:
                             self.live_alerts(ev, cname)
+                            if ev["kind"] == "ore":
+                                self.learn_mine_system(cid)
                 with DB_LOCK:
                     for ev in batch:
                         if ev["kind"] in ("drone_engage", "hold_reset"):
@@ -757,6 +764,17 @@ class Ingest(threading.Thread):
         self.progress["done"] = done
         self.started_full = True
 
+    def learn_mine_system(self, cid):
+        """Merkt sich Systeme, in denen aktiv gemint wird. Bounties aus diesen
+        Systemen zählen nicht als Missions-Einkommen (Belt-Ratten-Filter)."""
+        sysname = chatwatch.systems.get(cid)
+        if not sysname or sysname == "?":
+            return
+        ms = CONFIG.setdefault("mine_systems", {})
+        if sysname not in ms:
+            ms[sysname] = 0  # System-ID löst der ESI-Thread nach
+            save_config()
+
     def live_alerts(self, ev, cname):
         # Entwarnung: Gegensignal im Log macht alte Alarme sofort hinfaellig
         if ev["kind"] == "ore":
@@ -774,15 +792,15 @@ class Ingest(threading.Thread):
         if ev["kind"] == "depleted":
             if "Drone" in ev["key"]:
                 alerts.push("drones", cname,
-                            f"{cname}: Mining-Drohnen abgeschaltet ({ev['key']}) — Drohnen prüfen!")
+                            f"{cname}: Mining-Drohnen abgeschaltet ({ev['key']}). Drohnen prüfen!")
             else:
                 alerts.push("depleted", cname,
-                            f"{cname}: Asteroid leer — {ev['key']} hat abgeschaltet")
+                            f"{cname}: Asteroid leer, {ev['key']} hat abgeschaltet")
         elif ev["kind"] == "cargo":
-            alerts.push("cargo", cname, f"{cname}: Frachtraum voll — Mining gestoppt!")
+            alerts.push("cargo", cname, f"{cname}: Frachtraum voll, Mining gestoppt!")
         elif ev["kind"] == "drone_idle":
             alerts.push("drones", cname,
-                        f"{cname}: Mining-Drohnen voll — Erz verladen, Drohnen prüfen!")
+                        f"{cname}: Mining-Drohnen voll. Erz verladen und Drohnen prüfen!")
         elif ev["kind"] == "dmg_in" and ev["key"] not in NPC_NAMES:
             alerts.push("pvp", cname, f"SPIELER-ANGRIFF: {ev['key']} schießt auf {cname}!")
             # Täterprofil sofort nachladen — Ergebnis kommt als eigener Intel-Alarm
@@ -865,6 +883,9 @@ class Prices(threading.Thread):
             t = ORE_TYPES.get(ore)
             if t:
                 ids.add(t["typeID"])
+                comp = ORE_TYPES.get("Compressed " + ore)
+                if comp:  # Bewertung läuft über den Preis der komprimierten Variante
+                    ids.add(comp["typeID"])
         return ids
 
     def get(self, region):
@@ -946,7 +967,7 @@ class Esi(threading.Thread):
         """Auth-Code gegen Tokens tauschen. Liefert None bei Erfolg, sonst Fehlertext."""
         verifier = self.pending.pop(state, None)
         if not verifier:
-            return "Login-Anfrage unbekannt oder abgelaufen — bitte erneut starten."
+            return "Die Login-Anfrage ist abgelaufen. Bitte starte den Login noch einmal."
         try:
             tok = self._token_request({
                 "grant_type": "authorization_code", "code": code,
@@ -1052,13 +1073,34 @@ class Esi(threading.Thread):
             for e in keep:
                 ts = datetime.fromisoformat(
                     e["date"].replace("Z", "+00:00")).timestamp()
-                DB.execute("INSERT OR IGNORE INTO journal VALUES(?,?,?,?,?,?)",
+                ctx = (e.get("context_id")
+                       if e.get("context_id_type") == "system_id" else None)
+                DB.execute("INSERT OR IGNORE INTO journal VALUES(?,?,?,?,?,?,?)",
                            (e["id"], name, ts, e["ref_type"], e["amount"],
-                            self.party_names.get(e.get("first_party_id"), "")))
+                            self.party_names.get(e.get("first_party_id"), ""), ctx))
             DB.commit()
+
+    def resolve_mine_systems(self):
+        """System-Namen aus dem Belt-Bounty-Filter zu IDs auflösen (öffentlich)."""
+        ms = CONFIG.get("mine_systems") or {}
+        names = [n for n, i in ms.items() if not i]
+        if not names:
+            return False
+        req = urllib.request.Request(
+            ESI_BASE + "/universe/ids/", data=json.dumps(names).encode(),
+            headers={"Content-Type": "application/json", "User-Agent": ESI_UA})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read())
+        for s in data.get("systems", []):
+            ms[s["name"]] = s["id"]
+        return bool(data.get("systems"))
 
     def poll(self):
         changed = False
+        try:
+            changed = self.resolve_mine_systems() or changed
+        except Exception:
+            pass
         for name, c in list(self.cfg().get("chars", {}).items()):
             try:
                 bal, _ = self._get(c, f"/characters/{c['char_id']}/wallet/")
@@ -1077,7 +1119,7 @@ class Esi(threading.Thread):
                 changed = True
             except urllib.error.HTTPError as e:
                 self.status[name] = f"HTTP-Fehler {e.code}" + (
-                    " — Login abgelaufen? Bitte neu verbinden." if e.code in (400, 401) else "")
+                    ". Login abgelaufen? Bitte neu verbinden." if e.code in (400, 401) else "")
             except Exception as e:
                 self.status[name] = f"Fehler: {str(e)[:80]}"
         if changed:
@@ -1208,8 +1250,8 @@ class ThreatIntel(threading.Thread):
         if min_lvl and (lvl == "red" or (lvl == "yellow" and min_lvl == "yellow")):
             lbl = "GANKER-VERDACHT" if lvl == "red" else "PvP-aktiv"
             alerts.push("intel", name,
-                        f"⚠ {lbl}: {name} ({data.get('corp') or '?'}) — "
-                        f"{data.get('recent_kills', 0)} Kills (60 Tage), "
+                        f"⚠ {lbl}: {name} ({data.get('corp') or '?'}), "
+                        f"{data.get('recent_kills', 0)} Kills in 60 Tagen, "
                         f"{data.get('miner_kills', 0)} Miner-Kills gesamt")
 
     def _profile(self, name, cid):
@@ -1358,8 +1400,16 @@ clipwatch = ClipWatch()
 
 # ---------------------------------------------------------------- Abfragen
 def ore_value(ore, units, pm):
+    """ISK und Volumen eines Erz-Postens. Bewertet wird zum Preis der
+    komprimierten Variante (Komprimieren ist 1:1 in Stück), denn das ist der
+    Wert, der beim Verkauf wirklich ankommt. Gibt es keine komprimierte
+    Variante oder keinen Preis dafür, gilt der Rohpreis. Volumen immer vom Rohtyp."""
     t = ORE_TYPES.get(ore, {})
-    return units * pm.get(t.get("typeID"), 0.0), units * t.get("volume", 0.0)
+    comp = ORE_TYPES.get("Compressed " + ore)
+    price = pm.get(comp["typeID"]) if comp else None
+    if price is None:
+        price = pm.get(t.get("typeID"), 0.0)
+    return units * price, units * t.get("volume", 0.0)
 
 
 def baseline_filter(rows):
@@ -1475,6 +1525,101 @@ def snapshot_live():
         })
     chars.sort(key=lambda c: c["name"])
     return chars
+
+
+CALC_CACHE = {}  # region -> {"ts": Zeit, "prices": {typeID: (buy, sell)}}
+CALC_LOCK = threading.Lock()
+
+
+def hub_prices(region, ids):
+    """Buy/Sell-Preise für die angefragten Typen in einer Region, 15 min Cache."""
+    with CALC_LOCK:
+        e = CALC_CACHE.get(region)
+        if e and time.time() - e["ts"] < PRICE_REFRESH and ids <= set(e["prices"]):
+            return dict(e["prices"])
+    url = (f"https://market.fuzzwork.co.uk/aggregates/?region={region}"
+           f"&types={','.join(map(str, sorted(ids)))}")
+    with urllib.request.urlopen(url, timeout=15) as r:
+        data = json.load(r)
+    fetched = {int(k): (float(v["buy"]["max"]), float(v["sell"]["min"]))
+               for k, v in data.items()}
+    with CALC_LOCK:
+        merged = CALC_CACHE.get(region, {}).get("prices", {})
+        merged.update(fetched)
+        CALC_CACHE[region] = {"ts": time.time(), "prices": merged}
+        return dict(merged)
+
+
+def parse_calc_text(text):
+    """Zeilen wie 'Compressed Veldspar<TAB>49.105' (Frachtraum-Kopie) oder
+    'Compressed Scordite 42000' in (Typname, Menge) übersetzen."""
+    names = sorted(ORE_TYPES, key=len, reverse=True)
+    items, unknown = {}, []
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        low = line.lower()
+        match = next((n for n in names if low.startswith(n.lower())), None)
+        if not match:
+            unknown.append(line.split("\t")[0][:40])
+            continue
+        rest = line[len(match):].lstrip("*").split("\t")
+        qty = 1
+        for part in rest:
+            m = NUM_RE.search(STRIP_RE.sub("", part))
+            if m and num(m.group(1)) > 0:
+                qty = num(m.group(1))
+                break
+        items[match] = items.get(match, 0) + qty
+    return items, unknown
+
+
+def calc_hubs(text):
+    items, unknown = parse_calc_text(text)
+    if not items:
+        return {"ok": True, "items": [], "unknown": unknown}
+    ids = {ORE_TYPES[n]["typeID"] for n in items}
+    hubs, jita = {}, {}
+    for rid, rname in REGIONS.items():
+        try:
+            pm = hub_prices(rid, ids)
+        except Exception:
+            hubs[rid] = {"name": rname, "error": True}
+            continue
+        if rid == "10000002":
+            jita = pm
+        hubs[rid] = {"name": rname,
+                     "buy": round(sum(q * pm.get(ORE_TYPES[n]["typeID"], (0, 0))[0]
+                                      for n, q in items.items())),
+                     "sell": round(sum(q * pm.get(ORE_TYPES[n]["typeID"], (0, 0))[1]
+                                       for n, q in items.items()))}
+    rows = [{"name": n, "qty": q,
+             "m3": round(q * ORE_TYPES[n].get("volume", 0)),
+             "isk": round(q * jita.get(ORE_TYPES[n]["typeID"], (0, 0))[0])}
+            for n, q in items.items()]
+    rows.sort(key=lambda r: -r["isk"])
+    return {"ok": True, "items": rows, "hubs": hubs, "unknown": unknown,
+            "m3": round(sum(r["m3"] for r in rows))}
+
+
+def query_summary():
+    """Geminert-Wert heute, gestern und letzte 7 Tage (ISK und m3) für die Ertrags-Leiste."""
+    pm = prices.get(CONFIG["region"])
+    today = datetime.now(timezone.utc).date()
+    isk, m3 = {}, {}
+    # Nur Roherz zählen: das Komprimat ist dasselbe Material, sonst zählt es doppelt
+    for day, cid, cname, kind, key, value in all_rows(days=8, kinds=("ore",)):
+        i, v = ore_value(key, value, pm)
+        isk[day] = isk.get(day, 0) + i
+        m3[day] = m3.get(day, 0) + v
+    t = today.strftime("%Y-%m-%d")
+    y = (today - timedelta(days=1)).strftime("%Y-%m-%d")
+    week = {(today - timedelta(days=n)).strftime("%Y-%m-%d") for n in range(7)}
+    return {"today": round(isk.get(t, 0)), "yesterday": round(isk.get(y, 0)),
+            "week": round(sum(v for d, v in isk.items() if d in week)),
+            "m3_today": round(m3.get(t, 0)),
+            "m3_week": round(sum(v for d, v in m3.items() if d in week))}
 
 
 def query_month():
@@ -1677,11 +1822,16 @@ def state_info():
 
 
 def query_missions():
-    """Missions-Statistik aus dem Wallet-Journal: Tage, Quellen, Agenten, Chars."""
+    """Missions-Statistik aus dem Wallet-Journal: Tage, Quellen, Agenten, Chars.
+    Bounties aus bekannten Mining-Systemen bleiben draussen (Belt-Ratten)."""
+    mine_sys = CONFIG.get("mine_systems") or {}
+    mine_ids = {i for i in mine_sys.values() if i}
     rows = DB.execute(
-        "SELECT char, ts, ref_type, amount, party FROM journal").fetchall()
+        "SELECT char, ts, ref_type, amount, party, ctx FROM journal").fetchall()
     days, agents, chars = {}, {}, {}
-    for char, ts, ref, amount, party in rows:
+    for char, ts, ref, amount, party, ctx in rows:
+        if ref in ("bounty_prizes", "bounty_prize") and ctx in mine_ids:
+            continue
         day = datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%d")
         d = days.setdefault(day, {"day": day, "missions": 0, "reward": 0,
                                   "bonus": 0, "bounty": 0, "total": 0})
@@ -1705,6 +1855,7 @@ def query_missions():
     day_list = sorted(days.values(), key=lambda d: d["day"], reverse=True)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return {
+        "mine_systems": sorted(n for n, i in mine_sys.items() if i),
         "linked": bool((CONFIG.get("esi") or {}).get("chars")),
         "today": days.get(today) or {"day": today, "missions": 0, "reward": 0,
                                      "bonus": 0, "bounty": 0, "total": 0},
@@ -1744,6 +1895,7 @@ class Handler(BaseHTTPRequestHandler):
             data = {"state": state_info()}
             if view == "live":
                 data["chars"] = snapshot_live()
+                data["summary"] = query_summary()
             elif view == "month":
                 data["days"] = query_month()
             elif view == "analyse":
@@ -1753,6 +1905,8 @@ class Handler(BaseHTTPRequestHandler):
             elif view == "missionen":
                 data["missions"] = query_missions()
                 data["chars"] = snapshot_live()
+            elif view == "rechner":
+                pass  # der Rechner holt seine Daten per calc-POST
             else:
                 data["total"] = query_total()
             self._send(json.dumps(data))
@@ -1765,8 +1919,8 @@ class Handler(BaseHTTPRequestHandler):
                        "text-align:center;padding-top:90px'><div style='font-size:42px'>"
                        + ("🐤" if ok else "⚠️") + "</div><h2>"
                        + ("Charakter verbunden!" if ok else "Login fehlgeschlagen")
-                       + "</h2><p>" + (err or "Dieses Fenster kann geschlossen werden — "
-                       "Canary gleicht Laderaum und Wallet ab sofort automatisch ab.")
+                       + "</h2><p>" + (err or "Du kannst dieses Fenster schließen. "
+                       "Canary gleicht Laderaum und Wallet ab jetzt automatisch ab.")
                        + "</p></body></html>", "text/html; charset=utf-8")
         elif p == "/export.csv":
             self._send(export_csv(), "text/csv; charset=utf-8", "eve_dashboard_export.csv")
@@ -1796,6 +1950,9 @@ class Handler(BaseHTTPRequestHandler):
             CONFIG["idle_warn"] = max(0, int(body.get("seconds") or 0))
         elif action == "clip_watch":
             CONFIG["clip_watch"] = bool(body.get("on"))
+        elif action == "calc":
+            self._send(json.dumps(calc_hubs(body.get("text") or "")))
+            return
         elif action == "threat_scan":
             names = [str(n).strip() for n in body.get("names", [])][:200]
             names = [n for n in names if n]
@@ -1866,6 +2023,90 @@ PAGE = """<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
 --dim:#5d6b80;--cyan:#35c8e8;--red:#e8564f;--green:#4fd47f;--gold:#e8c645;--white:#fff}
 [data-theme=light]{--bg:#f2f4f8;--card:#ffffff;--inset:#eef1f6;--line:#d8dee9;
 --txt:#2a3242;--dim:#7a8699;--cyan:#0e7ea3;--red:#c2372f;--green:#1e8f4d;--gold:#9a7a00;--white:#101828}
+/* ---------- Photon-Skin: EVE-Fensterstil — Nebel, Transparenz+Blur, Titelleisten, Eck-Klammern */
+html[data-skin=photon]{--bg:#0a0d0f;--card:rgba(13,17,19,.80);--inset:rgba(255,255,255,.04);
+--line:rgba(130,150,158,.16);--txt:#c9d1d4;--dim:#7d888e;--cyan:#5fc1d4;--red:#c8443d;--green:#7db35c;
+--gold:#d9a33c;--white:#eef1f2}
+html[data-skin=photon] body,html[data-skin=photon] dialog,html[data-skin=photon] .btn,
+html[data-skin=photon] input,html[data-skin=photon] textarea{font-family:'Bahnschrift','Segoe UI',system-ui,sans-serif}
+/* Nebel + Sternenfeld (rein CSS, drei Stern-Ebenen als gekachelte Punkte) */
+html[data-skin=photon] body{background:
+ radial-gradient(1px 1px at 21% 33%,rgba(255,255,255,.5) 0,transparent 100%),
+ radial-gradient(1px 1px at 67% 12%,rgba(255,255,255,.35) 0,transparent 100%),
+ radial-gradient(1.5px 1.5px at 44% 76%,rgba(200,230,255,.4) 0,transparent 100%),
+ radial-gradient(1px 1px at 86% 58%,rgba(255,255,255,.3) 0,transparent 100%),
+ radial-gradient(1400px 900px at 78% -12%,rgba(52,102,84,.28),transparent 62%),
+ radial-gradient(1100px 800px at 6% 108%,rgba(30,58,78,.30),transparent 58%),
+ radial-gradient(700px 500px at 34% 42%,rgba(74,94,60,.10),transparent 60%),#0a0d0f;
+ background-size:290px 290px,210px 210px,340px 340px,260px 260px,auto,auto,auto,auto;
+ background-attachment:fixed}
+/* Holo-Scanlines, extrem dezent */
+html[data-skin=photon] body::after{content:"";position:fixed;inset:0;z-index:9999;pointer-events:none;
+ background:repeating-linear-gradient(0deg,rgba(255,255,255,.012) 0 1px,transparent 1px 3px)}
+/* Alles kantig */
+html[data-skin=photon] .card,html[data-skin=photon] .stat,html[data-skin=photon] .alert,
+html[data-skin=photon] .cardwarn,html[data-skin=photon] dialog,html[data-skin=photon] .btn,
+html[data-skin=photon] input,html[data-skin=photon] textarea,html[data-skin=photon] select.pill,
+html[data-skin=photon] .pill,html[data-skin=photon] .laserok,html[data-skin=photon] header{border-radius:0}
+/* Karten = EVE-Fenster: transluzent, Blur, Eck-Klammern wie am Zielobjekt */
+html[data-skin=photon] .card,html[data-skin=photon] header,html[data-skin=photon] dialog{
+ background:var(--card);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);
+ border:1px solid var(--line);box-shadow:0 12px 30px rgba(0,0,0,.45)}
+html[data-skin=photon] .card{position:relative;overflow:hidden}
+html[data-skin=photon] .card::before,html[data-skin=photon] .card::after{
+ content:"";position:absolute;width:11px;height:11px;pointer-events:none;opacity:.5}
+html[data-skin=photon] .card::before{top:0;left:0;border-top:1px solid #dfe7ea;border-left:1px solid #dfe7ea}
+html[data-skin=photon] .card::after{bottom:0;right:0;border-bottom:1px solid #dfe7ea;border-right:1px solid #dfe7ea}
+/* Kartenkopf = Fenster-Titelleiste */
+html[data-skin=photon] .chead{background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.02));
+ margin:-14px -16px 10px -16px;padding:9px 14px;border-bottom:1px solid rgba(0,0,0,.55)}
+html[data-skin=photon] .card.min .chead{margin:-10px -16px -10px -16px;border-bottom:none}
+html[data-skin=photon] .char{color:var(--gold);font-weight:400;letter-spacing:.4px}
+html[data-skin=photon] .sys{color:var(--txt);opacity:.7}
+/* Kopfzeile als Leiste */
+html[data-skin=photon] header{padding:8px 14px;margin-bottom:12px}
+html[data-skin=photon] h1{letter-spacing:4px;font-weight:300}
+html[data-skin=photon] h1 b{color:var(--gold);font-weight:400}
+/* Navigation wie EVE-Tab-Leiste */
+html[data-skin=photon] nav{border-bottom:1px solid var(--line);gap:0}
+html[data-skin=photon] nav span{text-transform:uppercase;letter-spacing:1.4px;font-size:11px;
+ border-right:1px solid rgba(130,150,158,.10);padding:8px 18px}
+html[data-skin=photon] nav span:hover{background:rgba(95,193,212,.06);color:var(--txt)}
+html[data-skin=photon] nav span.on{color:var(--white);background:rgba(255,255,255,.05);
+ border-bottom:2px solid var(--gold)}
+/* Typo-Details */
+html[data-skin=photon] .sect{text-transform:uppercase;letter-spacing:1.4px;font-size:10px}
+html[data-skin=photon] th{text-transform:uppercase;font-size:10px;letter-spacing:1px;font-weight:400}
+html[data-skin=photon] .stat .l{text-transform:uppercase;letter-spacing:.6px;font-size:9.5px}
+html[data-skin=photon] .stat .v{font-weight:300;letter-spacing:.3px}
+/* Zeilen-Hover wie Overview-Selektion */
+html[data-skin=photon] tr:hover td{background:rgba(95,193,212,.07)}
+html[data-skin=photon] td{border-top-color:rgba(130,150,158,.10)}
+/* Bedienelemente */
+html[data-skin=photon] .btn{text-transform:uppercase;letter-spacing:.8px;font-size:11px;
+ background:rgba(255,255,255,.04)}
+html[data-skin=photon] .btn:hover{border-color:var(--cyan);color:var(--white);
+ box-shadow:inset 0 0 10px rgba(95,193,212,.12),0 0 8px rgba(95,193,212,.18)}
+html[data-skin=photon] .pill{background:rgba(255,255,255,.03)}
+html[data-skin=photon] .pill.on{background:rgba(95,193,212,.12);color:var(--cyan);border-color:var(--cyan)}
+html[data-skin=photon] .stat{border:1px solid rgba(130,150,158,.10);background:rgba(255,255,255,.03);
+ transition:border-color .12s,box-shadow .12s}
+/* Hover wie ein EVE-Inventar-Slot: Teal-Rahmen mit Eck-Klammern und Glimmen */
+html[data-skin=photon] .stat:hover{border-color:rgba(95,193,212,.55);
+ box-shadow:0 0 10px rgba(95,193,212,.25),inset 0 0 14px rgba(95,193,212,.06);
+ background-image:
+  linear-gradient(var(--cyan),var(--cyan)),linear-gradient(var(--cyan),var(--cyan)),
+  linear-gradient(var(--cyan),var(--cyan)),linear-gradient(var(--cyan),var(--cyan)),
+  linear-gradient(var(--cyan),var(--cyan)),linear-gradient(var(--cyan),var(--cyan)),
+  linear-gradient(var(--cyan),var(--cyan)),linear-gradient(var(--cyan),var(--cyan));
+ background-repeat:no-repeat;
+ background-size:9px 2px,2px 9px,9px 2px,2px 9px,9px 2px,2px 9px,9px 2px,2px 9px;
+ background-position:top left,top left,top right,top right,bottom left,bottom left,bottom right,bottom right}
+html[data-skin=photon] .alert{border-left-width:3px;backdrop-filter:blur(9px)}
+html[data-skin=photon] dialog::backdrop{background:rgba(2,4,5,.75);backdrop-filter:blur(3px)}
+html[data-skin=photon] ::-webkit-scrollbar{width:9px;height:9px}
+html[data-skin=photon] ::-webkit-scrollbar-thumb{background:#2b3236;border:2px solid #0b0e10}
+html[data-skin=photon] ::-webkit-scrollbar-track{background:transparent}
 *{margin:0;box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif}
 body{background:var(--bg);color:var(--txt);padding:18px;transition:background .2s}
 html[data-fs="2"] body{zoom:1.15}
@@ -1967,6 +2208,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="analyse">Analyse</span>
  <span data-v="intel">🚦 Intel</span>
  <span data-v="missionen">🎯 Missionen</span>
+ <span data-v="rechner">🧮 Ore Calculator</span>
 </nav>
 <div id="alerts"></div>
 <div id="grid"></div>
@@ -1974,6 +2216,9 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 
 <dialog id="opts">
  <h2>Optionen</h2>
+ <div class="sect">Design</div>
+ <label><input type="radio" name="skin" value=""> Klassisch (das gewohnte Canary-Design)</label>
+ <label><input type="radio" name="skin" value="photon"> Photon (angelehnt ans EVE-Interface: dunkel, kantig, Gold-Akzente)</label>
  <div class="sect">Datenbasis</div>
  <label><input type="radio" name="mode" value="all"> Alle vorhandenen Logs auswerten</label>
  <label><input type="radio" name="mode" value="fresh"> Nur ab Installation zählen</label>
@@ -1991,7 +2236,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <div class="sect">Watchlist (Local-Chat, ein Name pro Zeile)</div>
  <textarea id="watchlist" rows="3" placeholder="Bekannte Ganker..."></textarea>
  <button class="btn" id="saveWatch">Watchlist speichern</button>
- <div class="sect">EVE-Login (ESI) — automatischer Abgleich</div>
+ <div class="sect">EVE-Login (ESI): automatischer Abgleich</div>
  <div class="hint">Liest per offiziellem EVE-Login automatisch: Heavy Water im Schiff, Kern-Typ (T1/T2),
  aktuelles Schiff und Wallet-Stand. Einmalige Einrichtung: auf <a href="https://developers.eveonline.com" target="_blank" rel="noopener">developers.eveonline.com</a>
  eine Anwendung anlegen („Authentication &amp; API Access", Scopes: <b>esi-assets.read_assets.v1,
@@ -2008,8 +2253,8 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <button class="btn" id="saveIdle">Speichern</button>
  <div class="sect">Mini-Overlay</div>
  <button class="btn" id="ovBtn">Mini-Overlay öffnen/schließen</button>
- <div class="hint">Schwebendes Always-on-top-Fenster mit Status aller Charaktere und Alarmen —
- bleibt über dem EVE-Client (Fenstermodus/randlos). Benötigt Chrome oder Edge.
+ <div class="hint">Schwebendes Always-on-top-Fenster mit Status aller Charaktere und Alarmen.
+ Es bleibt über dem EVE-Client (Fenstermodus/randlos). Benötigt Chrome oder Edge.
  Browser-seitig kann es nur per Klick geöffnet werden, nicht automatisch beim Start.</div>
  <div class="sect">Alarme</div>
  <label><input type="checkbox" id="sndPvp" checked> Sound bei Spieler-Angriff</label>
@@ -2033,7 +2278,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 const $=s=>document.querySelector(s);
 const fmt=n=>Math.round(n).toLocaleString();
 const fmtM=n=>n>=1e9?(n/1e9).toFixed(2)+' Mrd':n>=1e6?(n/1e6).toFixed(1)+' M':fmt(n);
-const VIEWS=['live','month','total','analyse','intel','missionen'];
+const VIEWS=['live','month','total','analyse','intel','missionen','rechner'];
 let view=location.pathname.replace(/^\\//,'')||'live', state=null, lastAlertId=Number(localStorage.getItem('lastAlertId')||0);
 if(!VIEWS.includes(view))view='live';
 window.addEventListener('popstate',()=>{
@@ -2046,6 +2291,13 @@ window.addEventListener('popstate',()=>{
 const savedTheme=localStorage.getItem('theme');
 if(savedTheme)document.documentElement.dataset.theme=savedTheme;
 else if(matchMedia('(prefers-color-scheme: light)').matches)document.documentElement.dataset.theme='light';
+const savedSkin=localStorage.getItem('skin');
+if(savedSkin)document.documentElement.dataset.skin=savedSkin;
+document.querySelectorAll('#opts input[name=skin]').forEach(r=>r.onchange=()=>{
+ if(r.value)document.documentElement.dataset.skin=r.value;
+ else delete document.documentElement.dataset.skin;
+ localStorage.setItem('skin',r.value);
+});
 $('#theme').onclick=()=>{const t=document.documentElement.dataset.theme==='light'?'dark':'light';
  document.documentElement.dataset.theme=t;localStorage.setItem('theme',t);};
 
@@ -2105,6 +2357,7 @@ async function post(b){return (await fetch('/',{method:'POST',body:JSON.stringif
 function syncOpts(){
  if(!state)return;
  document.querySelectorAll('#opts input[name=mode]').forEach(r=>r.checked=r.value===state.mode);
+ document.querySelectorAll('#opts input[name=skin]').forEach(r=>r.checked=r.value===(document.documentElement.dataset.skin||''));
  $('#baseinfo').textContent=state.baseline_day?('Aktive Baseline: zählt seit '+state.baseline_day+' (UTC).'):'Keine Baseline aktiv.';
  $('#loginfo').textContent='Log-Ordner: '+(state.log_dir||'nicht gefunden!')+' · Dateien: '+state.progress.done+'/'+state.progress.total;
  $('#watchlist').value=(state.watchlist||[]).join('\\n');
@@ -2115,7 +2368,7 @@ function syncOpts(){
   $('#cbUrl').textContent=state.esi.cb;
   if(document.activeElement!==$('#esiClient'))$('#esiClient').value=state.esi.client_id||'';
   $('#esiChars').innerHTML=(state.esi.chars||[]).map(c=>
-   '👤 <b>'+c.name+'</b> — '+c.status+(c.ship?' · '+c.ship:'')+(c.wallet!=null?' · Wallet: '+fmtM(c.wallet)+' ISK':'')+
+   '👤 <b>'+c.name+'</b>: '+c.status+(c.ship?' · '+c.ship:'')+(c.wallet!=null?' · Wallet: '+fmtM(c.wallet)+' ISK':'')+
    ' <span class="esiForget" data-char="'+c.name+'" style="cursor:pointer;text-decoration:underline">trennen</span>'
   ).join('<br>')||'Noch kein Charakter verbunden.';
   document.querySelectorAll('.esiForget').forEach(b=>b.onclick=async()=>{
@@ -2217,16 +2470,31 @@ function syncCharFilter(chars){
  const all=names.length&&names.every(n=>collapsed.has(n));
  $('#collapseAll').textContent=all?'Alle aufklappen':'Alle einklappen';
 }
-function renderLive(chars){
+function heroTiles(label,today,yesterday,week,subToday,subWeek){
+ const delta=yesterday>0?Math.round((today/yesterday-1)*100):null;
+ const trend=delta==null?'':' · <span style="color:var(--'+(delta>=0?'green':'red')+')">'+(delta>=0?'▲':'▼')+' '+Math.abs(delta)+'% vs. gestern</span>';
+ return `<div class="card" style="grid-column:1/-1">
+  <div class="stats" style="grid-template-columns:repeat(3,1fr);margin:0">
+   <div class="stat"><div class="l">${label}</div><div class="v isk" style="font-size:24px">${fmtM(today)}</div><div class="l">${subToday||''}${trend}</div></div>
+   <div class="stat"><div class="l">Gestern</div><div class="v isk" style="font-size:24px">${fmtM(yesterday)}</div></div>
+   <div class="stat"><div class="l">Letzte 7 Tage</div><div class="v isk" style="font-size:24px">${fmtM(week)}</div><div class="l">${subWeek||''}</div></div>
+  </div></div>`;
+}
+function heroBar(s){
+ if(!s)return '';
+ return heroTiles('⛏ Geminert heute',s.today,s.yesterday,s.week,
+  fmt(s.m3_today)+' m³',fmt(s.m3_week)+' m³ · Ø '+fmtM(s.week/7)+'/Tag');
+}
+function renderLive(chars,summary){
  lastChars=chars;
  syncCharFilter(chars);
  const f=localStorage.getItem('charFilter')||'';
  if(f&&chars.some(c=>c.name===f))chars=chars.filter(c=>c.name===f);
  if(!chars.length){$('#empty').hidden=false;
   $('#empty').textContent='Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern" aktivieren.)';
-  $('#grid').innerHTML='';return;}
+  $('#grid').innerHTML=heroBar(summary);return;}
  $('#empty').hidden=true;
- $('#grid').innerHTML=chars.map(c=>{
+ $('#grid').innerHTML=heroBar(summary)+chars.map(c=>{
   const maxOre=Math.max(1,...c.ores.map(o=>o.isk));
   const maxS=Math.max(1,...c.spark);
   const min=collapsed.has(c.name);
@@ -2237,13 +2505,13 @@ function renderLive(chars){
     <span class="mini">${c.cargo_full?'<span class="warnbadge drone">⚠ Frachtraum voll!</span> · ':''}${(c.tool_warns||[]).map(w=>'<span class="warnbadge'+(w.drone?' drone':'')+'">⚠ '+w.tool+(w.count>1?' ×'+w.count:'')+'</span> · ').join('')}${(c.lasers_off||[]).map(w=>'<span class="warnbadge">⛔ '+w.tool+' aus</span> · ').join('')}${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'<span class="warnbadge drone">⛽ HW ~'+c.heavy_water.min_left+' min</span> · ':''}${c.rate_low?'<span class="warnbadge">⚠ Rate '+c.rate_low+'%</span> · ':''}${mineIdle(c,state)?'<span class="warnbadge">⚠ Kein Erz seit '+Math.round(c.mine_idle/60)+' min</span> · ':''}${fmtM(c.total_isk)} ISK · ${fmt(c.m3h)} m³/h${c.dps_in>0?' · <span class=\"in\">⚠ '+c.dps_in+' DPS rein</span>':''}</span>
    </div>
    <div class="cbody">
-   ${c.cargo_full?`<div class="cardwarn drone">⚠ Frachtraum voll — Erz verladen oder komprimieren!</div>`:''}
+   ${c.cargo_full?`<div class="cardwarn drone">⚠ Frachtraum voll! Erz verladen oder komprimieren.</div>`:''}
    ${(c.tool_warns||[]).map(w=>w.drone
-     ?`<div class="cardwarn drone">⚠ ${w.tool}${w.count>1?' ×'+w.count:''} abgeschaltet — Drohnen prüfen!</div>`
-     :`<div class="cardwarn">⚠ ${w.tool}${w.count>1?' ×'+w.count:''} abgeschaltet — Ziel prüfen</div>`).join('')}
-   ${(c.lasers_off||[]).map(w=>`<div class="cardwarn">⛔ ${w.tool} aus seit ${new Date(w.since*1000).toLocaleTimeString().slice(0,5)} — neues Ziel erfassen! <span class="laserok" data-char="${c.name}" data-tool="${w.tool}">✓ erledigt</span></div>`).join('')}
-   ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur ${c.rate_low}% des Normalwerts — vermutlich Modul oder Drohnen inaktiv</div>`:''}
-   ${mineIdle(c,state)?`<div class="cardwarn">⚠ Seit ${Math.round(c.mine_idle/60)} min kein Erz — Mining prüfen (Laser/Drohnen)</div>`:''}
+     ?`<div class="cardwarn drone">⚠ ${w.tool}${w.count>1?' ×'+w.count:''} abgeschaltet, Drohnen prüfen!</div>`
+     :`<div class="cardwarn">⚠ ${w.tool}${w.count>1?' ×'+w.count:''} abgeschaltet, Ziel prüfen</div>`).join('')}
+   ${(c.lasers_off||[]).map(w=>`<div class="cardwarn">⛔ ${w.tool} aus seit ${new Date(w.since*1000).toLocaleTimeString().slice(0,5)}. Neues Ziel erfassen! <span class="laserok" data-char="${c.name}" data-tool="${w.tool}">✓ erledigt</span></div>`).join('')}
+   ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur noch ${c.rate_low}%. Vermutlich ist ein Modul oder eine Drohne aus.</div>`:''}
+   ${mineIdle(c,state)?`<div class="cardwarn">⚠ Seit ${Math.round(c.mine_idle/60)} min kein Erz. Laser und Drohnen prüfen!</div>`:''}
    <div class="sub">${c.trips>0?'Trip '+(c.trips+1)+' · seit Abdocken':'Session'} ${c.session_min} min · ${c.depleted} Asteroiden leergebaggert · Preise: ${state.regions[state.region]}</div>
    <div class="stats">
     <div class="stat"><div class="l">${c.trips>0?'ISK Trip':'ISK Session'}</div><div class="v isk">${fmtM(c.total_isk)}</div></div>
@@ -2254,7 +2522,7 @@ function renderLive(chars){
        ?'<span style="color:var(--dim);font-size:12px;font-weight:400">keine Preisdaten</span>'
        :'~'+fmtM(c.hold_isk)+(c.hold_prices==='partial'?' <span style="color:var(--dim)" title="Für einzelne Erztypen fehlen Preisdaten">±</span>':'')
     }</div></div>
-    ${c.heavy_water||!c.esi_linked?`<div class="stat"><div class="l">Heavy Water${c.heavy_water?' · '+c.heavy_water.core.toUpperCase():''}${c.heavy_water&&c.heavy_water.esi?' · ESI':''} ${c.heavy_water&&c.heavy_water.esi?'':`<span class="hwset" data-char="${c.name}" data-core="${c.heavy_water?c.heavy_water.core:''}" data-fill="${c.heavy_water&&c.heavy_water.fill?c.heavy_water.fill:''}" title="Bestand im Laderaum setzen">⛽</span>`}</div><div class="v ${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'in':''}">${c.heavy_water?fmt(c.heavy_water.units):'—'}</div><div class="l">${c.heavy_water?(c.heavy_water.on&&c.heavy_water.eta?'reicht bis ~'+new Date(c.heavy_water.eta*1000).toLocaleTimeString().slice(0,5)+' Uhr':'Kern inaktiv — Verbrauch pausiert'):'per ⛽ setzen'}</div></div>`:''}
+    ${c.heavy_water||!c.esi_linked?`<div class="stat"><div class="l">Heavy Water${c.heavy_water?' · '+c.heavy_water.core.toUpperCase():''}${c.heavy_water&&c.heavy_water.esi?' · ESI':''} ${c.heavy_water&&c.heavy_water.esi?'':`<span class="hwset" data-char="${c.name}" data-core="${c.heavy_water?c.heavy_water.core:''}" data-fill="${c.heavy_water&&c.heavy_water.fill?c.heavy_water.fill:''}" title="Bestand im Laderaum setzen">⛽</span>`}</div><div class="v ${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'in':''}">${c.heavy_water?fmt(c.heavy_water.units):'—'}</div><div class="l">${c.heavy_water?(c.heavy_water.on&&c.heavy_water.eta?'reicht bis ~'+new Date(c.heavy_water.eta*1000).toLocaleTimeString().slice(0,5)+' Uhr':'Kern inaktiv, Verbrauch pausiert'):'per ⛽ setzen'}</div></div>`:''}
     <div class="stat"><div class="l">Bounties</div><div class="v grn">${fmtM(c.bounty)}</div></div>
     ${c.wallet!=null?`<div class="stat"><div class="l">Wallet (ESI)</div><div class="v grn">${fmtM(c.wallet)}</div></div>`:''}
     <div class="stat"><div class="l">Schaden raus/rein</div><div class="v"><span class="out">${fmtM(c.dmg_out)}</span> / <span class="in">${fmtM(c.dmg_in)}</span></div></div>
@@ -2282,7 +2550,7 @@ function renderLive(chars){
  });
  document.querySelectorAll('.hwset').forEach(b=>b.onclick=async e=>{
   e.stopPropagation();
-  const v=prompt('Heavy Water im Laderaum (Stück) — nach dem Nachfüllen einfach Enter, 0 zum Entfernen:',b.dataset.fill||'');
+  const v=prompt('Heavy Water im Laderaum (Stück). Nach dem Nachfüllen einfach Enter drücken, 0 entfernt die Anzeige:',b.dataset.fill||'');
   if(v===null)return;
   if(v.trim()===''&&!b.dataset.fill)return;
   if(v.trim()==='0'){await post({action:'heavy_water',char:b.dataset.char});tick();return;}
@@ -2379,7 +2647,7 @@ function renderAnalyse(a){
    <div class="sub">${fmtM(a.goal.current)} / ${fmtM(a.goal.isk)} (${a.goal.pct}%) · Ø letzte 7 Tage: ${fmtM(a.goal.avg7)}/Tag
    ${a.goal.eta_date?' · bei aktueller Rate erreicht am <b>'+a.goal.eta_date+'</b>':''}</div></div>`;
  }else{
-  goalHtml=`<div class="card" style="grid-column:1/-1"><div class="sub">Kein Ziel gesetzt — unter ⚙ Optionen kannst du ein ISK-Ziel mit Prognose anlegen.</div></div>`;
+  goalHtml=`<div class="card" style="grid-column:1/-1"><div class="sub">Kein Ziel gesetzt. Unter ⚙ Optionen kannst du ein ISK-Ziel mit Prognose anlegen.</div></div>`;
  }
  const maxP=Math.max(1,...a.playtime.map(p=>p.minutes));
  $('#grid').innerHTML=goalHtml+compCard(a.compression||{})+
@@ -2482,10 +2750,10 @@ let intelBusy=false,intelAutoTs=Number(localStorage.getItem('intelAutoTs')||0);
 function renderIntel(auto){
  if(!document.getElementById('intelBox')){
   $('#grid').innerHTML=`<div class="card" id="intelBox" style="grid-column:1/-1">
-   <b>🚦 Local-Scan — Bedrohungs-Ampel</b>
-   <div style="font-size:12px;color:var(--dim);margin:6px 0">Im EVE-Local-Fenster in die Mitgliederliste klicken → <b>Strg+A</b> → <b>Strg+C</b> — mit Auto-Scan wars das schon, Canary erkennt die kopierte Liste selbst.
-   Alternativ hier einfügen und Scannen. Quellen: zKillboard + ESI (öffentlich, ohne Login) · ~1 Pilot/Sekunde, Ergebnisse 12h zwischengespeichert.</div>
-   <label style="font-size:12px;display:block;margin:6px 0"><input type="checkbox" id="clipWatch"> <b>Auto-Scan:</b> Zwischenablage überwachen — Strg+A/C im Local genügt, Alarm bei 🔴 auch ohne offenen Intel-Tab. <span style="color:var(--dim)">(Inhalt bleibt lokal; nur erkannte Pilotennamen werden bei ESI/zKillboard nachgeschlagen)</span></label>
+   <b>🚦 Bedrohungs-Ampel (Local-Scan)</b>
+   <div style="font-size:12px;color:var(--dim);margin:6px 0">Im EVE-Local-Fenster in die Mitgliederliste klicken, dann <b>Strg+A</b> und <b>Strg+C</b>. Mit Auto-Scan reicht das schon, Canary erkennt die kopierte Liste von selbst.
+   Alternativ hier einfügen und auf Scannen klicken. Quellen: zKillboard und ESI (öffentlich, ohne Login). Etwa ein Pilot pro Sekunde, Ergebnisse bleiben 12 Stunden gespeichert.</div>
+   <label style="font-size:12px;display:block;margin:6px 0"><input type="checkbox" id="clipWatch"> <b>Auto-Scan:</b> Zwischenablage überwachen. Strg+A/C im Local genügt, bei 🔴 gibt es Alarm auch ohne offenen Intel-Tab. <span style="color:var(--dim)">(Der Inhalt bleibt lokal, nur erkannte Pilotennamen werden bei ESI und zKillboard nachgeschlagen.)</span></label>
    <textarea id="intelIn" rows="5" style="width:100%" placeholder="Piloten-Namen einfügen …"></textarea>
    <div style="margin:8px 0"><button class="btn" id="intelGo">Scannen</button> <span id="intelStat" style="font-size:12px;color:var(--dim)"></span></div>
    <div id="intelTbl" style="overflow-x:auto"></div></div>`;
@@ -2543,26 +2811,32 @@ async function intelPoll(){
 function renderMissions(d){
  const m=d.missions||{},t=m.today||{};
  const live=(d.chars||[]).filter(c=>c.bounty>0||c.kills>0);
- $('#grid').innerHTML=`
+ const byDay={};(m.days||[]).forEach(x=>byDay[x.day]=x);
+ const iso=n=>new Date(Date.now()-n*864e5).toISOString().slice(0,10);
+ const y=byDay[iso(1)]||{};
+ let wIsk=0,wMis=0;
+ for(let n=0;n<7;n++){const x=byDay[iso(n)];if(x){wIsk+=x.total;wMis+=x.missions;}}
+ $('#grid').innerHTML=heroTiles('🎯 Verdient heute',t.total||0,y.total||0,wIsk,
+  (t.missions||0)+' Missionen',wMis+' Missionen · Ø '+fmtM(wIsk/7)+'/Tag')+`
  <div class="card" style="grid-column:1/-1">
-  <b>🎯 Missionen — Heute (EVE-Zeit)</b>
+  <b>Heute im Detail (EVE-Zeit)</b>
   <div class="stats" style="margin-top:10px">
    <div class="stat"><div class="l">Missionen erledigt</div><div class="v out">${t.missions||0}</div></div>
    <div class="stat"><div class="l">Belohnungen</div><div class="v isk">${fmtM(t.reward||0)}</div></div>
    <div class="stat"><div class="l">Zeitboni</div><div class="v isk">${fmtM(t.bonus||0)}</div></div>
    <div class="stat"><div class="l">Bounties</div><div class="v grn">${fmtM(t.bounty||0)}</div></div>
-   <div class="stat"><div class="l">Gesamt heute</div><div class="v isk">${fmtM(t.total||0)}</div></div>
   </div>
-  ${m.linked?'':'<div class="cardwarn" style="margin-top:10px">⚠ Kein EVE-Login verbunden — Belohnungen &amp; Boni kommen aus dem Wallet-Journal (ESI). Einrichtung: ⚙ Optionen → EVE-Login.</div>'}
+  ${(m.mine_systems&&m.mine_systems.length)?`<div class="sub" style="margin-top:8px">Bounties aus deinen Mining-Systemen (${m.mine_systems.join(', ')}) zählen hier nicht mit, das sind Belt-Ratten.</div>`:''}
+  ${m.linked?'':'<div class="cardwarn" style="margin-top:10px">⚠ Kein EVE-Login verbunden. Belohnungen und Boni kommen aus dem Wallet-Journal (ESI), einzurichten unter ⚙ Optionen.</div>'}
   ${live.length?'<div class="sect">Live-Session (aus den Gamelogs)</div>'+live.map(c=>
-   `<div class="sub">⚔ <b>${c.name}</b>${c.ship?' · '+c.ship:''} — ${c.kills} Kills · ${fmtM(c.bounty)} Bounties · DPS ${c.dps_out} raus / ${c.dps_in} rein · Session ${c.session_min} min</div>`).join(''):''}
+   `<div class="sub">⚔ <b>${c.name}</b>${c.ship?' · '+c.ship:''} · ${c.kills} Kills · ${fmtM(c.bounty)} Bounties · DPS ${c.dps_out} raus / ${c.dps_in} rein · Session ${c.session_min} min</div>`).join(''):''}
  </div>
  <div class="card" style="grid-column:1/-1">
   <div class="sect">Letzte 30 Tage</div>
   ${(m.days&&m.days.length)?`<div style="overflow-x:auto"><table>
    <tr><th>Tag</th><th class="r">Missionen</th><th class="r">Belohnung</th><th class="r">Zeitbonus</th><th class="r">Bounties</th><th class="r">Gesamt</th></tr>`+
    m.days.map(x=>`<tr><td>${x.day}</td><td class="r">${x.missions}</td><td class="r isk">${fmtM(x.reward)}</td><td class="r isk">${fmtM(x.bonus)}</td><td class="r grn">${fmtM(x.bounty)}</td><td class="r isk"><b>${fmtM(x.total)}</b></td></tr>`).join('')+
-   '</table></div>':'<div class="sub">Noch keine Journal-Daten — nach dem ersten ESI-Abgleich (max. 1 h) erscheinen hier die letzten ~30 Tage.</div>'}
+   '</table></div>':'<div class="sub">Noch keine Journal-Daten. Nach dem ersten ESI-Abgleich (spätestens in einer Stunde) erscheinen hier die letzten 30 Tage.</div>'}
  </div>
  ${(m.agents&&m.agents.length)?`<div class="card">
   <div class="sect">Top-Agenten</div><table>
@@ -2573,15 +2847,52 @@ function renderMissions(d){
   <tr><th>Charakter</th><th class="r">Missionen</th><th class="r">ISK</th></tr>`+
   m.chars.map(c=>`<tr><td>${c.char}</td><td class="r">${c.missions}</td><td class="r isk">${fmtM(c.total)}</td></tr>`).join('')+'</table></div>':''}`;
 }
+function renderRechner(){
+ if(document.getElementById('calcBox'))return;
+ $('#grid').innerHTML=`<div class="card" id="calcBox" style="grid-column:1/-1">
+  <b>🧮 Ore Calculator</b>
+  <div style="font-size:12px;color:var(--dim);margin:6px 0">Im Spiel den Frachtraum oder Container öffnen, alles markieren (Strg+A) und kopieren (Strg+C), dann hier einfügen.
+  Einzelne Zeilen wie "Compressed Veldspar 50000" funktionieren genauso.</div>
+  <textarea id="calcIn" rows="7" style="width:100%" placeholder="Compressed Veldspar	49.105&#10;Compressed Scordite	42.990"></textarea>
+  <div style="margin:8px 0"><button class="btn" id="calcGo">Berechnen</button> <span id="calcStat" style="font-size:12px;color:var(--dim)"></span></div>
+  <div id="calcOut" style="overflow-x:auto"></div></div>`;
+ $('#calcGo').onclick=doCalc;
+ const saved=localStorage.getItem('calcText');
+ if(saved)$('#calcIn').value=saved;
+}
+async function doCalc(){
+ const text=$('#calcIn').value;
+ localStorage.setItem('calcText',text);
+ $('#calcStat').textContent='Hole Preise von allen Handelsplätzen …';
+ let r;
+ try{r=await post({action:'calc',text});}catch(e){$('#calcStat').textContent='Preisabfrage fehlgeschlagen.';return;}
+ $('#calcStat').textContent='';
+ if(!r.items||!r.items.length){
+  $('#calcOut').innerHTML='<div class="sub">Keine bekannten Erz-Typen erkannt.'+(r.unknown&&r.unknown.length?' Nicht zuzuordnen: '+r.unknown.join(' · '):'')+'</div>';
+  return;}
+ const hubs=Object.values(r.hubs||{}).filter(h=>!h.error);
+ const bestBuy=Math.max(...hubs.map(h=>h.buy));
+ $('#calcOut').innerHTML=
+  `<div class="stats" style="grid-template-columns:repeat(${hubs.length},1fr)">`+
+  hubs.map(h=>`<div class="stat"${h.buy===bestBuy?' style="border-color:var(--gold)"':''}>
+   <div class="l">${h.name}${h.buy===bestBuy?' ★':''}</div>
+   <div class="v isk" style="font-size:20px">${fmtM(h.buy)}</div>
+   <div class="l">Sofortverkauf · mit Sell-Order: ${fmtM(h.sell)}</div></div>`).join('')+`</div>
+  <div class="sub" style="margin-top:8px">${fmt(r.m3)} m³ gesamt · ★ = bester Sofortverkauf · Einzelwerte zu Jita-Buy-Preisen:</div>
+  <table><tr><th>Typ</th><th class="r">Menge</th><th class="r">m³</th><th class="r">ISK (Jita)</th></tr>`+
+  r.items.map(i=>`<tr><td>${i.name}</td><td class="r">${fmt(i.qty)}</td><td class="r">${fmt(i.m3)}</td><td class="r isk">${fmtM(i.isk)}</td></tr>`).join('')+'</table>'+
+  (r.unknown&&r.unknown.length?`<div class="sub" style="margin-top:8px">Nicht erkannt: ${r.unknown.join(' · ')}</div>`:'');
+}
 async function tick(){
  try{
   const d=await (await fetch('/data?view='+view)).json();
   state=d.state;regionPills();handleAlerts();
-  if(view==='live')renderLive(d.chars);
+  if(view==='live')renderLive(d.chars,d.summary);
   else if(view==='month')renderMonth(d.days);
   else if(view==='analyse')renderAnalyse(d.analyse);
   else if(view==='intel')renderIntel(d.intel_auto);
   else if(view==='missionen')renderMissions(d);
+  else if(view==='rechner')renderRechner();
   else renderTotal(d.total);
  }catch(e){}
 }
@@ -2591,7 +2902,7 @@ tick();setInterval(tick,2000);
 
 if __name__ == "__main__":
     if not CONFIG["log_dir"]:
-        print("WARNUNG: EVE-Gamelog-Ordner nicht gefunden — Pfad in config.json eintragen.")
+        print("WARNUNG: EVE-Gamelog-Ordner nicht gefunden. Bitte den Pfad in config.json eintragen.")
     if DB_PATH.exists():
         try:
             do_backup()
