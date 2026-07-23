@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.15.1"
+VERSION = "1.15.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -3280,6 +3280,9 @@ function syncOpts(){
   document.querySelectorAll('.esiForget').forEach(b=>b.onclick=async()=>{
    const r=await post({action:'esi_forget',char:b.dataset.char});if(r.state)state=r.state;syncOpts();});
  }
+ // syncOpts baut Teile des Dialogs NEU auf, oft nach dem letzten tick() —
+ // ohne diesen Aufruf blieben die frischen Knoten bis zum naechsten Takt deutsch.
+ if(lang!=='de')tr(document.body);
 }
 
 function beep(freq,times,dur){
@@ -3730,6 +3733,8 @@ async function overlayTick(){
      ${txt?`<div class="st ${cls==='bad'?'bad':''}">${txt}</div>`:''}</span>
      <span class="val">${fmtM(c.total_isk)}<small>${fmt(c.m3h)} m³/h</small></span></div>`;}).join('')+
    alerts.map(a=>`<div class="al ${a.kind}">[${new Date(a.ts*1000).toLocaleTimeString()}] ${esc(a.text)}</div>`).join('');
+  // Das Overlay ist ein EIGENES Dokument, tr(document.body) erreicht es nicht.
+  if(lang!=='de')tr(doc.body);
  }catch(e){}
 }
 setInterval(overlayTick,2000);
@@ -4061,6 +4066,38 @@ const EN = {
 'Watchlist (Local-Chat, ein Name pro Zeile)':'Watchlist (local chat, one name per line)',
 'Spieler-Angriffe (gesamt)':'Player attacks (total)',
 'Live-Session (aus den Gamelogs)':'Live session (from the game logs)',
+'Heute':'Today','Heute im Detail (EVE-Zeit)':'Today in detail (EVE time)',
+'Gegner':'Enemy','Missionen':'Missions',
+'🚦 Bedrohungs-Ampel (Local-Scan)':'🚦 Threat traffic light (local scan)',
+'🔔 Alarme & Wachen':'🔔 Alerts & watches','🖥 System & Daten':'🖥 System & data',
+'. Mit Auto-Scan reicht das schon, Canary erkennt die kopierte Liste von selbst. Alternativ hier einfügen und auf Scannen klicken. Quellen: zKillboard und ESI (öffentlich, ohne Login). Etwa ein Pilot pro Sekunde, Ergebnisse bleiben 12 Stunden gespeichert.':
+ '. With auto-scan that is already enough, Canary spots the copied list by itself. Alternatively paste it here and click Scan. Sources: zKillboard and ESI (public, no login). About one pilot per second, results are kept for 12 hours.',
+'(Der Inhalt bleibt lokal, nur erkannte Pilotennamen werden bei ESI und zKillboard nachgeschlagen.)':
+ '(The content stays local, only recognised pilot names are looked up at ESI and zKillboard.)',
+'Kommt direkt aus den Gamelogs. Belt-Ratten stehen hier mit drin, die lassen sich am Schaden nicht vom Missionsgegner trennen.':
+ 'Comes straight from the game logs. Belt rats are included, damage alone cannot separate them from mission enemies.',
+'Noch keine Journal-Daten. Nach dem ersten ESI-Abgleich (spätestens in einer Stunde) erscheinen hier die letzten 30 Tage.':
+ 'No journal data yet. After the first ESI sync (within an hour at the latest) the last 30 days appear here.',
+'Im Spiel den Frachtraum oder Container öffnen, alles markieren (Strg+A) und kopieren (Strg+C), dann hier einfügen. Einzelne Zeilen wie "Compressed Veldspar 50000" funktionieren genauso.':
+ 'Open your cargo hold or a container in game, select everything (Ctrl+A) and copy (Ctrl+C), then paste it here. Single lines like "Compressed Veldspar 50000" work just as well.',
+'Photon (angelehnt ans EVE-Interface: dunkel, kantig, Gold-Akzente)':
+ 'Photon (modelled on the EVE interface: dark, angular, gold accents)',
+'Das Overlay ist ein schwebendes Always-on-top-Fenster mit Status und Alarmen, bleibt über dem EVE-Client (Fenstermodus/randlos). Benötigt Chrome oder Edge, Start nur per Klick.':
+ 'The overlay is a floating always-on-top window with status and alerts, staying above the EVE client (windowed or borderless). Needs Chrome or Edge, starts only by click.',
+'Das Mini-Overlay benötigt Chrome oder Edge (Document Picture-in-Picture).':
+ 'The mini overlay needs Chrome or Edge (Document Picture-in-Picture).',
+'Canary beim Systemstart automatisch mitstarten (still im Hintergrund, ohne Konsolenfenster)':
+ 'Start Canary automatically with the system (quietly in the background, no console window)',
+'Rolle zuweisen (für die Filter oben)':'Assign role (for the filters above)',
+'Schriftgröße (3 Stufen)':'Font size (3 steps)',
+'Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern" aktivieren.)':
+ 'Waiting for game log data … (Is the EVE client running? Enable „Log game to file" in the client.)',
+'Heavy Water im Laderaum (Stück). Nach dem Nachfüllen einfach Enter drücken, 0 entfernt die Anzeige':
+ 'Heavy Water in the cargo hold (units). After refilling just press Enter, 0 removes the display',
+'Piloten-Namen einfügen … (Auto-Scan gibt es nur unter Windows)':
+ 'Paste pilot names … (auto-scan is Windows only)',
+'Always-on-top Mini-Overlay (Chrome/Edge)':'Always-on-top mini overlay (Chrome/Edge)',
+'Open/Close Mini-Overlay':'Open/close mini overlay',
 '🤖 Drohnen liefern gerade kein Erz (gestoppt, voll oder auf dem Rückweg).':
  '🤖 Drones are not delivering ore right now (stopped, full or on their way back).'
 };
@@ -4093,6 +4130,21 @@ const EN_PATTERNS = [
  [/Ø letzte 7 Tage:/, 'Ø last 7 days:'], [/Bester Tag:/, 'Best day:'],
  [/Seit ([0-9]+) min kein Erz/, 'No ore for $1 min'],
  [/DPS ([0-9]+) raus [/] ([0-9]+) rein/, 'DPS $1 out / $2 in'],
+ [/Log-Ordner:/, 'Log folder:'], [/Dateien:/, 'files:'], [/Installiert:/, 'Installed:'],
+ [/: verbunden ·/, ': connected ·'], [/^trennen$/, 'disconnect'],
+ [/Du hast die aktuellste Version/, 'You have the latest version'],
+ [/prüfe … noch ([0-9]+) offen/, 'checking … $1 left'],
+ [/ rot ·/, ' red ·'], [/ gelb ·/, ' yellow ·'], [/ grün ·/, ' green ·'],
+ [/ unbekannt/, ' unknown'], [/Monate gesamt:/, 'months total:'],
+ [/Bounties aus deinen Mining-Systemen/, 'Bounties from your mining systems'],
+ [/zählen hier nicht mit, das sind Belt-Ratten/, 'are not counted here, those are belt rats'],
+ [/ Missionen/, ' missions'], [/DROHNEN PRÜFEN/, 'CHECK DRONES'],
+ [/[(]seit /, '(since '],
+ // Overlay-Statustexte (eigenes Fenster, Grossschreibung)
+ [/UNTER BESCHUSS/, 'UNDER FIRE'], [/FRACHTRAUM VOLL/, 'CARGO FULL'],
+ [/DROHNEN OHNE ERZ/, 'DRONES WITHOUT ORE'], [/LASER OHNE ERZ/, 'LASER WITHOUT ORE'],
+ [/ABBAURATE ([0-9]+)%/, 'MINING RATE $1%'], [/ AUS$/, ' OFF'],
+ [/KEIN ERZ SEIT ([0-9]+) MIN/, 'NO ORE FOR $1 MIN'],
  [/bei aktueller Rate erreicht am/, 'reached at current rate on'],
  [/Frachtraum voll, Mining gestoppt!/, 'Cargo hold full, mining stopped!'],
  [/^SPIELER-ANGRIFF: /, 'PLAYER ATTACK: '], [/ schießt auf /, ' is shooting at '],
