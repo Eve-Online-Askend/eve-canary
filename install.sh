@@ -43,8 +43,25 @@ FILES="eve_dashboard.py ore_types.json mining_tools.json README_INSTALL.md start
 # ein abgebrochener Download keine halbe Installation hinterlaesst.
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT INT TERM
+
+# Bevorzugt vom GitHub-Release laden: nur dort zaehlt GitHub die Downloads.
+# Klappt das nicht, geht es ueber raw weiter, die Installation haengt nicht daran.
+RELBASE=""
+if $DL "$TMP/version.json" "$REPO/version.json" 2>/dev/null; then
+  SLUG=$(sed -n 's/.*"repo"[^"]*"\([^"]*\)".*/\1/p' "$TMP/version.json")
+  TAG=$(sed -n 's/.*"tag"[^"]*"\([^"]*\)".*/\1/p' "$TMP/version.json")
+  [ -n "$SLUG" ] && [ -n "$TAG" ] && RELBASE="https://github.com/$SLUG/releases/download/$TAG"
+  rm -f "$TMP/version.json"
+fi
+
 for f in $FILES; do
-  if ! $DL "$TMP/$f" "$REPO/$f"; then
+  got=""
+  if [ -n "$RELBASE" ] && $DL "$TMP/$f" "$RELBASE/$f" 2>/dev/null && [ -s "$TMP/$f" ]; then
+    got=1
+  elif $DL "$TMP/$f" "$REPO/$f" && [ -s "$TMP/$f" ]; then
+    got=1
+  fi
+  if [ -z "$got" ]; then
     echo ""
     echo "  Download fehlgeschlagen bei: $f"
     echo "  Es wurde nichts installiert. Bitte Internetverbindung pruefen."

@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.12.1"
+VERSION = "1.13.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -528,7 +528,9 @@ def check_update():
         latest = str(info.get("version", "?"))
         return {"ok": True, "current": VERSION, "latest": latest,
                 "available": _ver(latest) > _ver(VERSION),
-                "files": info.get("files", UPDATE_FILES)}
+                "files": info.get("files", UPDATE_FILES),
+                # Fuer den Download ueber das GitHub-Release (siehe do_update)
+                "repo": info.get("repo"), "tag": info.get("tag")}
     except Exception as e:
         return {"ok": False, "error": f"Update-Server nicht erreichbar: {e}"}
 
@@ -540,12 +542,28 @@ def do_update():
     if not chk.get("available"):
         return {"ok": True, "updated": False, "message": "Bereits aktuell."}
     base = CONFIG["update_url"].rstrip("/")
+    # Bevorzugt vom GitHub-Release laden: nur dort zaehlt GitHub die Downloads
+    # (raw.githubusercontent liefert keine Statistik). Klappt das nicht, geht es
+    # ueber raw weiter — das Update darf daran niemals scheitern.
+    rel = None
+    if chk.get("repo") and chk.get("tag") and re.fullmatch(r"[\w.-]+/[\w.-]+", chk["repo"]) \
+            and re.fullmatch(r"[\w.-]+", chk["tag"]):
+        rel = f"https://github.com/{chk['repo']}/releases/download/{chk['tag']}"
+
+    def grab(name):
+        if rel:
+            try:
+                return fetch_url(f"{rel}/{name}", timeout=30)
+            except Exception:
+                pass
+        return fetch_url(f"{base}/{name}", timeout=30)
+
     try:
         blobs = {}
         for name in chk["files"]:
             if name not in UPDATE_FILES:
                 continue  # nur bekannte Dateien, keine fremden Pfade
-            blobs[name] = fetch_url(f"{base}/{name}", timeout=30)
+            blobs[name] = grab(name)
         if "eve_dashboard.py" in blobs:
             compile(blobs["eve_dashboard.py"].decode("utf-8"), "eve_dashboard.py", "exec")
     except SyntaxError:

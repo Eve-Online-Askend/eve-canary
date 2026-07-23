@@ -1,5 +1,5 @@
 {
- "version": "1.12.1",
+ "version": "1.13.0",
  "files": [
   "eve_dashboard.py",
   "ore_types.json",
@@ -10,5 +10,7 @@
   "uninstall.ps1",
   "start_dashboard.sh",
   "install.sh"
- ]
+ ],
+ "repo": "Eve-Online-Askend/eve-canary",
+ "tag": "v1.13.0"
 }

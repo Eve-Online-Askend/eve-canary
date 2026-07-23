@@ -96,9 +96,29 @@ $files = "eve_dashboard.py", "ore_types.json",
 # Bricht ein Download ab, bleibt keine halbe Installation am Zielort zurueck.
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ("eve-canary-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+# Bevorzugt vom GitHub-Release laden: nur dort zaehlt GitHub die Downloads.
+# Klappt das nicht, geht es ueber raw weiter, die Installation haengt nicht daran.
+$relBase = $null
+try {
+    $vj = Invoke-WebRequest -Uri "$Repo/version.json" -UseBasicParsing |
+          Select-Object -ExpandProperty Content | ConvertFrom-Json
+    if ($vj.repo -and $vj.tag) {
+        $relBase = "https://github.com/$($vj.repo)/releases/download/$($vj.tag)"
+    }
+} catch { }
 try {
     foreach ($f in $files) {
-        Invoke-WebRequest -Uri "$Repo/$f" -OutFile (Join-Path $tmp $f) -UseBasicParsing
+        $dest = Join-Path $tmp $f
+        $ok = $false
+        if ($relBase) {
+            try {
+                Invoke-WebRequest -Uri "$relBase/$f" -OutFile $dest -UseBasicParsing
+                $ok = $true
+            } catch { }
+        }
+        if (-not $ok) {
+            Invoke-WebRequest -Uri "$Repo/$f" -OutFile $dest -UseBasicParsing
+        }
         Write-Host "  geladen: $f"
     }
 } catch {
