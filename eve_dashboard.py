@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.9.0"
+VERSION = "1.10.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -205,13 +205,71 @@ def read_char_name(file):
     return file.stem
 
 
+def _steam_libs():
+    """Alle Steam-Bibliotheken auf dem Rechner (auch auf zweiten Platten)."""
+    home = Path.home()
+    libs = []
+    for r in [home / ".steam" / "steam", home / ".steam" / "root",
+              home / ".local" / "share" / "Steam",
+              home / ".var" / "app" / "com.valvesoftware.Steam" / ".local" / "share" / "Steam",
+              home / "snap" / "steam" / "common" / ".local" / "share" / "Steam"]:
+        sa = r / "steamapps"
+        if sa.is_dir() and sa not in libs:
+            libs.append(sa)
+    # Zusatz-Bibliotheken stehen in libraryfolders.vdf (eigenes Format, kein JSON)
+    for sa in list(libs):
+        try:
+            txt = (sa / "libraryfolders.vdf").read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for m in re.finditer(r'"path"\s+"([^"]+)"', txt):
+            p = Path(m.group(1).replace("\\\\", "/")) / "steamapps"
+            if p.is_dir() and p not in libs:
+                libs.append(p)
+    return libs
+
+
 def find_log_dir():
-    for d in [Path.home() / "Documents", Path.home() / "OneDrive" / "Documents",
-              Path.home() / "OneDrive" / "Dokumente", Path.home() / "Dokumente"]:
+    # 1) Windows und macOS: EVE schreibt direkt ins Benutzerverzeichnis
+    home = Path.home()
+    for d in [home / "Documents", home / "OneDrive" / "Documents",
+              home / "OneDrive" / "Dokumente", home / "Dokumente"]:
         p = d / "EVE" / "logs" / "Gamelogs"
         if p.exists():
             return p
-    return None
+    if os.name == "nt":
+        return None
+    # 2) Linux: EVE laeuft ueber Wine/Proton, die Logs liegen IM Praefix.
+    #    Steam/Proton legt pro Spiel eines unter steamapps/compatdata/<appid>/pfx
+    #    an — wir suchen ueber alle, statt uns auf eine feste App-ID zu verlassen.
+    prefixes = []
+    for sa in _steam_libs():
+        cd = sa / "compatdata"
+        if cd.is_dir():
+            prefixes.extend(sorted(cd.glob("*/pfx")))
+    if os.environ.get("WINEPREFIX"):
+        prefixes.append(Path(os.environ["WINEPREFIX"]))
+    prefixes.append(home / ".wine")
+    games = home / "Games"          # Lutris legt seine Praefixe hier ab
+    if games.is_dir():
+        prefixes.extend(sorted(games.glob("*")))
+    hits = []
+    for pfx in prefixes:
+        users = pfx / "drive_c" / "users"
+        if not users.is_dir():
+            continue
+        for docs in ("Documents", "Dokumente", "My Documents"):
+            hits.extend(p for p in users.glob(f"*/{docs}/EVE/logs/Gamelogs") if p.is_dir())
+    if not hits:
+        return None
+
+    def newest(p):
+        try:
+            return max((f.stat().st_mtime for f in p.glob("*.txt")), default=0)
+        except OSError:
+            return 0
+    # Mehrere Treffer (z.B. altes Wine-Praefix daneben): das mit dem juengsten Log
+    return max(hits, key=newest)
 
 
 def load_config():
@@ -347,13 +405,24 @@ def fetch_url(url, timeout=15):
         return r.read()
 
 
+AUTOSTART_OK = os.name == "nt" or sys.platform.startswith("linux")
+CLIPBOARD_OK = sys.platform == "win32"
+
+
 def autostart_path():
-    return (Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows"
-            / "Start Menu" / "Programs" / "Startup" / "EVE-Canary-Autostart.vbs")
+    if os.name == "nt":
+        return (Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows"
+                / "Start Menu" / "Programs" / "Startup" / "EVE-Canary-Autostart.vbs")
+    base = os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")
+    return Path(base) / "autostart" / "eve-canary.desktop"
 
 
 def set_autostart(on):
-    """Startet Canary beim Windows-Login still im Hintergrund (VBS, kein Konsolenfenster)."""
+    """Startet Canary beim Login still im Hintergrund.
+    Windows: VBS im Autostart-Ordner (unterdrueckt das Konsolenfenster).
+    Linux: .desktop-Datei nach XDG-Standard, greift in GNOME/KDE/XFCE gleich."""
+    if not AUTOSTART_OK:
+        return
     p = autostart_path()
     if not on:
         try:
@@ -361,13 +430,19 @@ def set_autostart(on):
         except FileNotFoundError:
             pass
         return
-    exe = Path(sys.executable)
-    pyw = exe.with_name("pythonw.exe")
-    runner = pyw if pyw.exists() else exe
     script = APP_DIR / "eve_dashboard.py"
-    # --no-browser: beim Windows-Login still starten, ohne Browser-Tab aufzupoppen
-    p.write_text('CreateObject("WScript.Shell").Run '
-                 f'"""{runner}"" ""{script}"" --no-browser", 0\n', encoding="utf-8")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        exe = Path(sys.executable)
+        pyw = exe.with_name("pythonw.exe")
+        runner = pyw if pyw.exists() else exe
+        # --no-browser: beim Login still starten, ohne Browser-Tab aufzupoppen
+        p.write_text('CreateObject("WScript.Shell").Run '
+                     f'"""{runner}"" ""{script}"" --no-browser", 0\n', encoding="utf-8")
+    else:
+        p.write_text("[Desktop Entry]\nType=Application\nName=EVE Canary\n"
+                     f'Exec="{sys.executable}" "{script}" --no-browser\n'
+                     "Terminal=false\nX-GNOME-Autostart-enabled=true\n", encoding="utf-8")
 
 
 UPDATE_INFO = {"ts": 0, "available": False, "latest": None}
@@ -2165,7 +2240,10 @@ def state_info():
             "baseline_day": meta_get("baseline_day"), "log_dir": CONFIG["log_dir"],
             "idle_warn": int(CONFIG.get("idle_warn", 240) or 0),
             "clip_watch": bool(CONFIG.get("clip_watch")),
-            "autostart": autostart_path().exists(),
+            "autostart": AUTOSTART_OK and autostart_path().exists(),
+            # Was diese Plattform kann — die Oberflaeche blendet den Rest aus,
+            # damit auf Linux keine toten Schalter stehen.
+            "autostart_ok": AUTOSTART_OK, "clip_ok": CLIPBOARD_OK,
             "update": {"available": UPDATE_INFO["available"],
                        "latest": UPDATE_INFO["latest"]},
             "version": VERSION,
@@ -2761,7 +2839,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 
  <div class="optgroup">
   <div class="sect">🖥 System &amp; Daten</div>
-  <label><input type="checkbox" id="autostart"> Canary beim Windows-Start automatisch mitstarten (still im Hintergrund, ohne Konsolenfenster)</label>
+  <label id="autostartRow"><input type="checkbox" id="autostart"> Canary beim Systemstart automatisch mitstarten (still im Hintergrund, ohne Konsolenfenster)</label>
   <label style="margin-top:8px"><input type="radio" name="mode" value="all"> Alle vorhandenen Logs auswerten</label>
   <label><input type="radio" name="mode" value="fresh"> Nur ab Installation zählen</label>
   <div class="btnrow">
@@ -2868,6 +2946,8 @@ function syncOpts(){
  document.querySelectorAll('#opts input[name=mode]').forEach(r=>r.checked=r.value===state.mode);
  document.querySelectorAll('#opts input[name=skin]').forEach(r=>r.checked=r.value===(document.documentElement.dataset.skin||''));
  $('#autostart').checked=!!state.autostart;
+ // Autostart gibt es nur auf Windows und Linux — sonst Zeile ausblenden
+ $('#autostartRow').hidden=state.autostart_ok===false;
  $('#baseinfo').textContent=state.baseline_day?('Aktive Baseline: zählt seit '+state.baseline_day+' (UTC).'):'Keine Baseline aktiv.';
  $('#loginfo').textContent='Log-Ordner: '+(state.log_dir||'nicht gefunden!')+' · Dateien: '+state.progress.done+'/'+state.progress.total;
  $('#watchlist').value=(state.watchlist||[]).join('\\n');
@@ -3347,7 +3427,7 @@ function renderIntel(auto){
    <b>🚦 Bedrohungs-Ampel (Local-Scan)</b>
    <div style="font-size:12px;color:var(--dim);margin:6px 0">Im EVE-Local-Fenster in die Mitgliederliste klicken, dann <b>Strg+A</b> und <b>Strg+C</b>. Mit Auto-Scan reicht das schon, Canary erkennt die kopierte Liste von selbst.
    Alternativ hier einfügen und auf Scannen klicken. Quellen: zKillboard und ESI (öffentlich, ohne Login). Etwa ein Pilot pro Sekunde, Ergebnisse bleiben 12 Stunden gespeichert.</div>
-   <label style="font-size:12px;display:block;margin:6px 0"><input type="checkbox" id="clipWatch"> <b>Auto-Scan:</b> Zwischenablage überwachen. Strg+A/C im Local genügt, bei 🔴 gibt es Alarm auch ohne offenen Intel-Tab. <span style="color:var(--dim)">(Der Inhalt bleibt lokal, nur erkannte Pilotennamen werden bei ESI und zKillboard nachgeschlagen.)</span></label>
+   <label id="clipRow" style="font-size:12px;display:block;margin:6px 0"><input type="checkbox" id="clipWatch"> <b>Auto-Scan:</b> Zwischenablage überwachen. Strg+A/C im Local genügt, bei 🔴 gibt es Alarm auch ohne offenen Intel-Tab. <span style="color:var(--dim)">(Der Inhalt bleibt lokal, nur erkannte Pilotennamen werden bei ESI und zKillboard nachgeschlagen.)</span></label>
    <textarea id="intelIn" rows="5" style="width:100%" placeholder="Piloten-Namen einfügen …"></textarea>
    <div style="margin:8px 0"><button class="btn" id="intelGo">Scannen</button> <span id="intelStat" style="font-size:12px;color:var(--dim)"></span></div>
    <div id="intelTbl" style="overflow-x:auto"></div></div>`;
@@ -3360,6 +3440,9 @@ function renderIntel(auto){
   };
   $('#clipWatch').checked=!!(state&&state.clip_watch);
   $('#clipWatch').onchange=()=>post({action:'clip_watch',on:$('#clipWatch').checked});
+  // Zwischenablage-Auto-Scan gibt es nur unter Windows; sonst nur Einfügen von Hand
+  if(state&&state.clip_ok===false){$('#clipRow').hidden=true;
+   $('#intelIn').placeholder='Piloten-Namen einfügen … (Auto-Scan gibt es nur unter Windows)';}
   if(intelNames.length)$('#intelIn').value=intelNames.join('\\n');
  }
  if(auto&&auto.ts>intelAutoTs&&auto.names&&auto.names.length&&document.activeElement!==$('#intelIn')){

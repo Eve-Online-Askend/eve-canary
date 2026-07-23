@@ -22,6 +22,32 @@ danach wie gewohnt ueber den eingebauten Auto-Updater.
 
 Wer lieber von Hand installiert, folgt den nächsten beiden Abschnitten.
 
+## Linux (EVE über Steam/Proton oder Wine)
+
+Ein Terminal öffnen und diesen Befehl einfügen:
+
+```
+curl -fsSL https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main/install.sh | sh
+```
+
+Canary landet in `~/.local/share/eve-canary`, bekommt einen Startmenü-Eintrag
+"EVE Canary" und startet danach direkt. Gebraucht wird nur Python 3, das bei den
+meisten Distributionen ohnehin dabei ist.
+
+Den Log-Ordner sucht Canary selbst. Unter Linux schreibt EVE nicht nach
+`~/Dokumente`, sondern ins Wine-Präfix, bei Steam also zum Beispiel nach
+`~/.steam/steam/steamapps/compatdata/8500/pfx/drive_c/users/steamuser/Documents/EVE/logs/Gamelogs`.
+Durchsucht werden alle Steam-Bibliotheken (auch Flatpak, Snap und zweite
+Festplatten) sowie `~/.wine` und die Lutris-Präfixe unter `~/Games`. Gibt es
+mehrere Treffer, gewinnt der mit dem jüngsten Log. Wird nichts gefunden, den
+Pfad einfach in den Optionen eintragen.
+
+Zwei Unterschiede zu Windows: der automatische Local-Scan über die
+Zwischenablage gibt es dort nicht (Namen von Hand in den Intel-Tab einfügen
+funktioniert weiter), und der Autostart läuft über eine `.desktop`-Datei in
+`~/.config/autostart`. Beide Schalter blendet Canary aus, wenn die Plattform sie
+nicht kann.
+
 ## Wo liegt Canary und wie starte ich es wieder?
 
 - Der Installer fragt nach dem Zielordner. Enter uebernimmt den Vorschlag
