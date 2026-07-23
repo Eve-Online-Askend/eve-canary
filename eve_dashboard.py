@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.14.0"
+VERSION = "1.15.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -3035,6 +3035,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span class="pill" id="showOffline" title="Standardmäßig zeigt Live nur eingeloggte Charaktere. Hier einschalten, um auch Offline-Charaktere zu sehen.">💤 Offline zeigen</span>
  <select class="pill" id="charFilter" title="Charakter-Filter"><option value="">Alle Charaktere</option></select>
  <span class="pill" id="collapseAll">Alle einklappen</span>
+ <span class="pill" id="langPill" title="Sprache umschalten / switch language">EN</span>
  <div class="pills" id="regions"></div>
  <span class="pill upd" id="updBadge" hidden title="Neue Version verfügbar, Klick installiert sie"></span>
  <span class="pill" id="ovToggle" title="Always-on-top Mini-Overlay (Chrome/Edge)">◱ Overlay</span>
@@ -3927,6 +3928,209 @@ function renderSetup(){
  if(state&&state.log_dir)$('#setupDir').value=state.log_dir;
  $('#setupDir').focus();
 }
+/* ---------------------------------------------------------------------------
+   SPRACHE / LANGUAGE
+   Der deutsche Text IST der Schluessel. Uebersetzt wird die FERTIGE Seite nach
+   jedem Rendern, dadurch bleibt der restliche Code unberuehrt und eine fehlende
+   Uebersetzung faellt automatisch auf Deutsch zurueck.
+   Weitere Sprache: zweite Tabelle anlegen und in DICTS eintragen.
+--------------------------------------------------------------------------- */
+const EN = {
+// Kopfleiste & Navigation
+'Alle':'All','Alle Charaktere':'All characters','Alle einklappen':'Collapse all',
+'Alle aufklappen':'Expand all','Charakter-Filter':'Character filter',
+'Nur Mining-Charaktere':'Mining characters only','Nur Mission-Runner':'Mission runners only',
+'Nur PvP-Charaktere':'PvP characters only','💤 Offline zeigen':'💤 Show offline',
+'Standardmäßig zeigt Live nur eingeloggte Charaktere. Hier einschalten, um auch Offline-Charaktere zu sehen.':
+ 'Live normally shows only logged-in characters. Turn this on to see offline ones too.',
+'Live':'Live','30 Tage':'30 days','Gesamt':'All time','Analyse':'Analysis',
+'🚦 Intel':'🚦 Intel','🎯 Missionen':'🎯 Missions','🧮 Ore Calculator':'🧮 Ore calculator',
+'⚙ Optionen':'⚙ Options','◱ Overlay':'◱ Overlay',
+'◱ Mini-Overlay öffnen/schließen':'Open/close mini overlay',
+'Sprache umschalten / switch language':'Sprache umschalten / switch language',
+'Neue Version verfügbar, Klick installiert sie':'New version available, click to install',
+// Hero-Leiste
+'⛏ Geminert heute':'⛏ Mined today','🎯 Verdient heute':'🎯 Earned today',
+'Gestern':'Yesterday','Letzte 7 Tage':'Last 7 days','Letzte 30 Tage':'Last 30 days',
+'/Tag':'/day','aktive Tage':'active days','Bester Tag':'Best day',
+// Charakterkarte
+'ISK Trip':'ISK trip','ISK Session':'ISK session','Erz':'Ore','Erz gesamt':'Total ore',
+'Erz-Wert':'Ore value','ISK gesamt':'Total ISK','Laderaum ≈':'Cargo ≈',
+'Schaden raus/rein':'Damage out/in','DPS raus/rein':'DPS out/in',
+'Kompression':'Compression','Komprimiert pro Charakter':'Compressed per character',
+'Alles, was über die Schiffs-Kompression gelaufen ist':'Everything run through ship compression',
+'Noch nichts komprimiert':'Nothing compressed yet','Pro Charakter':'Per character',
+'Gesamt nach Typ':'Total by type','Menge':'Amount','Typ':'Type','Stk':'units',
+'seit Abdocken':'since undocking','Asteroiden leergebaggert':'asteroids depleted',
+'Asteroiden leergebaggert · Preise':'asteroids depleted · prices',
+'per ⛽ setzen':'set via ⛽','Kern inaktiv, Verbrauch pausiert':'Core inactive, consumption paused',
+'Bestand im Laderaum setzen':'Set amount in cargo hold','Spielzeit':'Played time',
+'Waffen-Bilanz':'Weapon balance','Noch keine Kampfdaten':'No combat data yet',
+'Nicht zuzuordnen':'Unassigned','Nicht erkannt':'Not recognised',
+'Noch keine historischen Daten.':'No historical data yet.',
+'Dieses Erz kennt Canary noch nicht, daher kein Wert. Bitte den Namen im Discord melden.':
+ 'Canary does not know this ore yet, so no value. Please report the name on Discord.',
+'Für einzelne Erztypen fehlen Preisdaten':'Price data missing for some ore types',
+'Noch nicht mit EVE-Login verbunden. Klick für Portrait, Schiff, Wallet und automatisches Heavy Water.':
+ 'Not linked to the EVE login yet. Click for portrait, ship, wallet and automatic Heavy Water.',
+// Leere Zustände
+'Gerade ist kein Charakter eingeloggt. Mit „💤 Offline zeigen" siehst du auch die abgemeldeten.':
+ 'No character is logged in right now. Use „💤 Show offline" to see the logged-out ones too.',
+'Kein Charakter mit dieser Rolle. Tippe auf einer Karte auf das Rollen-Symbol, um sie zuzuweisen.':
+ 'No character with this role. Tap the role icon on a card to assign one.',
+'Kein Ziel gesetzt. Unter ⚙ Optionen kannst du ein ISK-Ziel mit Prognose anlegen.':
+ 'No goal set. You can add an ISK goal with a forecast under ⚙ Options.',
+// Startbildschirm
+'Logdateien werden gelesen und analysiert …':'Reading and analysing log files …',
+'Das passiert nur beim ersten Start. Je nach Log-Bestand kann es ein paar Minuten dauern, danach öffnet sich das Dashboard von selbst.':
+ 'This only happens on first start. Depending on how many logs you have it can take a few minutes, then the dashboard opens by itself.',
+'Logdateien analysiert. Willkommen!':'log files analysed. Welcome!',
+// Einrichtung Log-Ordner
+'📁 Log-Ordner einrichten':'📁 Set up log folder',
+'Canary hat die EVE-Gamelogs nicht automatisch gefunden. Bitte den Ordner':
+ 'Canary did not find the EVE game logs automatically. Please enter the folder',
+'angeben, dann geht es weiter.':'and you are good to go.',
+'Läuft EVE über':'If EVE runs through','liegt er im Wine-Präfix, etwa':'it sits in the Wine prefix, for example',
+'Wichtig: bis einschließlich':'Important: include','nicht nur bis':'not just up to',
+'Pfad zum Gamelogs-Ordner':'Path to the Gamelogs folder',
+'Prüfen und übernehmen':'Check and apply','Prüfe …':'Checking …',
+'Findet Canary die Logs nicht von selbst, hier den Ordner':'If Canary does not find the logs by itself, enter the folder',
+'eintragen. Unter Linux liegt der im Wine-Präfix, bei Steam etwa':
+ 'here. On Linux it sits in the Wine prefix, with Steam for example',
+'Übernehmen':'Apply','Log-Ordner':'Log folder',
+// Optionen
+'Schließen':'Close','Backup erstellen':'Create backup','🩺 Diagnose kopieren':'🩺 Copy diagnostics',
+'Nach Update suchen':'Check for updates','Update installieren':'Install update',
+'Alle vorhandenen Logs auswerten':'Evaluate all existing logs',
+'Nur ab Installation zählen':'Count from installation onwards',
+'Auswertung ab jetzt neu lesen':'Restart evaluation from now',
+'Auswertung ab jetzt neu starten? Alte Daten bleiben gespeichert, werden aber ausgeblendet.':
+ 'Restart the evaluation from now? Old data stays stored but is hidden.',
+'Baseline aufheben':'Clear baseline','Keine Baseline aktiv.':'No baseline active.',
+'Aktive Baseline: zählt seit':'Active baseline: counting since',
+'Desktop-Benachrichtigungen erlauben':'Allow desktop notifications',
+'Sound bei Spieler-Angriff':'Sound on player attack',
+'Sound bei leerem Asteroiden':'Sound on depleted asteroid',
+'Sound bei Watchlist-Treffer':'Sound on watchlist hit',
+'Watchlist speichern':'Save watchlist','Ziel speichern':'Save goal','Ziel löschen':'Clear goal',
+'ISK-Ziel, z.B. 1000000000':'ISK goal, e.g. 1000000000','Ziel':'Goal',
+'🎨 Darstellung':'🎨 Appearance','🔑 EVE-Account verbinden':'🔑 Connect EVE account',
+'🔑 Mit EVE-Account verbinden':'🔑 Connect with EVE account',
+'✨ Verbinde deinen EVE-Account, dann zeigt Canary automatisch Portrait, aktuelles Schiff, Wallet-Stand, Heavy Water und Missions-Einnahmen. Kein Setup nötig, einfach einloggen.':
+ '✨ Connect your EVE account and Canary automatically shows portrait, current ship, wallet balance, Heavy Water and mission income. No setup needed, just log in.',
+'Login konnte nicht gestartet werden.':'Could not start the login.',
+'Installiert: EVE Canary v':'Installed: EVE Canary v','Neue Version verfügbar':'New version available',
+'Update auf v':'Update to v','installieren? Canary startet danach automatisch neu.':
+ '? Canary restarts automatically afterwards.',
+'Update läuft …':'Update running …','Lade Update …':'Downloading update …',
+'Update fehlgeschlagen.':'Update failed.','⬆ Update v':'⬆ Update v',
+'In die Zwischenablage kopiert. Einfach an Askend schicken.':'Copied to the clipboard. Just send it to Askend.',
+'Kopieren ging nicht, Text ist markiert: Strg+C drücken.':'Copying failed, the text is selected: press Ctrl+C.',
+'Diagnose konnte nicht erstellt werden':'Could not create the diagnostics',
+// Intel
+'Im EVE-Local-Fenster in die Mitgliederliste klicken, dann':'Click the member list in the EVE local window, then',
+'Piloten-Namen einfügen …':'Paste pilot names …','Scannen':'Scan',
+'Zwischenablage überwachen. Strg+A/C im Local genügt, bei 🔴 gibt es Alarm auch ohne offenen Intel-Tab.':
+ 'Watch the clipboard. Ctrl+A/C in local is enough, 🔴 raises an alert even without the intel tab open.',
+'Keine Spieler-Angriffe erkannt ✓':'No player attacks detected ✓',
+'Bekannte Ganker...':'Known gankers...','Kills 60d':'Kills 60d','Kills/Verluste':'Kills/losses',
+'Miner-Kills':'Miner kills','Sicherheit':'Security','Alter':'Age','Corp · Allianz':'Corp · alliance',
+'Strg+A':'Ctrl+A','Strg+C':'Ctrl+C',
+// Missionen
+'Missionen erledigt':'Missions completed','Belohnungen':'Rewards','Zeitboni':'Time bonuses',
+// Rechner
+'Berechnen':'Calculate','Was lohnt sich am meisten pro Laderaum?':'What pays off most per cargo hold?',
+'Sofortverkauf · mit Sell-Order':'Instant sale · with sell order',
+'Hole Preise von allen Handelsplätzen …':'Fetching prices from all trade hubs …',
+'Preisabfrage fehlgeschlagen.':'Price lookup failed.',
+// Desktop-Meldungen
+'EVE: SPIELER-ANGRIFF!':'EVE: PLAYER ATTACK!','EVE: Frachtraum voll!':'EVE: Cargo hold full!',
+'EVE: Mining steht!':'EVE: Mining stopped!','EVE: Drohnen prüfen!':'EVE: Check drones!',
+'EVE: Abbaurate gefallen!':'EVE: Mining rate dropped!','EVE: Bedrohung erkannt!':'EVE: Threat detected!',
+'EVE: Heavy Water fast leer!':'EVE: Heavy Water almost empty!','EVE: Watchlist':'EVE: Watchlist',
+'Speichern':'Save','nicht gefunden!':'not found!',
+'Erz-Bilanz (nach Wert)':'Ore balance (by value)','Gegner (letzte 30 Tage)':'Enemies (last 30 days)',
+'Klassisch (das gewohnte Canary-Design)':'Classic (the familiar Canary look)',
+'Sekunden ohne Erz bis zur Stillstand-Warnung (0 = aus)':'Seconds without ore before the idle warning (0 = off)',
+'🎯 Ziel & Zähler':'🎯 Goal & counters','7 Tage':'7 days','12 Monate':'12 months',
+'Erz-Effizienz (ISK/m³)':'Ore efficiency (ISK/m³)'
+};
+// Texte, die fest mit eingesetzten Zahlen verwachsen sind ("Erz (1.234 m³)") —
+// die lassen sich nicht als ganzer Schluessel nachschlagen, daher als Muster.
+// Bewusst OHNE Backslash geschrieben: Zeichenklassen wie [(] und [0-9] statt der
+// ueblichen Kurzformen. PAGE ist ein normaler Python-String, dort waeren solche
+// Escape-Sequenzen ungueltig und wuerden kuenftige Python-Versionen brechen.
+const EN_PATTERNS = [
+ [/^Erz [(]/, 'Ore ('], [/^Laderaum ≈/, 'Cargo ≈'],
+ [/vs[.] gestern/, 'vs. yesterday'],
+ [/aktive Tage/, 'active days'], [/Asteroiden leergebaggert/, 'asteroids depleted'],
+ [/abgeschaltet, Drohnen prüfen!/, 'switched off, check drones!'],
+ [/abgeschaltet, Ziel prüfen/, 'switched off, check target'],
+ [/Seit ([0-9]+) Minuten kein Erz/, 'No ore for $1 minutes'],
+ [/Kein Erz seit/, 'No ore for'],
+ [/^Ziel: /, 'Goal: '], [/ Mrd/, ' bn'],
+ // Alarmtexte: die entstehen im Python-Teil und kommen fertig vom Server,
+ // deshalb hier beim Anzeigen uebersetzen statt an der Quelle.
+ [/Heavy Water fast leer, reicht noch etwa ([0-9]+) Minuten!/,
+  'Heavy Water almost empty, about $1 minutes left!'],
+ [/Laser und Drohnen prüfen!/, 'Check lasers and drones!'],
+ [/Abbaurate nur noch ([0-9]+)%[.] Vermutlich ist ein Modul oder eine Drohne aus!/,
+  'Mining rate down to $1%. A module or a drone is probably off!'],
+ [/Frachtraum voll, Mining gestoppt!/, 'Cargo hold full, mining stopped!'],
+ [/^SPIELER-ANGRIFF: /, 'PLAYER ATTACK: '], [/ schießt auf /, ' is shooting at '],
+ [/^Watchlist: (.*) ist im Local aktiv!/, 'Watchlist: $1 is active in local!'],
+];
+const DICTS = {en:EN};
+let lang = localStorage.getItem('uiLang');
+if(!lang) lang = (navigator.language||'de').slice(0,2).toLowerCase()==='de' ? 'de' : 'en';
+const ORIG = new WeakMap();          // Textknoten -> deutsches Original
+// Uebersetzt einen Text oder gibt null zurueck, wenn nichts bekannt ist
+function xlate(s){
+ const dict = DICTS[lang]; if(!dict) return null;
+ const k = s.trim(); if(!k) return null;
+ if(dict[k]) return s.replace(k, dict[k]);
+ if(lang === 'en'){
+  // ALLE passenden Muster nacheinander anwenden, nicht beim ersten aufhoeren —
+  // sonst bleibt der Rest eines Satzes deutsch stehen.
+  let out = s, treffer = false;
+  for(const [re, rep] of EN_PATTERNS) if(re.test(out)){ out = out.replace(re, rep); treffer = true; }
+  if(treffer) return out;
+ }
+ return null;
+}
+function tr(root){
+ const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+ const nodes = []; while(w.nextNode()) nodes.push(w.currentNode);
+ for(const n of nodes){
+  if(!ORIG.has(n)){
+   if(lang === 'de' || xlate(n.nodeValue) === null) continue;   // nichts zu tun
+   ORIG.set(n, n.nodeValue);
+  }
+  const orig = ORIG.get(n);
+  const neu = (lang === 'de') ? null : xlate(orig);
+  n.nodeValue = (neu === null) ? orig : neu;
+ }
+ for(const el of root.querySelectorAll('[title],[placeholder]')){
+  for(const a of ['title','placeholder']){
+   const cur = el.getAttribute(a); if(cur===null) continue;
+   const key = 'o'+a;
+   if(el.dataset[key]===undefined){
+    if(lang === 'de' || xlate(cur) === null) continue;
+    el.dataset[key] = cur;
+   }
+   const orig = el.dataset[key];
+   const neu = (lang === 'de') ? null : xlate(orig);
+   el.setAttribute(a, (neu === null) ? orig : neu);
+  }
+ }
+}
+function setLang(l){
+ lang = l; try{ localStorage.setItem('uiLang', l); }catch(e){}
+ const p = document.getElementById('langPill');
+ if(p) p.textContent = (l==='de') ? 'EN' : 'DE';   // zeigt, wohin es geht
+ document.documentElement.lang = l;
+ tr(document.body);
+}
 let tickBusy=false;
 async function tick(){
  if(tickBusy)return;  // kein Request-Stau bei langsamem /data
@@ -3949,9 +4153,12 @@ async function tick(){
    else if(view==='rechner')renderRechner();
    else renderTotal(d.total);
   }
+  if(lang!=='de')tr(document.body);   // frisch gerenderte Teile nachuebersetzen
  }catch(e){}
  finally{tickBusy=false;}
 }
+$('#langPill').onclick=()=>setLang(lang==='de'?'en':'de');
+setLang(lang);
 tick();setInterval(tick,2000);
 </script></body></html>"""
 
