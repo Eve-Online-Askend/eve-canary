@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.13.0"
+VERSION = "1.14.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -118,13 +118,49 @@ IN_COLOR = "0xffcc0000"
 PLAYER_RE = re.compile(r"\[[^\[\]]{1,10}\]\s*\([^()]+\)")
 # Fuehrende Schadenszahl (auch mit Tausender-Trennung) am Zeilenanfang
 DMG_HEAD_RE = re.compile(r"^\d[\d.,  ]*")
-# Sprachabhängige Signale (DE/EN) — für weitere Sprachen hier ergänzen
+# Sprachabhängige Signale. ALLES ANDERE (Erz, Schaden, Gegner, Bounties, Module)
+# ist sprachunabhängig über hint-Tags, Farbcodes und Zahlen — nur diese vier
+# Meldungen stehen als reiner Fließtext im Log und brauchen pro Sprache ein Muster.
+# Erweitern ohne neue Version: in config.json unter "log_texts", z.B.
+#   "log_texts": {"undock": ["Désamarrage", "Отстыковка"]}
+# Die echten Sätze liefert die Diagnose eines Nutzers (Abschnitt "Unerkannte
+# Meldungen"), damit hier nichts geraten werden muss.
 CARGO_FULL_TEXTS = ["Frachtraum des Schiffs ist voll", "cargo hold is full",
                     "cargohold is full"]
 DRONE_UNLOAD_TEXTS = ["Bergbaudrohnen müssen ihre aktuellen Erzladungen verladen",
                       "mining drones must unload"]
 UNDOCK_TEXTS = ["Abdocken", "Undocking"]      # (None)-Zeile beim Abdocken
 TRADE_TEXTS = ["Handel mit", "Trade with"]    # Handel abgeschlossen -> Laderaum unklar
+LOG_TEXT_KEYS = {"cargo_full": CARGO_FULL_TEXTS, "drone_unload": DRONE_UNLOAD_TEXTS,
+                 "undock": UNDOCK_TEXTS, "trade": TRADE_TEXTS}
+
+# Unerkannte notify-Meldungen sammeln. Bei Clients in anderen Sprachen als DE/EN
+# fehlen die Muster oben — mit diesen Beispielen aus der Diagnose lassen sie sich
+# exakt nachtragen, statt sie zu raten (geratene Muster greifen still nicht).
+UNKNOWN_NOTIFY = deque(maxlen=80)
+_UNKNOWN_SEEN = set()
+# Wie oft die eingebauten Muster gegriffen haben. Stehen hier ueberall Nullen,
+# ist die Client-Sprache noch nicht abgedeckt — das sieht man in der Diagnose
+# sofort, ohne die Meldungen darunter lesen zu muessen.
+LOG_TEXT_HITS = {"cargo_full": 0, "drone_unload": 0, "undock": 0, "trade": 0}
+
+
+# Grossgeschriebenes Wort, das NICHT am Satzanfang steht = vermutlich Eigenname
+PROPER_RE = re.compile(r"(?<![.!?]\s)(?<!^)\b[A-ZÄÖÜÀ-ÖØ-ÞА-ЯЁ][\w'’-]{2,}", re.UNICODE)
+
+
+def note_unknown(text):
+    if not text or len(_UNKNOWN_SEEN) > 600:
+        return
+    # Zahlen und Eigennamen (System-, Stations-, Spielernamen) vereinheitlichen,
+    # sonst belegt "Jumping from A to B" mit jeder Kombination einen eigenen
+    # Platz und verdraengt die Meldungen, um die es hier eigentlich geht.
+    t = re.sub(r"\d[\d.,]*", "#", text).strip()
+    t = PROPER_RE.sub("@", t)[:150]
+    if len(t) < 12 or t in _UNKNOWN_SEEN:
+        return
+    _UNKNOWN_SEEN.add(t)
+    UNKNOWN_NOTIFY.append(t)
 
 
 def num(s):
@@ -211,6 +247,7 @@ def parse_line(raw):
                     "raw": mc.group(1).strip().rstrip("*").strip(),
                     "value": num(mc.group(2))}
         if any(t in text for t in TRADE_TEXTS):
+            LOG_TEXT_HITS["trade"] += 1
             return {**base, "kind": "hold_reset", "key": "trade", "value": 1}
         for tool in MINING_TOOLS:
             # Modulnamen sind nie lokalisiert: "Strip Miner I* schaltet ab, …"
@@ -226,14 +263,19 @@ def parse_line(raw):
             # Mining-Drohnen wurden neu angesetzt -> Drohnen-Warnung aufheben
             return {**base, "kind": "drone_engage", "key": hints[0], "value": 1}
         if any(t in text for t in CARGO_FULL_TEXTS):
+            LOG_TEXT_HITS["cargo_full"] += 1
             return {**base, "kind": "cargo", "key": "", "value": 1}
         if any(t in text for t in DRONE_UNLOAD_TEXTS):
+            LOG_TEXT_HITS["drone_unload"] += 1
             return {**base, "kind": "drone_idle", "key": "", "value": 1}
+        note_unknown(text)
         return None
     elif tag == "None":
         text = STRIP_RE.sub("", body)
         if any(t in text for t in UNDOCK_TEXTS):
+            LOG_TEXT_HITS["undock"] += 1
             return {**base, "kind": "hold_reset", "key": "dock", "value": 1}
+        note_unknown(text)
         return None
     return None
 
@@ -321,7 +363,7 @@ def load_config():
     cfg = {"port": PORT_DEFAULT, "region": "10000002", "log_dir": None,
            "mode": "all", "install_ts": time.time(),
            "goal": None, "watchlist": [], "idle_warn": 240, "heavy_water": {},
-           "clip_watch": False, "roles": {},
+           "clip_watch": False, "roles": {}, "log_texts": {},
            "update_url": "https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main"}
     if CONFIG_PATH.exists():
         try:
@@ -354,6 +396,13 @@ def save_config(cfg=None):
 
 
 CONFIG = load_config()
+
+# Eigene Sprachmuster aus config.json ergaenzen die eingebauten (DE/EN), damit
+# eine neue Client-Sprache ohne neue Programmversion nachgetragen werden kann.
+for _key, _builtin in LOG_TEXT_KEYS.items():
+    for _t in (CONFIG.get("log_texts") or {}).get(_key) or []:
+        if isinstance(_t, str) and _t.strip() and _t.strip() not in _builtin:
+            _builtin.append(_t.strip())
 
 # ---------------------------------------------------------------- Datenbank
 DB_LOCK = threading.Lock()
@@ -1962,6 +2011,18 @@ def diagnose_text():
     except Exception:
         pass
     L.append(f"ESI      : {len((CONFIG.get('esi') or {}).get('chars', {}))} Charaktere verbunden")
+    # Meldungen, fuer die es kein Textmuster gibt. Bei DE/EN ist das harmloses
+    # Rauschen, bei anderen Client-Sprachen stehen hier die Saetze, die noch
+    # fehlen (Frachtraum voll, Abdocken, Handel, Drohnen abladen).
+    hits = " ".join(f"{k}={v}" for k, v in LOG_TEXT_HITS.items())
+    L.append(f"Sprachmuster: {hits}")
+    if not any(LOG_TEXT_HITS.values()):
+        L.append("  ACHTUNG: kein einziges Muster hat gegriffen — Client-Sprache")
+        L.append("  vermutlich noch nicht abgedeckt. Die Zeilen unten helfen dabei.")
+    if UNKNOWN_NOTIFY:
+        L.append(f"\nUnerkannte Meldungen ({len(UNKNOWN_NOTIFY)}, fuer Sprachunterstuetzung):")
+        for t in list(UNKNOWN_NOTIFY)[-30:]:
+            L.append(f"  · {t}")
     if not ERRORS:
         L.append("\nFehler   : keine")
     else:

@@ -177,6 +177,32 @@ kein Internet da war, `CN-ESI-01` verschwindet nach einem neuen EVE-Login, und
 `CN-LOG-03` bedeutet fast immer, dass der Pfad auf `logs` statt auf
 `logs/Gamelogs` zeigt.
 
+## Andere Client-Sprachen
+
+Mining, Kompression, Schaden, Gegner, Bounties und Modul-Meldungen erkennt Canary
+**sprachunabhängig**, die hängen an Zahlen, Farbcodes und den englischen Namen in
+den `hint`-Tags. Deutsch und Englisch sind vollständig abgedeckt.
+
+Vier Meldungen stehen aber als reiner Fließtext im Log und brauchen pro Sprache
+ein Muster: Frachtraum voll, Drohnen müssen abladen, Abdocken und Handel. Fehlen
+die, läuft alles Übrige normal weiter, nur der Trip wird beim Abdocken nicht
+zurückgesetzt.
+
+Nachtragen geht ohne neue Version, in `config.json`:
+
+```json
+"log_texts": {
+  "undock": ["Désamarrage"],
+  "cargo_full": ["la soute est pleine"]
+}
+```
+
+Die exakten Sätze musst du nicht raten: In den ⚙ Optionen auf
+**„🩺 Diagnose kopieren"** klicken. Der Bericht zeigt unter „Sprachmuster", ob
+die eingebauten Muster greifen, und listet darunter die unerkannten Meldungen im
+Originalwortlaut. Schick den Bericht gern weiter, dann wandern die Muster fest
+ins Programm.
+
 ## Hinweise
 
 - Marktpreise kommen von market.fuzzwork.co.uk (öffentlich, kein Login).
