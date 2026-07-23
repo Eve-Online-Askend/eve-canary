@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.8.9"
+VERSION = "1.9.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -2213,6 +2213,14 @@ def query_missions():
             d["bounty"] += amount
     day_list = sorted(days.values(), key=lambda d: d["day"], reverse=True)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # Gegner der letzten 30 Tage aus den Gamelogs (nicht aus dem Journal):
+    # wen hast du bekaempft, wer hat zurueckgeschossen.
+    foes = {}
+    for _day, _cid, _cname, kind, key, value in all_rows(30, ("dmg_out", "dmg_in")):
+        if not key or key == "?":
+            continue
+        f = foes.setdefault(key, {"name": key, "dealt": 0, "taken": 0})
+        f["dealt" if kind == "dmg_out" else "taken"] += value
     return {
         "mine_systems": sorted(n for n, i in mine_sys.items() if i),
         "linked": bool((CONFIG.get("esi") or {}).get("chars")),
@@ -2220,6 +2228,9 @@ def query_missions():
                                      "bonus": 0, "bounty": 0, "total": 0},
         "days": [{k: (round(v) if isinstance(v, float) else v) for k, v in d.items()}
                  for d in day_list[:30]],
+        "foes": sorted(({"name": f["name"], "dealt": round(f["dealt"]),
+                         "taken": round(f["taken"])} for f in foes.values()),
+                       key=lambda f: -(f["dealt"] + f["taken"]))[:20],
         "agents": sorted(({**a, "isk": round(a["isk"])} for a in agents.values()),
                          key=lambda a: -a["isk"])[:10],
         "chars": sorted(({**c, "total": round(c["total"])} for c in chars.values()),
@@ -3428,6 +3439,14 @@ function renderMissions(d){
    m.days.map(x=>`<tr><td>${x.day}</td><td class="r">${x.missions}</td><td class="r isk">${fmtM(x.reward)}</td><td class="r isk">${fmtM(x.bonus)}</td><td class="r grn">${fmtM(x.bounty)}</td><td class="r isk"><b>${fmtM(x.total)}</b></td></tr>`).join('')+
    '</table></div>':'<div class="sub">Noch keine Journal-Daten. Nach dem ersten ESI-Abgleich (spätestens in einer Stunde) erscheinen hier die letzten 30 Tage.</div>'}
  </div>
+ ${(m.foes&&m.foes.length)?`<div class="card" style="grid-column:1/-1">
+  <div class="sect">Gegner (letzte 30 Tage)</div>
+  <div style="overflow-x:auto"><table>
+  <tr><th>Gegner</th><th class="r">Schaden ausgeteilt</th><th class="r">Schaden kassiert</th></tr>`+
+  m.foes.map(f=>`<tr><td>${esc(f.name)}</td><td class="r out">${f.dealt?fmt(f.dealt):'&ndash;'}</td><td class="r in">${f.taken?fmt(f.taken):'&ndash;'}</td></tr>`).join('')+
+  `</table></div>
+  <div class="sub" style="margin-top:8px">Kommt direkt aus den Gamelogs. Belt-Ratten stehen hier mit drin, die lassen sich am Schaden nicht vom Missionsgegner trennen.</div>
+ </div>`:''}
  ${(m.agents&&m.agents.length)?`<div class="card">
   <div class="sect">Top-Agenten</div><table>
   <tr><th>Agent</th><th class="r">Missionen</th><th class="r">ISK</th></tr>`+
