@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.15.0"
+VERSION = "1.15.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -3035,7 +3035,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span class="pill" id="showOffline" title="Standardmäßig zeigt Live nur eingeloggte Charaktere. Hier einschalten, um auch Offline-Charaktere zu sehen.">💤 Offline zeigen</span>
  <select class="pill" id="charFilter" title="Charakter-Filter"><option value="">Alle Charaktere</option></select>
  <span class="pill" id="collapseAll">Alle einklappen</span>
- <span class="pill" id="langPill" title="Sprache umschalten / switch language">EN</span>
+ <span class="pill langsel" data-l="de" title="Deutsch">DE</span><span class="pill langsel" data-l="en" title="English">EN</span>
  <div class="pills" id="regions"></div>
  <span class="pill upd" id="updBadge" hidden title="Neue Version verfügbar, Klick installiert sie"></span>
  <span class="pill" id="ovToggle" title="Always-on-top Mini-Overlay (Chrome/Edge)">◱ Overlay</span>
@@ -4053,7 +4053,16 @@ const EN = {
 'Klassisch (das gewohnte Canary-Design)':'Classic (the familiar Canary look)',
 'Sekunden ohne Erz bis zur Stillstand-Warnung (0 = aus)':'Seconds without ore before the idle warning (0 = off)',
 '🎯 Ziel & Zähler':'🎯 Goal & counters','7 Tage':'7 days','12 Monate':'12 months',
-'Erz-Effizienz (ISK/m³)':'Ore efficiency (ISK/m³)'
+'Erz-Effizienz (ISK/m³)':'Ore efficiency (ISK/m³)','Waffen':'Weapons','und':'and',
+'Schaden ausgeteilt':'Damage dealt','Schaden kassiert':'Damage taken',
+'Top-Ziele':'Top targets','Top-Angreifer':'Top attackers',
+'🤖 Drohnen ohne Erz':'🤖 Drones without ore',
+'Komprimiert (Session)':'Compressed (session)','Rolle …':'Role …','Mining':'Mining',
+'Watchlist (Local-Chat, ein Name pro Zeile)':'Watchlist (local chat, one name per line)',
+'Spieler-Angriffe (gesamt)':'Player attacks (total)',
+'Live-Session (aus den Gamelogs)':'Live session (from the game logs)',
+'🤖 Drohnen liefern gerade kein Erz (gestoppt, voll oder auf dem Rückweg).':
+ '🤖 Drones are not delivering ore right now (stopped, full or on their way back).'
 };
 // Texte, die fest mit eingesetzten Zahlen verwachsen sind ("Erz (1.234 m³)") —
 // die lassen sich nicht als ganzer Schluessel nachschlagen, daher als Muster.
@@ -4069,13 +4078,22 @@ const EN_PATTERNS = [
  [/Seit ([0-9]+) Minuten kein Erz/, 'No ore for $1 minutes'],
  [/Kein Erz seit/, 'No ore for'],
  [/^Ziel: /, 'Goal: '], [/ Mrd/, ' bn'],
+ [/ Stk/, ' units'], [/seit Abdocken/, 'since undocking'], [/Preise:/, 'Prices:'],
+ [/Bewertung: aktuelle ([A-Za-z]+)-Preise/, 'valued at current $1 prices'],
  // Alarmtexte: die entstehen im Python-Teil und kommen fertig vom Server,
  // deshalb hier beim Anzeigen uebersetzen statt an der Quelle.
  [/Heavy Water fast leer, reicht noch etwa ([0-9]+) Minuten!/,
   'Heavy Water almost empty, about $1 minutes left!'],
  [/Laser und Drohnen prüfen!/, 'Check lasers and drones!'],
- [/Abbaurate nur noch ([0-9]+)%[.] Vermutlich ist ein Modul oder eine Drohne aus!/,
-  'Mining rate down to $1%. A module or a drone is probably off!'],
+ // bewusst kurz gehalten: derselbe Satz steht als Alarm mit "!" und auf der
+ // Karte mit "." am Ende — zwei lose Muster fangen beide Varianten.
+ [/Abbaurate nur noch ([0-9]+)%/, 'Mining rate down to $1%'],
+ [/Vermutlich ist ein Modul oder eine Drohne aus/, 'A module or a drone is probably off'],
+ [/[/]Tag/, '/day'],
+ [/Ø letzte 7 Tage:/, 'Ø last 7 days:'], [/Bester Tag:/, 'Best day:'],
+ [/Seit ([0-9]+) min kein Erz/, 'No ore for $1 min'],
+ [/DPS ([0-9]+) raus [/] ([0-9]+) rein/, 'DPS $1 out / $2 in'],
+ [/bei aktueller Rate erreicht am/, 'reached at current rate on'],
  [/Frachtraum voll, Mining gestoppt!/, 'Cargo hold full, mining stopped!'],
  [/^SPIELER-ANGRIFF: /, 'PLAYER ATTACK: '], [/ schießt auf /, ' is shooting at '],
  [/^Watchlist: (.*) ist im Local aktiv!/, 'Watchlist: $1 is active in local!'],
@@ -4087,8 +4105,13 @@ const ORIG = new WeakMap();          // Textknoten -> deutsches Original
 // Uebersetzt einen Text oder gibt null zurueck, wenn nichts bekannt ist
 function xlate(s){
  const dict = DICTS[lang]; if(!dict) return null;
- const k = s.trim(); if(!k) return null;
- if(dict[k]) return s.replace(k, dict[k]);
+ // Zeilenumbrueche und Mehrfach-Leerzeichen vereinheitlichen: im HTML stehen
+ // laengere Saetze oft ueber mehrere Zeilen, sonst passt kein Schluessel darauf.
+ const k = s.trim().replace(/\\s+/g, ' '); if(!k) return null;
+ if(dict[k]){
+  const vorn = s.match(/^\\s*/)[0], hinten = s.match(/\\s*$/)[0];
+  return vorn + dict[k] + hinten;
+ }
  if(lang === 'en'){
   // ALLE passenden Muster nacheinander anwenden, nicht beim ersten aufhoeren —
   // sonst bleibt der Rest eines Satzes deutsch stehen.
@@ -4126,8 +4149,9 @@ function tr(root){
 }
 function setLang(l){
  lang = l; try{ localStorage.setItem('uiLang', l); }catch(e){}
- const p = document.getElementById('langPill');
- if(p) p.textContent = (l==='de') ? 'EN' : 'DE';   // zeigt, wohin es geht
+ // Aktive Sprache hervorheben. Eine einzelne Pille war missverstaendlich:
+ // "EN" laesst sich als Zustand ODER als Ziel lesen.
+ document.querySelectorAll('.langsel').forEach(b => b.classList.toggle('on', b.dataset.l === l));
  document.documentElement.lang = l;
  tr(document.body);
 }
@@ -4157,7 +4181,7 @@ async function tick(){
  }catch(e){}
  finally{tickBusy=false;}
 }
-$('#langPill').onclick=()=>setLang(lang==='de'?'en':'de');
+document.querySelectorAll('.langsel').forEach(b=>b.onclick=()=>{setLang(b.dataset.l);tick();});
 setLang(lang);
 tick();setInterval(tick,2000);
 </script></body></html>"""
