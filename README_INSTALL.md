@@ -144,6 +144,39 @@ Fortgeschritten: Wer lieber seine eigene ESI-App nutzt, trägt deren Client-ID
 in den Optionen unter „Eigene ESI-App verwenden" ein (Callback
 `http://localhost:8765/sso/callback`).
 
+## Wenn etwas nicht läuft: Diagnose
+
+Canary meldet Probleme mit einem kurzen Code, zum Beispiel `CN-LOG-02`. Der Code
+steht im Konsolenfenster und unten in den ⚙ Optionen unter „System & Daten".
+
+**So schickst du den Fehler weiter:** ⚙ Optionen öffnen, auf
+**„🩺 Diagnose kopieren"** klicken, der Bericht liegt dann in der
+Zwischenablage. Einfach in den Canary-Kanal im Discord einfügen. Der Bericht
+enthält Version, Betriebssystem, Log-Ordner, Zählerstände und die letzten
+Fehler, aber keine Charakternamen und keine Zugangsdaten.
+
+| Code | Bedeutung |
+|---|---|
+| `CN-LOG-01` | Kein Log-Ordner eingestellt |
+| `CN-LOG-02` | Log-Ordner existiert nicht |
+| `CN-LOG-03` | Ordner gefunden, aber keine Gamelogs darin (meist der falsche Unterordner) |
+| `CN-LOG-04` | Logdatei nicht lesbar, fehlende Rechte |
+| `CN-LOG-05` | Fehler beim Einlesen der Logs |
+| `CN-CHAT-01` | Chatlogs nicht lesbar, die Systemanzeige fällt dann aus |
+| `CN-DB-01` | Datenbankfehler |
+| `CN-NET-01` | Marktpreise nicht abrufbar, meist nur die Internetverbindung |
+| `CN-ESI-01` | ESI-Abfrage fehlgeschlagen, Token evtl. abgelaufen |
+| `CN-INTEL-01` | Bedrohungs-Abfrage fehlgeschlagen |
+| `CN-CLIP-01` | Zwischenablage nicht lesbar |
+| `CN-UPD-01` | Update fehlgeschlagen |
+| `CN-CFG-01` | Einstellungen nicht speicherbar, Ordner schreibgeschützt oder Platte voll |
+| `CN-SRV-01` | Interner Fehler, bitte melden |
+
+Die drei häufigsten sind harmlos: `CN-NET-01` heißt meistens nur, dass gerade
+kein Internet da war, `CN-ESI-01` verschwindet nach einem neuen EVE-Login, und
+`CN-LOG-03` bedeutet fast immer, dass der Pfad auf `logs` statt auf
+`logs/Gamelogs` zeigt.
+
 ## Hinweise
 
 - Marktpreise kommen von market.fuzzwork.co.uk (öffentlich, kein Login).

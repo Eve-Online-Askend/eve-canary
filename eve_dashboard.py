@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.11.0"
+VERSION = "1.12.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -34,6 +34,51 @@ APP_DIR = Path(__file__).parent
 DB_PATH = APP_DIR / "dashboard.db"
 CONFIG_PATH = APP_DIR / "config.json"
 BACKUP_DIR = APP_DIR / "backups"
+
+
+# ---------------------------------------------------------------- Fehlercodes
+# Damit Nutzer bei Problemen etwas Konkretes schicken koennen statt "geht nicht".
+# Aufbau: CN-<BEREICH>-<NR>. Die Liste ist zugleich die Erklaerung im Support.
+ERROR_HELP = {
+    "CN-LOG-01": "Kein Log-Ordner eingestellt",
+    "CN-LOG-02": "Log-Ordner existiert nicht",
+    "CN-LOG-03": "Log-Ordner enthaelt keine Gamelogs",
+    "CN-LOG-04": "Logdatei nicht lesbar (Rechte/Sperre)",
+    "CN-LOG-05": "Fehler beim Einlesen der Logs",
+    "CN-CHAT-01": "Chatlogs nicht lesbar (Systemanzeige faellt aus)",
+    "CN-DB-01": "Datenbankfehler",
+    "CN-NET-01": "Marktpreise nicht abrufbar",
+    "CN-ESI-01": "ESI-Abfrage fehlgeschlagen",
+    "CN-INTEL-01": "Bedrohungs-Abfrage fehlgeschlagen",
+    "CN-CLIP-01": "Zwischenablage nicht lesbar",
+    "CN-UPD-01": "Update fehlgeschlagen",
+    "CN-CFG-01": "Einstellungen nicht speicherbar",
+    "CN-SRV-01": "Interner Serverfehler",
+}
+ERRORS = deque(maxlen=60)
+ERROR_SEEN = {}
+
+
+def log_error(code, where, exc=None):
+    """Fehler mit Code merken, damit er in der Diagnose auftaucht.
+    Gleicher Code an gleicher Stelle wird gezaehlt statt 60x geloggt (sonst
+    ueberschreibt ein Dauerfehler im 2s-Takt alles andere)."""
+    msg = f"{type(exc).__name__}: {exc}" if isinstance(exc, BaseException) else str(exc or "")
+    key = (code, where, msg[:120])
+    e = ERROR_SEEN.get(key)
+    if e is not None:
+        e["n"] += 1
+        e["ts"] = time.time()
+        return
+    e = {"ts": time.time(), "first": time.time(), "code": code,
+         "where": where, "msg": msg[:300], "n": 1}
+    ERROR_SEEN[key] = e
+    ERRORS.append(e)
+    if len(ERROR_SEEN) > 200:
+        ERROR_SEEN.clear()   # Neustart der Zaehlung, damit der Speicher nicht waechst
+    # flush: sonst haengt die Meldung im Puffer, sobald die Ausgabe umgeleitet
+    # ist (Autostart, nohup) und der Nutzer sieht im Fenster gar nichts.
+    print(f"[{code}] {where}: {msg[:300]}", flush=True)
 
 
 def load_json(name, default):
@@ -297,10 +342,15 @@ def save_config(cfg=None):
     # Atomar und thread-sicher: mehrere Threads (hw_tick, Esi.poll, do_POST …)
     # schreiben sonst gleichzeitig und hinterlassen kaputtes JSON.
     with CONFIG_LOCK:
-        data = json.dumps(cfg or CONFIG, indent=1, ensure_ascii=False)
-        tmp = CONFIG_PATH.with_suffix(".tmp")
-        tmp.write_text(data, encoding="utf-8")
-        os.replace(tmp, CONFIG_PATH)
+        try:
+            data = json.dumps(cfg or CONFIG, indent=1, ensure_ascii=False)
+            tmp = CONFIG_PATH.with_suffix(".tmp")
+            tmp.write_text(data, encoding="utf-8")
+            os.replace(tmp, CONFIG_PATH)
+        except OSError as e:
+            # z.B. schreibgeschuetzter Ordner oder volle Platte — sonst gehen
+            # Einstellungen und ESI-Tokens still verloren.
+            log_error("CN-CFG-01", "save_config", e)
 
 
 CONFIG = load_config()
@@ -889,8 +939,8 @@ class Ingest(threading.Thread):
                 self.check_idle()
                 self.hw_tick()
                 refresh_update_info()
-            except Exception:
-                pass
+            except Exception as e:
+                log_error("CN-LOG-05", "Ingest.run", e)
             time.sleep(2)
 
     def hw_tick(self):
@@ -1172,8 +1222,8 @@ class ChatWatch(threading.Thread):
         while True:
             try:
                 self.tick()
-            except Exception:
-                pass
+            except Exception as e:
+                log_error("CN-CHAT-01", "ChatWatch.run", e)
             self.started_full = True
             time.sleep(3)
 
@@ -1261,7 +1311,8 @@ class Prices(threading.Thread):
                     self.cache[region] = {int(k): float(v["buy"]["max"]) for k, v in data.items()}
                     self.fetched[region] = time.time()
                     self.requested[region] = set(ids)
-                except Exception:
+                except Exception as e:
+                    log_error("CN-NET-01", f"Prices.run(region={region})", e)
                     self.fetched[region] = time.time() - PRICE_REFRESH + 60
             time.sleep(3)
 
@@ -1529,8 +1580,8 @@ class Esi(threading.Thread):
         while True:
             try:
                 self.poll()
-            except Exception:
-                pass
+            except Exception as e:
+                log_error("CN-ESI-01", "Esi.poll", e)
             time.sleep(120)
 
 
@@ -1702,7 +1753,8 @@ class ThreatIntel(threading.Thread):
                 continue
             try:
                 ids = self._post_ids(batch)
-            except Exception:
+            except Exception as e:
+                log_error("CN-INTEL-01", "ThreatIntel._post_ids", e)
                 ids = {}
             idmap = {n.lower(): (n, i) for n, i in ids.items()}
             for raw in batch:
@@ -1785,8 +1837,8 @@ class ClipWatch(threading.Thread):
             try:
                 if CONFIG.get("clip_watch"):
                     self.check()
-            except Exception:
-                pass
+            except Exception as e:
+                log_error("CN-CLIP-01", "ClipWatch.run", e)
 
 
 ingest = Ingest()
@@ -1852,14 +1904,56 @@ def log_dir_status():
     if c["path"] == d and time.time() - c["ts"] < 10:
         return c["ok"], c["n"]
     n = 0
-    p = Path(d) if d else None
-    if p is not None and p.is_dir():
-        try:
-            n = sum(1 for f in p.iterdir() if CHAR_FILE_RE.match(f.name))
-        except OSError:
-            n = 0
+    if not d:
+        log_error("CN-LOG-01", "log_dir_status", "kein Pfad eingestellt")
+    else:
+        p = Path(d)
+        if not p.is_dir():
+            log_error("CN-LOG-02", "log_dir_status", d)
+        else:
+            try:
+                n = sum(1 for f in p.iterdir() if CHAR_FILE_RE.match(f.name))
+            except OSError as e:
+                log_error("CN-LOG-04", "log_dir_status", e)
+            if n == 0:
+                log_error("CN-LOG-03", "log_dir_status", d)
     c.update(ts=time.time(), path=d, ok=n > 0, n=n)
     return c["ok"], n
+
+
+def diagnose_text():
+    """Kompakter Bericht zum Kopieren und Verschicken. Bewusst OHNE
+    Charakternamen, Tokens oder Pfade mit Klarnamen-Anteil ausserhalb des
+    Log-Ordners — nur was zur Fehlersuche noetig ist."""
+    ok, n = log_dir_status()
+    L = [f"EVE Canary Diagnose v{VERSION}",
+         f"System   : {sys.platform} / {os.name} / Python {sys.version.split()[0]}",
+         f"Log-Ordner: {CONFIG.get('log_dir') or '(nicht gesetzt)'}",
+         f"           gefunden={ok}, Gamelogs={n}",
+         f"Modus    : {CONFIG.get('mode')}   Autostart={AUTOSTART_OK} Clipboard={CLIPBOARD_OK}"]
+    try:
+        with DB_LOCK:
+            files = DB.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+            daily = DB.execute("SELECT COUNT(*) FROM daily").fetchone()[0]
+        L.append(f"Datenbank: {files} Logdateien erfasst, {daily} Tageswerte")
+    except Exception as e:
+        L.append(f"Datenbank: NICHT LESBAR ({type(e).__name__}: {e})")
+    try:
+        with ingest.lock:
+            L.append(f"Sessions : {len(ingest.sessions)} aktiv")
+    except Exception:
+        pass
+    L.append(f"ESI      : {len((CONFIG.get('esi') or {}).get('chars', {}))} Charaktere verbunden")
+    if not ERRORS:
+        L.append("\nFehler   : keine")
+    else:
+        L.append(f"\nFehler   : {len(ERRORS)} verschiedene (neueste zuletzt)")
+        for e in list(ERRORS)[-25:]:
+            when = datetime.fromtimestamp(e["ts"]).strftime("%d.%m. %H:%M:%S")
+            times = f" x{e['n']}" if e["n"] > 1 else ""
+            L.append(f"  [{e['code']}]{times} {when} {e['where']}")
+            L.append(f"      {ERROR_HELP.get(e['code'], '?')}: {e['msg']}")
+    return "\n".join(L)
 
 
 def portrait_url(name):
@@ -2268,6 +2362,9 @@ def state_info():
             # Ohne gueltigen Log-Ordner zeigt die Oberflaeche erst die
             # Einrichtung statt eines leeren Dashboards.
             "log_ok": log_dir_status()[0], "log_count": log_dir_status()[1],
+            # Fehlercodes fuer den Support: der Nutzer schickt die Diagnose
+            "errors": [{"code": e["code"], "n": e["n"], "ts": int(e["ts"]),
+                        "help": ERROR_HELP.get(e["code"], "")} for e in list(ERRORS)[-10:]],
             "update": {"available": UPDATE_INFO["available"],
                        "latest": UPDATE_INFO["latest"]},
             "version": VERSION,
@@ -2397,6 +2494,28 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        # Unerwartete Fehler mit Code festhalten, statt sie nur als Traceback
+        # ins Konsolenfenster zu schreiben (das sieht kein Nutzer).
+        try:
+            self._do_GET()
+        except Exception as e:
+            log_error("CN-SRV-01", f"GET {self.path.split('?')[0]}", e)
+            try:
+                self._deny(500)
+            except Exception:
+                pass
+
+    def do_POST(self):
+        try:
+            self._do_POST()
+        except Exception as e:
+            log_error("CN-SRV-01", "POST", e)
+            try:
+                self._deny(500)
+            except Exception:
+                pass
+
+    def _do_GET(self):
         if not _host_ok(self.headers):
             return self._deny()
         p = self.path.split("?")[0]
@@ -2433,6 +2552,8 @@ class Handler(BaseHTTPRequestHandler):
                        + "</h2><p>" + (err or "Du kannst dieses Fenster schließen. "
                        "Canary gleicht Laderaum und Wallet ab jetzt automatisch ab.")
                        + "</p></body></html>", "text/html; charset=utf-8")
+        elif p == "/diagnose.txt":
+            self._send(diagnose_text(), "text/plain; charset=utf-8")
         elif p == "/export.csv":
             self._send(export_csv(), "text/csv; charset=utf-8", "eve_dashboard_export.csv")
         elif p == "/export.json":
@@ -2442,7 +2563,7 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self._send(PAGE, "text/html; charset=utf-8")
 
-    def do_POST(self):
+    def _do_POST(self):
         if not _host_ok(self.headers) or not _origin_ok(self.headers):
             return self._deny()
         length = int(self.headers.get("Content-Length", 0))
@@ -2924,9 +3045,13 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
    <button class="btn" id="checkUpd">Nach Update suchen</button>
    <button class="btn" id="doUpd" hidden>Update installieren</button>
    <button class="btn" id="backup">Backup erstellen</button>
+   <button class="btn" id="diagBtn">🩺 Diagnose kopieren</button>
    <a class="btn" href="/export.csv" style="text-decoration:none">Export CSV</a>
    <a class="btn" href="/export.json" style="text-decoration:none">Export JSON</a>
   </div>
+  <div class="hint" id="diagStat"></div>
+  <textarea id="diagOut" rows="10" hidden readonly style="width:100%;margin-top:6px;font-family:monospace;font-size:11px"></textarea>
+  <div class="hint" id="errBox"></div>
   <div class="hint" id="verinfo"></div>
   <div class="hint" id="updstatus"></div>
   <div class="note" id="loginfo"></div>
@@ -2998,6 +3123,20 @@ $('#close').onclick=()=>$('#opts').close();
 $('#reset').onclick=async()=>{if(confirm('Auswertung ab jetzt neu starten? Alte Daten bleiben gespeichert, werden aber ausgeblendet.')){await post({action:'reset'});tick();syncOpts();}};
 $('#unreset').onclick=async()=>{await post({action:'clear_baseline'});tick();syncOpts();};
 $('#backup').onclick=async()=>{const r=await post({action:'backup'});alert('Backup: '+r.file);};
+// Diagnose: Bericht holen, in die Zwischenablage legen und zum Nachlesen anzeigen
+$('#diagBtn').onclick=async()=>{
+ const st=$('#diagStat');
+ try{
+  const txt=await (await fetch('/diagnose.txt')).text();
+  let copied=false;
+  try{await navigator.clipboard.writeText(txt);copied=true;}catch(e){}
+  $('#diagOut').value=txt;$('#diagOut').hidden=false;
+  if(!copied)$('#diagOut').select();
+  st.textContent=copied?'In die Zwischenablage kopiert. Einfach an Askend schicken.'
+                       :'Kopieren ging nicht, Text ist markiert: Strg+C drücken.';
+  st.style.color='var(--green)';
+ }catch(e){st.textContent='Diagnose konnte nicht erstellt werden: '+e;st.style.color='var(--red)';}
+};
 $('#saveGoal').onclick=async()=>{await post({action:'goal',isk:Number($('#goalIsk').value)||null,deadline:$('#goalDate').value});syncOpts();};
 $('#clearGoal').onclick=async()=>{await post({action:'goal',isk:null});$('#goalIsk').value='';syncOpts();};
 $('#saveWatch').onclick=async()=>{await post({action:'watchlist',names:$('#watchlist').value.split('\\n')});};
@@ -3034,6 +3173,13 @@ function syncOpts(){
  $('#autostartRow').hidden=state.autostart_ok===false;
  // Log-Ordner nur befüllen, solange niemand darin tippt
  if(document.activeElement!==$('#logDir'))$('#logDir').value=state.log_dir||'';
+ // Aufgetretene Fehlercodes auflisten, damit man sie schicken kann
+ const errs=state.errors||[];
+ $('#errBox').innerHTML=errs.length
+  ? '<b style="color:var(--red)">Aufgetretene Fehler:</b><br>'+errs.map(e=>
+     esc(e.code)+(e.n>1?' ×'+e.n:'')+' &middot; '+esc(e.help)).join('<br>')
+    +'<br>Mit „🩺 Diagnose kopieren" den vollen Bericht holen und schicken.'
+  : '';
  $('#baseinfo').textContent=state.baseline_day?('Aktive Baseline: zählt seit '+state.baseline_day+' (UTC).'):'Keine Baseline aktiv.';
  $('#loginfo').textContent='Log-Ordner: '+(state.log_dir||'nicht gefunden!')+' · Dateien: '+state.progress.done+'/'+state.progress.total;
  $('#watchlist').value=(state.watchlist||[]).join('\\n');
@@ -3727,6 +3873,12 @@ tick();setInterval(tick,2000);
 
 
 if __name__ == "__main__":
+    try:
+        # Zeilenweise ausgeben: bei umgeleiteter Ausgabe (Autostart, nohup,
+        # Log-Datei) blieben Meldungen sonst im Puffer haengen.
+        sys.stdout.reconfigure(line_buffering=True)
+    except Exception:
+        pass
     _log_ok, _log_n = log_dir_status()
     if not _log_ok:
         print("Hinweis: EVE-Gamelog-Ordner nicht gefunden."
