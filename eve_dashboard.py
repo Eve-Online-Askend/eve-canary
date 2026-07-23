@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.10.0"
+VERSION = "1.11.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -1841,6 +1841,27 @@ def all_rows(days=None, kinds=None):
     return baseline_filter(DB.execute(q, args).fetchall())
 
 
+_LOGDIR_CHECK = {"ts": 0, "path": None, "ok": False, "n": 0}
+
+
+def log_dir_status():
+    """(gefunden?, Anzahl Gamelogs) im eingestellten Ordner. Kurz gecacht, weil
+    state_info im Sekundentakt abgefragt wird und das sonst jedes Mal listet."""
+    d = CONFIG.get("log_dir") or ""
+    c = _LOGDIR_CHECK
+    if c["path"] == d and time.time() - c["ts"] < 10:
+        return c["ok"], c["n"]
+    n = 0
+    p = Path(d) if d else None
+    if p is not None and p.is_dir():
+        try:
+            n = sum(1 for f in p.iterdir() if CHAR_FILE_RE.match(f.name))
+        except OSError:
+            n = 0
+    c.update(ts=time.time(), path=d, ok=n > 0, n=n)
+    return c["ok"], n
+
+
 def portrait_url(name):
     """Charakter-Portrait über den öffentlichen EVE-Bilderdienst. Die ID kommt
     vom ESI-Login oder aus dem Bedrohungs-Cache, sonst gibt es kein Bild."""
@@ -2244,6 +2265,9 @@ def state_info():
             # Was diese Plattform kann — die Oberflaeche blendet den Rest aus,
             # damit auf Linux keine toten Schalter stehen.
             "autostart_ok": AUTOSTART_OK, "clip_ok": CLIPBOARD_OK,
+            # Ohne gueltigen Log-Ordner zeigt die Oberflaeche erst die
+            # Einrichtung statt eines leeren Dashboards.
+            "log_ok": log_dir_status()[0], "log_count": log_dir_status()[1],
             "update": {"available": UPDATE_INFO["available"],
                        "latest": UPDATE_INFO["latest"]},
             "version": VERSION,
@@ -2452,6 +2476,49 @@ class Handler(BaseHTTPRequestHandler):
                         roles[char] = role
                     else:
                         roles.pop(char, None)
+        elif action == "log_dir":
+            # Pfad von Hand setzen, falls die automatische Suche nichts findet
+            # (v.a. Linux/Wine mit ungewoehnlichem Praefix). Erst pruefen, dann
+            # uebernehmen, sonst laeuft Canary still ins Leere.
+            raw = (body.get("path") or "").strip().strip('"')
+            p = Path(os.path.expanduser(raw)) if raw else None
+            if not raw:
+                self._send(json.dumps({"ok": False, "msg": "Bitte einen Pfad eintragen."}))
+                return
+            if not p.is_dir():
+                self._send(json.dumps({"ok": False,
+                                       "msg": f"Ordner nicht gefunden: {p}"}))
+                return
+            def gamelogs_in(d):
+                try:
+                    return [f for f in d.iterdir() if CHAR_FILE_RE.match(f.name)]
+                except OSError:
+                    return []
+            # Haeufiger Tippfehler: Pfad endet auf .../EVE/logs oder .../EVE statt
+            # auf Gamelogs. Statt zu meckern nehmen wir den richtigen Unterordner.
+            hits, chosen = gamelogs_in(p), p
+            for sub in (p / "Gamelogs", p / "logs" / "Gamelogs",
+                        p / "EVE" / "logs" / "Gamelogs"):
+                if hits:
+                    break
+                if sub.is_dir():
+                    hits, chosen = gamelogs_in(sub), sub
+            if not hits:
+                self._send(json.dumps({"ok": False,
+                                       "msg": f"Keine Gamelogs in {p} gefunden. Gemeint ist der "
+                                              "Ordner 'Gamelogs' (dort liegen Dateien wie "
+                                              "20260723_120000_1234567.txt)."}))
+                return
+            p = chosen
+            CONFIG["log_dir"] = str(p)
+            with ingest.lock:
+                ingest.filecache.clear()
+                ingest.last_scan = 0     # sofort neu einlesen statt aufs Intervall warten
+            save_config()
+            self._send(json.dumps({"ok": True,
+                                   "msg": f"{len(hits)} Gamelogs gefunden. Wird eingelesen …",
+                                   "state": state_info()}))
+            return
         elif action == "autostart":
             set_autostart(bool(body.get("on")))
         elif action == "clip_watch":
@@ -2781,6 +2848,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 </nav>
 <div id="alerts"></div>
 <div id="hero"></div>
+<div id="setup" hidden></div>
 <div id="grid"></div>
 <div id="empty" hidden></div>
 
@@ -2840,6 +2908,16 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <div class="optgroup">
   <div class="sect">🖥 System &amp; Daten</div>
   <label id="autostartRow"><input type="checkbox" id="autostart"> Canary beim Systemstart automatisch mitstarten (still im Hintergrund, ohne Konsolenfenster)</label>
+  <div style="margin-top:10px"><b>Log-Ordner</b>
+   <div class="hint">Findet Canary die Logs nicht von selbst, hier den Ordner <b>Gamelogs</b> eintragen.
+    Unter Linux liegt der im Wine-Präfix, bei Steam etwa
+    <code>~/.steam/steam/steamapps/compatdata/8500/pfx/drive_c/users/steamuser/Documents/EVE/logs/Gamelogs</code></div>
+   <div class="btnrow" style="margin-top:6px">
+    <input id="logDir" style="flex:1;min-width:260px" placeholder="Pfad zum Gamelogs-Ordner">
+    <button class="btn" id="saveLogDir">Übernehmen</button>
+   </div>
+   <div class="hint" id="logDirStat"></div>
+  </div>
   <label style="margin-top:8px"><input type="radio" name="mode" value="all"> Alle vorhandenen Logs auswerten</label>
   <label><input type="radio" name="mode" value="fresh"> Nur ab Installation zählen</label>
   <div class="btnrow">
@@ -2881,6 +2959,12 @@ else if(matchMedia('(prefers-color-scheme: light)').matches)document.documentEle
 const savedSkin=localStorage.getItem('skin');
 if(savedSkin)document.documentElement.dataset.skin=savedSkin;
 $('#autostart').onchange=async()=>{const r=await post({action:'autostart',on:$('#autostart').checked});if(r.state)state=r.state;syncOpts();};
+$('#saveLogDir').onclick=async()=>{
+ const st=$('#logDirStat');st.textContent='Prüfe …';st.style.color='';
+ const r=await post({action:'log_dir',path:$('#logDir').value});
+ st.textContent=r.msg||'';st.style.color=r.ok?'var(--green)':'var(--red)';
+ if(r.ok){if(r.state)state=r.state;tick();}};
+$('#logDir').onkeydown=e=>{if(e.key==='Enter')$('#saveLogDir').click();};
 document.querySelectorAll('#opts input[name=skin]').forEach(r=>r.onchange=()=>{
  if(r.value)document.documentElement.dataset.skin=r.value;
  else delete document.documentElement.dataset.skin;
@@ -2948,6 +3032,8 @@ function syncOpts(){
  $('#autostart').checked=!!state.autostart;
  // Autostart gibt es nur auf Windows und Linux — sonst Zeile ausblenden
  $('#autostartRow').hidden=state.autostart_ok===false;
+ // Log-Ordner nur befüllen, solange niemand darin tippt
+ if(document.activeElement!==$('#logDir'))$('#logDir').value=state.log_dir||'';
  $('#baseinfo').textContent=state.baseline_day?('Aktive Baseline: zählt seit '+state.baseline_day+' (UTC).'):'Keine Baseline aktiv.';
  $('#loginfo').textContent='Log-Ordner: '+(state.log_dir||'nicht gefunden!')+' · Dateien: '+state.progress.done+'/'+state.progress.total;
  $('#watchlist').value=(state.watchlist||[]).join('\\n');
@@ -3578,6 +3664,39 @@ async function doCalc(){
   r.items.map(i=>`<tr><td>${esc(i.name)}</td><td class="r">${fmt(i.qty)}</td><td class="r">${fmt(i.m3)}</td><td class="r isk">${fmtM(i.isk)}</td></tr>`).join('')+'</table>'+
   (r.unknown&&r.unknown.length?`<div class="sub" style="margin-top:8px">Nicht erkannt: ${esc(r.unknown.join(' · '))}</div>`:'');
 }
+// Ohne gültigen Log-Ordner zuerst einrichten, statt ein leeres Dashboard zu zeigen.
+// Betrifft vor allem Linux: dort liegen die Logs im Wine-Präfix.
+function renderSetup(){
+ $('#hero').innerHTML='';$('#empty').hidden=true;$('#grid').innerHTML='';
+ const box=$('#setup');box.hidden=false;
+ if(box.dataset.built)return;   // nicht bei jedem Tick neu bauen, sonst kann niemand tippen
+ box.dataset.built='1';
+ box.innerHTML=`<div class="card" style="grid-column:1/-1">
+  <b>📁 Log-Ordner einrichten</b>
+  <div class="sub" style="margin:8px 0">Canary hat die EVE-Gamelogs nicht automatisch gefunden.
+   Bitte den Ordner <b>Gamelogs</b> angeben, dann geht es weiter.</div>
+  <div class="sub" style="margin:8px 0">Läuft EVE über <b>Steam/Proton</b>, liegt er im Wine-Präfix, etwa:<br>
+   <code>~/.steam/steam/steamapps/compatdata/8500/pfx/drive_c/users/steamuser/Documents/EVE/logs/Gamelogs</code><br>
+   Wichtig: bis einschließlich <b>Gamelogs</b>, nicht nur bis <code>logs</code>.</div>
+  <div class="btnrow" style="margin-top:10px">
+   <input id="setupDir" style="flex:1;min-width:280px" placeholder="Pfad zum Gamelogs-Ordner">
+   <button class="btn" id="setupGo">Prüfen und übernehmen</button>
+  </div>
+  <div class="hint" id="setupStat" style="margin-top:8px"></div>
+  <div class="sub" style="margin-top:12px">Im EVE-Client muss außerdem das Spielprotokoll aktiv sein:
+   Esc &rarr; Einstellungen &rarr; „Spielprotokoll speichern".</div>
+ </div>`;
+ const go=async()=>{
+  const st=$('#setupStat');st.textContent='Prüfe …';st.style.color='';
+  const r=await post({action:'log_dir',path:$('#setupDir').value});
+  st.textContent=r.msg||'';st.style.color=r.ok?'var(--green)':'var(--red)';
+  if(r.ok){if(r.state)state=r.state;box.dataset.built='';box.hidden=true;box.innerHTML='';tick();}
+ };
+ $('#setupGo').onclick=go;
+ $('#setupDir').onkeydown=e=>{if(e.key==='Enter')go();};
+ if(state&&state.log_dir)$('#setupDir').value=state.log_dir;
+ $('#setupDir').focus();
+}
 let tickBusy=false;
 async function tick(){
  if(tickBusy)return;  // kein Request-Stau bei langsamem /data
@@ -3587,6 +3706,8 @@ async function tick(){
   const d=await (await fetch('/data?view='+reqView)).json();
   if(reqView!==view)return;  // Nutzer hat inzwischen gewechselt -> Antwort verwerfen
   state=d.state;regionPills();handleAlerts();updateBadge();bootScreen();
+  if(state.log_ok===false){renderSetup();return;}
+  if(!$('#setup').hidden){$('#setup').hidden=true;$('#setup').dataset.built='';}
   if(view!=='live'&&view!=='month'&&view!=='total'&&view!=='analyse')$('#empty').hidden=true;
   if(view==='live')renderLive(d.chars,d.summary);
   else if(view==='missionen')renderMissions(d);
@@ -3606,8 +3727,16 @@ tick();setInterval(tick,2000);
 
 
 if __name__ == "__main__":
-    if not CONFIG["log_dir"]:
-        print("WARNUNG: EVE-Gamelog-Ordner nicht gefunden. Bitte den Pfad in config.json eintragen.")
+    _log_ok, _log_n = log_dir_status()
+    if not _log_ok:
+        print("Hinweis: EVE-Gamelog-Ordner nicht gefunden."
+              " Canary fragt beim Start im Browser danach.")
+        if sys.platform.startswith("linux"):
+            print("  Linux: EVE laeuft ueber Proton/Wine, der Ordner liegt im Praefix, z.B.")
+            print("  ~/.steam/steam/steamapps/compatdata/8500/pfx/drive_c/users/"
+                  "steamuser/Documents/EVE/logs/Gamelogs")
+    else:
+        print(f"Gamelog-Ordner: {CONFIG['log_dir']} ({_log_n} Logdateien)")
     if DB_PATH.exists():
         try:
             do_backup()
