@@ -22,8 +22,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.8.8"
-UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "npc_names.json",
+VERSION = "1.8.9"
+UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
 from datetime import datetime, timezone, timedelta
@@ -45,7 +45,6 @@ def load_json(name, default):
 
 
 ORE_TYPES = load_json("ore_types.json", {})
-NPC_NAMES = set(load_json("npc_names.json", []))
 MINING_TOOLS = sorted(load_json("mining_tools.json", []), key=len, reverse=True)
 
 REGIONS = {"10000002": "Jita", "10000043": "Amarr", "10000030": "Rens",
@@ -67,6 +66,13 @@ CHAR_FILE_RE = re.compile(r"^\d{8}_\d{6}_(\d+)\.txt$")
 CHAT_LINE_RE = re.compile(r"^\[ [\d. :]+ \] ([^>]+?) > (.*)$")
 OUT_COLOR = "0xff00ffff"
 IN_COLOR = "0xffcc0000"
+# Spieler stehen im Kampflog IMMER als "Name[TICKER](Schiffstyp)", NPCs nie.
+# Das gilt in jeder Client-Sprache und ist damit das verlaessliche Kriterium —
+# eine Namensliste kann es nicht sein, weil Missionen ihre Rats frei umbenennen
+# ("Shadow's Grunt", "Roden Shipyard Interceptor" stehen in keiner ESI-Kategorie).
+PLAYER_RE = re.compile(r"\[[^\[\]]{1,10}\]\s*\([^()]+\)")
+# Fuehrende Schadenszahl (auch mit Tausender-Trennung) am Zeilenanfang
+DMG_HEAD_RE = re.compile(r"^\d[\d.,  ]*")
 # Sprachabhängige Signale (DE/EN) — für weitere Sprachen hier ergänzen
 CARGO_FULL_TEXTS = ["Frachtraum des Schiffs ist voll", "cargo hold is full",
                     "cargohold is full"]
@@ -108,13 +114,35 @@ def parse_line(raw):
         low = body.lower()
         direction = "dmg_out" if OUT_COLOR in low else ("dmg_in" if IN_COLOR in low else None)
         if direction:
-            n = NUM_RE.search(STRIP_RE.sub("", body))
+            plain = STRIP_RE.sub("", body).strip()
+            n = NUM_RE.search(plain)
             hints = HINT_RE.findall(body)
             if n:
-                ev = {**base, "kind": direction,
-                      "key": hints[0] if hints else "?", "value": num(n.group(1))}
-                if direction == "dmg_out" and len(hints) > 1:
-                    ev["weapon"] = hints[1]
+                # Klartext hinter der Schadenszahl: "<Gegner> - <Waffe> - <Qualitaet>".
+                # Der ENGLISCHE Client setzt keine hint-Tags, dort ist das die
+                # einzige Quelle fuer den Gegnernamen (sonst blieb er "?").
+                who = weapon = None
+                m = re.match(r"^\d[\d.,  ]*\s+(?:from|to)\s+(.+)$", plain)
+                if m:
+                    parts = [p.strip() for p in m.group(1).split(" - ")]
+                    who = parts[0] or None
+                    if len(parts) >= 3:
+                        weapon = parts[1]
+                # Spieler? Dann steht "[TICKER](Schiff)" drin — Pilotenname ist
+                # alles davor, ohne Schadenszahl und Richtungswort.
+                mp = PLAYER_RE.search(plain)
+                if mp:
+                    head = DMG_HEAD_RE.sub("", plain[:mp.start()]).strip()
+                    who = (head.split(" ", 1)[1] if " " in head else head).strip() or who
+                elif hints:
+                    who = hints[0]   # lokalisierter Client: NPC-Name aus dem hint
+                ev = {**base, "kind": direction, "key": who or "?",
+                      "value": num(n.group(1)), "player": bool(mp)}
+                if direction == "dmg_out":
+                    if len(hints) > 1:
+                        ev["weapon"] = hints[1]
+                    elif weapon:
+                        ev["weapon"] = weapon
                 return ev
     elif tag == "bounty":
         n = NUM_RE.search(STRIP_RE.sub("", body))
@@ -258,7 +286,8 @@ def meta_get(key, default=None):
 
 # Parser-Version: hochzaehlen, wenn eine Parser-Aenderung ein Neu-Einlesen aller
 # Logs noetig macht. "2" = englischer Client (Mining/Kompr. ohne hint) wird erfasst.
-PARSE_VER = "2"
+# "3" = Gegnernamen im Kampflog des englischen Clients (standen vorher alle als "?")
+PARSE_VER = "3"
 
 
 def rebuild_if_needed():
@@ -991,7 +1020,7 @@ class Ingest(threading.Thread):
                         db_add(ev["day"], cid, cname, ev["kind"], ev["key"], ev["value"])
                         if ev["kind"] == "dmg_out" and "weapon" in ev:
                             db_add(ev["day"], cid, cname, "weapon", ev["weapon"], ev["value"])
-                        if ev["kind"] == "dmg_in" and ev["key"] not in NPC_NAMES:
+                        if ev["kind"] == "dmg_in" and ev.get("player"):
                             db_add(ev["day"], cid, cname, "pvp_in", ev["key"], ev["value"])
                     if batch:
                         ts = [ev["ts"] for ev in batch]
@@ -1043,7 +1072,7 @@ class Ingest(threading.Thread):
         # Zurückfliegen der Drohnen ist ein kurzer Lieferstopp kein echtes Problem.
         if ev["kind"] == "cargo":
             alerts.push("cargo", cname, f"{cname}: Frachtraum voll, Mining gestoppt!")
-        elif ev["kind"] == "dmg_in" and ev["key"] not in NPC_NAMES:
+        elif ev["kind"] == "dmg_in" and ev.get("player"):
             alerts.push("pvp", cname, f"SPIELER-ANGRIFF: {ev['key']} schießt auf {cname}!")
             # Täterprofil sofort nachladen — Ergebnis kommt als eigener Intel-Alarm
             threat.request([ev["key"]], prio=True, alert="yellow")
