@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EVE Canary: Mining- und Missions-Dashboard für EVE Online</title>
+<meta name="description" content="EVE Canary liest deine EVE-Online-Logs und zeigt Mining, ISK, Missionen und Sicherheitsalarme live im Browser. Läuft komplett lokal, ohne Anmeldung.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🐤</text></svg>">
+<style>
+:root{--bg:#0a0d0f;--card:rgba(13,17,19,.80);--inset:rgba(255,255,255,.04);
+--line:rgba(130,150,158,.16);--txt:#c9d1d4;--dim:#7d888e;--cyan:#5fc1d4;
+--red:#c8443d;--green:#7db35c;--gold:#d9a33c;--white:#eef1f2}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);
+font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+background-image:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(95,193,212,.10),transparent 60%)}
+.wrap{max-width:920px;margin:0 auto;padding:0 22px}
+a{color:var(--cyan)}
+h1,h2,h3{color:var(--white);font-weight:400;letter-spacing:.3px}
+h2{font-size:22px;margin:52px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+h3{font-size:15px;margin:0 0 6px}
+header{text-align:center;padding:64px 0 42px}
+header .logo{font-size:52px;line-height:1}
+header h1{font-size:34px;margin:14px 0 4px;letter-spacing:2px}
+header h1 b{color:var(--gold);font-weight:400}
+header .by{color:var(--dim);font-size:12px;letter-spacing:2px;text-transform:uppercase}
+header p.tag{font-size:17px;color:var(--txt);max-width:620px;margin:20px auto 0}
+.badges{margin-top:18px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.badge{border:1px solid var(--line);background:var(--inset);border-radius:20px;
+padding:4px 13px;font-size:12px;color:var(--dim)}
+.badge b{color:var(--cyan);font-weight:400}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;
+box-shadow:0 12px 30px rgba(0,0,0,.45)}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(255px,1fr))}
+.grid .card p{margin:0;font-size:13.5px;color:var(--dim)}
+.ico{font-size:19px;margin-bottom:8px}
+pre{background:#05070a;border:1px solid var(--line);border-left:2px solid var(--cyan);
+border-radius:8px;padding:13px 15px;overflow-x:auto;margin:10px 0}
+code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px;color:var(--white)}
+p code,li code,td code{background:var(--inset);border-radius:4px;padding:1px 5px;font-size:12.5px;color:var(--cyan)}
+.os{color:var(--dim);font-size:12px;text-transform:uppercase;letter-spacing:1.5px;margin-top:20px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:10px}
+td,th{padding:6px 12px;border-top:1px solid var(--line);text-align:left;vertical-align:top}
+td:first-child,th:first-child{padding-left:0}
+th{border-top:none;color:var(--dim);font-weight:400;font-size:11px;
+text-transform:uppercase;letter-spacing:1px}
+.note{border-left:2px solid var(--gold);padding:2px 0 2px 15px;color:var(--dim);font-size:13.5px}
+footer{margin:64px 0 40px;padding-top:22px;border-top:1px solid var(--line);
+text-align:center;color:var(--dim);font-size:12.5px}
+footer a{margin:0 9px}
+.tiny{font-size:12px;color:var(--dim)}
+ul{padding-left:20px}
+li{margin:5px 0}
+@media(max-width:560px){header h1{font-size:26px}h2{font-size:19px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="logo">🐤</div>
+  <h1>EVE <b>CANARY</b></h1>
+  <div class="by">by Askend</div>
+  <p class="tag">Der Kanarienvogel im Bergwerk. Canary liest deine EVE-Online-Logs
+  und zeigt Mining, ISK, Missionen und Gefahren live im Browser. Alles läuft auf
+  deinem Rechner, ohne Anmeldung, ohne Konto.</p>
+  <div class="badges">
+    <span class="badge">Version <b id="ver">wird geladen</b></span>
+    <span class="badge">Windows &amp; Linux</span>
+    <span class="badge">Kostenlos</span>
+    <span class="badge">EULA-konform</span>
+    <span class="badge" id="dlBadge" hidden>Downloads <b id="dl"></b></span>
+  </div>
+</header>
+
+<h2>Installation</h2>
+<p>Ein Befehl, mehr nicht. Python wird bei Bedarf mitinstalliert, danach startet
+Canary von selbst und legt eine Verknüpfung an.</p>
+
+<div class="os">Windows</div>
+<p class="tiny">Windows-Taste drücken, „PowerShell" tippen, öffnen, einfügen:</p>
+<pre><code>irm https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main/install.ps1 | iex</code></pre>
+
+<div class="os">Linux (EVE über Steam/Proton oder Wine)</div>
+<p class="tiny">Terminal öffnen und einfügen:</p>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main/install.sh | sh</code></pre>
+
+<p class="note">Canary findet den Log-Ordner selbst, auch im Wine-Präfix unter
+Linux. Klappt das nicht, fragt es beim ersten Start einfach danach. Im EVE-Client
+muss das Spielprotokoll aktiv sein, das ist die Standardeinstellung.</p>
+
+<h2>Was es kann</h2>
+<div class="grid">
+  <div class="card"><div class="ico">⛏</div><h3>Mining live</h3>
+    <p>Erz, m³ pro Stunde, ISK-Wert zu aktuellen Marktpreisen, Kompression und
+    Laderaum. Pro Charakter, auch bei zwanzig Accounts gleichzeitig.</p></div>
+  <div class="card"><div class="ico">🚨</div><h3>Alarme</h3>
+    <p>Spieler greift an, Frachtraum voll, Asteroid leer, Strip Miner aus,
+    Drohnen liefern nichts mehr, Abbaurate eingebrochen. Mit Ton und
+    Desktop-Meldung, auch wenn das Fenster im Hintergrund liegt.</p></div>
+  <div class="card"><div class="ico">🚦</div><h3>Bedrohungs-Ampel</h3>
+    <p>Piloten aus dem Local werden automatisch eingestuft: Ganker-Verdacht,
+    PvP-aktiv oder unauffällig. Über öffentliche Daten von zKillboard und ESI,
+    ganz ohne Login.</p></div>
+  <div class="card"><div class="ico">🎯</div><h3>Missionen</h3>
+    <p>Belohnungen, Zeitboni und Bounties aus dem Wallet-Journal, dazu
+    Top-Agenten und welche Gegner dir am meisten Schaden gemacht haben.
+    Belt-Ratten werden herausgerechnet.</p></div>
+  <div class="card"><div class="ico">🧮</div><h3>Ore Calculator</h3>
+    <p>Laderaum im Spiel markieren, kopieren, einfügen. Canary rechnet den Wert
+    für Jita, Amarr, Rens, Dodixie und Hek aus und zeigt, wo sich der Verkauf
+    lohnt.</p></div>
+  <div class="card"><div class="ico">⛽</div><h3>Heavy Water</h3>
+    <p>Für Orca und Porpoise: Canary rechnet aus, wie lange der Industriekern
+    noch läuft, und meldet sich rechtzeitig vorher.</p></div>
+  <div class="card"><div class="ico">📊</div><h3>Historie</h3>
+    <p>30 Tage, Gesamt und Analyse: bester Tag, Effizienz, Spielzeit, Erz-Bilanz
+    nach Wert. Bleibt lokal in einer Datenbank, auch wenn EVE die Logs längst
+    gelöscht hat.</p></div>
+  <div class="card"><div class="ico">🔑</div><h3>EVE-Login (optional)</h3>
+    <p>Mit dem offiziellen EVE-Login zeigt Canary zusätzlich Schiff, Wallet,
+    Portrait und den Laderaum. Nur lesend, ohne Setup, jederzeit widerrufbar.</p></div>
+</div>
+
+<h2>Deine Daten bleiben bei dir</h2>
+<ul>
+  <li>Canary läuft komplett auf deinem Rechner unter <code>localhost:8765</code>.
+      Es gibt keinen Server, kein Konto und keine Anmeldung.</li>
+  <li>Es liest nur die Textdateien, die dein EVE-Client selbst schreibt.
+      Nichts wird verändert, nichts automatisiert, nichts an das Spiel gesendet.</li>
+  <li>Statistiken liegen in einer lokalen Datenbank neben dem Programm.
+      Deinstallieren heißt Ordner löschen.</li>
+  <li>Nach außen gehen nur öffentliche Abfragen: Marktpreise, und bei der
+      Bedrohungs-Ampel die Pilotennamen, die du selbst nachschlägst.</li>
+  <li>Beim optionalen EVE-Login bleiben die Zugangsdaten lokal. Canary sieht dein
+      Passwort nie, der Login läuft über CCPs eigene Seite.</li>
+</ul>
+
+<h2>Wenn etwas klemmt</h2>
+<p>Canary meldet Probleme mit einem kurzen Code. Der steht im Konsolenfenster und
+in den Optionen unter „System &amp; Daten". Dort gibt es den Knopf
+<b>🩺 Diagnose kopieren</b>, der einen Bericht in die Zwischenablage legt, den du
+direkt weiterschicken kannst. Der Bericht enthält keine Charakternamen und keine
+Zugangsdaten.</p>
+<table>
+  <tr><th>Code</th><th>Bedeutung</th></tr>
+  <tr><td><code>CN-LOG-03</code></td><td>Ordner gefunden, aber keine Gamelogs darin. Fast immer zeigt der Pfad auf <code>logs</code> statt auf <code>logs/Gamelogs</code>.</td></tr>
+  <tr><td><code>CN-NET-01</code></td><td>Marktpreise nicht abrufbar, meistens nur kurz keine Verbindung.</td></tr>
+  <tr><td><code>CN-ESI-01</code></td><td>ESI-Abfrage fehlgeschlagen, verschwindet nach einem neuen EVE-Login.</td></tr>
+  <tr><td><code>CN-SRV-01</code></td><td>Interner Fehler. Den bitte melden.</td></tr>
+</table>
+<p class="tiny">Die vollständige Liste steht in der
+<a href="https://github.com/Eve-Online-Askend/eve-canary/blob/main/README_INSTALL.md">Installationsanleitung</a>.</p>
+
+<h2>Voraussetzungen</h2>
+<ul>
+  <li>Windows oder Linux, EVE Online installiert (unter Linux über Steam/Proton oder Wine)</li>
+  <li>Python 3, wird unter Windows vom Installer bei Bedarf mitinstalliert</li>
+  <li>Im EVE-Client aktiviertes Spielprotokoll, für die Systemanzeige zusätzlich das Chatprotokoll</li>
+  <li>Sonst nichts. Canary nutzt nur die Python-Standardbibliothek.</li>
+</ul>
+
+<footer>
+  <p>
+    <a href="https://github.com/Eve-Online-Askend/eve-canary">Quellcode auf GitHub</a>
+    <a href="https://github.com/Eve-Online-Askend/eve-canary/releases">Alle Versionen</a>
+    <a href="https://github.com/Eve-Online-Askend/eve-canary/issues">Fehler melden</a>
+  </p>
+  <p>EVE Canary ist ein privates Projekt und steht in keiner Verbindung zu CCP Games.<br>
+  EVE Online und alle zugehörigen Marken sind Eigentum von CCP hf.<br>
+  Fly safe. o7</p>
+</footer>
+
+</div>
+<script>
+// Version und Downloadzahl live von GitHub. Schlaegt das fehl, bleibt die Seite
+// trotzdem vollstaendig nutzbar.
+(async () => {
+  const repo = 'Eve-Online-Askend/eve-canary';
+  try {
+    const v = await (await fetch(`https://raw.githubusercontent.com/${repo}/main/version.json`)).json();
+    document.getElementById('ver').textContent = v.version;
+  } catch (e) { document.getElementById('ver').textContent = 'siehe GitHub'; }
+  try {
+    const rels = await (await fetch(`https://api.github.com/repos/${repo}/releases?per_page=100`)).json();
+    const total = rels.reduce((s, r) => s + r.assets
+      .filter(a => a.name === 'eve_dashboard.py')
+      .reduce((x, a) => x + a.download_count, 0), 0);
+    if (total > 0) {
+      document.getElementById('dl').textContent = total.toLocaleString('de-DE');
+      document.getElementById('dlBadge').hidden = false;
+    }
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>
