@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.12.0"
+VERSION = "1.12.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -2901,8 +2901,13 @@ html[data-skin=photon] .esinudge{border-radius:1px}
 .stat .v{font-size:16px;font-weight:600;margin-top:2px}
 .isk{color:var(--gold)}.out{color:var(--cyan)}.in{color:var(--red)}.grn{color:var(--green)}
 table{width:100%;border-collapse:collapse;font-size:12px;margin-top:6px}
-td{padding:3px 0;border-top:1px solid var(--line)}
-td.r{text-align:right;color:var(--dim)}
+/* Horizontaler Abstand, sonst kleben Spalten bei langen Zahlen aneinander
+   ("33.415 m³681.0 M"). Aussen buendig bleiben, damit nichts einrueckt. */
+td,th{padding:3px 10px;border-top:1px solid var(--line)}
+td:first-child,th:first-child{padding-left:0}
+td:last-child,th:last-child{padding-right:0}
+th{border-top:none}
+td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .sect{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin-top:10px}
 .bar{height:4px;border-radius:2px;background:var(--cyan);opacity:.7}
 .spark{display:flex;align-items:flex-end;gap:1px;height:30px;margin-top:8px}
@@ -3507,8 +3512,8 @@ function renderTotal(t){
    `<tr><td>${esc(n)}</td><td class="r">${fmt(c.m3)} m³</td><td class="r grn">${fmtM(c.bounty)}</td><td class="r isk">${fmtM(c.ore_isk+c.bounty)}</td></tr>`).join('')}</table></div>
   <div class="card"><div class="char">Komprimiert pro Charakter</div>
    <div class="sub">Alles, was über die Schiffs-Kompression gelaufen ist</div>
-   <table>${t.compressed.length?t.compressed.map(k=>
-   `<tr><td>${esc(k.char)}</td><td>${esc(k.type)}</td><td class="r">${fmt(k.units)} Stk</td><td class="r">${fmt(k.m3)} m³</td><td class="r isk">${fmtM(k.isk)}</td></tr>`).join(''):'<tr><td>Noch nichts komprimiert</td></tr>'}</table></div>`;
+   <div style="overflow-x:auto"><table>${t.compressed.length?t.compressed.map(k=>
+   `<tr><td style="white-space:nowrap">${esc(k.char)}</td><td>${esc(k.type)}</td><td class="r">${fmt(k.units)} Stk</td><td class="r">${fmt(k.m3)} m³</td><td class="r isk">${fmtM(k.isk)}</td></tr>`).join(''):'<tr><td>Noch nichts komprimiert</td></tr>'}</table></div></div>`;
 }
 
 let compPeriod=localStorage.getItem('compPeriod')||'today';
