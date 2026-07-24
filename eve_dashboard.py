@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.26.0"
+VERSION = "1.27.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -4334,13 +4334,13 @@ let lastChars=null,lastSummary=null;
 $('#charFilter').value=localStorage.getItem('charFilter')||'';
 $('#charFilter').onchange=()=>{
  localStorage.setItem('charFilter',$('#charFilter').value);
- if(lastChars)renderLive(lastChars,lastSummary);};
+ renderLiveView();};
 $('#collapseAll').onclick=()=>{
  const names=(lastChars||[]).map(c=>c.name);
  if(names.length&&names.every(n=>collapsed.has(n)))names.forEach(n=>collapsed.delete(n));
  else names.forEach(n=>collapsed.add(n));
  localStorage.setItem('collapsed',JSON.stringify([...collapsed]));
- if(lastChars)renderLive(lastChars,lastSummary);};
+ renderLiveView();};
 // Rollen-Filter-Pills (Alle / Mining / Missionen / PvP)
 (function(){const rf=localStorage.getItem('roleFilter')||'';
  document.querySelectorAll('.rolef').forEach(p=>{
@@ -4407,7 +4407,11 @@ function renderLive(chars,summary){
   $('#empty').textContent=!showOff?'Gerade ist kein Charakter eingeloggt. Mit „💤 Offline zeigen" siehst du auch die abgemeldeten.':(rf?'Kein Charakter mit dieser Rolle. Tippe auf einer Karte auf das Rollen-Symbol, um sie zuzuweisen.':'Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern" aktivieren.)');
   $('#grid').innerHTML='';return;}
  $('#empty').hidden=true;
- $('#grid').innerHTML=chars.map(c=>{
+ $('#grid').innerHTML=chars.map(cardHtml).join('');
+ wireCards();
+}
+// Mining-Karte eines Charakters (Erz, m³, Heavy Water, Lager, Gefahr).
+function miningCardHtml(c){
   const maxOre=Math.max(1,...c.ores.map(o=>o.isk));
   const maxS=Math.max(1,...c.spark);
   const min=collapsed.has(c.name);
@@ -4468,14 +4472,25 @@ function renderLive(chars,summary){
    ${c.top_attackers.length?`<div class="sect">Top-Angreifer</div><table>`+c.top_attackers.map(t=>
      `<tr><td>${esc(t[0])}</td><td class="r">${fmt(t[1])}</td></tr>`).join('')+`</table>`:''}
    </div>
-  </div>`}).join('');
+  </div>`;
+}
+// Karte je nach Rolle waehlen: Mining-Chars -> Mining-Karte, alle anderen
+// (Missionen/PvP) -> Kampf-Karte. Ohne zugewiesene Rolle entscheidet der oben
+// gewaehlte Modus. So sieht man in einer gemischten Flotte fuer jeden das Richtige.
+function cardHtml(c){
+ const r=c.role||(liveMode==='combat'?'pvp':'mining');
+ return r==='mining'?miningCardHtml(c):combatCardHtml(c);
+}
+// Event-Handler fuer beide Kartentypen; Selektoren, die im jeweiligen Grid nicht
+// vorkommen, treffen einfach nichts.
+function wireCards(){
  document.querySelectorAll('.chead').forEach(h=>h.onclick=()=>toggleChar(h.dataset.c));
  document.querySelectorAll('.rolesel').forEach(s=>{
   s.onclick=e=>e.stopPropagation();  // Klick soll die Karte nicht ein-/ausklappen
   s.onfocus=()=>rolePickerBusy=true;         // offen -> Grid-Neubau pausieren
   s.onblur=()=>rolePickerBusy=false;
   s.onchange=async()=>{rolePickerBusy=false;await post({action:'set_role',char:s.dataset.c,role:s.value});
-   if(lastChars){lastChars.forEach(c=>{if(c.name===s.dataset.c)c.role=s.value;});renderLive(lastChars,lastSummary);}};
+   if(lastChars){lastChars.forEach(c=>{if(c.name===s.dataset.c)c.role=s.value;});renderLiveView();}};
  });
  document.querySelectorAll('[data-esihint]').forEach(el=>el.onclick=e=>{
   e.stopPropagation();syncOpts();$('#opts').showModal();
@@ -4532,7 +4547,11 @@ function renderCombat(chars,summary){
   $('#empty').textContent=!showOff?'Gerade ist kein Charakter eingeloggt. Mit „💤 Offline zeigen" siehst du auch die abgemeldeten.':'Kein Charakter mit dieser Rolle.';
   $('#grid').innerHTML='';return;}
  $('#empty').hidden=true;
- $('#grid').innerHTML=chars.map(c=>{
+ $('#grid').innerHTML=chars.map(cardHtml).join('');
+ wireCards();
+}
+// Kampf-Karte eines Charakters (Bounty, Loot, Offense/Defense, Waffen).
+function combatCardHtml(c){
   const min=collapsed.has(c.name);
   const shots=(c.hits_out||0)+(c.miss_out||0);
   const hit=shots?Math.round(100*c.hits_out/shots):null;
@@ -4586,15 +4605,7 @@ function renderCombat(chars,summary){
       `<tr><td>${esc(t[0])}</td><td class="r">${fmt(t[1])}</td></tr>`).join('')+`</table>`:''}
     ${(c.salvage&&(c.salvage.ok||c.salvage.empty||c.salvage.fail))?`<div class="sect">Salvage</div><div class="l">${c.salvage.ok} Wracks geborgen · ${c.salvage.empty} leer · ${c.salvage.fail} Fehlversuch</div>`:''}
    </div>
-  </div>`}).join('');
- document.querySelectorAll('.chead').forEach(h=>h.onclick=()=>toggleChar(h.dataset.c));
- document.querySelectorAll('.rolesel').forEach(s=>{
-  s.onclick=e=>e.stopPropagation();
-  s.onfocus=()=>rolePickerBusy=true;
-  s.onblur=()=>rolePickerBusy=false;
-  s.onchange=async()=>{rolePickerBusy=false;await post({action:'set_role',char:s.dataset.c,role:s.value});
-   if(lastChars){lastChars.forEach(c=>{if(c.name===s.dataset.c)c.role=s.value;});renderCombat(lastChars,lastSummary);}};
- });
+  </div>`;
 }
 
 function renderMonth(days){

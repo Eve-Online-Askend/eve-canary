@@ -1,4 +1,11 @@
 [
+ {"v": "1.27", "d": "2026-07-24",
+  "de": ["Gemischte Flotten: jede Karte richtet sich jetzt nach der Rolle des Charakters",
+         "Mining-Charaktere zeigen die Mining-Ansicht, Missions- und PvP-Charaktere die Kampf-Ansicht, egal welcher Modus oben gewählt ist",
+         "Keine leeren Kampf-Kacheln mehr bei Minern in der PvP-Ansicht"],
+  "en": ["Mixed fleets: each card now follows the character's role",
+         "Mining characters show the mining view, mission and PvP characters the combat view, regardless of the mode selected at the top",
+         "No more empty combat tiles for miners in the PvP view"]},
  {"v": "1.26", "d": "2026-07-24",
   "de": ["Großer Stabilitäts- und Korrektheits-Durchgang (voller Code-Audit)",
          "Zahlen mit Leerzeichen-Tausendertrennung (z.B. russischer Client) werden jetzt korrekt gelesen, keine unterzählten Werte mehr",
