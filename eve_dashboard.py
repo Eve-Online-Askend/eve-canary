@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.29.0"
+VERSION = "1.30.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -2660,7 +2660,8 @@ def snapshot_live():
             "cargo": (esi_char or {}).get("cargo"),
             "trips": s.trips,
             "compressed": comp, "tool_warns": s.tool_warns(),
-            "lasers_off": [] if drone_only else [{"tool": t, "since": int(i["since"])}
+            "lasers_off": [] if drone_only else [{"tool": t, "since": int(i["since"]),
+                            "before": round(i["before"] or 0, 1)}  # m³/min vor dem Stopp
                            for t, i in sorted(s.lasers_off.items())],
             "rate_low": (lambda rs: round(100 * rs[1] / rs[0])
                          if rs and 0 < rs[1] < 0.55 * rs[0] else None)(s.rate_status()),
@@ -3931,6 +3932,8 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   <label><input type="checkbox" id="sndPvp" checked> Sound bei Spieler-Angriff</label>
   <label><input type="checkbox" id="sndDep" checked> Sound bei leerem Asteroiden</label>
   <label><input type="checkbox" id="sndWatch" checked> Sound bei Watchlist-Treffer</label>
+  <label><input type="checkbox" id="ttsAlerts"> 🔊 Sprachansagen bei Alarmen (spricht Charakter und Warnung)</label>
+  <label><input type="checkbox" id="iskCoach"> 💸 ISK-Verlust anzeigen, wenn ein Strip Miner steht</label>
   <div style="display:flex;gap:6px;align-items:center;margin-top:8px">
    <input type="number" id="idleWarn" min="0" step="30" style="width:110px">
    <span class="hint" style="margin:0">Sekunden ohne Erz bis zur Stillstand-Warnung (0 = aus)</span>
@@ -4068,6 +4071,11 @@ document.querySelectorAll('nav span').forEach(x=>x.classList.toggle('on',x.datas
  const el=$('#'+id);
  el.checked=localStorage.getItem(id)!=='0';
  el.onchange=()=>localStorage.setItem(id,el.checked?'1':'0');});
+// Zusatzoptionen: standardmaessig AUS (opt-in), erst bei '1' aktiv.
+['ttsAlerts','iskCoach'].forEach(id=>{
+ const el=$('#'+id); if(!el)return;
+ el.checked=localStorage.getItem(id)==='1';
+ el.onchange=()=>localStorage.setItem(id,el.checked?'1':'0');});
 
 $('#gear').onclick=()=>{syncOpts();$('#opts').showModal();};
 $('#close').onclick=()=>$('#opts').close();
@@ -4169,6 +4177,19 @@ window.addEventListener('pointerdown',()=>{
   if(ctx.state==='suspended')ctx.resume();}catch(e){}
 },{once:true});
 
+// Sprachansage (opt-in). Nutzt die eingebaute Sprachausgabe des Browsers,
+// komplett lokal, kostenlos. Spammige Einzel-Asteroiden ('depleted') bewusst nicht.
+function speakAlert(a){
+ if(localStorage.getItem('ttsAlerts')!=='1'||!('speechSynthesis' in window))return;
+ const en=(lang==='en');
+ const P=en?{pvp:'under attack',cargo:'cargo full',drones:'check drones',idle:'mining stopped',
+             rate:'mining rate dropped',hw:'heavy water low',watch:'watchlist hit',intel:'threat detected'}
+           :{pvp:'unter Beschuss',cargo:'Frachtraum voll',drones:'Drohnen prüfen',idle:'Mining steht',
+             rate:'Abbaurate gefallen',hw:'Heavy Water fast leer',watch:'Watchlist-Treffer',intel:'Bedrohung erkannt'};
+ const phrase=P[a.kind]; if(!phrase)return;
+ try{const u=new SpeechSynthesisUtterance((a.char?a.char+': ':'')+phrase);
+  u.lang=en?'en-US':'de-DE'; u.rate=1.05; speechSynthesis.speak(u);}catch(e){}
+}
 function handleAlerts(){
  const list=state.alerts||[];
  const now=Date.now()/1000;
@@ -4185,6 +4206,7 @@ function handleAlerts(){
   // Alte Alarme (frisches Profil/privates Fenster: lastAlertId=0 -> ganze Historie)
   // nicht nachtoenen; im Banner erscheinen sie ohnehin nur < 300 s.
   if(now-a.ts>=300)continue;
+  speakAlert(a);                    // opt-in Sprachansage (filtert selbst nach Art)
   if(a.kind==='pvp'){
    if($('#sndPvp').checked)beep(880,3,0.18);
    notify('EVE: SPIELER-ANGRIFF!',a);
@@ -4443,7 +4465,7 @@ function miningCardHtml(c){
    ${(c.tool_warns||[]).map(w=>w.drone
      ?`<div class="cardwarn drone">⚠ ${esc(w.tool)}${w.count>1?' ×'+w.count:''} abgeschaltet, Drohnen prüfen!</div>`
      :`<div class="cardwarn">⚠ ${esc(w.tool)}${w.count>1?' ×'+w.count:''} abgeschaltet, Ziel prüfen</div>`).join('')}
-   ${(c.lasers_off||[]).map(w=>`<div class="cardwarn">⛔ ${esc(w.tool)} aus seit ${new Date(w.since*1000).toLocaleTimeString().slice(0,5)}. Neues Ziel erfassen! <span class="laserok" data-char="${esc(c.name)}" data-tool="${esc(w.tool)}">✓ erledigt</span></div>`).join('')}
+   ${(c.lasers_off||[]).map(w=>`<div class="cardwarn">⛔ ${esc(w.tool)} aus seit ${new Date(w.since*1000).toLocaleTimeString().slice(0,5)}. Neues Ziel erfassen!${iskLost(c,w)} <span class="laserok" data-char="${esc(c.name)}" data-tool="${esc(w.tool)}">✓ erledigt</span></div>`).join('')}
    ${c.drones_idle?`<div class="cardwarn">🤖 Drohnen liefern gerade kein Erz (gestoppt, voll oder auf dem Rückweg).</div>`:''}
    ${c.laser_stalled?`<div class="cardwarn">⛏ Strip Miner liefert gerade kein Erz, während die Drohnen weiterlaufen.</div>`:''}
    ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur noch ${c.rate_low}%. Vermutlich ist ein Modul oder eine Drohne aus.</div>`:''}
@@ -4763,6 +4785,15 @@ async function toggleOverlay(){
 }
 function mineIdle(c,st){
  return c.mine_idle&&st.idle_warn>0&&c.mine_idle>(c.idle_thr||st.idle_warn)&&c.mine_idle<1800;
+}
+// ISK-Verlust-Coach (opt-in): grob geschaetzter entgangener Ertrag, seit ein
+// Strip Miner steht. Rate 'before' (m³/min vor dem Stopp) × Standzeit × ISK/m³.
+function iskLost(c,w){
+ if(localStorage.getItem('iskCoach')!=='1'||!w.before)return '';
+ const ipm=(c.m3>0)?(c.ore_isk/c.m3):0;          // ISK je m³ (Session-Schnitt)
+ const lost=Math.max(0,(Date.now()/1000-w.since)/60)*w.before*ipm;
+ if(lost<10000)return '';
+ return ` <b class="in">≈ ${fmtM(lost)} ISK ${lang==='en'?'lost':'entgangen'}</b>`;
 }
 // Lagebild des aktuellen Systems aus offenen Daten (stuendlich). Bewusst als
 // ruhige Info-Zeile, kein Alarm: eine Sekundenwarnung ist damit nicht moeglich.
@@ -5205,6 +5236,8 @@ const EN = {
 'Sound bei Spieler-Angriff':'Sound on player attack',
 'Sound bei leerem Asteroiden':'Sound on depleted asteroid',
 'Sound bei Watchlist-Treffer':'Sound on watchlist hit',
+'🔊 Sprachansagen bei Alarmen (spricht Charakter und Warnung)':'🔊 Spoken alerts (says character and warning)',
+'💸 ISK-Verlust anzeigen, wenn ein Strip Miner steht':'💸 Show ISK lost when a strip miner is idle',
 'Watchlist speichern':'Save watchlist','Ziel speichern':'Save goal','Ziel löschen':'Clear goal',
 'ISK-Ziel, z.B. 1000000000':'ISK goal, e.g. 1000000000','Ziel':'Goal',
 '🎨 Darstellung':'🎨 Appearance','🔑 EVE-Account verbinden':'🔑 Connect EVE account',
