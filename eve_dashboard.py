@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.37.0"
+VERSION = "1.38.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -3949,6 +3949,10 @@ tr.lvl-yellow td{background:rgba(228,179,76,.07)}
 .mfpval.dim,.mfprank.dim{color:var(--dim)} .mfpbar.dim{background:var(--dim)}
 .mfpver{margin-top:9px;font-size:12px;color:var(--green)}
 .mfpver b{color:var(--white)}
+.mfphr{display:flex;align-items:center;gap:10px}
+.mfpshare{background:var(--inset);border:1px solid var(--line);color:var(--dim);font-size:12px;
+  font-weight:600;padding:4px 11px;border-radius:20px;cursor:pointer;font-family:inherit}
+.mfpshare:hover{color:var(--cyan);border-color:var(--cyan)}
 select.pill{appearance:none;-webkit-appearance:none;outline:none;background:var(--card);
 border:1px solid var(--line);color:var(--dim);font-size:11px;padding:4px 11px;border-radius:20px;cursor:pointer}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
@@ -4176,6 +4180,8 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 const $=s=>document.querySelector(s);
 const fmt=n=>Math.round(n).toLocaleString();
 const fmtM=n=>n>=1e9?(n/1e9).toFixed(2)+' Mrd':n>=1e6?(n/1e6).toFixed(1)+' M':fmt(n);
+// Wie fmtM, kuerzt aber auch Tausender mit K ab (fuer kompakte m³-Werte).
+const fmtC=n=>n>=1e6?fmtM(n):n>=1e3?(n/1e3).toFixed(n>=1e4?0:1)+' K':fmt(n);
 // Einzelpreis: bei grossen Werten wie fmtM, bei kleinen mit Nachkommastellen,
 // damit Cent-Preise (Erz ~4 ISK) nicht auf ganze Zahlen gerundet werden.
 const fmtP=n=>n>=1e6?fmtM(n):n>=1000?fmt(n):(n||0).toLocaleString(undefined,{maximumFractionDigits:2});
@@ -4656,32 +4662,41 @@ function sustainedRate(c){
  const a=[...(c.spark||[])].sort((x,y)=>y-x).slice(0,5);
  return a.length?a.reduce((s,v)=>s+v,0)/a.length:0;
 }
-function fleetPowerCard(chars){
+// Alle MFP-Kennzahlen einer Flotte an einer Stelle, damit Karte und Share-Bild
+// exakt dieselben Werte zeigen.
+function mfpValues(chars){
  const miners=chars.filter(c=>c.active&&autoRole(c)==='mining');
- if(!miners.length)return '';
  const m3min=miners.reduce((s,c)=>s+sustainedRate(c),0);
- const t=mfpTier(m3min);
- // Balken relativ zur hoechsten Rang-Schwelle (max 15000 = voll)
- const pct=Math.min(100,100*m3min/15000);
- // ESI-Verifizierung: nur Chars mit erteilten neuen Scopes liefern esi_mining.
  const ver=miners.filter(c=>c.esi_mining);
  const mined=ver.reduce((s,c)=>s+(c.mined_30d||0),0);
  const bonusVals=ver.map(c=>c.skill_bonus).filter(b=>b!=null);
  const avgBonus=bonusVals.length?Math.round(bonusVals.reduce((s,b)=>s+b,0)/bonusVals.length):null;
+ const top=[...miners].sort((a,b)=>sustainedRate(b)-sustainedRate(a))[0];
+ return {miners,m3min,ver,mined,avgBonus,tier:mfpTier(m3min),
+         fullVer:ver.length>0&&ver.length===miners.length,owner:top?top.name:''};
+}
+function fleetPowerCard(chars){
+ const v=mfpValues(chars);
+ if(!v.miners.length)return '';
+ const t=v.tier, n=v.miners.length;
+ const pct=Math.min(100,100*v.m3min/15000);   // Balken relativ zu 15000 = voll
  let sub;
- if(ver.length&&ver.length===miners.length)sub=miners.length+' '+(miners.length===1?'Schiff':'Schiffe')+' · ✅ ESI-verifiziert';
- else if(ver.length)sub=ver.length+' von '+miners.length+' ESI-verifiziert · Rest geschätzt';
- else sub=miners.length+' '+(miners.length===1?'Schiff':'Schiffe')+' · geschätzt aus Log';
- const verLine=mined>0
-   ?`<div class="mfpver">✅ ESI-verifiziert: <b>${fmtM(mined)} m³</b> in 30 Tagen gefördert · Ø ${fmtM(mined/30)}/Tag${avgBonus!=null?' · Skill-Bonus +'+avgBonus+'%':''}</div>`
+ if(v.fullVer)sub=n+' '+(n===1?'Schiff':'Schiffe')+' · ✅ ESI-verifiziert';
+ else if(v.ver.length)sub=v.ver.length+' von '+n+' ESI-verifiziert · Rest geschätzt';
+ else sub=n+' '+(n===1?'Schiff':'Schiffe')+' · geschätzt aus Log';
+ const verLine=v.mined>0
+   ?`<div class="mfpver">✅ ESI-verifiziert: <b>${fmtC(v.mined)} m³</b> in 30 Tagen gefördert · Ø ${fmtC(v.mined/30)}/Tag${v.avgBonus!=null?' · Skill-Bonus +'+v.avgBonus+'%':''}</div>`
    :'';
  return `<div class="card mfp" style="grid-column:1/-1">
    <div class="mfphead">
     <span class="mfptitle">⚡ Mining Fleet Power</span>
-    <span class="mfprank ${t.c}">${t.n}</span>
+    <span class="mfphr">
+     <span class="mfprank ${t.c}">${t.n}</span>
+     <button class="mfpshare" onclick="shareMfp(this)" title="Als Bild teilen">📤 Teilen</button>
+    </span>
    </div>
    <div class="mfpmain">
-    <span class="mfpval ${t.c}">${fmt(Math.round(m3min))}</span>
+    <span class="mfpval ${t.c}">${fmt(Math.round(v.m3min))}</span>
     <span class="mfpunit">m³/min</span>
     <span class="mfpsub">${sub}</span>
    </div>
@@ -4689,6 +4704,81 @@ function fleetPowerCard(chars){
    ${verLine}
   </div>`;
 }
+// Stufe 3: teilbares Bild. Zeichnet die MFP als sauberes PNG (Zahl, Rang, Siegel,
+// Canary-Branding, Homepage-Link), laedt es herunter und legt es zusaetzlich in
+// die Zwischenablage. Nichts Externes, alles per Canvas.
+const MFP_COLOR={gold:'--gold',cyan:'--cyan',green:'--green',dim:'--dim'};
+function shareMfp(btn){
+ const v=mfpValues(lastChars||[]);
+ if(!v.miners.length)return;
+ const en=(lang==='en');
+ const cs=getComputedStyle(document.documentElement);
+ const C=(name,fb)=>((cs.getPropertyValue(name)||'').trim())||fb;
+ const bg=C('--bg','#0b0e13'),card=C('--card','#141922'),line=C('--line','#2a313d'),
+   dim=C('--dim','#8a94a6'),white=C('--white','#eaf0f7'),cyan=C('--cyan','#5fc1d4'),
+   accent=C(MFP_COLOR[v.tier.c]||'--cyan','#5fc1d4');
+ const W=1200,H=630,cv=document.createElement('canvas');cv.width=W;cv.height=H;
+ const x=cv.getContext('2d');
+ const rr=(px,py,pw,ph,r)=>{x.beginPath();x.moveTo(px+r,py);x.arcTo(px+pw,py,px+pw,py+ph,r);
+   x.arcTo(px+pw,py+ph,px,py+ph,r);x.arcTo(px,py+ph,px,py,r);x.arcTo(px,py,px+pw,py,r);x.closePath();};
+ x.fillStyle=bg;x.fillRect(0,0,W,H);
+ rr(40,40,W-80,H-80,22);x.fillStyle=card;x.fill();x.lineWidth=2;x.strokeStyle=line;x.stroke();
+ const PX=90;
+ // Kopf: Vogel + Marke
+ x.textBaseline='alphabetic';
+ x.font='bold 46px sans-serif';x.fillStyle=white;
+ x.fillText('🐤',PX,140);
+ x.fillStyle=cyan;x.fillText('EVE',PX+70,140);
+ x.fillStyle=white;x.fillText('CANARY',PX+70+x.measureText('EVE ').width,140);
+ // Label
+ x.font='600 26px sans-serif';x.fillStyle=dim;
+ x.fillText((en?'MINING FLEET POWER':'MINING FLEET POWER').toUpperCase(),PX,210);
+ // Rang-Chip oben rechts
+ const rank=en?tierEn(v.tier.n):v.tier.n;
+ x.font='bold 26px sans-serif';const rw=x.measureText(rank).width+44;
+ rr(W-90-rw,96,rw,52,26);x.strokeStyle=accent;x.lineWidth=2;x.stroke();
+ x.fillStyle=accent;x.textAlign='center';x.fillText(rank,W-90-rw/2,131);x.textAlign='left';
+ // Grosse Zahl
+ x.font='800 150px sans-serif';x.fillStyle=accent;
+ const num=fmt(Math.round(v.m3min));x.fillText(num,PX,360);
+ const nw=x.measureText(num).width;
+ x.font='600 44px sans-serif';x.fillStyle=dim;x.fillText('m³/min',PX+nw+22,360);
+ // Balken
+ const bw=W-2*PX,pct=Math.min(1,v.m3min/15000);
+ rr(PX,392,bw,14,7);x.fillStyle=line;x.fill();
+ rr(PX,392,Math.max(14,bw*pct),14,7);x.fillStyle=accent;x.fill();
+ // Siegel / Beleg
+ x.font='600 30px sans-serif';
+ if(v.mined>0){
+  x.fillStyle=C('--green','#57c98a');
+  const txt=en?`✅ ESI-verified · ${fmtC(v.mined)} m³ / 30 days`+(v.avgBonus!=null?` · skill +${v.avgBonus}%`:'')
+              :`✅ ESI-verifiziert · ${fmtC(v.mined)} m³ / 30 T`+(v.avgBonus!=null?` · Skill +${v.avgBonus}%`:'');
+  x.fillText(txt,PX,470);
+ }else{
+  x.fillStyle=dim;x.fillText(en?'estimated from log':'geschätzt aus Log',PX,470);
+ }
+ // Flotte + Besitzer
+ x.font='400 26px sans-serif';x.fillStyle=dim;
+ const nm=v.miners.length;
+ x.fillText((en?`${nm} ${nm===1?'ship':'ships'}`:`${nm} ${nm===1?'Schiff':'Schiffe'}`)
+   +(v.owner?` · ${v.owner}${nm>1?' +'+(nm-1):''}`:''),PX,516);
+ // Fuss: Homepage
+ x.font='600 26px sans-serif';x.fillStyle=cyan;
+ x.fillText('eve-online-askend.github.io/eve-canary',PX,560);
+ // Ausgabe: Download + Zwischenablage
+ cv.toBlob(function(blob){
+  if(!blob)return;
+  try{const u=URL.createObjectURL(blob);const a=document.createElement('a');
+   a.href=u;a.download='eve-canary-fleet-power.png';a.click();
+   setTimeout(()=>URL.revokeObjectURL(u),5000);}catch(e){}
+  try{navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);}catch(e){}
+  if(btn){const o=btn.textContent;btn.textContent=en?'✓ Saved':'✓ Gespeichert';
+   setTimeout(()=>{try{btn.textContent=o;}catch(e){}},2500);}
+ },'image/png');
+}
+function tierEn(n){const m={'Rorqual-Overlord':'Rorqual Overlord','Erz-Baron':'Ore Baron',
+ 'Industrie-Flotte':'Industrial Fleet','Flotten-Operator':'Fleet Operator',
+ 'Gürtel-Miner':'Belt Miner','Prospektor':'Prospector'};return m[n]||n;}
 function renderLive(chars,summary){
  lastChars=chars;
  if(summary!==undefined)lastSummary=summary;
@@ -5568,7 +5658,7 @@ const EN = {
 'Gegner bekämpft':'Enemies fought','Typen · aus Log':'types · from log',
 'Rorqual-Overlord':'Rorqual Overlord','Erz-Baron':'Ore Baron','Industrie-Flotte':'Industrial Fleet',
 'Flotten-Operator':'Fleet Operator','Gürtel-Miner':'Belt Miner','Prospektor':'Prospector',
-'✅ ESI-verifiziert:':'✅ ESI-verified:',
+'✅ ESI-verifiziert:':'✅ ESI-verified:','📤 Teilen':'📤 Share',
 '🤖 Drohnen ohne Erz':'🤖 Drones without ore',
 'Komprimiert (Session)':'Compressed (session)','Rolle …':'Role …','Mining':'Mining',
 'Watchlist (Local-Chat, ein Name pro Zeile)':'Watchlist (local chat, one name per line)',
