@@ -1,4 +1,9 @@
 [
+ {"v": "1.22", "d": "2026-07-24",
+  "de": ["EVE-Serverstatus im Kopf: Spielerzahl auf Tranquility, live und ohne Login",
+         "Zeigt Downtime und VIP-Modus (Wartung) an"],
+  "en": ["EVE server status in the header: player count on Tranquility, live and without login",
+         "Shows downtime and VIP mode (maintenance)"]},
  {"v": "1.21", "d": "2026-07-24",
   "de": ["Missionen werden jetzt auch am Funk der Gegner im Local erkannt, nicht nur an den Gegnernamen",
          "Der Missions-Funk erscheint live und in der Historie, so lässt sich die Mission auch nachträglich zuordnen",

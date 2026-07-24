@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.21.0"
+VERSION = "1.22.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "README_INSTALL.md"]
 from collections import deque
@@ -49,6 +49,7 @@ ERROR_HELP = {
     "CN-CHAT-02": "NPC-Funk aus aelteren Chatlogs nicht lesbar (Missionserkennung eingeschraenkt)",
     "CN-DB-01": "Datenbankfehler",
     "CN-NET-01": "Marktpreise nicht abrufbar",
+    "CN-NET-02": "EVE-Serverstatus nicht abrufbar",
     "CN-ESI-01": "ESI-Abfrage fehlgeschlagen",
     "CN-INTEL-01": "Bedrohungs-Abfrage fehlgeschlagen",
     "CN-CLIP-01": "Zwischenablage nicht lesbar",
@@ -1612,6 +1613,43 @@ class Prices(threading.Thread):
             time.sleep(3)
 
 
+class ServerStatus(threading.Thread):
+    """Status des EVE-Servers (Tranquility) vom oeffentlichen ESI-Endpunkt.
+    Braucht keinen Login. Liefert Spielerzahl, ob VIP-Modus (Wartung) laeuft und
+    seit wann der Server online ist."""
+    daemon = True
+
+    def __init__(self):
+        super().__init__()
+        self.state = {}        # players, vip, start_time, ok, checked
+        self.err = 0
+
+    def run(self):
+        while True:
+            try:
+                req = urllib.request.Request(
+                    "https://esi.evetech.net/latest/status/",
+                    headers={"User-Agent": ESI_UA, "Accept": "application/json"})
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    d = json.load(r)
+                self.state = {"players": d.get("players"),
+                              "vip": bool(d.get("vip")),
+                              "start_time": d.get("start_time"),
+                              "ok": True, "checked": time.time()}
+                self.err = 0
+                wait = 60          # normal alle 60 s
+            except Exception as e:
+                # Server offline/Downtime: kurze Zeit ist das normal (taegliche
+                # Downtime ~11:00 EVE-Zeit), erst danach als Fehler melden.
+                self.err += 1
+                self.state = {"players": None, "vip": False, "start_time": None,
+                              "ok": False, "checked": time.time()}
+                if self.err == 3:
+                    log_error("CN-NET-02", "ServerStatus.run", e)
+                wait = 30          # bei Ausfall haeufiger nachsehen
+            time.sleep(wait)
+
+
 # ---------------------------------------------------------------- ESI (offizielles EVE-SSO, PKCE)
 SSO_AUTH = "https://login.eveonline.com/v2/oauth/authorize"
 SSO_TOKEN = "https://login.eveonline.com/v2/oauth/token"
@@ -2178,6 +2216,7 @@ prices = Prices()
 esi = Esi()
 threat = ThreatIntel()
 clipwatch = ClipWatch()
+serverstatus = ServerStatus()
 
 
 # ---------------------------------------------------------------- Abfragen
@@ -2808,6 +2847,7 @@ def state_info():
                     "chars": [{"name": n, "status": esi.status.get(n, "warte auf Abgleich …"),
                                "ship": c.get("ship"), "wallet": c.get("wallet")}
                               for n, c in (CONFIG.get("esi") or {}).get("chars", {}).items()]},
+            "server": serverstatus.state,
             "alerts": alerts.list()}
 
 
@@ -3351,6 +3391,12 @@ padding:7px 10px;font-size:12px;font-weight:600;margin-bottom:8px;overflow:hidde
 .warnbadge.drone{color:var(--red)}
 .pill.upd{border-color:var(--gold);color:var(--gold);animation:updpulse 2.4s ease-in-out infinite}
 @keyframes updpulse{0%,100%{box-shadow:0 0 0 rgba(232,198,69,0)}50%{box-shadow:0 0 9px rgba(232,198,69,.45)}}
+.pill.srv{cursor:default}
+.pill.srv .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.pill.srv.up .dot{background:var(--green);box-shadow:0 0 5px var(--green)}
+.pill.srv.down .dot{background:var(--red);box-shadow:0 0 5px var(--red)}
+.pill.srv.vip .dot{background:var(--gold);box-shadow:0 0 5px var(--gold)}
+.pill.srv b{color:var(--txt);font-weight:600}
 .laserok{float:right;border:1px solid var(--line);border-radius:20px;padding:1px 9px;
 color:var(--dim);cursor:pointer;font-weight:400;margin-left:8px}
 .laserok:hover{color:var(--fg);border-color:var(--fg)}
@@ -3450,6 +3496,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span class="pill" id="collapseAll">Alle einklappen</span>
  <span class="pill langsel" data-l="de" title="Deutsch">DE</span><span class="pill langsel" data-l="en" title="English">EN</span>
  <div class="pills" id="regions"></div>
+ <span class="pill srv" id="srvStatus" hidden title="EVE-Server (Tranquility)"></span>
  <span class="pill upd" id="updBadge" hidden title="Neue Version verfügbar, Klick installiert sie"></span>
  <span class="pill" id="ovToggle" title="Always-on-top Mini-Overlay (Chrome/Edge)">◱ Overlay</span>
  <span class="pill" id="fontsize" title="Schriftgröße (3 Stufen)">A</span>
@@ -3783,6 +3830,40 @@ function updateBadge(){
  const b=$('#updBadge');
  if(u.available&&u.latest){b.hidden=false;b.textContent='⬆ Update v'+u.latest;}
  else b.hidden=true;
+}
+// Serverstatus (Tranquility). Text und Titel gleich in der aktiven Sprache
+// bauen — dann muss tr() hier nichts nachtraeglich uebersetzen (die Spielerzahl
+// wechselt jede Minute, ein zwischengespeicherter Titel wuerde sonst einfrieren).
+function serverBadge(){
+ const s=(state&&state.server)||{};
+ const b=$('#srvStatus'); if(!b)return;
+ if(!s.checked){b.hidden=true;return;}
+ const en=(lang==='en');
+ b.hidden=false; b.classList.remove('up','down','vip');
+ if(!s.ok){
+  b.classList.add('down');
+  b.innerHTML='<span class="dot"></span>'+(en?'Server offline':'Server offline');
+  b.title=en?'EVE server (Tranquility) unreachable, maybe downtime'
+            :'EVE-Server (Tranquility) nicht erreichbar, evtl. Downtime';
+  return;
+ }
+ if(s.vip){
+  b.classList.add('vip');
+  b.innerHTML='<span class="dot"></span>'+(en?'VIP only':'Nur VIP');
+  b.title=en?'Server in VIP mode (maintenance), only certain accounts'
+            :'Server im VIP-Modus (Wartung), nur bestimmte Accounts';
+  return;
+ }
+ b.classList.add('up');
+ const n=(s.players!=null)?s.players.toLocaleString(en?'en-US':'de-DE'):'?';
+ b.innerHTML='<span class="dot"></span>TQ <b>'+n+'</b>';
+ let tip=en?('EVE server (Tranquility) online · '+n+' players')
+           :('EVE-Server (Tranquility) online · '+n+' Spieler');
+ if(s.start_time){
+  const up=Math.max(0,(Date.now()-new Date(s.start_time).getTime())/3600000);
+  tip+=en?(' · up '+up.toFixed(1)+' h'):(' · seit '+up.toFixed(1).replace('.',',')+' h online');
+ }
+ b.title=tip;
 }
 $('#updBadge').onclick=async()=>{
  const v=(state&&state.update&&state.update.latest)||'?';
@@ -4802,7 +4883,7 @@ async function tick(){
  try{
   const d=await (await fetch('/data?view='+reqView)).json();
   if(reqView!==view)return;  // Nutzer hat inzwischen gewechselt -> Antwort verwerfen
-  state=d.state;regionPills();handleAlerts();updateBadge();bootScreen();
+  state=d.state;regionPills();handleAlerts();updateBadge();serverBadge();bootScreen();
   if(state.log_ok===false){renderSetup();return;}
   if(!$('#setup').hidden){$('#setup').hidden=true;$('#setup').dataset.built='';}
   if(view!=='live'&&view!=='month'&&view!=='total'&&view!=='analyse')$('#empty').hidden=true;
@@ -4886,6 +4967,7 @@ if __name__ == "__main__":
     esi.start()
     threat.start()
     clipwatch.start()
+    serverstatus.start()
     print(f"EVE Canary läuft:  http://localhost:{port}")
     if "--no-browser" not in sys.argv:
         # Browser erst jetzt öffnen, wo der Port sicher gebunden ist
