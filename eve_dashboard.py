@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.32.0"
+VERSION = "1.32.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -1289,7 +1289,11 @@ class Ingest(threading.Thread):
                     s._lost_ts = now
                 dt = now - s._lost_ts
                 s._lost_ts = now
-                if rs and 0 < dt < 20:   # dt-Sanitaet: kein Riesensprung nach Pause
+                # Nur zaehlen, solange der Char plausibel am Guertel ist: Erz kam
+                # in den letzten 3 min. Danach ist er vermutlich im Warp, angedockt
+                # oder AFK -> das ist kein "Verlust" und wird nicht mitgezaehlt.
+                at_belt = s.last_ore_ts is not None and (now - s.last_ore_ts) < 180
+                if rs and at_belt and 0 < dt < 20:   # dt-Sanitaet: kein Riesensprung
                     base, cur = rs
                     # nur echten Ausfall zaehlen (unter 85% der Normalrate), kein
                     # Rauschen. (base-cur) = fehlende m³/min, mal Intervall in Minuten.
