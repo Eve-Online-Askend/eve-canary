@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.31.1"
+VERSION = "1.31.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -4527,7 +4527,7 @@ function miningCardHtml(c){
    ${(c.lasers_off||[]).map(w=>`<div class="cardwarn">⛔ ${esc(w.tool)} aus seit ${new Date(w.since*1000).toLocaleTimeString().slice(0,5)}. Neues Ziel erfassen!${iskLost(c,w)} <span class="laserok" data-char="${esc(c.name)}" data-tool="${esc(w.tool)}">✓ erledigt</span></div>`).join('')}
    ${c.drones_idle?`<div class="cardwarn">🤖 Drohnen liefern gerade kein Erz (gestoppt, voll oder auf dem Rückweg).</div>`:''}
    ${c.laser_stalled?`<div class="cardwarn">⛏ Strip Miner liefert gerade kein Erz, während die Drohnen weiterlaufen.</div>`:''}
-   ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur noch ${c.rate_low}%. Vermutlich ist ein Modul oder eine Drohne aus.</div>`:''}
+   ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur noch ${c.rate_low}%. Vermutlich ist ein Modul oder eine Drohne aus.${iskRate(c)}</div>`:''}
    ${mineIdle(c,state)?`<div class="cardwarn">⚠ Seit ${Math.round(c.mine_idle/60)} min kein Erz. Laser und Drohnen prüfen!</div>`:''}
    <div class="sub">${c.trips>0?'Trip '+(c.trips+1)+' · seit Abdocken':'Session'} ${c.session_min} min · ${c.depleted} Asteroiden leergebaggert · Preise: ${state.price_src==='esi'?'ESI · ':''}${state.regions[state.region]}</div>
    ${dangerLine(c)}
@@ -4848,11 +4848,22 @@ function mineIdle(c,st){
 // ISK-Verlust-Coach (opt-in): grob geschaetzter entgangener Ertrag, seit ein
 // Strip Miner steht. Rate 'before' (m³/min vor dem Stopp) × Standzeit × ISK/m³.
 function iskLost(c,w){
- if(localStorage.getItem('iskCoach')!=='1'||!w.before)return '';
+ if(localStorage.getItem('iskCoach')!=='1')return '';
  const ipm=(c.m3>0)?(c.ore_isk/c.m3):0;          // ISK je m³ (Session-Schnitt)
- const lost=Math.max(0,(Date.now()/1000-w.since)/60)*w.before*ipm;
- if(lost<10000)return '';
+ const rate=w.before||((c.m3h||0)/60);           // m³/min: Vorher-Rate, sonst aktuelle
+ const lost=Math.max(0,(Date.now()/1000-w.since)/60)*rate*ipm;
+ if(lost<1000)return '';
  return ` <b class="in">≈ ${fmtM(lost)} ISK ${lang==='en'?'lost':'entgangen'}</b>`;
+}
+// Laufender Verlust bei gedrosselter Rate (ein Modul/Drohne aus): fehlender
+// Anteil × Normalrate × ISK/m³, als ISK pro Stunde. Sichtbarer als der kurze
+// Laser-aus-Fall, weil die Rate laenger gedrosselt bleibt.
+function iskRate(c){
+ if(localStorage.getItem('iskCoach')!=='1'||!c.rate_low||c.rate_low<=0||c.rate_low>=100)return '';
+ const ipm=(c.m3>0)?(c.ore_isk/c.m3):0;
+ const perH=(c.m3h||0)*(100/c.rate_low-1)*ipm;   // entgangener Ertrag pro Stunde
+ if(perH<1000)return '';
+ return ` <b class="in">≈ ${fmtM(perH)} ISK/h ${lang==='en'?'lost':'entgeht dir'}</b>`;
 }
 // Lagebild des aktuellen Systems aus offenen Daten (stuendlich). Bewusst als
 // ruhige Info-Zeile, kein Alarm: eine Sekundenwarnung ist damit nicht moeglich.

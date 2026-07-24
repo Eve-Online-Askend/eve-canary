@@ -1,9 +1,11 @@
 [
  {"v": "1.31", "d": "2026-07-24",
   "de": ["Sprachansagen: Stimme frei wählbar aus den auf dem System verfügbaren Stimmen, mit sofortiger Hörprobe",
-         "Sprachansagen sagen jetzt auch Strip-Miner-Stopp und Drohnen im Leerlauf an, sobald sie auftreten (nur einmal, kein Dauergeplapper)"],
+         "Sprachansagen sagen jetzt auch Strip-Miner-Stopp und Drohnen im Leerlauf an, sobald sie auftreten (nur einmal, kein Dauergeplapper)",
+         "ISK-Verlust zuverlässiger: zeigt auch bei gedrosselter Abbaurate, wie viel ISK pro Stunde dir gerade entgeht"],
   "en": ["Spoken alerts: pick any voice available on your system, with an instant preview",
-         "Spoken alerts now also announce a strip miner stopping and idle drones as they happen (once, no chatter)"]},
+         "Spoken alerts now also announce a strip miner stopping and idle drones as they happen (once, no chatter)",
+         "ISK loss more reliable: also shows, at a reduced mining rate, how much ISK per hour you are currently missing"]},
  {"v": "1.30", "d": "2026-07-24",
   "de": ["Neue Zusatzoptionen (standardmäßig aus, in den Optionen aktivierbar):",
          "Sprachansagen bei Alarmen, sagt Charakter und Warnung an, ideal fürs Multiboxing",
