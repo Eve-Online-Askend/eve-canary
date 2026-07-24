@@ -21,15 +21,15 @@ h2{font-size:22px;margin:52px 0 14px;padding-bottom:8px;border-bottom:1px solid 
 h3{font-size:15px;margin:0 0 6px}
 header{text-align:center;padding:52px 0 42px;position:relative;overflow:hidden}
 header>*:not(.stream){position:relative;z-index:1}
-header .stream{position:absolute;left:0;right:0;top:4px;height:215px;z-index:0;pointer-events:none;overflow:hidden}
-header .stream span{position:absolute;bottom:-26px;font-weight:600;color:var(--gold);opacity:0;
+header .stream{position:absolute;left:0;right:0;top:44px;height:120px;z-index:0;pointer-events:none;overflow:hidden}
+header .stream span{position:absolute;bottom:-8px;font-weight:600;color:var(--gold);opacity:0;
   white-space:nowrap;animation:streamUp linear forwards;text-shadow:0 0 8px rgba(0,0,0,.45)}
 header .stream span.other{color:var(--cyan)}
 @keyframes streamUp{
   0%{opacity:0;transform:translateY(0)}
-  14%{opacity:.5}
-  82%{opacity:.32}
-  100%{opacity:0;transform:translateY(-170px)}}
+  16%{opacity:.5}
+  80%{opacity:.32}
+  100%{opacity:0;transform:translateY(-112px)}}
 @media (prefers-reduced-motion:reduce){header .stream{display:none}}
 header .logo{font-size:52px;line-height:1;display:inline-block;transform-origin:50% 85%;
   animation:canaryBob 3.4s ease-in-out infinite;will-change:transform;cursor:pointer;user-select:none}
@@ -548,7 +548,7 @@ applyLang(start);
     s.textContent = pool[Math.floor(Math.random() * pool.length)];
     if (!gold) s.className = 'other';
     const rightSide = Math.random() < 0.5;
-    s.style.left = (rightSide ? 82 + Math.random() * 16 : 2 + Math.random() * 16) + '%';
+    s.style.left = (rightSide ? 70 + Math.random() * 24 : 6 + Math.random() * 24) + '%';
     s.style.fontSize = (11 + Math.random() * 6).toFixed(0) + 'px';
     s.style.animationDuration = (3.8 + Math.random() * 2.6).toFixed(1) + 's';
     box.appendChild(s);
