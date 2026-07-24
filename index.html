@@ -63,6 +63,13 @@ footer a{margin:0 9px}
 .dlbarwrap{flex:1;background:var(--line);border-radius:3px;height:13px;overflow:hidden}
 .dlbar{display:block;height:100%;background:var(--gold);border-radius:3px;min-width:3px}
 .dld{width:34px;flex:none;color:var(--txt);font-weight:600}
+#dlBadge{cursor:pointer}
+#dlModal{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--txt);max-width:520px;width:92%;padding:20px}
+#dlModal::backdrop{background:rgba(0,0,0,.55)}
+.dlmodhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.dlmodhead b{font-size:18px}
+#dlModalClose{background:none;border:none;color:var(--dim);font-size:20px;line-height:1;cursor:pointer;padding:2px 6px}
+#dlModalClose:hover{color:var(--txt)}
 .tiny{font-size:12px;color:var(--dim)}
 ul{padding-left:20px}
 li{margin:5px 0}
@@ -206,6 +213,11 @@ directly. The report contains no character names and no credentials.</p>
 </footer>
 
 </div>
+<dialog id="dlModal">
+  <div class="dlmodhead"><b data-i18n="h.downloads">Downloads</b>
+   <button id="dlModalClose" aria-label="Close">✕</button></div>
+  <div id="dlchartModal"></div>
+</dialog>
 <script>
 /* ---------------------------------------------------------------------------
    SPRACHEN / LANGUAGES
@@ -403,9 +415,8 @@ LANGS.en = EN;
 let CL = null, DL = null, curLang = 'en';
 // Download-Verlauf: App-Downloads (eve_dashboard.py) je Version, chronologisch.
 // Nur Versionen mit >0, damit die vielen Null-Releases den Balken nicht zumuellen.
-function renderDlChart() {
-  const box = document.getElementById('dlchart');
-  if (!box || !DL) return;
+function dlChartHtml() {
+  if (!DL) return '';
   const rows = DL.map(r => ({
       v: (r.tag_name || '').replace(/^v/, ''),
       d: (r.assets || []).filter(a => a.name === 'eve_dashboard.py')
@@ -413,15 +424,27 @@ function renderDlChart() {
       t: r.published_at }))
     .filter(r => r.d > 0)
     .sort((a, b) => new Date(a.t) - new Date(b.t));
-  if (!rows.length) { box.innerHTML = ''; return; }
+  if (!rows.length) return '';
   const max = Math.max(...rows.map(r => r.d));
   const total = rows.reduce((s, r) => s + r.d, 0);
   const lbl = { de: 'Downloads gesamt', fr: 'téléchargements au total',
                 ru: 'загрузок всего' }[curLang] || 'downloads total';
-  box.innerHTML = `<div class="dltotal"><b>${total.toLocaleString()}</b> ${lbl}</div>` +
+  return `<div class="dltotal"><b>${total.toLocaleString()}</b> ${lbl}</div>` +
     rows.map(r => `<div class="dlrow"><span class="dlv">v${r.v}</span>`
       + `<span class="dlbarwrap"><span class="dlbar" style="width:${Math.max(4, Math.round(100 * r.d / max))}%"></span></span>`
       + `<span class="dld">${r.d}</span></div>`).join('');
+}
+function renderDlChart() {
+  const html = dlChartHtml();
+  const box = document.getElementById('dlchart'); if (box) box.innerHTML = html;
+  const m = document.getElementById('dlModal');
+  if (m && m.open) document.getElementById('dlchartModal').innerHTML = html;
+}
+function openDlModal() {
+  const m = document.getElementById('dlchartModal');
+  if (m) m.innerHTML = dlChartHtml() || '<p class="tiny">–</p>';
+  const d = document.getElementById('dlModal');
+  if (d && d.showModal) d.showModal();
 }
 function renderChangelog() {
   const box = document.getElementById('changelog');
@@ -470,6 +493,17 @@ if (!LANGS[start]) {
   start = LANGS[nl] ? nl : 'en';
 }
 applyLang(start);
+
+// Download-Zaehler oben oeffnet die Grafik als Popup (spart das Scrollen).
+(function () {
+  const badge = document.getElementById('dlBadge');
+  const modal = document.getElementById('dlModal');
+  if (badge) badge.onclick = openDlModal;
+  if (modal) {
+    document.getElementById('dlModalClose').onclick = () => modal.close();
+    modal.addEventListener('click', e => { if (e.target === modal) modal.close(); });
+  }
+})();
 
 // Version und Downloadzahl live von GitHub. Schlaegt das fehl, bleibt die Seite nutzbar.
 (async () => {
