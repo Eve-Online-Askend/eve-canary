@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.17.2"
+VERSION = "1.17.3"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -4207,8 +4207,10 @@ function renderMissions(d){
  $('#grid').innerHTML=`
  <div class="card" style="grid-column:1/-1">
   <b>Heute im Detail (EVE-Zeit)</b>
-  ${m.asof?(()=>{const now=Date.now()/1000,age=Math.max(0,Math.round((now-m.asof)/60)),nx=Math.round((m.next-now)/60);
-    return `<div class="sub">Aus dem Wallet-Journal (ESI). Stand: vor ${age} min${nx>0?' · nächste Aktualisierung in '+nx+' min':''}. Das In-Game-Wallet ist sofort aktuell, ESI hängt bis zu 1 Stunde nach.</div>`;})():''}
+  ${(m.asof||m.next)?(()=>{const now=Date.now()/1000;const p=['Aus dem Wallet-Journal (ESI)'];
+    if(m.asof)p.push('Stand: vor '+Math.max(0,Math.round((now-m.asof)/60))+' min');
+    if(m.next){const nx=Math.round((m.next-now)/60);p.push(nx>0?'nächster Abgleich in '+nx+' min':'Abgleich läuft gerade');}
+    return `<div class="sub">${p.join(' · ')}. Das In-Game-Wallet ist sofort aktuell, ESI hängt bis zu 1 Stunde nach.</div>`;})():''}
   <div class="stats" style="margin-top:10px">
    <div class="stat"><div class="l">Missionen erledigt</div><div class="v out">${t.missions||0}</div></div>
    <div class="stat"><div class="l">Belohnungen</div><div class="v isk">${fmtM(t.reward||0)}</div></div>
@@ -4571,7 +4573,7 @@ const EN_PATTERNS = [
  [/Schaden ([0-9.]+) raus [/] ([0-9.]+) rein/, 'Damage $1 out / $2 in'],
  [/Trefferquote ([0-9]+)%/, 'Hit rate $1%'], [/([0-9]+) Kills/, '$1 kills'],
  [/Aus dem Wallet-Journal/, 'From the wallet journal'],
- [/nächste Aktualisierung in ([0-9]+) min/, 'next update in $1 min'],
+ [/nächster Abgleich in ([0-9]+) min/, 'next sync in $1 min'], [/Abgleich läuft gerade/, 'syncing now'],
  [/Das In-Game-Wallet ist sofort aktuell, ESI hängt bis zu 1 Stunde nach/,
   'The in-game wallet updates instantly, ESI lags up to 1 hour'],
  [/Log-Ordner:/, 'Log folder:'], [/Dateien:/, 'files:'], [/Installiert:/, 'Installed:'],
