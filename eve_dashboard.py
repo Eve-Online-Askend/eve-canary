@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.25.1"
+VERSION = "1.25.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -4204,7 +4204,11 @@ function regionPills(){
 let collapsed=new Set(lsGet('collapsed',[]));
 // Master-Umschalter der Live-Ansicht: Miner vs. PvP/Missionen. Strikt getrennt.
 let liveMode=localStorage.getItem('liveMode')||'mining';
+// Solange der Rollen-Picker offen ist, das Grid NICHT neu bauen — sonst wuerde
+// das offene Dropdown beim naechsten Log-Eintrag zerstoert und faellt zu.
+let rolePickerBusy=false;
 function renderLiveView(){
+ if(rolePickerBusy)return;
  if(lastChars)(liveMode==='combat'?renderCombat:renderLive)(lastChars,lastSummary);
 }
 function toggleChar(name){
@@ -4354,7 +4358,9 @@ function renderLive(chars,summary){
  document.querySelectorAll('.chead').forEach(h=>h.onclick=()=>toggleChar(h.dataset.c));
  document.querySelectorAll('.rolesel').forEach(s=>{
   s.onclick=e=>e.stopPropagation();  // Klick soll die Karte nicht ein-/ausklappen
-  s.onchange=async()=>{await post({action:'set_role',char:s.dataset.c,role:s.value});
+  s.onfocus=()=>rolePickerBusy=true;         // offen -> Grid-Neubau pausieren
+  s.onblur=()=>rolePickerBusy=false;
+  s.onchange=async()=>{rolePickerBusy=false;await post({action:'set_role',char:s.dataset.c,role:s.value});
    if(lastChars){lastChars.forEach(c=>{if(c.name===s.dataset.c)c.role=s.value;});renderLive(lastChars,lastSummary);}};
  });
  document.querySelectorAll('[data-esihint]').forEach(el=>el.onclick=e=>{
@@ -4470,7 +4476,9 @@ function renderCombat(chars,summary){
  document.querySelectorAll('.chead').forEach(h=>h.onclick=()=>toggleChar(h.dataset.c));
  document.querySelectorAll('.rolesel').forEach(s=>{
   s.onclick=e=>e.stopPropagation();
-  s.onchange=async()=>{await post({action:'set_role',char:s.dataset.c,role:s.value});
+  s.onfocus=()=>rolePickerBusy=true;
+  s.onblur=()=>rolePickerBusy=false;
+  s.onchange=async()=>{rolePickerBusy=false;await post({action:'set_role',char:s.dataset.c,role:s.value});
    if(lastChars){lastChars.forEach(c=>{if(c.name===s.dataset.c)c.role=s.value;});renderCombat(lastChars,lastSummary);}};
  });
 }
