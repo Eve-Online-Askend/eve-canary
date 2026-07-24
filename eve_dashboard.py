@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.18.2"
+VERSION = "1.19.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -308,7 +308,17 @@ def parse_line(raw):
         text = STRIP_RE.sub("", body)
         if any(t in text for t in UNDOCK_TEXTS):
             LOG_TEXT_HITS["undock"] += 1
-            return {**base, "kind": "hold_reset", "key": "dock", "value": 1}
+            # Zielsystem aus "Undocking from … to <System> solar system" bzw.
+            # "Abdocken von … zum Sonnensystem <System>" mitnehmen (aktueller Ort).
+            us = re.search(r"\bto ([^.]+?) solar system", text) \
+                or re.search(r"Sonnensystem ([^.]+)", text)
+            return {**base, "kind": "hold_reset", "key": "dock", "value": 1,
+                    "system": us.group(1).strip() if us else None}
+        # Sprung: "Jumping from X to Y" / "Springt von X nach Y" -> aktueller Ort = Y
+        jm = re.search(r"Jumping from .+? to (.+)$", text) \
+            or re.search(r"(?:Springt|Springe) von .+? nach (.+)$", text)
+        if jm:
+            return {**base, "kind": "jump", "key": jm.group(1).strip("* ."), "value": 1}
         note_unknown(text)
         return None
     return None
@@ -484,7 +494,8 @@ def meta_get(key, default=None):
 # Logs noetig macht. "2" = englischer Client (Mining/Kompr. ohne hint) wird erfasst.
 # "3" = Gegnernamen im Kampflog des englischen Clients (standen vorher alle als "?")
 # "4" = Missions-Historie an Undock-Grenzen rueckwirkend aus allen Logs aufbauen
-PARSE_VER = "4"
+# "5" = Missionsort aus dem Gamelog (Undock-Ziel/Sprung) rueckwirkend nachtragen
+PARSE_VER = "5"
 
 
 def rebuild_if_needed():
@@ -510,14 +521,19 @@ def db_add(day, char_id, char_name, kind, key, value):
 
 
 def save_mission(m):
-    """Abgeschlossene Mission speichern. INSERT OR IGNORE über mid=char:start,
-    damit ein erneutes Einlesen (Rebuild) nicht doppelt anlegt und vom Nutzer
-    eingefügten Loot nicht überschreibt."""
+    """Abgeschlossene Mission speichern (mid=char:start). Bei erneutem Einlesen
+    werden die Kampf- und Ort-Felder aktualisiert, der vom Nutzer eingefügte
+    LOOT bleibt aber erhalten (nicht in der ON-CONFLICT-Aktualisierung)."""
     mid = f"{m['char_id']}:{int(m['start_ts'])}"
-    DB.execute("""INSERT OR IGNORE INTO missions
+    DB.execute("""INSERT INTO missions
         (mid,char_id,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
          hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(mid) DO UPDATE SET
+         char=excluded.char, end_ts=excluded.end_ts, system=excluded.system,
+         dmg_out=excluded.dmg_out, dmg_in=excluded.dmg_in, kills=excluded.kills,
+         bounty=excluded.bounty, hits=excluded.hits, miss_out=excluded.miss_out,
+         miss_in=excluded.miss_in, weapons=excluded.weapons, enemies=excluded.enemies""",
         (mid, m["char_id"], m["char"], m["start_ts"], m["end_ts"], m["system"],
          m["dmg_out"], m["dmg_in"], m["kills"], m["bounty"], m["hits"],
          m["miss_out"], m["miss_in"], json.dumps(m["weapons"], ensure_ascii=False),
@@ -799,6 +815,8 @@ class CharSession:
         self.ewar = {}        # Typ -> Anzahl (scramble/jam/web/…)
         self.salvage = {"ok": 0, "empty": 0, "fail": 0}
         self.dmg_min = deque(maxlen=180)  # [Minute, {"out":x,"in":y}] — Kampfverlauf
+        self.system = None            # aktueller Ort aus dem Gamelog (Undock/Sprung)
+        self.mission_system = None    # Ort, an dem der Missionskampf begann
         self.rate_min = deque(maxlen=180)  # [Minute, {Erz: m3}] — fuer Sparkline + Raten-Waechter
 
     def feed(self, ev, live):
@@ -847,9 +865,13 @@ class CharSession:
                 self.rate_min.append([minute, {}])
             mix = self.rate_min[-1][1]
             mix[ev["key"]] = mix.get(ev["key"], 0) + ev["value"] * vol
+        elif k == "jump":
+            self.system = ev["key"]      # aktueller Ort aus dem Gamelog
         elif k == "dmg_out":
             self.dmg_out += ev["value"]
             self.hits_out += 1
+            if self.mission_system is None:   # Ort des ersten Kampfes = Missionsort
+                self.mission_system = self.system
             self.targets[ev["key"]] = self.targets.get(ev["key"], 0) + ev["value"]
             w = ev.get("weapon", "Schiff/Direkt")
             self.weapons[w] = self.weapons.get(w, 0) + ev["value"]
@@ -914,9 +936,12 @@ class CharSession:
                 self.ewar = {}
                 self.salvage = {"ok": 0, "empty": 0, "fail": 0}
                 self.dmg_min = deque(maxlen=180)
+                self.mission_system = None
                 self.depleted = 0
                 self.start = time.time()
                 self.first_ts = ev["ts"]
+                if ev.get("system"):     # Ziel des Undocks = aktueller Ort
+                    self.system = ev["system"]
         elif k == "depleted":
             self.depleted += 1
             if "Drone" not in ev["key"]:
@@ -1066,13 +1091,15 @@ class CharSession:
             self.dmg_min.append([minute, {"out": 0, "in": 0}])
         self.dmg_min[-1][1][side] += val
 
-    def mission_dict(self, end_ts, system):
+    def mission_dict(self, end_ts):
         """Die gerade abgeschlossene Mission als Datensatz — oder None, wenn
-        seit dem letzten Undock kein Kampf stattfand (z.B. reiner Mining-Trip)."""
+        seit dem letzten Undock kein Kampf stattfand (z.B. reiner Mining-Trip).
+        Ort = wo der Kampf begann (aus dem Gamelog, zuverlaessig)."""
         if not (self.bounty or self.kills or self.dmg_out):
             return None
         return {"char_id": self.char_id, "char": self.name,
-                "start_ts": self.first_ts or end_ts, "end_ts": end_ts, "system": system,
+                "start_ts": self.first_ts or end_ts, "end_ts": end_ts,
+                "system": self.mission_system or self.system or "?",
                 "dmg_out": self.dmg_out, "dmg_in": self.dmg_in, "kills": self.kills,
                 "bounty": self.bounty, "hits": self.hits_out,
                 "miss_out": self.miss_out, "miss_in": self.miss_in,
@@ -1299,8 +1326,7 @@ class Ingest(threading.Thread):
                                 # Undock schliesst die vorige Mission ab -> erfassen,
                                 # BEVOR feed() die Kampfwerte der Session zuruecksetzt.
                                 if ev["kind"] == "hold_reset" and ev["key"] == "dock":
-                                    md = sess.mission_dict(ev["ts"],
-                                                           chatwatch.systems.get(cid, "?"))
+                                    md = sess.mission_dict(ev["ts"])
                                     if md:
                                         missions_done.append(md)
                                 sess.feed(ev, live=not catch_up)
@@ -2280,7 +2306,7 @@ def snapshot_live():
             "mine_idle": round(time.time() - s.last_ore_ts) if s.last_ore_ts else None,
             "idle_thr": round(s.idle_threshold(int(CONFIG.get("idle_warn", 240) or 0))),
             "name": s.name, "session_min": round(mins),
-            "system": chatwatch.systems.get(s.char_id, "?"),
+            "system": s.system or chatwatch.systems.get(s.char_id, "?"),
             "ores": ores, "m3": round(m3), "ore_isk": round(ore_isk),
             "m3h": round(m3 / mins * 60), "bounty": s.bounty, "kills": s.kills,
             "total_isk": round(ore_isk + s.bounty),
@@ -4230,7 +4256,7 @@ function renderMissions(d){
    <div style="border-top:1px solid var(--line);padding:10px 0">
     <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:baseline">
      <b>${new Date(x.start*1000).toLocaleString().slice(0,16)}</b>
-     <span class="sys">· ${x.min} min</span>
+     <span class="sys">${x.system&&x.system!=='?'?'· '+esc(x.system)+' ':''}· ${x.min} min</span>
      <span style="margin-left:auto" class="isk"><b>${fmtM(x.total)} ISK</b></span>
     </div>
     <div class="sub">${x.kills} Kills · Bounty ${fmtM(x.bounty)} · Schaden ${fmt(x.dmg_out)} raus / ${fmt(x.dmg_in)} rein${x.hit!=null?' · Trefferquote '+x.hit+'%':''}${x.enemies.length?' · Top: '+esc(x.enemies[0][0]):''}</div>
