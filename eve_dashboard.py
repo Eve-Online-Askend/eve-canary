@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.27.0"
+VERSION = "1.28.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -3729,6 +3729,8 @@ h1 b{color:var(--cyan)}
 .boothint{color:var(--dim);font-size:11px;margin-top:18px;line-height:1.5}
 html[data-skin=photon] .bootbar,html[data-skin=photon] #bootfill{border-radius:1px}
 /* ---------- Optionen-Gruppen */
+.copyright{margin:14px 0;font-size:10px;line-height:1.5;color:var(--dim);text-align:justify}
+.copyright b{color:var(--dim);letter-spacing:.5px}
 .optgroup{background:var(--inset);border:1px solid var(--line);border-radius:8px;
  padding:12px 14px;margin-bottom:10px}
 .optgroup .sect{margin-top:0}
@@ -3994,6 +3996,13 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   <div class="hint" id="verinfo"></div>
   <div class="hint" id="updstatus"></div>
   <div class="note" id="loginfo"></div>
+ </div>
+
+ <div class="copyright">
+  <b>COPYRIGHT NOTICE</b><br>
+  EVE Online and the EVE logo are trademarks of Fenris Creations (formerly CCP). All rights are reserved worldwide. All other trademarks are the property of their respective owners.
+  EVE Online, the EVE logo, EVE and all associated logos and designs are the intellectual property of Fenris Creations. All artwork, screenshots, characters, vehicles, storylines, world facts or other recognizable features of the intellectual property relating to these trademarks are likewise the intellectual property of Fenris Creations.
+  Fenris Creations has granted permission to EVE Canary to use EVE Online and all associated logos and designs for promotional and information purposes but does not endorse, and is not in any way affiliated with, EVE Canary. Fenris Creations is in no way responsible for the content on or functioning of this tool, nor can it be liable for any damage arising from its use.
  </div>
 
  <div style="text-align:right"><button class="btn" id="close">Schließen</button></div>
@@ -4968,7 +4977,7 @@ function renderRechner(){
  if(document.getElementById('calcBox'))return;
  $('#grid').innerHTML=`<div class="card mkt" id="mktBox" style="grid-column:1/-1">
   <b>🔎 Einzel-Item</b>
-  <div style="font-size:12px;color:var(--dim);margin:6px 0">Item-Namen tippen, Canary schlägt passende vor. Preise kommen aus dem frischen CCP-Orderbuch über alle Handelsplätze.</div>
+  <div style="font-size:12px;color:var(--dim);margin:6px 0">Item-Namen tippen, Canary schlägt passende vor. Preise kommen aus dem aktuellen Orderbuch (ESI) über alle Handelsplätze.</div>
   <div class="btnrow"><span class="mktwrap"><input id="mktIn" placeholder="z.B. Tritanium" autocomplete="off"><div id="mktSug" class="mktsug" hidden></div></span><button class="btn" id="mktGo">Suchen</button></div>
   <span id="mktStat" class="sub"></span>
   <div id="mktOut" style="overflow-x:auto"></div></div>
@@ -5038,7 +5047,7 @@ async function doMarket(){
   ?`<select id="mktChar" class="pill">`+chars.map(n=>`<option>${esc(n)}</option>`).join('')+`</select>`
    +`<button class="btn uibtn" id="mktOpenMkt" data-tid="${r.type_id}">Markt im Client öffnen</button>`
   :`<span class="sub">Für „im Client öffnen“ zuerst einen Charakter über den EVE-Login verbinden.</span>`;
- $('#mktOut').innerHTML=`<div style="font-size:13px;margin:6px 0"><b>${esc(r.name)}</b> <span class="sub">· Preisquelle: ${r.src==='esi'?'ESI (CCP)':'Fuzzwork'}</span></div>`
+ $('#mktOut').innerHTML=`<div style="font-size:13px;margin:6px 0"><b>${esc(r.name)}</b> <span class="sub">· Preisquelle: ${r.src==='esi'?'ESI':'Fuzzwork'}</span></div>`
   +`<table><tr><th>Handelsplatz</th><th class="r">Sofortverkauf (Buy)</th><th class="r">Kaufen (Sell)</th></tr>`
   +hubs.map(h=>`<tr><td>${esc(h.name)}${h.buy===bestBuy&&bestBuy>0?' ★':''}</td><td class="r isk">${h.buy>0?fmtP(h.buy):'—'}</td><td class="r">${h.sell>0?fmtP(h.sell):'—'}</td></tr>`).join('')
   +`</table><div class="btnrow" style="margin-top:10px;align-items:center">${picker}</div>`;
@@ -5364,8 +5373,8 @@ const EN_PATTERNS = [
  [/Verkehr /, 'Traffic '], [/([0-9.]+) Sprünge/, '$1 jumps'],
  // Markt / Item-Suche
  [/Item-Preis suchen/, 'Item price lookup'],
- [/Item-Namen tippen, Canary schlägt passende vor[.] Preise kommen aus dem frischen CCP-Orderbuch über alle Handelsplätze[.]/,
-  'Type an item name and Canary suggests matches. Prices come from the fresh CCP order book across all trade hubs.'],
+ [/Item-Namen tippen, Canary schlägt passende vor[.] Preise kommen aus dem aktuellen Orderbuch [(]ESI[)] über alle Handelsplätze[.]/,
+  'Type an item name and Canary suggests matches. Prices come from the current order book (ESI) across all trade hubs.'],
  [/^Suchen$/, 'Search'], [/Suche Preise …/, 'Fetching prices …'],
  [/Marktabfrage fehlgeschlagen[.]/, 'Market lookup failed.'],
  [/Preisquelle: /, 'Price source: '], [/^Handelsplatz$/, 'Trade hub'],

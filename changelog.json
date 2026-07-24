@@ -1,4 +1,9 @@
 [
+ {"v": "1.28", "d": "2026-07-24",
+  "de": ["Rechtliche Hinweise aktualisiert: die EVE-Marken gehören jetzt Fenris Creations (früher CCP)",
+         "Vollständige Copyright-Notiz in den Optionen und auf der Homepage"],
+  "en": ["Legal notices updated: the EVE trademarks now belong to Fenris Creations (formerly CCP)",
+         "Full copyright notice in the options and on the homepage"]},
  {"v": "1.27", "d": "2026-07-24",
   "de": ["Gemischte Flotten: jede Karte richtet sich jetzt nach der Rolle des Charakters",
          "Mining-Charaktere zeigen die Mining-Ansicht, Missions- und PvP-Charaktere die Kampf-Ansicht, egal welcher Modus oben gewählt ist",

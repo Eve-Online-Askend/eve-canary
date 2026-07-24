@@ -54,6 +54,7 @@ text-transform:uppercase;letter-spacing:1px}
 footer{margin:64px 0 40px;padding-top:22px;border-top:1px solid var(--line);
 text-align:center;color:var(--dim);font-size:12.5px}
 footer a{margin:0 9px}
+.copyright{max-width:820px;margin:22px auto 0;font-size:10px;line-height:1.6;color:var(--dim);text-align:justify}
 .tiny{font-size:12px;color:var(--dim)}
 ul{padding-left:20px}
 li{margin:5px 0}
@@ -152,7 +153,7 @@ must be enabled in the EVE client, which is the default setting.</p>
   <li data-i18n="pv4">The only outbound requests are public ones: market prices, and for the
       threat traffic light the pilot names you look up yourself.</li>
   <li data-i18n="pv5">With the optional EVE login your credentials stay local. Canary never
-      sees your password, the login runs on CCP's own page.</li>
+      sees your password, the login runs on the official EVE login page.</li>
 </ul>
 
 <h2 data-i18n="h.trouble">If something goes wrong</h2>
@@ -187,9 +188,14 @@ directly. The report contains no character names and no credentials.</p>
     <a href="https://github.com/Eve-Online-Askend/eve-canary/releases" data-i18n="fo.rel">All versions</a>
     <a href="https://github.com/Eve-Online-Askend/eve-canary/issues" data-i18n="fo.iss">Report a bug</a>
   </p>
-  <p data-i18n="fo.disc">EVE Canary is a private project and is not affiliated with CCP Games.<br>
-  EVE Online and all related trademarks are the property of CCP hf.<br>
+  <p data-i18n="fo.disc">EVE Canary is a private project and is not affiliated with Fenris Creations (formerly CCP).<br>
+  EVE Online and all related trademarks are the property of Fenris Creations.<br>
   Fly safe. o7</p>
+  <p class="copyright">
+    EVE Online and the EVE logo are trademarks of Fenris Creations (formerly CCP). All rights are reserved worldwide. All other trademarks are the property of their respective owners.
+    EVE Online, the EVE logo, EVE and all associated logos and designs are the intellectual property of Fenris Creations. All artwork, screenshots, characters, vehicles, storylines, world facts or other recognizable features of the intellectual property relating to these trademarks are likewise the intellectual property of Fenris Creations.
+    Fenris Creations has granted permission to EVE Canary to use EVE Online and all associated logos and designs for promotional and information purposes on its website but does not endorse, and is not in any way affiliated with, EVE Canary. Fenris Creations is in no way responsible for the content on or functioning of this website, nor can it be liable for any damage arising from the use of this website.
+  </p>
 </footer>
 
 </div>
@@ -247,7 +253,7 @@ const LANGS = {
     pv2: 'Es liest nur die Textdateien, die dein EVE-Client selbst schreibt. Nichts wird verändert, nichts automatisiert, nichts an das Spiel gesendet.',
     pv3: 'Statistiken liegen in einer lokalen Datenbank neben dem Programm. Deinstallieren heißt Ordner löschen.',
     pv4: 'Nach außen gehen nur öffentliche Abfragen: Marktpreise, und bei der Bedrohungs-Ampel die Pilotennamen, die du selbst nachschlägst.',
-    pv5: 'Beim optionalen EVE-Login bleiben die Zugangsdaten lokal. Canary sieht dein Passwort nie, der Login läuft über CCPs eigene Seite.',
+    pv5: 'Beim optionalen EVE-Login bleiben die Zugangsdaten lokal. Canary sieht dein Passwort nie, der Login läuft über die offizielle EVE-Login-Seite.',
     'h.trouble': 'Wenn etwas klemmt',
     'trouble.p': 'Canary meldet Probleme mit einem kurzen Code. Der steht im Konsolenfenster und in den Optionen unter „System &amp; Daten". Dort gibt es den Knopf <b>🩺 Diagnose kopieren</b>, der einen Bericht in die Zwischenablage legt, den du direkt weiterschicken kannst. Der Bericht enthält keine Charakternamen und keine Zugangsdaten.',
     'th.code': 'Code', 'th.meaning': 'Bedeutung',
@@ -263,7 +269,7 @@ const LANGS = {
     r3: 'Im EVE-Client aktiviertes Spielprotokoll, für die Systemanzeige zusätzlich das Chatprotokoll',
     r4: 'Sonst nichts. Canary nutzt nur die Python-Standardbibliothek.',
     'fo.src': 'Quellcode auf GitHub', 'fo.rel': 'Alle Versionen', 'fo.iss': 'Fehler melden',
-    'fo.disc': 'EVE Canary ist ein privates Projekt und steht in keiner Verbindung zu CCP Games.<br>EVE Online und alle zugehörigen Marken sind Eigentum von CCP hf.<br>Fly safe. o7'
+    'fo.disc': 'EVE Canary ist ein privates Projekt und steht in keiner Verbindung zu Fenris Creations (früher CCP).<br>EVE Online und alle zugehörigen Marken sind Eigentum von Fenris Creations.<br>Fly safe. o7'
   },
 
   fr: {
@@ -301,7 +307,7 @@ const LANGS = {
     pv2: 'Il lit uniquement les fichiers texte que votre client EVE écrit lui-même. Rien n\'est modifié, rien n\'est automatisé, rien n\'est envoyé au jeu.',
     pv3: 'Les statistiques vivent dans une base locale à côté du programme. Désinstaller revient à supprimer un dossier.',
     pv4: 'Les seules requêtes sortantes sont publiques : les prix du marché et, pour le feu tricolore, les noms de pilotes que vous consultez vous-même.',
-    pv5: 'Avec la connexion EVE facultative, vos identifiants restent en local. Canary ne voit jamais votre mot de passe, la connexion se fait sur le site de CCP.',
+    pv5: 'Avec la connexion EVE facultative, vos identifiants restent en local. Canary ne voit jamais votre mot de passe, la connexion se fait sur la page de connexion officielle d\'EVE.',
     'h.trouble': 'En cas de problème',
     'trouble.p': 'Canary signale les problèmes avec un code court. Il apparaît dans la fenêtre de console et dans les options sous « System &amp; Data ». Vous y trouverez le bouton <b>🩺 Copy diagnostics</b>, qui place un rapport dans le presse-papiers que vous pouvez transmettre directement. Le rapport ne contient aucun nom de personnage ni identifiant.',
     'th.code': 'Code', 'th.meaning': 'Signification',
@@ -317,7 +323,7 @@ const LANGS = {
     r3: 'Journalisation activée dans le client EVE, plus la journalisation du chat pour l\'affichage du système',
     r4: 'Rien d\'autre. Canary n\'utilise que la bibliothèque standard de Python.',
     'fo.src': 'Code source sur GitHub', 'fo.rel': 'Toutes les versions', 'fo.iss': 'Signaler un bug',
-    'fo.disc': 'EVE Canary est un projet privé sans aucun lien avec CCP Games.<br>EVE Online et toutes les marques associées sont la propriété de CCP hf.<br>Fly safe. o7'
+    'fo.disc': 'EVE Canary est un projet privé sans aucun lien avec Fenris Creations (anciennement CCP).<br>EVE Online et toutes les marques associées sont la propriété de Fenris Creations.<br>Fly safe. o7'
   },
 
   ru: {
@@ -355,7 +361,7 @@ const LANGS = {
     pv2: 'Он читает только текстовые файлы, которые пишет сам клиент EVE. Ничего не изменяется, ничего не автоматизируется, в игру ничего не отправляется.',
     pv3: 'Статистика хранится в локальной базе рядом с программой. Удаление сводится к удалению папки.',
     pv4: 'Наружу уходят только открытые запросы: рыночные цены и, для светофора угроз, имена пилотов, которые вы проверяете сами.',
-    pv5: 'При необязательном входе EVE ваши данные остаются локальными. Canary никогда не видит ваш пароль, вход проходит на сайте самой CCP.',
+    pv5: 'При необязательном входе EVE ваши данные остаются локальными. Canary никогда не видит ваш пароль, вход проходит на официальной странице входа EVE.',
     'h.trouble': 'Если что-то пошло не так',
     'trouble.p': 'Canary сообщает о проблемах коротким кодом. Он появляется в окне консоли и в настройках в разделе «System &amp; Data». Там есть кнопка <b>🩺 Copy diagnostics</b>, которая копирует отчёт в буфер обмена, и его можно сразу переслать. В отчёте нет ни имён персонажей, ни учётных данных.',
     'th.code': 'Код', 'th.meaning': 'Значение',
@@ -371,7 +377,7 @@ const LANGS = {
     r3: 'Включённое ведение журнала в клиенте EVE, а также журнал чата для отображения системы',
     r4: 'Больше ничего. Canary использует только стандартную библиотеку Python.',
     'fo.src': 'Исходный код на GitHub', 'fo.rel': 'Все версии', 'fo.iss': 'Сообщить об ошибке',
-    'fo.disc': 'EVE Canary — частный проект, не связанный с CCP Games.<br>EVE Online и все связанные торговые марки принадлежат CCP hf.<br>Fly safe. o7'
+    'fo.disc': 'EVE Canary — частный проект, не связанный с Fenris Creations (ранее CCP).<br>EVE Online и все связанные торговые марки принадлежат Fenris Creations.<br>Fly safe. o7'
   }
 };
 
