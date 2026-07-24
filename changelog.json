@@ -1,4 +1,7 @@
 [
+ {"v": "1.37", "d": "2026-07-24",
+  "de": ["Mining Fleet Power Stufe 2: ESI-Verifizierung. Wer seine Chars mit dem EVE-Login neu verbindet, bekommt jetzt das ✅ ESI-verifiziert-Siegel plus die tatsächlich geförderten m³ der letzten 30 Tage direkt aus dem EVE-Mining-Ledger (unfälschbar) und den Skill-Bonus aus den echten Mining-Skills", "Wichtig: dafür müssen die Charaktere einmal neu verbunden werden, weil zwei neue Berechtigungen (Skills lesen, Mining-Ledger lesen) dazugekommen sind"],
+  "en": ["Mining Fleet Power stage 2: ESI verification. Reconnect your chars with the EVE login and you now get the ✅ ESI-verified seal plus the actual m³ mined in the last 30 days straight from the EVE mining ledger (tamper-proof) and the skill bonus from your real mining skills", "Note: characters must be reconnected once, because two new permissions (read skills, read mining ledger) were added"]},
  {"v": "1.36", "d": "2026-07-24",
   "de": ["Neu: Mining Fleet Power. Eine Hashrate-artige Zahl für die Förderleistung deiner ganzen Flotte in m³/min, mit Rang von Prospektor bis Rorqual-Overlord. Stufe 1 rechnet aus der echten geloggten Minutenrate (als 'geschätzt' gekennzeichnet); die ESI-verifizierte Version mit Siegel folgt als Nächstes"],
   "en": ["New: Mining Fleet Power. A hashrate-style number for your whole fleet's mining output in m³/min, with a rank from Prospector to Rorqual Overlord. Stage 1 computes from the real logged per-minute rate (marked 'estimated'); the ESI-verified version with a seal is coming next"]},
