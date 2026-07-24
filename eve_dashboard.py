@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.35.0"
+VERSION = "1.36.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -3856,6 +3856,20 @@ tr.lvl-yellow td{background:rgba(228,179,76,.07)}
 #grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px;align-items:start}
 @media (max-width:900px){#grid{grid-template-columns:1fr}}
 #hero:not(:empty){margin-bottom:14px}
+.card.mfp{background:linear-gradient(135deg,var(--card),var(--inset));border-color:var(--line)}
+.mfphead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.mfptitle{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+.mfprank{font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid var(--line)}
+.mfpmain{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:8px 0 10px}
+.mfpval{font-size:40px;font-weight:800;line-height:1}
+.mfpunit{font-size:15px;color:var(--dim);font-weight:600}
+.mfpsub{font-size:11px;color:var(--dim);margin-left:auto}
+.mfpbarwrap{height:7px;background:var(--inset);border-radius:20px;overflow:hidden}
+.mfpbar{height:100%;border-radius:20px;transition:width .6s ease}
+.mfpval.gold,.mfprank.gold{color:var(--gold)} .mfpbar.gold{background:var(--gold)} .mfprank.gold{border-color:var(--gold)}
+.mfpval.cyan,.mfprank.cyan{color:var(--cyan)} .mfpbar.cyan{background:var(--cyan)} .mfprank.cyan{border-color:var(--cyan)}
+.mfpval.green,.mfprank.green{color:var(--green)} .mfpbar.green{background:var(--green)} .mfprank.green{border-color:var(--green)}
+.mfpval.dim,.mfprank.dim{color:var(--dim)} .mfpbar.dim{background:var(--dim)}
 select.pill{appearance:none;-webkit-appearance:none;outline:none;background:var(--card);
 border:1px solid var(--line);color:var(--dim);font-size:11px;padding:4px 11px;border-radius:20px;cursor:pointer}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
@@ -4545,6 +4559,44 @@ function heroBar(s){
  return heroTiles('⛏ Geminert heute',s.today,s.yesterday,s.week,
   fmt(s.m3_today)+' m³',fmt(s.m3_week)+' m³ · Ø '+fmtM(s.week/7)+'/Tag');
 }
+// Mining Fleet Power: eine Hashrate-artige Zahl fuer die Foerderleistung der
+// ganzen Flotte in m³/min. Stufe 1 (hier) rechnet aus der real geloggten Rate,
+// darum als "geschaetzt" gekennzeichnet; das ESI-Siegel kommt in Stufe 2.
+function mfpTier(m){
+ if(m>=15000)return {n:'Rorqual-Overlord',c:'gold'};
+ if(m>=6000)return {n:'Erz-Baron',c:'gold'};
+ if(m>=2500)return {n:'Industrie-Flotte',c:'cyan'};
+ if(m>=1000)return {n:'Flotten-Operator',c:'cyan'};
+ if(m>=300)return {n:'Gürtel-Miner',c:'green'};
+ return {n:'Prospektor',c:'dim'};
+}
+// Dauerleistung eines Chars aus der echten Minutenrate (Top-5-Schnitt der letzten
+// 60 min), NICHT aus der hochgerechneten m³/h. So spiegelt die Zahl die reale
+// Foerderleistung waehrend des Minens, ohne Fruehsession-Ausreisser.
+function sustainedRate(c){
+ const a=[...(c.spark||[])].sort((x,y)=>y-x).slice(0,5);
+ return a.length?a.reduce((s,v)=>s+v,0)/a.length:0;
+}
+function fleetPowerCard(chars){
+ const miners=chars.filter(c=>c.active&&autoRole(c)==='mining');
+ if(!miners.length)return '';
+ const m3min=miners.reduce((s,c)=>s+sustainedRate(c),0);
+ const t=mfpTier(m3min);
+ // Balken relativ zur hoechsten Rang-Schwelle (max 15000 = voll)
+ const pct=Math.min(100,100*m3min/15000);
+ return `<div class="card mfp" style="grid-column:1/-1">
+   <div class="mfphead">
+    <span class="mfptitle">⚡ Mining Fleet Power</span>
+    <span class="mfprank ${t.c}">${t.n}</span>
+   </div>
+   <div class="mfpmain">
+    <span class="mfpval ${t.c}">${fmt(Math.round(m3min))}</span>
+    <span class="mfpunit">m³/min</span>
+    <span class="mfpsub">${miners.length} ${miners.length===1?'Schiff':'Schiffe'} · geschätzt aus Log · ESI-Siegel folgt</span>
+   </div>
+   <div class="mfpbarwrap"><div class="mfpbar ${t.c}" style="width:${pct}%"></div></div>
+  </div>`;
+}
 function renderLive(chars,summary){
  lastChars=chars;
  if(summary!==undefined)lastSummary=summary;
@@ -4557,7 +4609,7 @@ function renderLive(chars,summary){
  // Live zeigt nur eingeloggte Chars. Offline nur, wenn ausdrücklich gewünscht.
  const showOff=localStorage.getItem('showOffline')==='1';
  if(!showOff)chars=chars.filter(c=>c.active);
- $('#hero').innerHTML=heroBar(summary);
+ $('#hero').innerHTML=fleetPowerCard(chars)+heroBar(summary);
  if(!chars.length){$('#empty').hidden=false;
   $('#empty').textContent=!showOff?'Gerade ist kein Charakter eingeloggt. Mit „💤 Offline zeigen" siehst du auch die abgemeldeten.':(rf?'Kein Charakter mit dieser Rolle. Tippe auf einer Karte auf das Rollen-Symbol, um sie zuzuweisen.':'Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern" aktivieren.)');
   $('#grid').innerHTML='';return;}
@@ -5422,6 +5474,8 @@ const EN = {
 'Schaden ausgeteilt':'Damage dealt','Schaden kassiert':'Damage taken',
 'Top-Ziele':'Top targets','Top-Angreifer':'Top attackers',
 'Gegner bekämpft':'Enemies fought','Typen · aus Log':'types · from log',
+'Rorqual-Overlord':'Rorqual Overlord','Erz-Baron':'Ore Baron','Industrie-Flotte':'Industrial Fleet',
+'Flotten-Operator':'Fleet Operator','Gürtel-Miner':'Belt Miner','Prospektor':'Prospector',
 '🤖 Drohnen ohne Erz':'🤖 Drones without ore',
 'Komprimiert (Session)':'Compressed (session)','Rolle …':'Role …','Mining':'Mining',
 'Watchlist (Local-Chat, ein Name pro Zeile)':'Watchlist (local chat, one name per line)',
@@ -5518,6 +5572,7 @@ const EN_PATTERNS = [
  [/Schaden ([0-9.]+) raus [/] ([0-9.]+) rein/, 'Damage $1 out / $2 in'],
  [/Trefferquote ([0-9]+)%/, 'Hit rate $1%'], [/([0-9]+) Kills/, '$1 kills'],
  [/Bekämpfte Gegner · ([0-9]+) Typen/, 'Enemies fought · $1 types'],
+ [/([0-9]+) Schiffe? · geschätzt aus Log · ESI-Siegel folgt/, '$1 ships · estimated from log · ESI seal to come'],
  [/Aus dem Wallet-Journal/, 'From the wallet journal'],
  [/nächster Abgleich in ([0-9]+) min/, 'next sync in $1 min'], [/Abgleich läuft gerade/, 'syncing now'],
  [/Das In-Game-Wallet ist sofort aktuell, ESI hängt bis zu 1 Stunde nach/,
