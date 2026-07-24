@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.31.0"
+VERSION = "1.31.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -4096,10 +4096,8 @@ function fillVoices(){
 }
 function previewVoice(){
  if(!('speechSynthesis' in window))return;
- try{const u=new SpeechSynthesisUtterance(lang==='en'?'Voice test. Askend: cargo full.':'Stimmtest. Askend: Frachtraum voll.');
-  const sel=localStorage.getItem('ttsVoice')||''; const v=sel?speechSynthesis.getVoices().find(x=>x.voiceURI===sel):null;
-  if(v){u.voice=v;u.lang=v.lang;}else{u.lang=lang==='en'?'en-US':'de-DE';}
-  u.rate=1.05; speechSynthesis.cancel(); speechSynthesis.speak(u);}catch(e){}
+ try{speechSynthesis.cancel();}catch(e){}
+ speak(lang==='en'?'Voice test. Askend: cargo full.':'Stimmtest. Askend: Frachtraum voll.');
 }
 (function(){const sel=$('#ttsVoice'); if(!sel)return;
  if('speechSynthesis' in window){fillVoices(); speechSynthesis.onvoiceschanged=fillVoices;}
@@ -4208,19 +4206,48 @@ window.addEventListener('pointerdown',()=>{
 
 // Sprachansage (opt-in). Nutzt die eingebaute Sprachausgabe des Browsers,
 // komplett lokal, kostenlos. Spammige Einzel-Asteroiden ('depleted') bewusst nicht.
+// Beliebigen Text mit der gewaehlten Stimme sprechen (zentraler Helfer).
+function speak(text){
+ if(!('speechSynthesis' in window))return;
+ try{const u=new SpeechSynthesisUtterance(text);
+  const sel=localStorage.getItem('ttsVoice')||'';
+  const v=sel?speechSynthesis.getVoices().find(x=>x.voiceURI===sel):null;
+  if(v){u.voice=v;u.lang=v.lang;}else{u.lang=lang==='en'?'en-US':'de-DE';}
+  u.rate=1.05; speechSynthesis.speak(u);}catch(e){}
+}
 function speakAlert(a){
- if(localStorage.getItem('ttsAlerts')!=='1'||!('speechSynthesis' in window))return;
+ if(localStorage.getItem('ttsAlerts')!=='1')return;
  const en=(lang==='en');
  const P=en?{pvp:'under attack',cargo:'cargo full',drones:'check drones',idle:'mining stopped',
              rate:'mining rate dropped',hw:'heavy water low',watch:'watchlist hit',intel:'threat detected'}
            :{pvp:'unter Beschuss',cargo:'Frachtraum voll',drones:'Drohnen prüfen',idle:'Mining steht',
              rate:'Abbaurate gefallen',hw:'Heavy Water fast leer',watch:'Watchlist-Treffer',intel:'Bedrohung erkannt'};
  const phrase=P[a.kind]; if(!phrase)return;
- try{const u=new SpeechSynthesisUtterance((a.char?a.char+': ':'')+phrase);
-  const sel=localStorage.getItem('ttsVoice')||'';
-  const v=sel?speechSynthesis.getVoices().find(x=>x.voiceURI===sel):null;
-  if(v){u.voice=v;u.lang=v.lang;}else{u.lang=en?'en-US':'de-DE';}
-  u.rate=1.05; speechSynthesis.speak(u);}catch(e){}
+ speak((a.char?a.char+': ':'')+phrase);
+}
+// Karten-Warnungen (Strip Miner aus, Drohnen im Leerlauf) sind KEINE Banner-Alarme,
+// werden aber per Sprache angesagt, sobald sie NEU auftreten (kein Dauergeplapper).
+let voiceSeen={}, voiceReady=false;
+function voiceWatch(chars){
+ if(localStorage.getItem('ttsAlerts')!=='1'||!('speechSynthesis' in window)){voiceReady=false;return;}
+ const en=(lang==='en'), cur={};
+ for(const c of (chars||[])){
+  if(!c.active)continue;
+  const keys=[];
+  (c.lasers_off||[]).forEach(w=>keys.push('LO|'+w.tool));
+  if(c.drones_idle)keys.push('DI');
+  cur[c.name]=new Set(keys);
+ }
+ if(!voiceReady){voiceSeen=cur; voiceReady=true; return;}  // erster Lauf: nur merken, nicht ansagen
+ for(const name in cur){
+  const prev=voiceSeen[name]||new Set();
+  const fresh=[...cur[name]].filter(k=>!prev.has(k));
+  const lo=fresh.filter(k=>k.startsWith('LO|'));
+  if(lo.length===1)speak(name+': '+lo[0].slice(3)+(en?' off':' aus'));
+  else if(lo.length>1)speak(name+': '+lo.length+(en?' strip miners off':' Strip Miner aus'));
+  if(fresh.includes('DI'))speak(name+': '+(en?'drones idle, no ore':'Drohnen liefern kein Erz'));
+ }
+ voiceSeen=cur;
 }
 function handleAlerts(){
  const list=state.alerts||[];
@@ -5529,7 +5556,7 @@ async function tick(){
   if(view!=='live'&&view!=='month'&&view!=='total'&&view!=='analyse')$('#empty').hidden=true;
   // Der Mining/PvP-Umschalter gehört nur zur Live-Ansicht
   document.querySelectorAll('.modesel').forEach(b=>b.hidden=view!=='live');
-  if(view==='live'){lastChars=d.chars;lastSummary=d.summary;renderLiveView();}
+  if(view==='live'){lastChars=d.chars;lastSummary=d.summary;renderLiveView();voiceWatch(d.chars);}
   else if(view==='missionen')renderMissions(d);
   else{
    $('#hero').innerHTML='';
