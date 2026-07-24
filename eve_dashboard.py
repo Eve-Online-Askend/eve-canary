@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.17.0"
+VERSION = "1.17.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -4217,9 +4217,12 @@ function renderMissions(d){
      <span style="margin-left:auto" class="isk"><b>${fmtM(x.total)} ISK</b></span>
     </div>
     <div class="sub">${x.kills} Kills · Bounty ${fmtM(x.bounty)} · Schaden ${fmt(x.dmg_out)} raus / ${fmt(x.dmg_in)} rein${x.hit!=null?' · Trefferquote '+x.hit+'%':''}${x.enemies.length?' · Top: '+esc(x.enemies[0][0]):''}</div>
-    <div class="sub" style="margin-top:6px">Loot: <b class="isk">${x.loot_isk!=null?fmtM(x.loot_isk):'noch nicht eingefügt'}</b></div>
-    <textarea class="mlootin" data-mid="${esc(x.mid)}" rows="2" style="width:100%;margin-top:4px" placeholder="Frachtraum-Loot dieser Mission hier einfügen (im Spiel Strg+A, Strg+C)">${esc(x.loot_text)}</textarea>
-    <div class="btnrow" style="margin-top:4px"><button class="btn mlootgo" data-mid="${esc(x.mid)}">Loot bewerten</button> <span class="mlootstat sub" data-mid="${esc(x.mid)}"></span></div>
+    <div class="sub" style="margin-top:6px">${x.loot_isk!=null?'Loot: <b class="isk">'+fmtM(x.loot_isk)+'</b>':''}
+     <span class="mloottoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px">${x.loot_isk!=null?'✎ Loot ändern':'＋ Loot eintragen'}</span></div>
+    <div class="mlootedit" data-mid="${esc(x.mid)}" hidden>
+     <textarea class="mlootin" data-mid="${esc(x.mid)}" rows="2" style="width:100%;margin-top:4px" placeholder="Frachtraum-Loot dieser Mission hier einfügen (im Spiel Strg+A, Strg+C)">${esc(x.loot_text)}</textarea>
+     <div class="btnrow" style="margin-top:4px"><button class="btn mlootgo" data-mid="${esc(x.mid)}">Loot bewerten</button> <span class="mlootstat sub" data-mid="${esc(x.mid)}"></span></div>
+    </div>
    </div>`).join(''):'<div class="sub">Noch keine abgeschlossenen Missionen erfasst. Eine Mission gilt als abgeschlossen, sobald du fürs nächste Mal wieder abdockst.</div>'}
  </div>
  <div class="card" style="grid-column:1/-1">
@@ -4245,6 +4248,10 @@ function renderMissions(d){
   <div class="sect">Nach Charakter (gesamt)</div><table>
   <tr><th>Charakter</th><th class="r">Missionen</th><th class="r">ISK</th></tr>`+
   m.chars.map(c=>`<tr><td>${c.char}</td><td class="r">${c.missions}</td><td class="r isk">${fmtM(c.total)}</td></tr>`).join('')+'</table></div>':''}`;
+ document.querySelectorAll('.mloottoggle').forEach(t=>t.onclick=()=>{
+  const box=[...document.querySelectorAll('.mlootedit')].find(e=>e.dataset.mid===t.dataset.mid);
+  if(box){box.hidden=!box.hidden; if(!box.hidden){const ta=box.querySelector('.mlootin'); if(ta)ta.focus();}}
+ });
  document.querySelectorAll('.mlootgo').forEach(b=>b.onclick=async()=>{
   const mid=b.dataset.mid;
   const ta=[...document.querySelectorAll('.mlootin')].find(t=>t.dataset.mid===mid);
@@ -4471,6 +4478,7 @@ const EN = {
 '▮ raus':'▮ out','▮ rein':'▮ in',
 'Missionen einzeln (aus den Gamelogs)':'Missions individually (from the game logs)',
 'Loot bewerten':'Value loot','noch nicht eingefügt':'not pasted yet',
+'＋ Loot eintragen':'＋ Add loot','✎ Loot ändern':'✎ Edit loot',
 'Frachtraum-Loot dieser Mission hier einfügen (im Spiel Strg+A, Strg+C)':"Paste this mission's cargo loot here (in game Ctrl+A, Ctrl+C)",
 'Noch keine abgeschlossenen Missionen erfasst. Eine Mission gilt als abgeschlossen, sobald du fürs nächste Mal wieder abdockst.':'No completed missions recorded yet. A mission counts as complete once you undock again for the next one.',
 'Gegner daneben':'Enemy misses','⚔ Bounty (Session)':'⚔ Bounty (session)',
