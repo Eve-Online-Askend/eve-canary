@@ -1,4 +1,7 @@
 [
+ {"v": "1.33", "d": "2026-07-24",
+  "de": ["Stillstand-Verlust pausiert jetzt präzise beim Andocken und im Warp (aus dem Log erkannt), nicht nur über die Faustregel"],
+  "en": ["Downtime loss now pauses precisely when docking and in warp (detected from the log), not just via the rule of thumb"]},
  {"v": "1.32", "d": "2026-07-24",
   "de": ["ISK-Verlust zeigt jetzt den tatsächlich angefallenen Verlust der Session (kumuliert), nicht mehr pro Stunde",
          "Auch bei komplettem Stillstand (kein Erz) wird der Verlust erfasst, nicht nur bei Laser-aus oder gedrosselter Rate",

@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.32.1"
+VERSION = "1.33.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -187,6 +187,9 @@ DRONE_UNLOAD_TEXTS = ["Bergbaudrohnen müssen ihre aktuellen Erzladungen verlade
                       "mining drones must unload"]
 UNDOCK_TEXTS = ["Abdocken", "Undocking"]      # (None)-Zeile beim Abdocken
 TRADE_TEXTS = ["Handel mit", "Trade with"]    # Handel abgeschlossen -> Laderaum unklar
+# Reise-Zustaende: pausieren den Stillstand-Verlust (angedockt/unterwegs = kein Verlust).
+DOCK_APPROACH_TEXTS = ["docking perimeter", "Andockperimeter", "Andock-Perimeter"]
+WARP_TEXTS = ["Warp drive active", "Warpantrieb aktiv", " in warp", " im Warp"]
 # EWAR gegen dich (Kampf-Log, keine Schadenszeile). Nur fuer die PvP/Missions-Ansicht.
 EWAR_TEXTS = [
     ("scramble", ["warp scramble", "warpstör", "warp-stör"]),
@@ -204,7 +207,8 @@ SALVAGE_OK = ["successfully salvage from"]
 SALVAGE_EMPTY = ["contains nothing of value"]
 SALVAGE_FAIL = ["salvaging attempt failed"]
 LOG_TEXT_KEYS = {"cargo_full": CARGO_FULL_TEXTS, "drone_unload": DRONE_UNLOAD_TEXTS,
-                 "undock": UNDOCK_TEXTS, "trade": TRADE_TEXTS}
+                 "undock": UNDOCK_TEXTS, "trade": TRADE_TEXTS,
+                 "dock_approach": DOCK_APPROACH_TEXTS, "warp": WARP_TEXTS}
 
 # Unerkannte notify-Meldungen sammeln. Bei Clients in anderen Sprachen als DE/EN
 # fehlen die Muster oben — mit diesen Beispielen aus der Diagnose lassen sie sich
@@ -214,7 +218,8 @@ _UNKNOWN_SEEN = set()
 # Wie oft die eingebauten Muster gegriffen haben. Stehen hier ueberall Nullen,
 # ist die Client-Sprache noch nicht abgedeckt — das sieht man in der Diagnose
 # sofort, ohne die Meldungen darunter lesen zu muessen.
-LOG_TEXT_HITS = {"cargo_full": 0, "drone_unload": 0, "undock": 0, "trade": 0}
+LOG_TEXT_HITS = {"cargo_full": 0, "drone_unload": 0, "undock": 0, "trade": 0,
+                 "dock_approach": 0, "warp": 0}
 
 
 # Grossgeschriebenes Wort, das NICHT am Satzanfang steht = vermutlich Eigenname
@@ -364,6 +369,13 @@ def parse_line(raw):
         if any(t in text for t in DRONE_UNLOAD_TEXTS):
             LOG_TEXT_HITS["drone_unload"] += 1
             return {**base, "kind": "drone_idle", "key": "", "value": 1}
+        # Reise-Zustaende (angedockt / im Warp) -> Stillstand-Verlust pausieren.
+        if any(t in text for t in DOCK_APPROACH_TEXTS):
+            LOG_TEXT_HITS["dock_approach"] += 1
+            return {**base, "kind": "travel", "key": "dock", "value": 1}
+        if any(t in text for t in WARP_TEXTS):
+            LOG_TEXT_HITS["warp"] += 1
+            return {**base, "kind": "travel", "key": "warp", "value": 1}
         note_unknown(text)
         return None
     elif tag == "None":
@@ -885,6 +897,7 @@ class CharSession:
         self.low_alerted = False
         self.lost_m3 = 0.0        # in dieser Session durch Stillstand/Drosselung entgangenes Erz-Volumen
         self._lost_ts = None      # letzter Verrechnungs-Zeitpunkt des Verlustzaehlers
+        self.traveling = None     # ts des letzten Dock-/Warp-Signals -> Verlust pausiert
         self.gaps = deque(maxlen=40)  # letzte Abstaende zwischen Erz-Events (lernt Drohnen-Zyklen)
         # Drohnen-Erkennung: Mining-Drohnen liefern mehrere kleine Erz-Portionen
         # dicht beieinander (ein Zyklus = alle Drohnen fast gleichzeitig). Bleiben
@@ -919,8 +932,13 @@ class CharSession:
         if self.last_event_ts is None or ev["ts"] > self.last_event_ts:
             self.last_event_ts = ev["ts"]
         k = ev["kind"]
+        if k == "travel":
+            # Angedockt oder im Warp: kein aktives Minen -> Verlustzaehler pausieren.
+            self.traveling = ev["ts"]
+            return
         if k == "ore":
             self.cargo_full = False
+            self.traveling = None   # es kommt Erz -> wieder aktiv am Guertel
             if self.last_ore_ts:
                 gap = ev["ts"] - self.last_ore_ts
                 if 0 < gap < 900:
@@ -1012,6 +1030,7 @@ class CharSession:
             self.hold_comp = {}
             self.cargo_full = False  # angedockt/gehandelt -> Frachtraum-Warnung hinfaellig
             self.lasers_off = {}     # an der Station sind alle Module ohnehin aus
+            self.traveling = None    # Undock/Trade -> Reise-Zustand zuruecksetzen
             if ev["key"] == "dock":
                 # Station-Stopp: Karte beginnt einen neuen Trip, sonst zeigen
                 # ISK/Erz-Werte laengst abgeladene Ladung an. Historie (DB)
@@ -1292,7 +1311,8 @@ class Ingest(threading.Thread):
                 # Nur zaehlen, solange der Char plausibel am Guertel ist: Erz kam
                 # in den letzten 3 min. Danach ist er vermutlich im Warp, angedockt
                 # oder AFK -> das ist kein "Verlust" und wird nicht mitgezaehlt.
-                at_belt = s.last_ore_ts is not None and (now - s.last_ore_ts) < 180
+                at_belt = (s.last_ore_ts is not None and (now - s.last_ore_ts) < 180
+                           and not s.traveling)   # nicht angedockt / nicht im Warp
                 if rs and at_belt and 0 < dt < 20:   # dt-Sanitaet: kein Riesensprung
                     base, cur = rs
                     # nur echten Ausfall zaehlen (unter 85% der Normalrate), kein
@@ -1475,7 +1495,7 @@ class Ingest(threading.Thread):
                 with DB_LOCK:
                     try:
                         for ev in batch:
-                            if ev["kind"] in ("drone_engage", "hold_reset"):
+                            if ev["kind"] in ("drone_engage", "hold_reset", "travel"):
                                 continue  # reine Live-Signale, nicht historisieren
                             db_add(ev["day"], cid, cname, ev["kind"], ev["key"], ev["value"])
                             if ev["kind"] == "dmg_out" and "weapon" in ev:
