@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.28.0"
+VERSION = "1.28.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -4002,7 +4002,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   <b>COPYRIGHT NOTICE</b><br>
   EVE Online and the EVE logo are trademarks of Fenris Creations (formerly CCP). All rights are reserved worldwide. All other trademarks are the property of their respective owners.
   EVE Online, the EVE logo, EVE and all associated logos and designs are the intellectual property of Fenris Creations. All artwork, screenshots, characters, vehicles, storylines, world facts or other recognizable features of the intellectual property relating to these trademarks are likewise the intellectual property of Fenris Creations.
-  Fenris Creations has granted permission to EVE Canary to use EVE Online and all associated logos and designs for promotional and information purposes but does not endorse, and is not in any way affiliated with, EVE Canary. Fenris Creations is in no way responsible for the content on or functioning of this tool, nor can it be liable for any damage arising from its use.
+  EVE Canary is a third-party tool and is not affiliated with, endorsed by, or sponsored by Fenris Creations. Fenris Creations is in no way responsible for the content on or functioning of this tool, nor can it be liable for any damage arising from its use.
  </div>
 
  <div style="text-align:right"><button class="btn" id="close">Schließen</button></div>
