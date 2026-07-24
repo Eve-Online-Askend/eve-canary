@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.18.0"
+VERSION = "1.18.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -2295,7 +2295,11 @@ def snapshot_live():
             "ship": (esi_char or {}).get("ship"),
             "wallet": (esi_char or {}).get("wallet"),
             "cargo": (esi_char or {}).get("cargo"),
-            "fitting": (esi_char or {}).get("fitting"),
+            # Fitting nur zeigen, wenn es zum AKTUELLEN Schiff passt. Der ship/-
+            # Endpunkt ist sekundenaktuell, die Assets (das Fitting) bis 1h alt —
+            # nach einem Schiffswechsel wäre das gespeicherte Fitting sonst falsch.
+            "fitting": (lambda ft, cur: ft if (ft and ft.get("ship_tid") == cur) else None)(
+                (esi_char or {}).get("fitting"), (esi_char or {}).get("ship_type_id")),
             "trips": s.trips,
             "compressed": comp, "tool_warns": s.tool_warns(),
             "lasers_off": [] if drone_only else [{"tool": t, "since": int(i["since"])}
@@ -3899,7 +3903,13 @@ function cargoLine(cg){
 const SLOT_LBL={hi:'Hi',med:'Mid',low:'Low',rig:'Rig',sub:'Sub'};
 function fittingSection(c){
  const ft=c.fitting;
- if(!ft||!ft.mods||!ft.mods.length)return '';
+ // Noch keine Fitting-Daten: nur für ESI-Chars den Bereich zeigen, mit Hinweis
+ // (ESI-Assets aktualisieren nur ~1x/Stunde), statt ihn ganz auszublenden.
+ if(!ft||!ft.mods||!ft.mods.length){
+  if(!c.esi_linked)return '';
+  return `<div class="fitsec"><span class="fittoggle" data-c="${esc(c.name)}">🔧 Fitting</span>
+   <div class="fitbox" data-c="${esc(c.name)}" hidden><div class="l">Wird beim nächsten EVE-Login-Abgleich geladen (nach einem Umbau bis zu 1 Stunde).</div></div></div>`;
+ }
  const age=Math.max(0,Math.round((Date.now()/1000-ft.as_of)/60));
  const row=g=>{const ms=ft.mods.filter(m=>m.grp===g);if(!ms.length)return '';
   return `<div class="fitrow"><span class="fitlbl">${SLOT_LBL[g]}</span><span class="fiticons">`
@@ -4641,6 +4651,8 @@ const EN_PATTERNS = [
  // PvP/Missionen-Ansicht: Zeitstempel, Salvage, EWAR
  [/Stand: vor ([0-9]+) min/, 'As of $1 min ago'], [/nächste in ([0-9]+) min/, 'next in $1 min'],
  [/aus EVE-Login/, 'from EVE login'],
+ [/Wird beim nächsten EVE-Login-Abgleich geladen/,
+  'Loads at the next EVE login sync'], [/nach einem Umbau bis zu 1 Stunde/, 'up to 1 hour after a refit'],
  [/wird aktualisiert/, 'updating'],
  [/([0-9]+) Wracks geborgen/, '$1 wrecks salvaged'], [/([0-9]+) leer/, '$1 empty'],
  [/([0-9]+) Fehlversuch/, '$1 failed'], [/EWAR gegen dich:/, 'EWAR against you:'],
