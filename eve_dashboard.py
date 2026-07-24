@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.28.1"
+VERSION = "1.29.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -5047,7 +5047,7 @@ async function doMarket(){
   ?`<select id="mktChar" class="pill">`+chars.map(n=>`<option>${esc(n)}</option>`).join('')+`</select>`
    +`<button class="btn uibtn" id="mktOpenMkt" data-tid="${r.type_id}">Markt im Client öffnen</button>`
   :`<span class="sub">Für „im Client öffnen“ zuerst einen Charakter über den EVE-Login verbinden.</span>`;
- $('#mktOut').innerHTML=`<div style="font-size:13px;margin:6px 0"><b>${esc(r.name)}</b> <span class="sub">· Preisquelle: ${r.src==='esi'?'ESI':'Fuzzwork'}</span></div>`
+ $('#mktOut').innerHTML=`<div style="display:flex;align-items:center;gap:10px;margin:6px 0"><img src="https://images.evetech.net/types/${r.type_id}/icon?size=64" alt="" width="46" height="46" style="border-radius:4px;flex:none" onerror="this.style.display='none'"><div style="font-size:13px"><b>${esc(r.name)}</b> <span class="sub">· Preisquelle: ${r.src==='esi'?'ESI':'Fuzzwork'}</span></div></div>`
   +`<table><tr><th>Handelsplatz</th><th class="r">Sofortverkauf (Buy)</th><th class="r">Kaufen (Sell)</th></tr>`
   +hubs.map(h=>`<tr><td>${esc(h.name)}${h.buy===bestBuy&&bestBuy>0?' ★':''}</td><td class="r isk">${h.buy>0?fmtP(h.buy):'—'}</td><td class="r">${h.sell>0?fmtP(h.sell):'—'}</td></tr>`).join('')
   +`</table><div class="btnrow" style="margin-top:10px;align-items:center">${picker}</div>`;

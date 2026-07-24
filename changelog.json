@@ -1,4 +1,7 @@
 [
+ {"v": "1.29", "d": "2026-07-24",
+  "de": ["Item-Suche (ISKray) zeigt jetzt das Icon des gefundenen Items"],
+  "en": ["Item lookup (ISKray) now shows the icon of the found item"]},
  {"v": "1.28", "d": "2026-07-24",
   "de": ["Rechtliche Hinweise aktualisiert: die EVE-Marken gehören jetzt Fenris Creations (früher CCP)",
          "Copyright-Notiz in den Optionen und auf der Homepage, ohne unzutreffende Erlaubnis-Angabe, klar als Drittanbieter-Tool"],
