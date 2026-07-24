@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.25.0"
+VERSION = "1.25.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -3655,8 +3655,9 @@ padding:7px 10px;font-size:12px;font-weight:600;margin-bottom:8px;overflow:hidde
 .warnbadge.drone{color:var(--red)}
 .pill.upd{border-color:var(--gold);color:var(--gold);animation:updpulse 2.4s ease-in-out infinite}
 @keyframes updpulse{0%,100%{box-shadow:0 0 0 rgba(232,198,69,0)}50%{box-shadow:0 0 9px rgba(232,198,69,.45)}}
-#updBanner{margin:10px 0;padding:12px 16px;border:1px solid var(--gold);border-radius:8px;
-background:rgba(232,198,69,.10);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+#updBanner{display:none;margin:10px 0;padding:12px 16px;border:1px solid var(--gold);border-radius:8px;
+background:rgba(232,198,69,.10);align-items:center;gap:14px;flex-wrap:wrap}
+#updBanner:not([hidden]){display:flex}
 #updBanner .ub-txt{flex:1;min-width:220px;font-size:14px;color:var(--txt)}
 #updBanner .ub-txt b{color:var(--gold)}
 #updBanner .ub-sub{display:block;font-size:12px;color:var(--dim);margin-top:2px}
