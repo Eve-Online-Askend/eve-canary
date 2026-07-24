@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.17.1"
+VERSION = "1.17.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -1707,6 +1707,10 @@ class Esi(threading.Thread):
         except Exception:
             exp = time.time() + 3600
         c["journal_next"] = exp + 10
+        try:  # Stand der ESI-Daten (Wallet aktualisiert ESI nur ~1x/Stunde)
+            c["journal_asof"] = email.utils.parsedate_to_datetime(hdr["Last-Modified"]).timestamp()
+        except Exception:
+            c["journal_asof"] = time.time()
         keep = [e for e in data if e.get("ref_type") in JOURNAL_TYPES
                 and (e.get("amount") or 0) > 0]
         ids = {e.get("first_party_id") for e in keep
@@ -2747,9 +2751,16 @@ def query_missions():
             continue
         f = foes.setdefault(key, {"name": key, "dealt": 0, "taken": 0})
         f["dealt" if kind == "dmg_out" else "taken"] += value
+    # ESI-Frische des Wallet-Journals (aktualisiert nur ~1x/Stunde) — für den
+    # "Stand"-Hinweis, damit die verzögerten Zahlen nicht als Fehler wirken.
+    jchars = list((CONFIG.get("esi") or {}).get("chars", {}).values())
+    asofs = [c["journal_asof"] for c in jchars if c.get("journal_asof")]
+    nexts = [c["journal_next"] for c in jchars if c.get("journal_next")]
     return {
         "mine_systems": sorted(n for n, i in mine_sys.items() if i),
         "linked": bool((CONFIG.get("esi") or {}).get("chars")),
+        "asof": int(min(asofs)) if asofs else None,
+        "next": int(min(nexts)) if nexts else None,
         "today": days.get(today) or {"day": today, "missions": 0, "reward": 0,
                                      "bonus": 0, "bounty": 0, "total": 0},
         "days": [{k: (round(v) if isinstance(v, float) else v) for k, v in d.items()}
@@ -4196,6 +4207,8 @@ function renderMissions(d){
  $('#grid').innerHTML=`
  <div class="card" style="grid-column:1/-1">
   <b>Heute im Detail (EVE-Zeit)</b>
+  ${m.asof?(()=>{const now=Date.now()/1000,age=Math.max(0,Math.round((now-m.asof)/60)),nx=Math.round((m.next-now)/60);
+    return `<div class="sub">Aus dem Wallet-Journal (ESI). Stand: vor ${age} min${nx>0?' · nächste Aktualisierung in '+nx+' min':''}. Das In-Game-Wallet ist sofort aktuell, ESI hängt bis zu 1 Stunde nach.</div>`;})():''}
   <div class="stats" style="margin-top:10px">
    <div class="stat"><div class="l">Missionen erledigt</div><div class="v out">${t.missions||0}</div></div>
    <div class="stat"><div class="l">Belohnungen</div><div class="v isk">${fmtM(t.reward||0)}</div></div>
@@ -4557,6 +4570,10 @@ const EN_PATTERNS = [
  [/gleiche Skala/, 'same scale'],
  [/Schaden ([0-9.]+) raus [/] ([0-9.]+) rein/, 'Damage $1 out / $2 in'],
  [/Trefferquote ([0-9]+)%/, 'Hit rate $1%'], [/([0-9]+) Kills/, '$1 kills'],
+ [/Aus dem Wallet-Journal/, 'From the wallet journal'],
+ [/nächste Aktualisierung in ([0-9]+) min/, 'next update in $1 min'],
+ [/Das In-Game-Wallet ist sofort aktuell, ESI hängt bis zu 1 Stunde nach/,
+  'The in-game wallet updates instantly, ESI lags up to 1 hour'],
  [/Log-Ordner:/, 'Log folder:'], [/Dateien:/, 'files:'], [/Installiert:/, 'Installed:'],
  [/: verbunden ·/, ': connected ·'], [/^trennen$/, 'disconnect'],
  [/Du hast die aktuellste Version/, 'You have the latest version'],
