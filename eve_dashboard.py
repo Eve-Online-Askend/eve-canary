@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.16.0"
+VERSION = "1.16.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -776,6 +776,7 @@ class CharSession:
         self.miss_in = 0      # Gegner daneben
         self.ewar = {}        # Typ -> Anzahl (scramble/jam/web/…)
         self.salvage = {"ok": 0, "empty": 0, "fail": 0}
+        self.dmg_min = deque(maxlen=180)  # [Minute, {"out":x,"in":y}] — Kampfverlauf
         self.rate_min = deque(maxlen=180)  # [Minute, {Erz: m3}] — fuer Sparkline + Raten-Waechter
 
     def feed(self, ev, live):
@@ -830,11 +831,13 @@ class CharSession:
             self.targets[ev["key"]] = self.targets.get(ev["key"], 0) + ev["value"]
             w = ev.get("weapon", "Schiff/Direkt")
             self.weapons[w] = self.weapons.get(w, 0) + ev["value"]
+            self._dmg_bucket(ev["ts"], "out", ev["value"])
             if live:
                 self.win_out.append((now, ev["value"]))
         elif k == "dmg_in":
             self.dmg_in += ev["value"]
             self.attackers[ev["key"]] = self.attackers.get(ev["key"], 0) + ev["value"]
+            self._dmg_bucket(ev["ts"], "in", ev["value"])
             if live:
                 self.win_in.append((now, ev["value"]))
         elif k == "miss_out":
@@ -888,6 +891,7 @@ class CharSession:
                 self.hits_out = self.miss_out = self.miss_in = 0
                 self.ewar = {}
                 self.salvage = {"ok": 0, "empty": 0, "fail": 0}
+                self.dmg_min = deque(maxlen=180)
                 self.depleted = 0
                 self.start = time.time()
                 self.first_ts = ev["ts"]
@@ -1032,6 +1036,13 @@ class CharSession:
         while win and win[0][0] < cut:
             win.popleft()
         return round(sum(d for _, d in win) / 60, 1)
+
+    def _dmg_bucket(self, ts, side, val):
+        """Schaden pro Minute sammeln (Kampfverlauf-Sparkline)."""
+        minute = int(ts // 60) * 60
+        if not self.dmg_min or self.dmg_min[-1][0] != minute:
+            self.dmg_min.append([minute, {"out": 0, "in": 0}])
+        self.dmg_min[-1][1][side] += val
 
 
 # ---------------------------------------------------------------- Ingest
@@ -2233,6 +2244,8 @@ def snapshot_live():
             "hits_out": s.hits_out, "miss_out": s.miss_out, "miss_in": s.miss_in,
             "ewar": sorted(s.ewar.items(), key=lambda x: -x[1]),
             "salvage": s.salvage,
+            "spark_out": [b[1]["out"] for b in list(s.dmg_min)[-60:]],
+            "spark_in": [b[1]["in"] for b in list(s.dmg_min)[-60:]],
             "spark": [round(sum(mix.values())) for _, mix in list(s.rate_min)[-60:]],
         })
     chars.sort(key=lambda c: c["name"])
@@ -3162,6 +3175,7 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .bar{height:4px;border-radius:2px;background:var(--cyan);opacity:.7}
 .spark{display:flex;align-items:flex-end;gap:1px;height:30px;margin-top:8px}
 .spark div{flex:1;background:var(--cyan);opacity:.75;border-radius:1px 1px 0 0;min-height:1px}
+.spark.dmgin div{background:var(--red)}
 .chart{display:flex;align-items:flex-end;gap:3px;height:120px;margin-top:12px}
 .chart .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end}
 .chart .seg1{background:var(--cyan);border-radius:2px 2px 0 0}
@@ -3793,6 +3807,11 @@ function renderCombat(chars,summary){
      <div class="stat"><div class="l">Loot / Cargo</div><div class="v isk">${c.cargo?fmtM(c.cargo.buy):'—'}</div>${cargoLine(c.cargo)}</div>
      <div class="stat"><div class="l">Session gesamt</div><div class="v isk">${fmtM(sessISK)}</div></div>
     </div>
+    ${(()=>{const so=c.spark_out||[],si=c.spark_in||[];const mx=Math.max(1,...so,...si);
+      return (so.length>1||si.length>1)?`<div class="sect">Kampfverlauf (Schaden/min)</div>
+       <div class="spark">${so.map(v=>`<div style="height:${Math.max(2,100*v/mx)}%"></div>`).join('')}</div>
+       <div class="spark dmgin">${si.map(v=>`<div style="height:${Math.max(2,100*v/mx)}%"></div>`).join('')}</div>
+       <div class="sub"><span class="out">▮ raus</span> · <span class="in">▮ rein</span> · gleiche Skala</div>`:'';})()}
     <div class="sect">⚔ Offense</div>
     <div class="stats">
      <div class="stat"><div class="l">Schaden raus</div><div class="v out">${fmt(c.dmg_out||0)}</div></div>
@@ -4343,6 +4362,8 @@ const EN = {
 'Loot / Cargo':'Loot / cargo','Session gesamt':'Session total','Bounty':'Bounty',
 'Schaden raus':'Damage out','Schaden rein':'Damage in','Trefferquote':'Hit rate',
 'DPS rein':'DPS in','DPS raus':'DPS out',
+'Kampfverlauf (Schaden/min)':'Combat over time (damage/min)','gleiche Skala':'same scale',
+'▮ raus':'▮ out','▮ rein':'▮ in',
 'Gegner daneben':'Enemy misses','⚔ Bounty (Session)':'⚔ Bounty (session)',
 'aus EVE-Login':'from EVE login','über EVE-Login':'via EVE login','Bounty + Loot':'Bounty + loot',
 'Salvage':'Salvage','Kein Charakter mit dieser Rolle.':'No character with this role.',
@@ -4416,6 +4437,7 @@ const EN_PATTERNS = [
  [/wird aktualisiert/, 'updating'],
  [/([0-9]+) Wracks geborgen/, '$1 wrecks salvaged'], [/([0-9]+) leer/, '$1 empty'],
  [/([0-9]+) Fehlversuch/, '$1 failed'], [/EWAR gegen dich:/, 'EWAR against you:'],
+ [/gleiche Skala/, 'same scale'],
  [/Log-Ordner:/, 'Log folder:'], [/Dateien:/, 'files:'], [/Installiert:/, 'Installed:'],
  [/: verbunden ·/, ': connected ·'], [/^trennen$/, 'disconnect'],
  [/Du hast die aktuellste Version/, 'You have the latest version'],
