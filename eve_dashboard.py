@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.15.2"
+VERSION = "1.16.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -131,6 +131,20 @@ DRONE_UNLOAD_TEXTS = ["Bergbaudrohnen müssen ihre aktuellen Erzladungen verlade
                       "mining drones must unload"]
 UNDOCK_TEXTS = ["Abdocken", "Undocking"]      # (None)-Zeile beim Abdocken
 TRADE_TEXTS = ["Handel mit", "Trade with"]    # Handel abgeschlossen -> Laderaum unklar
+# EWAR gegen dich (Kampf-Log, keine Schadenszeile). Nur fuer die PvP/Missions-Ansicht.
+EWAR_TEXTS = [
+    ("scramble", ["warp scramble", "warpstör", "warp-stör"]),
+    ("disrupt", ["warp disrupt", "warpunterbrech"]),
+    ("web", ["stasis web", "fesselung"]),
+    ("jam", ["jam attempt", "ecm", "target jam", "verlierst die zielerfass"]),
+    ("neut", ["energy neutraliz", "nosferatu", "energie neutral"]),
+    ("paint", ["target paint", "zielmarkier"]),
+    ("damp", ["remote sensor damp", "sensordämpf"]),
+    ("td", ["tracking disrupt", "verfolgungsstör"]),
+]
+SALVAGE_OK = ["successfully salvage from"]
+SALVAGE_EMPTY = ["contains nothing of value"]
+SALVAGE_FAIL = ["salvaging attempt failed"]
 LOG_TEXT_KEYS = {"cargo_full": CARGO_FULL_TEXTS, "drone_unload": DRONE_UNLOAD_TEXTS,
                  "undock": UNDOCK_TEXTS, "trade": TRADE_TEXTS}
 
@@ -225,6 +239,17 @@ def parse_line(raw):
                     elif weapon:
                         ev["weapon"] = weapon
                 return ev
+        # Nicht-Schaden-Kampfzeilen fuer die PvP/Missions-Ansicht: Fehlschuesse
+        # (eigene = Trefferquote, gegnerische = Ausweichen) und EWAR gegen dich.
+        pl = STRIP_RE.sub("", body).strip().lower()
+        if "misses you" in pl or "verfehlt dich" in pl or "verfehlen dich" in pl:
+            return {**base, "kind": "miss_in", "key": "", "value": 1}
+        if re.match(r"^(your|deine?|ihr)\b", pl) and ("miss" in pl or "verfehl" in pl):
+            return {**base, "kind": "miss_out", "key": "", "value": 1}
+        for etype, pats in EWAR_TEXTS:
+            if any(p in pl for p in pats):
+                return {**base, "kind": "ewar", "key": etype, "value": 1}
+        return None
     elif tag == "bounty":
         n = NUM_RE.search(STRIP_RE.sub("", body))
         if n:
@@ -262,6 +287,13 @@ def parse_line(raw):
             # "Drohnen greifen <Erz> an" (ohne Zahlen — Distanz-Fehler haben immer km-Angaben):
             # Mining-Drohnen wurden neu angesetzt -> Drohnen-Warnung aufheben
             return {**base, "kind": "drone_engage", "key": hints[0], "value": 1}
+        low_t = text.lower()
+        if any(t in low_t for t in SALVAGE_OK):
+            return {**base, "kind": "salvage", "key": "ok", "value": 1}
+        if any(t in low_t for t in SALVAGE_EMPTY):
+            return {**base, "kind": "salvage", "key": "empty", "value": 1}
+        if any(t in low_t for t in SALVAGE_FAIL):
+            return {**base, "kind": "salvage", "key": "fail", "value": 1}
         if any(t in text for t in CARGO_FULL_TEXTS):
             LOG_TEXT_HITS["cargo_full"] += 1
             return {**base, "kind": "cargo", "key": "", "value": 1}
@@ -427,6 +459,7 @@ CREATE TABLE IF NOT EXISTS threat(name TEXT PRIMARY KEY COLLATE NOCASE,
     data TEXT, ts REAL);
 CREATE TABLE IF NOT EXISTS journal(id INTEGER, char TEXT, ts REAL,
     ref_type TEXT, amount REAL, party TEXT, PRIMARY KEY(id, char));
+CREATE TABLE IF NOT EXISTS item_ids(name TEXT PRIMARY KEY COLLATE NOCASE, type_id INTEGER);
 """)
 DB.commit()
 try:  # v1.5.1: System-Kontext je Journal-Eintrag (filtert Belt-Bounties aus der Missions-Statistik)
@@ -737,6 +770,12 @@ class CharSession:
         self.attackers = {}
         self.win_out = deque()
         self.win_in = deque()
+        # PvP/Missions-Ansicht: Trefferquote, EWAR, Salvage
+        self.hits_out = 0     # Schaden-austeilende Schuesse (Treffer)
+        self.miss_out = 0     # eigene Fehlschuesse
+        self.miss_in = 0      # Gegner daneben
+        self.ewar = {}        # Typ -> Anzahl (scramble/jam/web/…)
+        self.salvage = {"ok": 0, "empty": 0, "fail": 0}
         self.rate_min = deque(maxlen=180)  # [Minute, {Erz: m3}] — fuer Sparkline + Raten-Waechter
 
     def feed(self, ev, live):
@@ -787,6 +826,7 @@ class CharSession:
             mix[ev["key"]] = mix.get(ev["key"], 0) + ev["value"] * vol
         elif k == "dmg_out":
             self.dmg_out += ev["value"]
+            self.hits_out += 1
             self.targets[ev["key"]] = self.targets.get(ev["key"], 0) + ev["value"]
             w = ev.get("weapon", "Schiff/Direkt")
             self.weapons[w] = self.weapons.get(w, 0) + ev["value"]
@@ -797,6 +837,15 @@ class CharSession:
             self.attackers[ev["key"]] = self.attackers.get(ev["key"], 0) + ev["value"]
             if live:
                 self.win_in.append((now, ev["value"]))
+        elif k == "miss_out":
+            self.miss_out += 1
+        elif k == "miss_in":
+            self.miss_in += 1
+        elif k == "ewar":
+            self.ewar[ev["key"]] = self.ewar.get(ev["key"], 0) + 1
+        elif k == "salvage":
+            if ev["key"] in self.salvage:
+                self.salvage[ev["key"]] += 1
         elif k == "bounty":
             self.bounty += ev["value"]
             self.kills += 1
@@ -836,6 +885,9 @@ class CharSession:
                 self.bounty = 0
                 self.kills = 0
                 self.dmg_out = self.dmg_in = 0
+                self.hits_out = self.miss_out = self.miss_in = 0
+                self.ewar = {}
+                self.salvage = {"ok": 0, "empty": 0, "fail": 0}
                 self.depleted = 0
                 self.start = time.time()
                 self.first_ts = ev["ts"]
@@ -1535,7 +1587,18 @@ class Esi(threading.Thread):
             exp = email.utils.parsedate_to_datetime(hdr["Expires"]).timestamp()
         except Exception:
             exp = time.time() + 3600
+        try:
+            asof = email.utils.parsedate_to_datetime(hdr["Last-Modified"]).timestamp()
+        except Exception:
+            asof = time.time()
         c["assets_next"] = exp + 10
+        # Cargo-Wert (Loot + mitgefuehrte Munition) fuer das PvP/Missions-Dashboard.
+        # Kommt aus ESI, kein Kopieren noetig. "as_of"/"next" = wie alt / wann frisch,
+        # weil ESI die Assets nur ~1x/Stunde aktualisiert.
+        try:
+            self.value_cargo(name, c, items, ship["ship_item_id"], asof, exp)
+        except Exception as e:
+            log_error("CN-ESI-01", "value_cargo", e)
         in_ship = [i for i in items if i.get("location_id") == ship["ship_item_id"]]
         units = sum(i["quantity"] for i in in_ship if i["type_id"] == HW_TYPE_ID)
         core = next((CORE_TYPES[i["type_id"]] for i in in_ship
@@ -1552,6 +1615,27 @@ class Esi(threading.Thread):
                             "core": core or prev.get("core", "t1"),
                             "ts": time.time(), "ck": 0, "esi": True,
                             "warned": bool(prev.get("warned")) and units <= prev.get("units", 0)}
+
+    def value_cargo(self, name, c, items, ship_item_id, asof, nxt):
+        """Frachtraum des aktiven Schiffs bewerten (Jita), fuer die Loot-Anzeige."""
+        cargo = [i for i in items if i.get("location_flag") == "Cargo"
+                 and i.get("location_id") == ship_item_id]
+        qty = {}
+        for i in cargo:
+            qty[i["type_id"]] = qty.get(i["type_id"], 0) + i["quantity"]
+        pm = hub_prices("10000002", set(qty)) if qty else {}
+        rows = []
+        for tid, q in qty.items():
+            buy, sell = pm.get(tid, (0, 0))
+            rows.append({"name": self.type_name(tid) or str(tid), "qty": q,
+                         "isk": round(q * buy)})
+        rows.sort(key=lambda r: -r["isk"])
+        with CONFIG_LOCK:
+            c["cargo"] = {
+                "buy": round(sum(q * pm.get(t, (0, 0))[0] for t, q in qty.items())),
+                "sell": round(sum(q * pm.get(t, (0, 0))[1] for t, q in qty.items())),
+                "as_of": int(asof), "next": int(nxt),
+                "n": len(cargo), "items": rows[:12]}
 
     def sync_journal(self, name, c):
         """Wallet-Journal einlesen: Missions-Belohnungen, Boni, Bounty-Ticks.
@@ -2121,6 +2205,7 @@ def snapshot_live():
             "esi_linked": esi_char is not None,
             "ship": (esi_char or {}).get("ship"),
             "wallet": (esi_char or {}).get("wallet"),
+            "cargo": (esi_char or {}).get("cargo"),
             "trips": s.trips,
             "compressed": comp, "tool_warns": s.tool_warns(),
             "lasers_off": [] if drone_only else [{"tool": t, "since": int(i["since"])}
@@ -2142,9 +2227,12 @@ def snapshot_live():
             "dmg_out": s.dmg_out, "dmg_in": s.dmg_in,
             "dps_out": s.dps(s.win_out), "dps_in": s.dps(s.win_in),
             "depleted": s.depleted,
-            "weapons": sorted(s.weapons.items(), key=lambda x: -x[1])[:3],
-            "top_targets": sorted(s.targets.items(), key=lambda x: -x[1])[:5],
-            "top_attackers": sorted(s.attackers.items(), key=lambda x: -x[1])[:5],
+            "weapons": sorted(s.weapons.items(), key=lambda x: -x[1])[:6],
+            "top_targets": sorted(s.targets.items(), key=lambda x: -x[1])[:6],
+            "top_attackers": sorted(s.attackers.items(), key=lambda x: -x[1])[:6],
+            "hits_out": s.hits_out, "miss_out": s.miss_out, "miss_in": s.miss_in,
+            "ewar": sorted(s.ewar.items(), key=lambda x: -x[1]),
+            "salvage": s.salvage,
             "spark": [round(sum(mix.values())) for _, mix in list(s.rate_min)[-60:]],
         })
     chars.sort(key=lambda c: c["name"])
@@ -2225,6 +2313,86 @@ def calc_hubs(text):
     rows.sort(key=lambda r: -r["isk"])
     return {"ok": True, "items": rows, "hubs": hubs, "unknown": unknown,
             "m3": round(sum(r["m3"] for r in rows))}
+
+
+def resolve_item_ids(names):
+    """Item-Namen -> typeID, mit lokalem Cache in der DB. Unbekannte werden
+    einmal bei ESI (/universe/ids/) nachgeschlagen und dann gemerkt, damit die
+    Loot-Bewertung nicht bei jedem Mal ESI anfragt."""
+    out, missing = {}, []
+    with DB_LOCK:
+        for n in names:
+            row = DB.execute("SELECT type_id FROM item_ids WHERE name=?", (n,)).fetchone()
+            if row:
+                if row[0]:
+                    out[n] = row[0]
+            else:
+                missing.append(n)
+    for i in range(0, len(missing), 500):   # ESI nimmt bis 1000, wir bleiben moderat
+        batch = missing[i:i + 500]
+        found = {}
+        try:
+            req = urllib.request.Request(
+                ESI_BASE + "/universe/ids/", data=json.dumps(batch).encode(),
+                headers={"Content-Type": "application/json", "User-Agent": ESI_UA})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                data = json.loads(r.read())
+            found = {t["name"]: t["id"] for t in data.get("inventory_types", [])}
+        except Exception as e:
+            log_error("CN-NET-01", "resolve_item_ids", e)
+        with DB_LOCK:
+            for n in batch:
+                tid = found.get(n)
+                # auch 0/NULL merken, damit ein unbekannter Name nicht bei jedem
+                # Einfügen erneut ESI belastet
+                DB.execute("INSERT OR REPLACE INTO item_ids VALUES(?,?)", (n, tid or 0))
+                if tid:
+                    out[n] = tid
+            DB.commit()
+    return out
+
+
+def calc_loot(text):
+    """Beliebige Frachtraum-Kopie (Loot, nicht nur Erz) über alle Handelsplätze
+    bewerten. Namen kommen aus dem ersten Tab-Feld, Menge aus dem Rest."""
+    qty = {}
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        cols = line.split("\t")
+        name = cols[0].strip()
+        if not name:
+            continue
+        n = 1
+        for part in cols[1:] + [""]:
+            m = NUM_RE.search(STRIP_RE.sub("", part))
+            if m and num(m.group(1)) > 0:
+                n = num(m.group(1))
+                break
+        qty[name] = qty.get(name, 0) + n
+    ids_map = resolve_item_ids(list(qty))
+    unknown = [n for n in qty if n not in ids_map]
+    ids = set(ids_map.values())
+    hubs, jita = {}, {}
+    for rid, rname in REGIONS.items():
+        try:
+            pm = hub_prices(rid, ids) if ids else {}
+        except Exception:
+            hubs[rid] = {"name": rname, "error": True}
+            continue
+        if rid == "10000002":
+            jita = pm
+        hubs[rid] = {"name": rname,
+                     "buy": round(sum(q * pm.get(ids_map[n], (0, 0))[0]
+                                      for n, q in qty.items() if n in ids_map)),
+                     "sell": round(sum(q * pm.get(ids_map[n], (0, 0))[1]
+                                       for n, q in qty.items() if n in ids_map))}
+    rows = [{"name": n, "qty": q,
+             "isk": round(q * jita.get(ids_map[n], (0, 0))[0])}
+            for n, q in qty.items() if n in ids_map]
+    rows.sort(key=lambda r: -r["isk"])
+    return {"ok": True, "items": rows, "hubs": hubs, "unknown": unknown}
 
 
 def query_summary():
@@ -2726,6 +2894,9 @@ class Handler(BaseHTTPRequestHandler):
         elif action == "calc":
             self._send(json.dumps(calc_hubs(body.get("text") or "")))
             return
+        elif action == "loot":
+            self._send(json.dumps(calc_loot(body.get("text") or "")))
+            return
         elif action == "threat_scan":
             names = [str(n).strip() for n in body.get("names", [])][:200]
             names = [n for n in names if n]
@@ -3028,6 +3199,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 </div>
 <header>
  <h1>🐤 EVE <b>CANARY</b> <span class="byline">by Askend</span></h1>
+ <span class="pill modesel" data-mode="mining" title="Mining-Ansicht">⛏ Mining</span><span class="pill modesel" data-mode="combat" title="PvP- und Missions-Ansicht">⚔ PvP &amp; Missionen</span>
  <span class="pill rolef on" data-role="" title="Alle Charaktere">Alle</span>
  <span class="pill rolef" data-role="mining" title="Nur Mining-Charaktere">⛏</span>
  <span class="pill rolef" data-role="mission" title="Nur Mission-Runner">🎯</span>
@@ -3387,10 +3559,15 @@ function regionPills(){
 }
 
 let collapsed=new Set(lsGet('collapsed',[]));
+// Master-Umschalter der Live-Ansicht: Miner vs. PvP/Missionen. Strikt getrennt.
+let liveMode=localStorage.getItem('liveMode')||'mining';
+function renderLiveView(){
+ if(lastChars)(liveMode==='combat'?renderCombat:renderLive)(lastChars,lastSummary);
+}
 function toggleChar(name){
  if(collapsed.has(name))collapsed.delete(name);else collapsed.add(name);
  localStorage.setItem('collapsed',JSON.stringify([...collapsed]));
- if(lastChars)renderLive(lastChars);
+ renderLiveView();
 }
 let lastChars=null,lastSummary=null;
 $('#charFilter').value=localStorage.getItem('charFilter')||'';
@@ -3409,13 +3586,18 @@ $('#collapseAll').onclick=()=>{
   p.classList.toggle('on',p.dataset.role===rf);
   p.onclick=()=>{localStorage.setItem('roleFilter',p.dataset.role);
    document.querySelectorAll('.rolef').forEach(x=>x.classList.toggle('on',x===p));
-   if(lastChars)renderLive(lastChars,lastSummary);};});})();
+   renderLiveView();};});})();
 // "Offline zeigen" umschalten (Live blendet Offline-Chars standardmäßig aus)
 $('#showOffline').classList.toggle('on',localStorage.getItem('showOffline')==='1');
 $('#showOffline').onclick=()=>{const on=localStorage.getItem('showOffline')!=='1';
  localStorage.setItem('showOffline',on?'1':'0');
  $('#showOffline').classList.toggle('on',on);
- if(lastChars)renderLive(lastChars,lastSummary);};
+ renderLiveView();};
+// Mining- vs. PvP/Missionen-Ansicht umschalten (nur in der Live-Ansicht sichtbar)
+function syncModeSel(){document.querySelectorAll('.modesel').forEach(b=>b.classList.toggle('on',b.dataset.mode===liveMode));}
+document.querySelectorAll('.modesel').forEach(b=>b.onclick=()=>{
+ liveMode=b.dataset.mode;localStorage.setItem('liveMode',liveMode);syncModeSel();renderLiveView();});
+syncModeSel();
 function syncCharFilter(chars){
  const sel=$('#charFilter');
  const names=chars.map(c=>c.name);
@@ -3550,6 +3732,95 @@ function renderLive(chars,summary){
   const core=b.dataset.core||(confirm('Industrial Core II (T2, 200/min)?\\nOK = T2 · Abbrechen = T1 (100/min)')?'t2':'t1');
   await post({action:'heavy_water',char:b.dataset.char,units:Number(v.replace(/[^\\d]/g,''))||0,core});
   tick();
+ });
+}
+
+// PvP/Missions-Ansicht: getrennt von der Miner-Ansicht, gleiche Filter.
+const EWAR_LABEL={scramble:'🔴 Scram',disrupt:'Point',web:'Web',jam:'Jam',neut:'Neut',paint:'Paint',damp:'Damp',td:'TD'};
+function cargoLine(cg){
+ if(!cg)return '<div class="l">über EVE-Login</div>';
+ const now=Date.now()/1000;
+ const age=Math.max(0,Math.round((now-cg.as_of)/60));
+ const nxt=Math.round((cg.next-now)/60);
+ const when=new Date(cg.as_of*1000).toISOString().slice(11,16);
+ return `<div class="l">Stand: vor ${age} min · EVE ${when} · ${nxt>0?'nächste in '+nxt+' min':'wird aktualisiert'}</div>`;
+}
+function renderCombat(chars,summary){
+ lastChars=chars;
+ if(summary!==undefined)lastSummary=summary;
+ syncCharFilter(chars);
+ const f=localStorage.getItem('charFilter')||'';
+ if(f&&chars.some(c=>c.name===f))chars=chars.filter(c=>c.name===f);
+ const rf=localStorage.getItem('roleFilter')||'';
+ if(rf)chars=chars.filter(c=>c.role===rf);
+ const showOff=localStorage.getItem('showOffline')==='1';
+ if(!showOff)chars=chars.filter(c=>c.active);
+ // Flotten-Überblick oben
+ const tB=chars.reduce((s,c)=>s+(c.bounty||0),0);
+ const tL=chars.reduce((s,c)=>s+((c.cargo&&c.cargo.buy)||0),0);
+ const tK=chars.reduce((s,c)=>s+(c.kills||0),0);
+ $('#hero').innerHTML=`<div class="card" style="grid-column:1/-1"><div class="stats" style="grid-template-columns:repeat(3,1fr);margin:0">
+   <div class="stat"><div class="l">⚔ Bounty (Session)</div><div class="v grn" style="font-size:24px">${fmtM(tB)}</div><div class="l">${tK} Kills</div></div>
+   <div class="stat"><div class="l">Loot / Cargo</div><div class="v isk" style="font-size:24px">${fmtM(tL)}</div><div class="l">aus EVE-Login</div></div>
+   <div class="stat"><div class="l">Session gesamt</div><div class="v isk" style="font-size:24px">${fmtM(tB+tL)}</div><div class="l">Bounty + Loot</div></div>
+  </div></div>`;
+ if(!chars.length){$('#empty').hidden=false;
+  $('#empty').textContent=!showOff?'Gerade ist kein Charakter eingeloggt. Mit „💤 Offline zeigen" siehst du auch die abgemeldeten.':'Kein Charakter mit dieser Rolle.';
+  $('#grid').innerHTML='';return;}
+ $('#empty').hidden=true;
+ $('#grid').innerHTML=chars.map(c=>{
+  const min=collapsed.has(c.name);
+  const shots=(c.hits_out||0)+(c.miss_out||0);
+  const hit=shots?Math.round(100*c.hits_out/shots):null;
+  const maxW=Math.max(1,...c.weapons.map(w=>w[1]));
+  const sessISK=(c.bounty||0)+((c.cargo&&c.cargo.buy)||0);
+  return `<div class="card ${min?'min':''}">
+   <div class="chead" data-c="${esc(c.name)}">
+    <span class="arr">▼</span>
+    ${c.portrait?`<img class="pf" src="${c.portrait}" alt="">`:''}
+    <span class="char">${esc(c.name)} <span class="sys">· ${esc(c.system)}${c.ship?' · '+esc(c.ship):''}</span></span>
+    <select class="rolesel pill" data-c="${esc(c.name)}" title="Rolle zuweisen (für die Filter oben)">
+     <option value=""${c.role?'':' selected'}>Rolle …</option>
+     <option value="mining"${c.role==='mining'?' selected':''}>⛏ Mining</option>
+     <option value="mission"${c.role==='mission'?' selected':''}>🎯 Missionen</option>
+     <option value="pvp"${c.role==='pvp'?' selected':''}>⚔ PvP</option>
+    </select>
+    <span class="mini">${c.dps_in>0?'<span class="in">⚠ '+c.dps_in+' DPS rein</span> · ':''}${fmtM(sessISK)} ISK</span>
+   </div>
+   <div class="cbody">
+    <div class="stats">
+     <div class="stat"><div class="l">Bounty</div><div class="v grn">${fmtM(c.bounty||0)}</div></div>
+     <div class="stat"><div class="l">Loot / Cargo</div><div class="v isk">${c.cargo?fmtM(c.cargo.buy):'—'}</div>${cargoLine(c.cargo)}</div>
+     <div class="stat"><div class="l">Session gesamt</div><div class="v isk">${fmtM(sessISK)}</div></div>
+    </div>
+    <div class="sect">⚔ Offense</div>
+    <div class="stats">
+     <div class="stat"><div class="l">Schaden raus</div><div class="v out">${fmt(c.dmg_out||0)}</div></div>
+     <div class="stat"><div class="l">DPS</div><div class="v out">${c.dps_out}</div></div>
+     <div class="stat"><div class="l">Trefferquote</div><div class="v">${hit==null?'—':hit+'%'}</div><div class="l">${shots?c.hits_out+' / '+shots:''}</div></div>
+     <div class="stat"><div class="l">Kills</div><div class="v">${c.kills||0}</div></div>
+    </div>
+    ${c.weapons.length?`<div class="sect">Waffen</div><table>`+c.weapons.map(w=>
+      `<tr><td>${esc(w[0])}<div class="bar" style="width:${100*w[1]/maxW}%"></div></td><td class="r">${fmt(w[1])} dmg</td></tr>`).join('')+`</table>`:''}
+    ${c.top_targets.length?`<div class="sect">Top-Ziele</div><table>`+c.top_targets.map(t=>
+      `<tr><td>${esc(t[0])}</td><td class="r">${fmt(t[1])}</td></tr>`).join('')+`</table>`:''}
+    <div class="sect">🛡 Defense</div>
+    <div class="stats">
+     <div class="stat"><div class="l">Schaden rein</div><div class="v in">${fmt(c.dmg_in||0)}</div></div>
+     <div class="stat"><div class="l">DPS rein</div><div class="v in">${c.dps_in}</div></div>
+     <div class="stat"><div class="l">Gegner daneben</div><div class="v">${c.miss_in||0}</div></div>
+    </div>
+    ${c.ewar&&c.ewar.length?`<div class="cardwarn drone">⚠ EWAR gegen dich: `+c.ewar.map(e=>(EWAR_LABEL[e[0]]||e[0])+' ×'+e[1]).join(' · ')+`</div>`:''}
+    ${c.top_attackers.length?`<div class="sect">Top-Angreifer</div><table>`+c.top_attackers.map(t=>
+      `<tr><td>${esc(t[0])}</td><td class="r">${fmt(t[1])}</td></tr>`).join('')+`</table>`:''}
+    ${(c.salvage&&(c.salvage.ok||c.salvage.empty||c.salvage.fail))?`<div class="sect">Salvage</div><div class="l">${c.salvage.ok} Wracks geborgen · ${c.salvage.empty} leer · ${c.salvage.fail} Fehlversuch</div>`:''}
+   </div>
+  </div>`}).join('');
+ document.querySelectorAll('.chead').forEach(h=>h.onclick=()=>toggleChar(h.dataset.c));
+ document.querySelectorAll('.rolesel').forEach(s=>{
+  s.onclick=e=>e.stopPropagation();
+  s.onchange=async()=>{await post({action:'set_role',char:s.dataset.c,role:s.value});
+   if(lastChars){lastChars.forEach(c=>{if(c.name===s.dataset.c)c.role=s.value;});renderCombat(lastChars,lastSummary);}};
  });
 }
 
@@ -4066,6 +4337,16 @@ const EN = {
 'Watchlist (Local-Chat, ein Name pro Zeile)':'Watchlist (local chat, one name per line)',
 'Spieler-Angriffe (gesamt)':'Player attacks (total)',
 'Live-Session (aus den Gamelogs)':'Live session (from the game logs)',
+// PvP/Missionen-Ansicht
+'⛏ Mining':'⛏ Mining','⚔ PvP & Missionen':'⚔ PvP & missions','⚔ PvP':'⚔ PvP',
+'⚔ Offense':'⚔ Offense','🛡 Defense':'🛡 Defense',
+'Loot / Cargo':'Loot / cargo','Session gesamt':'Session total','Bounty':'Bounty',
+'Schaden raus':'Damage out','Schaden rein':'Damage in','Trefferquote':'Hit rate',
+'DPS rein':'DPS in','DPS raus':'DPS out',
+'Gegner daneben':'Enemy misses','⚔ Bounty (Session)':'⚔ Bounty (session)',
+'aus EVE-Login':'from EVE login','über EVE-Login':'via EVE login','Bounty + Loot':'Bounty + loot',
+'Salvage':'Salvage','Kein Charakter mit dieser Rolle.':'No character with this role.',
+'Rolle zuweisen (für die Filter oben)':'Assign role (for the filters above)',
 'Heute':'Today','Heute im Detail (EVE-Zeit)':'Today in detail (EVE time)',
 'Gegner':'Enemy','Missionen':'Missions',
 '🚦 Bedrohungs-Ampel (Local-Scan)':'🚦 Threat traffic light (local scan)',
@@ -4130,6 +4411,11 @@ const EN_PATTERNS = [
  [/Ø letzte 7 Tage:/, 'Ø last 7 days:'], [/Bester Tag:/, 'Best day:'],
  [/Seit ([0-9]+) min kein Erz/, 'No ore for $1 min'],
  [/DPS ([0-9]+) raus [/] ([0-9]+) rein/, 'DPS $1 out / $2 in'],
+ // PvP/Missionen-Ansicht: Zeitstempel, Salvage, EWAR
+ [/Stand: vor ([0-9]+) min/, 'As of $1 min ago'], [/nächste in ([0-9]+) min/, 'next in $1 min'],
+ [/wird aktualisiert/, 'updating'],
+ [/([0-9]+) Wracks geborgen/, '$1 wrecks salvaged'], [/([0-9]+) leer/, '$1 empty'],
+ [/([0-9]+) Fehlversuch/, '$1 failed'], [/EWAR gegen dich:/, 'EWAR against you:'],
  [/Log-Ordner:/, 'Log folder:'], [/Dateien:/, 'files:'], [/Installiert:/, 'Installed:'],
  [/: verbunden ·/, ': connected ·'], [/^trennen$/, 'disconnect'],
  [/Du hast die aktuellste Version/, 'You have the latest version'],
@@ -4219,7 +4505,9 @@ async function tick(){
   if(state.log_ok===false){renderSetup();return;}
   if(!$('#setup').hidden){$('#setup').hidden=true;$('#setup').dataset.built='';}
   if(view!=='live'&&view!=='month'&&view!=='total'&&view!=='analyse')$('#empty').hidden=true;
-  if(view==='live')renderLive(d.chars,d.summary);
+  // Der Mining/PvP-Umschalter gehört nur zur Live-Ansicht
+  document.querySelectorAll('.modesel').forEach(b=>b.hidden=view!=='live');
+  if(view==='live'){lastChars=d.chars;lastSummary=d.summary;renderLiveView();}
   else if(view==='missionen')renderMissions(d);
   else{
    $('#hero').innerHTML='';
