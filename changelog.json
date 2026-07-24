@@ -1,4 +1,7 @@
 [
+ {"v": "1.35", "d": "2026-07-24",
+  "de": ["Abyss und anderer Kampf ohne Bounty: statt 'Kills: 0' zeigt Canary jetzt ehrlich 'Gegner bekämpft: N Typen' und die vollständige Gegnerliste mit Schaden je Typ (vorher nur Top 6). EVE protokolliert keine NPC-Tode, darum ist die Zahl der bekämpften Gegnertypen der einzige gesicherte Wert, keine geratene Kill-Zahl", "Bei echtem Ratting/Missionen mit Bounty bleibt der Kill-Zähler wie gehabt"],
+  "en": ["Abyss and other combat without bounty: instead of 'Kills: 0', Canary now honestly shows 'Enemies fought: N types' and the full enemy list with damage per type (was top 6 only). EVE does not log NPC deaths, so the number of enemy types fought is the only verifiable figure, not a guessed kill count", "For real ratting/missions with bounty the kill counter stays as before"]},
  {"v": "1.34", "d": "2026-07-24",
   "de": ["Ohne gesetzte Rolle erkennt Canary jetzt selbst, ob ein Char kämpft oder mint: Chars mit Schaden aber ohne Erz bekommen automatisch die Kampf-Karte, reine Miner die Mining-Karte. Eine manuell gesetzte Rolle hat weiter Vorrang"],
   "en": ["Without an assigned role, Canary now detects on its own whether a char is fighting or mining: chars with damage but no ore get the combat card automatically, pure miners the mining card. A manually set role still takes precedence"]},
