@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.38.0"
+VERSION = "1.39.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -3903,6 +3903,8 @@ nav span.on{color:var(--cyan);border-bottom:2px solid var(--cyan)}
 .cardwarn{border:1px solid var(--gold);color:var(--gold);border-radius:7px;
 padding:7px 10px;font-size:12px;font-weight:600;margin-bottom:8px;overflow:hidden}
 .cardwarn.drone{border-color:var(--red);color:var(--red)}
+.cardnote{border:1px solid var(--line);background:var(--inset);color:var(--dim);border-radius:7px;
+padding:7px 10px;font-size:12px;line-height:1.5;margin:2px 0 8px}
 .warnbadge{color:var(--gold);font-weight:600}
 .warnbadge.drone{color:var(--red)}
 .pill.upd{border-color:var(--gold);color:var(--gold);animation:updpulse 2.4s ease-in-out infinite}
@@ -4958,6 +4960,10 @@ function combatCardHtml(c){
   const hit=shots?Math.round(100*c.hits_out/shots):null;
   const maxW=Math.max(1,...c.weapons.map(w=>w[1]));
   const sessISK=(c.bounty||0)+((c.cargo&&c.cargo.buy)||0);
+  // Kampf da, aber keine Bounty-Zeile im Log (Client-Meldung aus) -> Hinweis,
+  // damit klar ist warum Kills/Bounty 0 sind. Erst ab mehreren Gegnertypen,
+  // damit es nicht schon zu Sessionbeginn faelschlich aufpoppt.
+  const noBountyData=(c.dmg_out||0)>0&&!(c.bounty>0)&&!(c.kills>0)&&(c.enemy_types||0)>=2;
   return `<div class="card ${min?'min':''}">
    <div class="chead" data-c="${esc(c.name)}">
     <span class="arr">▼</span>
@@ -4993,6 +4999,7 @@ function combatCardHtml(c){
        ?`<div class="stat"><div class="l">Kills</div><div class="v">${c.kills}</div></div>`
        :`<div class="stat"><div class="l">Gegner bekämpft</div><div class="v">${c.enemy_types||0}</div><div class="l" title="EVE protokolliert keine NPC-Tode. Ohne Bounty ist die Zahl der bekämpften Gegnertypen der einzige gesicherte Wert.">Typen · aus Log</div></div>`}
     </div>
+    ${noBountyData?`<div class="cardnote">ℹ️ Für diese Mission liegen keine Bounty-Daten im Log vor, daher werden Kills und Bounty hier nicht gezählt. In EVE die Bounty-Meldungen im Combat-Log aktivieren, dann zählt Canary sie live mit. Die echte Bounty-ISK kommt bei EVE-Login aus dem Wallet.</div>`:''}
     ${c.weapons.length?`<div class="sect">Waffen</div><table>`+c.weapons.map(w=>
       `<tr><td>${esc(w[0])}<div class="bar" style="width:${100*w[1]/maxW}%"></div></td><td class="r">${fmt(w[1])} dmg</td></tr>`).join('')+`</table>`:''}
     ${c.top_targets.length?`<div class="sect">${c.kills>0?'Top-Ziele':'Bekämpfte Gegner · '+(c.enemy_types||c.top_targets.length)+' Typen'}</div><table>`+c.top_targets.map(t=>
@@ -5656,6 +5663,7 @@ const EN = {
 'Schaden ausgeteilt':'Damage dealt','Schaden kassiert':'Damage taken',
 'Top-Ziele':'Top targets','Top-Angreifer':'Top attackers',
 'Gegner bekämpft':'Enemies fought','Typen · aus Log':'types · from log',
+'ℹ️ Für diese Mission liegen keine Bounty-Daten im Log vor, daher werden Kills und Bounty hier nicht gezählt. In EVE die Bounty-Meldungen im Combat-Log aktivieren, dann zählt Canary sie live mit. Die echte Bounty-ISK kommt bei EVE-Login aus dem Wallet.':'ℹ️ No bounty data in the log for this session, so kills and bounty are not counted here. Enable the bounty messages in the EVE combat log and Canary will count them live. The actual bounty ISK comes from the wallet when you use the EVE login.',
 'Rorqual-Overlord':'Rorqual Overlord','Erz-Baron':'Ore Baron','Industrie-Flotte':'Industrial Fleet',
 'Flotten-Operator':'Fleet Operator','Gürtel-Miner':'Belt Miner','Prospektor':'Prospector',
 '✅ ESI-verifiziert:':'✅ ESI-verified:','📤 Teilen':'📤 Share',
