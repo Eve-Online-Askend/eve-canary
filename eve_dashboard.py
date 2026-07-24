@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.36.0"
+VERSION = "1.37.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -98,6 +98,9 @@ def load_json(name, default):
 
 
 ORE_TYPES = load_json("ore_types.json", {})
+# typeID -> (Name, Volumen je Einheit). Fuer das ESI Mining Ledger, das nur
+# type_id + Stueckzahl liefert; so rechnen wir Einheiten in m³ um.
+ORE_BY_TID = {v["typeID"]: (n, v.get("volume", 0.0)) for n, v in ORE_TYPES.items()}
 MINING_TOOLS = sorted(load_json("mining_tools.json", []), key=len, reverse=True)
 # Missionserkennung über einzigartige Gegnernamen (nur geprüfte Signaturen).
 MISSION_SIGS = {k.lower(): v for k, v in load_json("mission_sigs.json", {}).items()
@@ -1885,7 +1888,12 @@ SSO_TOKEN = "https://login.eveonline.com/v2/oauth/token"
 ESI_BASE = "https://esi.evetech.net/latest"
 ESI_SCOPES = ("esi-assets.read_assets.v1 esi-location.read_ship_type.v1 "
               "esi-wallet.read_character_wallet.v1 esi-location.read_online.v1 "
-              "esi-ui.open_window.v1")
+              "esi-ui.open_window.v1 esi-skills.read_skills.v1 "
+              "esi-industry.read_character_mining.v1")
+# Mining-Skills, die den Erzertrag heben (typeID -> Ertrag je Stufe).
+# Mining und Astrogeology sind die beiden Kern-Ertragsskills (+5% je Stufe).
+MINING_YIELD_SKILLS = {3386: 0.05,   # Mining
+                       3410: 0.05}   # Astrogeology
 ESI_UA = f"EVE-Canary/{VERSION} (https://github.com/Eve-Online-Askend/eve-canary)"
 # Eingebaute Canary-ESI-App: so muss kein Nutzer eine eigene App registrieren,
 # er klickt nur "Mit EVE-Account verbinden". Die ID ist bei PKCE bauartbedingt
@@ -1922,6 +1930,7 @@ class Esi(threading.Thread):
         self.pending = {}     # state -> code_verifier laufender Logins
         self.status = {}      # char -> Klartext-Status fuer die Optionen-Seite
         self.type_cache = {}  # type_id -> Name (Schiffstypen, öffentlicher Endpunkt)
+        self.vol_cache = {}   # type_id -> Volumen je Einheit (fuer Mining-Ledger-m³)
         self.party_names = {} # id -> Name (Agenten aus dem Wallet-Journal)
         # Serialisiert den Token-Refresh: poll-Thread und HTTP-Thread (ui_open)
         # duerfen nicht gleichzeitig dasselbe Refresh-Token einloesen (CCP
@@ -2060,6 +2069,56 @@ class Esi(threading.Thread):
         if n:
             self.type_cache[tid] = n
         return n
+
+    def type_volume(self, tid):
+        """Volumen je Einheit fuer einen typeID. Erst aus der lokalen Erz-Tabelle,
+        sonst oeffentlich von ESI (deckt Eis/Gas/Mondz ab). Gecacht."""
+        if tid in ORE_BY_TID:
+            return ORE_BY_TID[tid][1]
+        if tid in self.vol_cache:
+            return self.vol_cache[tid]
+        try:
+            req = urllib.request.Request(f"{ESI_BASE}/universe/types/{tid}/",
+                                         headers={"User-Agent": ESI_UA})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                v = float(json.loads(r.read()).get("volume") or 0.0)
+        except Exception:
+            v = 0.0
+        self.vol_cache[tid] = v
+        return v
+
+    def sync_skills(self, name, c):
+        """Mining-Skill-Bonus aus ESI (Scope esi-skills). Mining + Astrogeology
+        heben den Ertrag je Stufe; Ergebnis als Prozent-Bonus abgelegt."""
+        data, _ = self._get(c, f"/characters/{c['char_id']}/skills/")
+        lvl = {s["skill_id"]: s.get("trained_skill_level", 0)
+               for s in data.get("skills", [])}
+        mult = 1.0
+        for sid, per in MINING_YIELD_SKILLS.items():
+            mult *= (1 + per * lvl.get(sid, 0))
+        c["skill_bonus"] = round((mult - 1) * 100)
+        c["skills_next"] = time.time() + 6 * 3600
+
+    def sync_mining(self, name, c):
+        """Mining Ledger aus ESI (Scope esi-industry): serverseitig geförderte
+        Einheiten je Tag/Erztyp, in m³ umgerechnet. Die letzten 30 Tage sind der
+        unfaelschbare Beleg der Foerderleistung."""
+        cutoff = (datetime.now(timezone.utc).date() - timedelta(days=30)).isoformat()
+        page, m3 = 1, 0.0
+        while page <= 10:
+            rows, _ = self._get(c, f"/characters/{c['char_id']}/mining/",
+                                {"page": page})
+            if not rows:
+                break
+            for r in rows:
+                if (r.get("date") or "") >= cutoff:
+                    m3 += r.get("quantity", 0) * self.type_volume(r.get("type_id"))
+            if len(rows) < 1000:
+                break
+            page += 1
+        c["mined_30d"] = round(m3)
+        c["esi_mining"] = True
+        c["mining_next"] = time.time() + 45 * 60
 
     def sync_ship(self, name, c, ship=None):
         """Heavy Water + Kern-Typ aus dem aktuellen Schiff uebernehmen.
@@ -2212,6 +2271,20 @@ class Esi(threading.Thread):
                     c["online"] = bool(onl.get("online"))
                 except Exception:
                     c.pop("online", None)  # Scope fehlt/Fehler -> Log-Aktivität greift
+                # Skills + Mining Ledger (neue Scopes). Fehlt der Scope (Char noch
+                # nicht neu verbunden), kommt 403 -> still ueberspringen, dann bleibt
+                # die MFP "geschaetzt" statt "ESI-verifiziert".
+                try:
+                    if time.time() >= c.get("skills_next", 0):
+                        self.sync_skills(name, c)
+                except Exception:
+                    c.pop("skill_bonus", None)
+                try:
+                    if time.time() >= c.get("mining_next", 0):
+                        self.sync_mining(name, c)
+                except Exception:
+                    c.pop("esi_mining", None)
+                    c.pop("mined_30d", None)
                 self.status[name] = "verbunden"
                 changed = True
             except urllib.error.HTTPError as e:
@@ -2714,6 +2787,10 @@ def snapshot_live():
             "ship": (esi_char or {}).get("ship"),
             "wallet": (esi_char or {}).get("wallet"),
             "cargo": (esi_char or {}).get("cargo"),
+            # ESI-verifizierte Mining-Daten (nur wenn neue Scopes erteilt)
+            "esi_mining": bool((esi_char or {}).get("esi_mining")),
+            "mined_30d": (esi_char or {}).get("mined_30d"),
+            "skill_bonus": (esi_char or {}).get("skill_bonus"),
             "trips": s.trips,
             "compressed": comp, "tool_warns": s.tool_warns(),
             "lasers_off": [] if drone_only else [{"tool": t, "since": int(i["since"]),
@@ -3870,6 +3947,8 @@ tr.lvl-yellow td{background:rgba(228,179,76,.07)}
 .mfpval.cyan,.mfprank.cyan{color:var(--cyan)} .mfpbar.cyan{background:var(--cyan)} .mfprank.cyan{border-color:var(--cyan)}
 .mfpval.green,.mfprank.green{color:var(--green)} .mfpbar.green{background:var(--green)} .mfprank.green{border-color:var(--green)}
 .mfpval.dim,.mfprank.dim{color:var(--dim)} .mfpbar.dim{background:var(--dim)}
+.mfpver{margin-top:9px;font-size:12px;color:var(--green)}
+.mfpver b{color:var(--white)}
 select.pill{appearance:none;-webkit-appearance:none;outline:none;background:var(--card);
 border:1px solid var(--line);color:var(--dim);font-size:11px;padding:4px 11px;border-radius:20px;cursor:pointer}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
@@ -4584,6 +4663,18 @@ function fleetPowerCard(chars){
  const t=mfpTier(m3min);
  // Balken relativ zur hoechsten Rang-Schwelle (max 15000 = voll)
  const pct=Math.min(100,100*m3min/15000);
+ // ESI-Verifizierung: nur Chars mit erteilten neuen Scopes liefern esi_mining.
+ const ver=miners.filter(c=>c.esi_mining);
+ const mined=ver.reduce((s,c)=>s+(c.mined_30d||0),0);
+ const bonusVals=ver.map(c=>c.skill_bonus).filter(b=>b!=null);
+ const avgBonus=bonusVals.length?Math.round(bonusVals.reduce((s,b)=>s+b,0)/bonusVals.length):null;
+ let sub;
+ if(ver.length&&ver.length===miners.length)sub=miners.length+' '+(miners.length===1?'Schiff':'Schiffe')+' · ✅ ESI-verifiziert';
+ else if(ver.length)sub=ver.length+' von '+miners.length+' ESI-verifiziert · Rest geschätzt';
+ else sub=miners.length+' '+(miners.length===1?'Schiff':'Schiffe')+' · geschätzt aus Log';
+ const verLine=mined>0
+   ?`<div class="mfpver">✅ ESI-verifiziert: <b>${fmtM(mined)} m³</b> in 30 Tagen gefördert · Ø ${fmtM(mined/30)}/Tag${avgBonus!=null?' · Skill-Bonus +'+avgBonus+'%':''}</div>`
+   :'';
  return `<div class="card mfp" style="grid-column:1/-1">
    <div class="mfphead">
     <span class="mfptitle">⚡ Mining Fleet Power</span>
@@ -4592,9 +4683,10 @@ function fleetPowerCard(chars){
    <div class="mfpmain">
     <span class="mfpval ${t.c}">${fmt(Math.round(m3min))}</span>
     <span class="mfpunit">m³/min</span>
-    <span class="mfpsub">${miners.length} ${miners.length===1?'Schiff':'Schiffe'} · geschätzt aus Log · ESI-Siegel folgt</span>
+    <span class="mfpsub">${sub}</span>
    </div>
    <div class="mfpbarwrap"><div class="mfpbar ${t.c}" style="width:${pct}%"></div></div>
+   ${verLine}
   </div>`;
 }
 function renderLive(chars,summary){
@@ -5476,6 +5568,7 @@ const EN = {
 'Gegner bekämpft':'Enemies fought','Typen · aus Log':'types · from log',
 'Rorqual-Overlord':'Rorqual Overlord','Erz-Baron':'Ore Baron','Industrie-Flotte':'Industrial Fleet',
 'Flotten-Operator':'Fleet Operator','Gürtel-Miner':'Belt Miner','Prospektor':'Prospector',
+'✅ ESI-verifiziert:':'✅ ESI-verified:',
 '🤖 Drohnen ohne Erz':'🤖 Drones without ore',
 'Komprimiert (Session)':'Compressed (session)','Rolle …':'Role …','Mining':'Mining',
 'Watchlist (Local-Chat, ein Name pro Zeile)':'Watchlist (local chat, one name per line)',
@@ -5558,6 +5651,8 @@ const EN_PATTERNS = [
  // Karte mit "." am Ende — zwei lose Muster fangen beide Varianten.
  [/Abbaurate nur noch ([0-9]+)%/, 'Mining rate down to $1%'],
  [/Vermutlich ist ein Modul oder eine Drohne aus/, 'A module or a drone is probably off'],
+ [/ in 30 Tagen gefördert · Ø (.+?)[/]Tag · Skill-Bonus [+]([0-9]+)%/, ' mined in 30 days · avg $1/day · skill bonus +$2%'],
+ [/ in 30 Tagen gefördert · Ø (.+?)[/]Tag/, ' mined in 30 days · avg $1/day'],
  [/[/]Tag/, '/day'],
  [/Ø letzte 7 Tage:/, 'Ø last 7 days:'], [/Bester Tag:/, 'Best day:'],
  [/Seit ([0-9]+) min kein Erz/, 'No ore for $1 min'],
@@ -5572,7 +5667,9 @@ const EN_PATTERNS = [
  [/Schaden ([0-9.]+) raus [/] ([0-9.]+) rein/, 'Damage $1 out / $2 in'],
  [/Trefferquote ([0-9]+)%/, 'Hit rate $1%'], [/([0-9]+) Kills/, '$1 kills'],
  [/Bekämpfte Gegner · ([0-9]+) Typen/, 'Enemies fought · $1 types'],
- [/([0-9]+) Schiffe? · geschätzt aus Log · ESI-Siegel folgt/, '$1 ships · estimated from log · ESI seal to come'],
+ [/([0-9]+) Schiffe? · geschätzt aus Log/, '$1 ships · estimated from log'],
+ [/([0-9]+) Schiffe? · ✅ ESI-verifiziert/, '$1 ships · ✅ ESI-verified'],
+ [/([0-9]+) von ([0-9]+) ESI-verifiziert · Rest geschätzt/, '$1 of $2 ESI-verified · rest estimated'],
  [/Aus dem Wallet-Journal/, 'From the wallet journal'],
  [/nächster Abgleich in ([0-9]+) min/, 'next sync in $1 min'], [/Abgleich läuft gerade/, 'syncing now'],
  [/Das In-Game-Wallet ist sofort aktuell, ESI hängt bis zu 1 Stunde nach/,
