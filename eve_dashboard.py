@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.31.2"
+VERSION = "1.32.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -883,6 +883,8 @@ class CharSession:
         self.idle_alerted = False
         self.low_since = None     # Raten-Waechter (Teilausfall-Erkennung)
         self.low_alerted = False
+        self.lost_m3 = 0.0        # in dieser Session durch Stillstand/Drosselung entgangenes Erz-Volumen
+        self._lost_ts = None      # letzter Verrechnungs-Zeitpunkt des Verlustzaehlers
         self.gaps = deque(maxlen=40)  # letzte Abstaende zwischen Erz-Events (lernt Drohnen-Zyklen)
         # Drohnen-Erkennung: Mining-Drohnen liefern mehrere kleine Erz-Portionen
         # dicht beieinander (ein Zyklus = alle Drohnen fast gleichzeitig). Bleiben
@@ -1029,6 +1031,8 @@ class CharSession:
                 self.dmg_min = deque(maxlen=180)
                 self.mission_system = None
                 self.depleted = 0
+                self.lost_m3 = 0.0       # Stillstand-Verlust je Trip neu zaehlen
+                self._lost_ts = None
                 self.start = time.time()
                 self.first_ts = ev["ts"]
                 if ev.get("system"):     # Ziel des Undocks = aktueller Ort
@@ -1140,7 +1144,9 @@ class CharSession:
         # trotzdem schnelle Meldung bei gleichmaessigen Drohnen.
         g = sorted(self.drone_gaps)
         p90 = g[min(len(g) - 1, int(len(g) * 0.9))]
-        return max(90, p90 + 30) < now - self.drone_last < 1800
+        # Harte Mindestschwelle von 90 auf 60 s gesenkt (schnellere Meldung bei
+        # engen Drohnenzyklen); der adaptive p90+30 schuetzt lange Rueckfluege.
+        return max(60, p90 + 30) < now - self.drone_last < 1800
 
     def laser_stalled(self, now=None):
         """True, wenn der Strip-Miner-/Laser-Strom abreisst, waehrend Drohnen
@@ -1276,6 +1282,19 @@ class Ingest(threading.Thread):
         # Charakter-Karte (Felder drones_idle/laser_stalled), nicht im Alarm-Banner.
         with self.lock:
             for s in self.sessions.values():
+                # Verlustzaehler ZUERST, unabhaengig von Alarm-Schwelle und
+                # idle_alerted: gerade beim langen Stillstand soll er weiterlaufen.
+                rs = s.rate_status()
+                if s._lost_ts is None:
+                    s._lost_ts = now
+                dt = now - s._lost_ts
+                s._lost_ts = now
+                if rs and 0 < dt < 20:   # dt-Sanitaet: kein Riesensprung nach Pause
+                    base, cur = rs
+                    # nur echten Ausfall zaehlen (unter 85% der Normalrate), kein
+                    # Rauschen. (base-cur) = fehlende m³/min, mal Intervall in Minuten.
+                    if base > 0 and cur < 0.85 * base:
+                        s.lost_m3 += (base - cur) * (dt / 60.0)
                 if thr <= 0:
                     continue
                 if s.last_ore_ts is None or s.idle_alerted:
@@ -1287,7 +1306,6 @@ class Ingest(threading.Thread):
                     alerts.push("idle", s.name,
                                 f"{s.name}: Seit {round(idle / 60)} Minuten kein Erz. Laser und Drohnen prüfen!")
                 # Raten-Waechter: Teilausfall (z.B. 1 von 2 Strip Minern aus)
-                rs = s.rate_status()
                 if rs:
                     base, cur = rs
                     if cur > 0 and cur < 0.55 * base:
@@ -1404,6 +1422,7 @@ class Ingest(threading.Thread):
                 catch_up = not self.started_full
                 batch = []
                 missions_done = []   # beim Undock abgeschlossene Missionen
+                lost_done = []       # beim Undock festgehaltener Stillstand-Verlust (Tag, ISK)
                 with open(f, "rb") as fh:
                     fh.seek(offset)
                     data = fh.read()
@@ -1430,6 +1449,17 @@ class Ingest(threading.Thread):
                                         md["dialog"] = " ".join(chatwatch.dialogue(
                                             cid, md["start_ts"], ev["ts"]))[:2000] or None
                                         missions_done.append(md)
+                                    # Stillstand-Verlust dieses Trips festhalten,
+                                    # BEVOR feed() ihn zuruecksetzt.
+                                    if sess.lost_m3 > 0:
+                                        pm = prices.get(CONFIG["region"]) or {}
+                                        vm3 = visk = 0.0
+                                        for ore, u in sess.mining.items():
+                                            i, vv = ore_value(ore, u, pm)
+                                            visk += i; vm3 += vv
+                                        li = round(sess.lost_m3 * (visk / vm3)) if vm3 > 0 else 0
+                                        if li > 0:
+                                            lost_done.append((ev["day"], li))
                                 sess.feed(ev, live=not catch_up)
                             # Live-Alarme nur für wirklich frische Ereignisse (< 10 min).
                             # Schaltet man später auf "alle Logs", werden sonst Jahre an
@@ -1450,6 +1480,8 @@ class Ingest(threading.Thread):
                                 db_add(ev["day"], cid, cname, "pvp_in", ev["key"], ev["value"])
                         for md in missions_done:
                             save_mission(md)
+                        for lday, li in lost_done:
+                            db_add(lday, cid, cname, "lost", "isk", li)
                         if batch:
                             ts = [ev["ts"] for ev in batch]
                             first_ts = min(first_ts or ts[0], *ts)
@@ -2676,6 +2708,9 @@ def snapshot_live():
             "system": s.system or chatwatch.systems.get(s.char_id, "?"),
             "danger": danger.for_system(s.system or chatwatch.systems.get(s.char_id)),
             "ores": ores, "m3": round(m3), "ore_isk": round(ore_isk),
+            # Tatsaechlicher Stillstand-Verlust dieser Session (kumuliert), zum
+            # ISK/m³-Schnitt der Session bewertet.
+            "lost_isk": round(s.lost_m3 * (ore_isk / m3)) if m3 > 0 else 0,
             "m3h": round(m3 / mins * 60), "bounty": s.bounty, "kills": s.kills,
             "total_isk": round(ore_isk + s.bounty),
             "dmg_out": s.dmg_out, "dmg_in": s.dmg_in,
@@ -3174,10 +3209,12 @@ def query_analyse():
                      "current": total["total_isk"],
                      "pct": round(100 * total["total_isk"] / goal["isk"], 1),
                      "avg7": round(avg), "eta_days": eta_days, "eta_date": eta_date}
+    # Durch Stillstand/Drosselung entgangenes ISK (beim Docken je Trip erfasst)
+    lost_isk = sum(v for _, _, _, kind, _, v in all_rows(kinds=["lost"]))
     return {"weapons": sorted(weapons.items(), key=lambda x: -x[1])[:10],
             "pvp": pvp_list, "efficiency": eff_list, "playtime": play_list,
             "goal": goal_info, "depleted_total": total["depleted"],
-            "compression": compression_periods()}
+            "lost_isk": round(lost_isk), "compression": compression_periods()}
 
 
 def state_info():
@@ -4524,11 +4561,12 @@ function miningCardHtml(c){
    ${(c.tool_warns||[]).map(w=>w.drone
      ?`<div class="cardwarn drone">⚠ ${esc(w.tool)}${w.count>1?' ×'+w.count:''} abgeschaltet, Drohnen prüfen!</div>`
      :`<div class="cardwarn">⚠ ${esc(w.tool)}${w.count>1?' ×'+w.count:''} abgeschaltet, Ziel prüfen</div>`).join('')}
-   ${(c.lasers_off||[]).map(w=>`<div class="cardwarn">⛔ ${esc(w.tool)} aus seit ${new Date(w.since*1000).toLocaleTimeString().slice(0,5)}. Neues Ziel erfassen!${iskLost(c,w)} <span class="laserok" data-char="${esc(c.name)}" data-tool="${esc(w.tool)}">✓ erledigt</span></div>`).join('')}
+   ${(c.lasers_off||[]).map(w=>`<div class="cardwarn">⛔ ${esc(w.tool)} aus seit ${new Date(w.since*1000).toLocaleTimeString().slice(0,5)}. Neues Ziel erfassen! <span class="laserok" data-char="${esc(c.name)}" data-tool="${esc(w.tool)}">✓ erledigt</span></div>`).join('')}
    ${c.drones_idle?`<div class="cardwarn">🤖 Drohnen liefern gerade kein Erz (gestoppt, voll oder auf dem Rückweg).</div>`:''}
    ${c.laser_stalled?`<div class="cardwarn">⛏ Strip Miner liefert gerade kein Erz, während die Drohnen weiterlaufen.</div>`:''}
-   ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur noch ${c.rate_low}%. Vermutlich ist ein Modul oder eine Drohne aus.${iskRate(c)}</div>`:''}
+   ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur noch ${c.rate_low}%. Vermutlich ist ein Modul oder eine Drohne aus.</div>`:''}
    ${mineIdle(c,state)?`<div class="cardwarn">⚠ Seit ${Math.round(c.mine_idle/60)} min kein Erz. Laser und Drohnen prüfen!</div>`:''}
+   ${(localStorage.getItem('iskCoach')==='1'&&c.lost_isk>=1000)?`<div class="cardwarn">💸 ${lang==='en'?'Downtime loss this session':'Stillstand-Verlust diese Session'}: ≈ ${fmtM(c.lost_isk)} ISK</div>`:''}
    <div class="sub">${c.trips>0?'Trip '+(c.trips+1)+' · seit Abdocken':'Session'} ${c.session_min} min · ${c.depleted} Asteroiden leergebaggert · Preise: ${state.price_src==='esi'?'ESI · ':''}${state.regions[state.region]}</div>
    ${dangerLine(c)}
    <div class="stats">
@@ -4791,6 +4829,9 @@ function renderAnalyse(a){
   `<div class="card"><div class="char">Erz-Effizienz (ISK/m³)</div>
    <div class="sub">Was lohnt sich am meisten pro Laderaum?</div><table>${a.efficiency.map(e=>
    `<tr><td>${e.ore}</td><td class="r">${e.isk_per_m3} ISK/m³</td><td class="r">${fmt(e.m3)} m³</td><td class="r isk">${fmtM(e.isk)}</td></tr>`).join('')}</table></div>
+  <div class="card"><div class="char">Stillstand-Verlust</div>
+   <div class="sub">Geschätzt entgangenes ISK, weil Laser oder Drohnen standen oder die Rate einbrach (je Trip beim Docken erfasst).</div>
+   <div class="v isk" style="font-size:22px">${fmtM(a.lost_isk||0)}</div></div>
   <div class="card"><div class="char">Waffen-Bilanz</div><table>${a.weapons.length?a.weapons.map(w=>
    `<tr><td>${esc(w[0])}</td><td class="r out">${fmt(w[1])} dmg</td></tr>`).join(''):'<tr><td class="r">Noch keine Kampfdaten</td></tr>'}</table></div>
   <div class="card"><div class="char">Spielzeit</div><table>${a.playtime.slice(-14).reverse().map(p=>
@@ -4845,26 +4886,9 @@ async function toggleOverlay(){
 function mineIdle(c,st){
  return c.mine_idle&&st.idle_warn>0&&c.mine_idle>(c.idle_thr||st.idle_warn)&&c.mine_idle<1800;
 }
-// ISK-Verlust-Coach (opt-in): grob geschaetzter entgangener Ertrag, seit ein
-// Strip Miner steht. Rate 'before' (m³/min vor dem Stopp) × Standzeit × ISK/m³.
-function iskLost(c,w){
- if(localStorage.getItem('iskCoach')!=='1')return '';
- const ipm=(c.m3>0)?(c.ore_isk/c.m3):0;          // ISK je m³ (Session-Schnitt)
- const rate=w.before||((c.m3h||0)/60);           // m³/min: Vorher-Rate, sonst aktuelle
- const lost=Math.max(0,(Date.now()/1000-w.since)/60)*rate*ipm;
- if(lost<1000)return '';
- return ` <b class="in">≈ ${fmtM(lost)} ISK ${lang==='en'?'lost':'entgangen'}</b>`;
-}
-// Laufender Verlust bei gedrosselter Rate (ein Modul/Drohne aus): fehlender
-// Anteil × Normalrate × ISK/m³, als ISK pro Stunde. Sichtbarer als der kurze
-// Laser-aus-Fall, weil die Rate laenger gedrosselt bleibt.
-function iskRate(c){
- if(localStorage.getItem('iskCoach')!=='1'||!c.rate_low||c.rate_low<=0||c.rate_low>=100)return '';
- const ipm=(c.m3>0)?(c.ore_isk/c.m3):0;
- const perH=(c.m3h||0)*(100/c.rate_low-1)*ipm;   // entgangener Ertrag pro Stunde
- if(perH<1000)return '';
- return ` <b class="in">≈ ${fmtM(perH)} ISK/h ${lang==='en'?'lost':'entgeht dir'}</b>`;
-}
+// Der Stillstand-Verlust wird jetzt im Backend als tatsaechlicher, kumulierter
+// Session-Wert gerechnet (c.lost_isk) und als eine Zeile angezeigt, statt als
+// mehrere Frontend-Schaetzungen pro Warnung.
 // Lagebild des aktuellen Systems aus offenen Daten (stuendlich). Bewusst als
 // ruhige Info-Zeile, kein Alarm: eine Sekundenwarnung ist damit nicht moeglich.
 function dangerLine(c){
@@ -5309,6 +5333,8 @@ const EN = {
 '🔊 Sprachansagen bei Alarmen (spricht Charakter und Warnung)':'🔊 Spoken alerts (says character and warning)',
 '💸 ISK-Verlust anzeigen, wenn ein Strip Miner steht':'💸 Show ISK lost when a strip miner is idle',
 '🔔 Alarm testen':'🔔 Test alert','Stimme:':'Voice:',
+'Stillstand-Verlust':'Downtime loss',
+'Geschätzt entgangenes ISK, weil Laser oder Drohnen standen oder die Rate einbrach (je Trip beim Docken erfasst).':'Estimated ISK missed because lasers or drones were idle or the rate dropped (recorded per trip on docking).',
 'löst einen Beispielalarm aus: Ton, Sprache und Banner, je nach Häkchen oben. Alarme kommen sonst nur bei einem echten Ereignis.':'triggers a sample alert: sound, speech and banner, depending on the boxes above. Alerts otherwise only fire on a real event.',
 'Watchlist speichern':'Save watchlist','Ziel speichern':'Save goal','Ziel löschen':'Clear goal',
 'ISK-Ziel, z.B. 1000000000':'ISK goal, e.g. 1000000000','Ziel':'Goal',

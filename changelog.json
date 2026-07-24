@@ -1,4 +1,13 @@
 [
+ {"v": "1.32", "d": "2026-07-24",
+  "de": ["ISK-Verlust zeigt jetzt den tatsächlich angefallenen Verlust der Session (kumuliert), nicht mehr pro Stunde",
+         "Auch bei komplettem Stillstand (kein Erz) wird der Verlust erfasst, nicht nur bei Laser-aus oder gedrosselter Rate",
+         "Neu in der Analyse: Gesamt-Stillstand-Verlust als Statistik",
+         "Drohnen-Sprachansage kommt schneller (Mindestschwelle von 90 auf 60 Sekunden gesenkt)"],
+  "en": ["ISK loss now shows the actual accumulated loss of the session, no longer per hour",
+         "Full standstill (no ore) is now counted too, not only a stopped laser or reduced rate",
+         "New in Analysis: total downtime loss as a statistic",
+         "Drone spoken alert comes faster (minimum threshold lowered from 90 to 60 seconds)"]},
  {"v": "1.31", "d": "2026-07-24",
   "de": ["Sprachansagen: Stimme frei wählbar aus den auf dem System verfügbaren Stimmen, mit sofortiger Hörprobe",
          "Sprachansagen sagen jetzt auch Strip-Miner-Stopp und Drohnen im Leerlauf an, sobald sie auftreten (nur einmal, kein Dauergeplapper)",
