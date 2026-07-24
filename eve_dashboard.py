@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.34.0"
+VERSION = "1.35.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -2741,8 +2741,12 @@ def snapshot_live():
             "dps_out": s.dps(s.win_out), "dps_in": s.dps(s.win_in),
             "depleted": s.depleted,
             "weapons": sorted(s.weapons.items(), key=lambda x: -x[1])[:6],
-            "top_targets": sorted(s.targets.items(), key=lambda x: -x[1])[:6],
-            "top_attackers": sorted(s.attackers.items(), key=lambda x: -x[1])[:6],
+            # Volle Gegnerliste (bis 60), damit z. B. Abyss-Runs ohne Bounty alle
+            # bekaempften Typen zeigen. enemy_types = Anzahl verschiedener Gegner,
+            # die einzige ehrlich belegbare "Kill"-naehe Zahl (EVE loggt keine Tode).
+            "top_targets": sorted(s.targets.items(), key=lambda x: -x[1])[:60],
+            "enemy_types": len(s.targets),
+            "top_attackers": sorted(s.attackers.items(), key=lambda x: -x[1])[:12],
             "mission": detect_mission(sorted(s.targets.items(), key=lambda x: -x[1]),
                                       " ".join(chatwatch.dialogue(s.char_id, s.first_ts))),
             "npc": chatwatch.dialogue(s.char_id, s.first_ts)[-3:],
@@ -4751,11 +4755,13 @@ function combatCardHtml(c){
      <div class="stat"><div class="l">Schaden raus</div><div class="v out">${fmt(c.dmg_out||0)}</div></div>
      <div class="stat"><div class="l">DPS</div><div class="v out">${c.dps_out}</div></div>
      <div class="stat"><div class="l">Trefferquote</div><div class="v">${hit==null?'—':hit+'%'}</div><div class="l">${shots?c.hits_out+' / '+shots:''}</div></div>
-     <div class="stat"><div class="l">Kills</div><div class="v">${c.kills||0}</div></div>
+     ${c.kills>0
+       ?`<div class="stat"><div class="l">Kills</div><div class="v">${c.kills}</div></div>`
+       :`<div class="stat"><div class="l">Gegner bekämpft</div><div class="v">${c.enemy_types||0}</div><div class="l" title="EVE protokolliert keine NPC-Tode. Ohne Bounty ist die Zahl der bekämpften Gegnertypen der einzige gesicherte Wert.">Typen · aus Log</div></div>`}
     </div>
     ${c.weapons.length?`<div class="sect">Waffen</div><table>`+c.weapons.map(w=>
       `<tr><td>${esc(w[0])}<div class="bar" style="width:${100*w[1]/maxW}%"></div></td><td class="r">${fmt(w[1])} dmg</td></tr>`).join('')+`</table>`:''}
-    ${c.top_targets.length?`<div class="sect">Top-Ziele</div><table>`+c.top_targets.map(t=>
+    ${c.top_targets.length?`<div class="sect">${c.kills>0?'Top-Ziele':'Bekämpfte Gegner · '+(c.enemy_types||c.top_targets.length)+' Typen'}</div><table>`+c.top_targets.map(t=>
       `<tr><td>${esc(t[0])}</td><td class="r">${fmt(t[1])}</td></tr>`).join('')+`</table>`:''}
     <div class="sect">🛡 Defense</div>
     <div class="stats">
@@ -5415,6 +5421,7 @@ const EN = {
 'Erz-Effizienz (ISK/m³)':'Ore efficiency (ISK/m³)','Waffen':'Weapons','und':'and',
 'Schaden ausgeteilt':'Damage dealt','Schaden kassiert':'Damage taken',
 'Top-Ziele':'Top targets','Top-Angreifer':'Top attackers',
+'Gegner bekämpft':'Enemies fought','Typen · aus Log':'types · from log',
 '🤖 Drohnen ohne Erz':'🤖 Drones without ore',
 'Komprimiert (Session)':'Compressed (session)','Rolle …':'Role …','Mining':'Mining',
 'Watchlist (Local-Chat, ein Name pro Zeile)':'Watchlist (local chat, one name per line)',
@@ -5510,6 +5517,7 @@ const EN_PATTERNS = [
  [/gleiche Skala/, 'same scale'],
  [/Schaden ([0-9.]+) raus [/] ([0-9.]+) rein/, 'Damage $1 out / $2 in'],
  [/Trefferquote ([0-9]+)%/, 'Hit rate $1%'], [/([0-9]+) Kills/, '$1 kills'],
+ [/Bekämpfte Gegner · ([0-9]+) Typen/, 'Enemies fought · $1 types'],
  [/Aus dem Wallet-Journal/, 'From the wallet journal'],
  [/nächster Abgleich in ([0-9]+) min/, 'next sync in $1 min'], [/Abgleich läuft gerade/, 'syncing now'],
  [/Das In-Game-Wallet ist sofort aktuell, ESI hängt bis zu 1 Stunde nach/,
