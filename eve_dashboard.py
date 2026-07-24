@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.16.1"
+VERSION = "1.17.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -460,6 +460,10 @@ CREATE TABLE IF NOT EXISTS threat(name TEXT PRIMARY KEY COLLATE NOCASE,
 CREATE TABLE IF NOT EXISTS journal(id INTEGER, char TEXT, ts REAL,
     ref_type TEXT, amount REAL, party TEXT, PRIMARY KEY(id, char));
 CREATE TABLE IF NOT EXISTS item_ids(name TEXT PRIMARY KEY COLLATE NOCASE, type_id INTEGER);
+CREATE TABLE IF NOT EXISTS missions(mid TEXT PRIMARY KEY, char_id TEXT, char TEXT,
+    start_ts REAL, end_ts REAL, system TEXT, dmg_out INTEGER, dmg_in INTEGER,
+    kills INTEGER, bounty REAL, hits INTEGER, miss_out INTEGER, miss_in INTEGER,
+    weapons TEXT, enemies TEXT, loot_isk REAL, loot_text TEXT);
 """)
 DB.commit()
 try:  # v1.5.1: System-Kontext je Journal-Eintrag (filtert Belt-Bounties aus der Missions-Statistik)
@@ -477,7 +481,8 @@ def meta_get(key, default=None):
 # Parser-Version: hochzaehlen, wenn eine Parser-Aenderung ein Neu-Einlesen aller
 # Logs noetig macht. "2" = englischer Client (Mining/Kompr. ohne hint) wird erfasst.
 # "3" = Gegnernamen im Kampflog des englischen Clients (standen vorher alle als "?")
-PARSE_VER = "3"
+# "4" = Missions-Historie an Undock-Grenzen rueckwirkend aus allen Logs aufbauen
+PARSE_VER = "4"
 
 
 def rebuild_if_needed():
@@ -500,6 +505,21 @@ def db_add(day, char_id, char_name, kind, key, value):
                   ON CONFLICT(day,char_id,kind,key)
                   DO UPDATE SET value=value+excluded.value, char_name=excluded.char_name""",
                (day, char_id, char_name, kind, key, value))
+
+
+def save_mission(m):
+    """Abgeschlossene Mission speichern. INSERT OR IGNORE über mid=char:start,
+    damit ein erneutes Einlesen (Rebuild) nicht doppelt anlegt und vom Nutzer
+    eingefügten Loot nicht überschreibt."""
+    mid = f"{m['char_id']}:{int(m['start_ts'])}"
+    DB.execute("""INSERT OR IGNORE INTO missions
+        (mid,char_id,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
+         hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (mid, m["char_id"], m["char"], m["start_ts"], m["end_ts"], m["system"],
+         m["dmg_out"], m["dmg_in"], m["kills"], m["bounty"], m["hits"],
+         m["miss_out"], m["miss_in"], json.dumps(m["weapons"], ensure_ascii=False),
+         json.dumps(m["enemies"], ensure_ascii=False), None, None))
 
 
 def do_backup():
@@ -1044,6 +1064,19 @@ class CharSession:
             self.dmg_min.append([minute, {"out": 0, "in": 0}])
         self.dmg_min[-1][1][side] += val
 
+    def mission_dict(self, end_ts, system):
+        """Die gerade abgeschlossene Mission als Datensatz — oder None, wenn
+        seit dem letzten Undock kein Kampf stattfand (z.B. reiner Mining-Trip)."""
+        if not (self.bounty or self.kills or self.dmg_out):
+            return None
+        return {"char_id": self.char_id, "char": self.name,
+                "start_ts": self.first_ts or end_ts, "end_ts": end_ts, "system": system,
+                "dmg_out": self.dmg_out, "dmg_in": self.dmg_in, "kills": self.kills,
+                "bounty": self.bounty, "hits": self.hits_out,
+                "miss_out": self.miss_out, "miss_in": self.miss_in,
+                "weapons": sorted(self.weapons.items(), key=lambda x: -x[1])[:6],
+                "enemies": sorted(self.targets.items(), key=lambda x: -x[1])[:8]}
+
 
 # ---------------------------------------------------------------- Ingest
 class Ingest(threading.Thread):
@@ -1243,6 +1276,7 @@ class Ingest(threading.Thread):
             try:
                 catch_up = not self.started_full
                 batch = []
+                missions_done = []   # beim Undock abgeschlossene Missionen
                 with open(f, "rb") as fh:
                     fh.seek(offset)
                     data = fh.read()
@@ -1260,6 +1294,13 @@ class Ingest(threading.Thread):
                         if ev:
                             batch.append(ev)
                             if sess:
+                                # Undock schliesst die vorige Mission ab -> erfassen,
+                                # BEVOR feed() die Kampfwerte der Session zuruecksetzt.
+                                if ev["kind"] == "hold_reset" and ev["key"] == "dock":
+                                    md = sess.mission_dict(ev["ts"],
+                                                           chatwatch.systems.get(cid, "?"))
+                                    if md:
+                                        missions_done.append(md)
                                 sess.feed(ev, live=not catch_up)
                             # Live-Alarme nur für wirklich frische Ereignisse (< 10 min).
                             # Schaltet man später auf "alle Logs", werden sonst Jahre an
@@ -1277,6 +1318,8 @@ class Ingest(threading.Thread):
                             db_add(ev["day"], cid, cname, "weapon", ev["weapon"], ev["value"])
                         if ev["kind"] == "dmg_in" and ev.get("player"):
                             db_add(ev["day"], cid, cname, "pvp_in", ev["key"], ev["value"])
+                    for md in missions_done:
+                        save_mission(md)
                     if batch:
                         ts = [ev["ts"] for ev in batch]
                         first_ts = min(first_ts or ts[0], *ts)
@@ -2639,6 +2682,30 @@ def state_info():
             "alerts": alerts.list()}
 
 
+def query_mission_history(limit=40):
+    """Einzelne Missionen (aus den Gamelogs, an Undock-Grenzen getrennt), neueste
+    zuerst, inkl. vom Nutzer eingefügtem Loot."""
+    with DB_LOCK:
+        rows = DB.execute(
+            """SELECT mid,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
+                      hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text
+               FROM missions ORDER BY start_ts DESC LIMIT ?""", (limit,)).fetchall()
+    out = []
+    for r in rows:
+        (mid, char, st, et, sysn, do, di, kills, bounty, hits, mo, mi,
+         wj, ej, loot, loot_text) = r
+        shots = (hits or 0) + (mo or 0)
+        out.append({
+            "mid": mid, "char": char, "start": int(st or 0), "end": int(et or 0),
+            "min": round(((et or 0) - (st or 0)) / 60), "system": sysn or "?",
+            "dmg_out": do or 0, "dmg_in": di or 0, "kills": kills or 0,
+            "bounty": round(bounty or 0), "hit": round(100 * hits / shots) if shots else None,
+            "weapons": json.loads(wj or "[]"), "enemies": json.loads(ej or "[]"),
+            "loot_isk": round(loot) if loot else None, "loot_text": loot_text or "",
+            "total": round((bounty or 0) + (loot or 0))})
+    return out
+
+
 def query_missions():
     """Missions-Statistik aus dem Wallet-Journal: Tage, Quellen, Agenten, Chars.
     Bounties aus bekannten Mining-Systemen bleiben draussen (Belt-Ratten)."""
@@ -2794,6 +2861,7 @@ class Handler(BaseHTTPRequestHandler):
                 data["intel_auto"] = {"ts": clipwatch.ts, "names": clipwatch.names}
             elif view == "missionen":
                 data["missions"] = query_missions()
+                data["mission_log"] = query_mission_history()
                 data["chars"] = snapshot_live()
             elif view == "rechner":
                 pass  # der Rechner holt seine Daten per calc-POST
@@ -2909,6 +2977,18 @@ class Handler(BaseHTTPRequestHandler):
             return
         elif action == "loot":
             self._send(json.dumps(calc_loot(body.get("text") or "")))
+            return
+        elif action == "mission_loot":
+            # Loot einer einzelnen Mission bewerten und dauerhaft an ihr speichern.
+            mid = str(body.get("mid") or "")
+            text = body.get("text") or ""
+            res = calc_loot(text)
+            isk = res["hubs"].get("10000002", {}).get("buy", 0) if res.get("ok") else 0
+            with DB_LOCK:
+                DB.execute("UPDATE missions SET loot_isk=?, loot_text=? WHERE mid=?",
+                           (isk, text, mid))
+                DB.commit()
+            self._send(json.dumps({"ok": True, "isk": isk, "unknown": res.get("unknown", [])}))
             return
         elif action == "threat_scan":
             names = [str(n).strip() for n in body.get("names", [])][:200]
@@ -4128,6 +4208,21 @@ function renderMissions(d){
    `<div class="sub">⚔ <b>${esc(c.name)}</b>${c.ship?' · '+esc(c.ship):''} · ${c.kills} Kills · ${fmtM(c.bounty)} Bounties · DPS ${c.dps_out} raus / ${c.dps_in} rein · Session ${c.session_min} min</div>`).join(''):''}
  </div>
  <div class="card" style="grid-column:1/-1">
+  <div class="sect">Missionen einzeln (aus den Gamelogs)</div>
+  ${(d.mission_log&&d.mission_log.length)?d.mission_log.map(x=>`
+   <div style="border-top:1px solid var(--line);padding:10px 0">
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:baseline">
+     <b>${new Date(x.start*1000).toLocaleString().slice(0,16)}</b>
+     <span class="sys">· ${x.min} min</span>
+     <span style="margin-left:auto" class="isk"><b>${fmtM(x.total)} ISK</b></span>
+    </div>
+    <div class="sub">${x.kills} Kills · Bounty ${fmtM(x.bounty)} · Schaden ${fmt(x.dmg_out)} raus / ${fmt(x.dmg_in)} rein${x.hit!=null?' · Trefferquote '+x.hit+'%':''}${x.enemies.length?' · Top: '+esc(x.enemies[0][0]):''}</div>
+    <div class="sub" style="margin-top:6px">Loot: <b class="isk">${x.loot_isk!=null?fmtM(x.loot_isk):'noch nicht eingefügt'}</b></div>
+    <textarea class="mlootin" data-mid="${esc(x.mid)}" rows="2" style="width:100%;margin-top:4px" placeholder="Frachtraum-Loot dieser Mission hier einfügen (im Spiel Strg+A, Strg+C)">${esc(x.loot_text)}</textarea>
+    <div class="btnrow" style="margin-top:4px"><button class="btn mlootgo" data-mid="${esc(x.mid)}">Loot bewerten</button> <span class="mlootstat sub" data-mid="${esc(x.mid)}"></span></div>
+   </div>`).join(''):'<div class="sub">Noch keine abgeschlossenen Missionen erfasst. Eine Mission gilt als abgeschlossen, sobald du fürs nächste Mal wieder abdockst.</div>'}
+ </div>
+ <div class="card" style="grid-column:1/-1">
   <div class="sect">Letzte 30 Tage</div>
   ${(m.days&&m.days.length)?`<div style="overflow-x:auto"><table>
    <tr><th>Tag</th><th class="r">Missionen</th><th class="r">Belohnung</th><th class="r">Zeitbonus</th><th class="r">Bounties</th><th class="r">Gesamt</th></tr>`+
@@ -4150,6 +4245,16 @@ function renderMissions(d){
   <div class="sect">Nach Charakter (gesamt)</div><table>
   <tr><th>Charakter</th><th class="r">Missionen</th><th class="r">ISK</th></tr>`+
   m.chars.map(c=>`<tr><td>${c.char}</td><td class="r">${c.missions}</td><td class="r isk">${fmtM(c.total)}</td></tr>`).join('')+'</table></div>':''}`;
+ document.querySelectorAll('.mlootgo').forEach(b=>b.onclick=async()=>{
+  const mid=b.dataset.mid;
+  const ta=[...document.querySelectorAll('.mlootin')].find(t=>t.dataset.mid===mid);
+  const st=[...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===mid);
+  st.textContent='Prüfe …';
+  const r=await post({action:'mission_loot',mid,text:ta?ta.value:''});
+  if(r&&r.ok){st.textContent='Loot: '+fmtM(r.isk)+(r.unknown&&r.unknown.length?' · nicht erkannt: '+r.unknown.join(', '):'');
+   setTimeout(tick,600);}
+  else st.textContent='Fehler';
+ });
 }
 function renderRechner(){
  if(document.getElementById('calcBox'))return;
@@ -4364,6 +4469,10 @@ const EN = {
 'DPS rein':'DPS in','DPS raus':'DPS out',
 'Kampfverlauf (Schaden/min)':'Combat over time (damage/min)','gleiche Skala':'same scale',
 '▮ raus':'▮ out','▮ rein':'▮ in',
+'Missionen einzeln (aus den Gamelogs)':'Missions individually (from the game logs)',
+'Loot bewerten':'Value loot','noch nicht eingefügt':'not pasted yet',
+'Frachtraum-Loot dieser Mission hier einfügen (im Spiel Strg+A, Strg+C)':"Paste this mission's cargo loot here (in game Ctrl+A, Ctrl+C)",
+'Noch keine abgeschlossenen Missionen erfasst. Eine Mission gilt als abgeschlossen, sobald du fürs nächste Mal wieder abdockst.':'No completed missions recorded yet. A mission counts as complete once you undock again for the next one.',
 'Gegner daneben':'Enemy misses','⚔ Bounty (Session)':'⚔ Bounty (session)',
 'aus EVE-Login':'from EVE login','über EVE-Login':'via EVE login','Bounty + Loot':'Bounty + loot',
 'Salvage':'Salvage','Kein Charakter mit dieser Rolle.':'No character with this role.',
@@ -4438,6 +4547,8 @@ const EN_PATTERNS = [
  [/([0-9]+) Wracks geborgen/, '$1 wrecks salvaged'], [/([0-9]+) leer/, '$1 empty'],
  [/([0-9]+) Fehlversuch/, '$1 failed'], [/EWAR gegen dich:/, 'EWAR against you:'],
  [/gleiche Skala/, 'same scale'],
+ [/Schaden ([0-9.]+) raus [/] ([0-9.]+) rein/, 'Damage $1 out / $2 in'],
+ [/Trefferquote ([0-9]+)%/, 'Hit rate $1%'], [/([0-9]+) Kills/, '$1 kills'],
  [/Log-Ordner:/, 'Log folder:'], [/Dateien:/, 'files:'], [/Installiert:/, 'Installed:'],
  [/: verbunden ·/, ': connected ·'], [/^trennen$/, 'disconnect'],
  [/Du hast die aktuellste Version/, 'You have the latest version'],
