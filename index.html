@@ -447,7 +447,9 @@ applyLang(start);
     }
   } catch (e) {}
   try {
-    CL = await (await fetch(`https://raw.githubusercontent.com/${repo}/main/changelog.json`)).json();
+    // Cache-Buster: verhindert, dass ein kurz zwischengespeicherter 404 (direkt
+    // nach dem Deploy) die Anzeige blockiert; die Datei ist winzig.
+    CL = await (await fetch(`https://raw.githubusercontent.com/${repo}/main/changelog.json?_=${Date.now()}`)).json();
     renderChangelog();
   } catch (e) {
     document.getElementById('changelog').innerHTML =
