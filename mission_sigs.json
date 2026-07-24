@@ -1,4 +1,5 @@
 {
- "_hinweis": "Einzigartiger Gegner-/Struktur-Name (Teilstring) -> Missionsname. Nur GEPRUEFTE Eintraege, eine falsche Erkennung ist schlimmer als keine. Erweiterbar: neue Zeile 'Signatur': 'Mission'. Gross-/Kleinschreibung egal.",
- "Kruul": "The Damsel in Distress"
+ "_hinweis": "Einzigartiger Gegner-/Struktur-Name ODER NPC-Funk-Text (Teilstring) -> Missionsname. Nur GEPRUEFTE Eintraege, eine falsche Erkennung ist schlimmer als keine. Erweiterbar: neue Zeile 'Signatur': 'Mission'. Gross-/Kleinschreibung egal. Der Text wird gegen Gegnernamen UND den Missions-Funk im Local geprueft.",
+ "Kruul": "The Damsel in Distress",
+ "make use of this fair repair station": "Striking Down Two Flies In One Swing"
 }

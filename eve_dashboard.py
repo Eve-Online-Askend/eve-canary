@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.20.0"
+VERSION = "1.21.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "README_INSTALL.md"]
 from collections import deque
@@ -46,6 +46,7 @@ ERROR_HELP = {
     "CN-LOG-04": "Logdatei nicht lesbar (Rechte/Sperre)",
     "CN-LOG-05": "Fehler beim Einlesen der Logs",
     "CN-CHAT-01": "Chatlogs nicht lesbar (Systemanzeige faellt aus)",
+    "CN-CHAT-02": "NPC-Funk aus aelteren Chatlogs nicht lesbar (Missionserkennung eingeschraenkt)",
     "CN-DB-01": "Datenbankfehler",
     "CN-NET-01": "Marktpreise nicht abrufbar",
     "CN-ESI-01": "ESI-Abfrage fehlgeschlagen",
@@ -96,14 +97,14 @@ MISSION_SIGS = {k.lower(): v for k, v in load_json("mission_sigs.json", {}).item
                 if not k.startswith("_")}
 
 
-def detect_mission(enemies):
-    """Missionsname aus den Gegnernamen, falls ein einzigartiger Signaturgegner
-    dabei ist (z.B. 'Kruul' -> The Damsel in Distress). Sonst None."""
-    for name, _ in enemies or []:
-        low = (name or "").lower()
-        for sig, mission in MISSION_SIGS.items():
-            if sig in low:
-                return mission
+def detect_mission(enemies, dialogue=""):
+    """Missionsname aus Gegnernamen UND NPC-Funk (Local-Dialog). Der Funk ist die
+    stärkere Quelle: er ist missions-spezifisch, kommt beim Reinwarpen und erkennt
+    auch Missionen mit generischen Gegnern (z.B. 'Kruul' -> The Damsel in Distress)."""
+    text = (" ".join(n for n, _ in (enemies or [])) + " " + (dialogue or "")).lower()
+    for sig, mission in MISSION_SIGS.items():
+        if sig in text:
+            return mission
     return None
 
 REGIONS = {"10000002": "Jita", "10000043": "Amarr", "10000030": "Rens",
@@ -123,6 +124,7 @@ STRIP_RE = re.compile(r"<[^>]+>")
 NUM_RE = re.compile(r"([\d][\d.,   ]*)")
 CHAR_FILE_RE = re.compile(r"^\d{8}_\d{6}_(\d+)\.txt$")
 CHAT_LINE_RE = re.compile(r"^\[ [\d. :]+ \] ([^>]+?) > (.*)$")
+CHAT_TS_RE = re.compile(r"^\[ (\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2}):(\d{2}) \]")
 OUT_COLOR = "0xff00ffff"
 IN_COLOR = "0xffcc0000"
 # Spieler stehen im Kampflog IMMER als "Name[TICKER](Schiffstyp)", NPCs nie.
@@ -497,6 +499,11 @@ try:  # v1.5.1: System-Kontext je Journal-Eintrag (filtert Belt-Bounties aus der
     DB.commit()
 except sqlite3.OperationalError:
     pass
+try:  # v1.21: NPC-Funk je Mission (fuer Erkennung + Anzeige)
+    DB.execute("ALTER TABLE missions ADD COLUMN dialog TEXT")
+    DB.commit()
+except sqlite3.OperationalError:
+    pass
 
 
 def meta_get(key, default=None):
@@ -541,17 +548,18 @@ def save_mission(m):
     mid = f"{m['char_id']}:{int(m['start_ts'])}"
     DB.execute("""INSERT INTO missions
         (mid,char_id,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
-         hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(mid) DO UPDATE SET
          char=excluded.char, end_ts=excluded.end_ts, system=excluded.system,
          dmg_out=excluded.dmg_out, dmg_in=excluded.dmg_in, kills=excluded.kills,
          bounty=excluded.bounty, hits=excluded.hits, miss_out=excluded.miss_out,
-         miss_in=excluded.miss_in, weapons=excluded.weapons, enemies=excluded.enemies""",
+         miss_in=excluded.miss_in, weapons=excluded.weapons, enemies=excluded.enemies,
+         dialog=COALESCE(excluded.dialog, missions.dialog)""",
         (mid, m["char_id"], m["char"], m["start_ts"], m["end_ts"], m["system"],
          m["dmg_out"], m["dmg_in"], m["kills"], m["bounty"], m["hits"],
          m["miss_out"], m["miss_in"], json.dumps(m["weapons"], ensure_ascii=False),
-         json.dumps(m["enemies"], ensure_ascii=False), None, None))
+         json.dumps(m["enemies"], ensure_ascii=False), None, None, m.get("dialog")))
 
 
 def do_backup():
@@ -1342,6 +1350,8 @@ class Ingest(threading.Thread):
                                 if ev["kind"] == "hold_reset" and ev["key"] == "dock":
                                     md = sess.mission_dict(ev["ts"])
                                     if md:
+                                        md["dialog"] = " ".join(chatwatch.dialogue(
+                                            cid, md["start_ts"], ev["ts"]))[:2000] or None
                                         missions_done.append(md)
                                 sess.feed(ev, live=not catch_up)
                             # Live-Alarme nur für wirklich frische Ereignisse (< 10 min).
@@ -1425,15 +1435,76 @@ class ChatWatch(threading.Thread):
     def __init__(self):
         super().__init__()
         self.systems = {}      # char_id -> System
+        self.npc = {}          # char_id -> deque[(ts, text)] NPC-/Missions-Funk (Absender "Message")
         self.offsets = {}      # file -> offset
         self.started_full = False
+
+    def dialogue(self, cid, t0, t1=None):
+        """NPC-Funk eines Zeitfensters als Liste von Texten (fuer Missionserkennung
+        und Anzeige)."""
+        return [txt for ts, txt in self.npc.get(cid, ())
+                if ts >= (t0 or 0) and (t1 is None or ts <= t1)]
 
     def chat_dir(self):
         if not CONFIG["log_dir"]:
             return None
         return Path(CONFIG["log_dir"]).parent / "Chatlogs"
 
+    def _npc_line(self, line):
+        """(cid-los) NPC-Text einer Local-Zeile oder None. Zieht den Zeitstempel
+        aus der Zeile, damit auch nachtraeglich eingelesene Dateien stimmen."""
+        cm = CHAT_LINE_RE.match(line)
+        if not cm or cm.group(1).strip() != "Message":
+            return None
+        tm = CHAT_TS_RE.match(line)
+        try:
+            ts = (datetime(*(int(x) for x in tm.groups()),
+                           tzinfo=timezone.utc).timestamp() if tm else time.time())
+        except Exception:
+            ts = time.time()
+        return ts, cm.group(2).strip()
+
+    def backfill(self):
+        """Einmalig beim Start: NPC-/Missions-Funk aus ALLEN jüngeren Local-Dateien
+        einlesen, nicht nur der neuesten. Eine Session kann in mehreren Dateien
+        liegen; der Funk einer Vormittagsmission steht sonst in einer Datei, die
+        der Live-Tail (nur die neueste) nie sieht. Danach werden die Offsets ans
+        Dateiende gesetzt, damit die Live-Schleife nichts doppelt zählt."""
+        d = self.chat_dir()
+        if not d or not d.exists():
+            return
+        files = list(d.glob("Local_*.txt")) + list(d.glob("Lokal_*.txt"))
+        # Nur die letzten Tage, sonst wächst der Speicher unnötig.
+        files = [f for f in files if (time.time() - f.stat().st_mtime) < 3 * 86400]
+        for f in sorted(files, key=lambda p: p.stat().st_mtime):   # alt -> neu
+            m = re.search(r"_(\d+)\.txt$", f.name)
+            if not m:
+                continue
+            cid = m.group(1)
+            try:
+                data = f.read_bytes()
+            except Exception:
+                continue
+            usable = len(data) & ~1
+            for line in data[:usable].decode("utf-16-le", "replace").splitlines():
+                line = line.strip().lstrip("﻿").strip()
+                cm = CHAT_LINE_RE.match(line)
+                if not cm:
+                    continue
+                sender, msg = cm.group(1).strip(), cm.group(2).strip()
+                if "EVE" in sender and ":" in msg:
+                    self.systems[cid] = msg.rsplit(":", 1)[1].strip().rstrip("*")
+                elif sender == "Message":
+                    n = self._npc_line(line)
+                    if n:
+                        self.npc.setdefault(cid, deque(maxlen=400)).append(n)
+            self.offsets[f] = usable   # Live-Schleife setzt hier auf
+
     def run(self):
+        try:
+            self.backfill()
+        except Exception as e:
+            log_error("CN-CHAT-02", "ChatWatch.backfill", e)
         while True:
             try:
                 self.tick()
@@ -1473,6 +1544,15 @@ class ChatWatch(threading.Thread):
                     sender, msg = cm.group(1).strip(), cm.group(2).strip()
                     if "EVE" in sender and ":" in msg:
                         self.systems[cid] = msg.rsplit(":", 1)[1].strip().rstrip("*")
+                    elif sender == "Message":
+                        # NPC-/Missions-Funk (kein Pilot!) — fuer die Missionserkennung
+                        tm = CHAT_TS_RE.match(line)
+                        try:
+                            ts = (datetime(*(int(x) for x in tm.groups()),
+                                           tzinfo=timezone.utc).timestamp() if tm else time.time())
+                        except Exception:
+                            ts = time.time()
+                        self.npc.setdefault(cid, deque(maxlen=400)).append((ts, msg))
                     elif self.started_full:
                         if watch and sender.lower() in watch:
                             alerts.push("watch", sender,
@@ -2330,7 +2410,9 @@ def snapshot_live():
             "weapons": sorted(s.weapons.items(), key=lambda x: -x[1])[:6],
             "top_targets": sorted(s.targets.items(), key=lambda x: -x[1])[:6],
             "top_attackers": sorted(s.attackers.items(), key=lambda x: -x[1])[:6],
-            "mission": detect_mission(sorted(s.targets.items(), key=lambda x: -x[1])),
+            "mission": detect_mission(sorted(s.targets.items(), key=lambda x: -x[1]),
+                                      " ".join(chatwatch.dialogue(s.char_id, s.first_ts))),
+            "npc": chatwatch.dialogue(s.char_id, s.first_ts)[-3:],
             "hits_out": s.hits_out, "miss_out": s.miss_out, "miss_in": s.miss_in,
             "ewar": sorted(s.ewar.items(), key=lambda x: -x[1]),
             "salvage": s.salvage,
@@ -2735,20 +2817,26 @@ def query_mission_history(limit=40):
     with DB_LOCK:
         rows = DB.execute(
             """SELECT mid,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
-                      hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text
+                      hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,char_id
                FROM missions ORDER BY start_ts DESC LIMIT ?""", (limit,)).fetchall()
     out = []
     for r in rows:
         (mid, char, st, et, sysn, do, di, kills, bounty, hits, mo, mi,
-         wj, ej, loot, loot_text) = r
+         wj, ej, loot, loot_text, dialog, char_id) = r
         shots = (hits or 0) + (mo or 0)
         enemies = json.loads(ej or "[]")
+        # Fehlt der gespeicherte Funk (aeltere Mission, oder Reingest lief vor dem
+        # Chat-Watcher), aus dem heute im Speicher gehaltenen NPC-Funk nachfuellen.
+        if not dialog and char_id:
+            dialog = " ".join(chatwatch.dialogue(str(char_id), st or 0, et or None))[:2000]
+        # NPC-Funk: bis zu 3 aussagekräftige Zeilen als Story-Schnipsel
+        dlines = [d.strip() for d in re.split(r"(?<=[.!?])\s+", dialog or "") if len(d.strip()) > 12][:3]
         out.append({
             "mid": mid, "char": char, "start": int(st or 0), "end": int(et or 0),
             "min": round(((et or 0) - (st or 0)) / 60), "system": sysn or "?",
             "dmg_out": do or 0, "dmg_in": di or 0, "kills": kills or 0,
             "bounty": round(bounty or 0), "hit": round(100 * hits / shots) if shots else None,
-            "mission": detect_mission(enemies),
+            "mission": detect_mission(enemies, dialog or ""), "npc": dlines,
             "weapons": json.loads(wj or "[]"), "enemies": enemies,
             "loot_isk": round(loot) if loot else None, "loot_text": loot_text or "",
             "total": round((bounty or 0) + (loot or 0))})
@@ -3313,6 +3401,7 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .spark div{flex:1;background:var(--cyan);opacity:.75;border-radius:1px 1px 0 0;min-height:1px}
 .spark.dmgin div{background:var(--red)}
 .mtag{font-size:12px;color:var(--gold)}
+.npc{margin-top:6px;padding:6px 9px;border-left:2px solid var(--gold);background:rgba(200,160,60,.07);border-radius:3px;font-size:11px;color:var(--dim);font-style:italic;line-height:1.5}
 .mtag a{color:var(--cyan);margin-left:6px}
 .chart{display:flex;align-items:flex-end;gap:3px;height:120px;margin-top:12px}
 .chart .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end}
@@ -3946,6 +4035,7 @@ function renderCombat(chars,summary){
      <div class="stat"><div class="l">Session gesamt</div><div class="v isk">${fmtM(sessISK)}</div></div>
     </div>
     ${c.mission?`<div class="mtag" style="margin-top:8px">🎯 ${esc(c.mission)} <a href="https://duckduckgo.com/?q=${encodeURIComponent('EVE Online '+c.mission+' mission guide')}" target="_blank" rel="noopener">Guide</a></div>`:''}
+    ${(c.npc&&c.npc.length)?`<div class="npc">${c.npc.map(l=>`<div>💬 ${esc(l)}</div>`).join('')}</div>`:''}
     ${(()=>{const so=c.spark_out||[],si=c.spark_in||[];const mx=Math.max(1,...so,...si);
       return (so.length>1||si.length>1)?`<div class="sect">Kampfverlauf (Schaden/min)</div>
        <div class="spark">${so.map(v=>`<div style="height:${Math.max(2,100*v/mx)}%"></div>`).join('')}</div>
@@ -4281,6 +4371,7 @@ function renderMissions(d){
      <span style="margin-left:auto" class="isk"><b>${fmtM(x.total)} ISK</b></span>
     </div>
     <div class="sub">${x.kills} Kills · Bounty ${fmtM(x.bounty)} · Schaden ${fmt(x.dmg_out)} raus / ${fmt(x.dmg_in)} rein${x.hit!=null?' · Trefferquote '+x.hit+'%':''}${x.enemies.length?' · Top: '+esc(x.enemies[0][0]):''}</div>
+    ${(x.npc&&x.npc.length)?`<div class="npc">${x.npc.map(l=>`<div>💬 ${esc(l)}</div>`).join('')}</div>`:''}
     <div class="sub" style="margin-top:6px">${x.loot_isk!=null?'Loot: <b class="isk">'+fmtM(x.loot_isk)+'</b>':''}
      <span class="mloottoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px">${x.loot_isk!=null?'✎ Loot ändern':'＋ Loot eintragen'}</span></div>
     <div class="mlootedit" data-mid="${esc(x.mid)}" hidden>
