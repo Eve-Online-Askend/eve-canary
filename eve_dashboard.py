@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.17.3"
+VERSION = "1.17.4"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -136,7 +136,9 @@ EWAR_TEXTS = [
     ("scramble", ["warp scramble", "warpstör", "warp-stör"]),
     ("disrupt", ["warp disrupt", "warpunterbrech"]),
     ("web", ["stasis web", "fesselung"]),
-    ("jam", ["jam attempt", "ecm", "target jam", "verlierst die zielerfass"]),
+    # "You're jammed by X" ist die echte ECM-Meldung — nicht "jam attempt".
+    ("jam", ["jammed by", "jam attempt", "ecm", "target jam", "gejammt",
+             "stört deine zielerfass", "verlierst die zielerfass"]),
     ("neut", ["energy neutraliz", "nosferatu", "energie neutral"]),
     ("paint", ["target paint", "zielmarkier"]),
     ("damp", ["remote sensor damp", "sensordämpf"]),
