@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.33.0"
+VERSION = "1.34.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -4626,12 +4626,23 @@ function miningCardHtml(c){
    </div>
   </div>`;
 }
+// Ohne gesetzte Rolle versucht Canary die Karte selbst zu erraten: wer Schaden
+// macht (oder Waffen/Ziele hat) und nicht mint, bekommt die Kampf-Karte; wer mint
+// und nicht kaempft, die Mining-Karte. Nur wenn es eindeutig ist. Sonst entscheidet
+// der oben gewaehlte Modus. So muss man fuer Kampf-Chars keine Rolle mehr setzen.
+function autoRole(c){
+ if(c.role)return c.role;
+ const mining=(c.m3||0)>0||(c.ores&&c.ores.length>0);
+ const combat=(c.dmg_out||0)>0||(c.weapons&&c.weapons.length>0)||(c.top_targets&&c.top_targets.length>0);
+ if(combat&&!mining)return 'pvp';
+ if(mining&&!combat)return 'mining';
+ return liveMode==='combat'?'pvp':'mining';
+}
 // Karte je nach Rolle waehlen: Mining-Chars -> Mining-Karte, alle anderen
-// (Missionen/PvP) -> Kampf-Karte. Ohne zugewiesene Rolle entscheidet der oben
-// gewaehlte Modus. So sieht man in einer gemischten Flotte fuer jeden das Richtige.
+// (Missionen/PvP) -> Kampf-Karte. So sieht man in einer gemischten Flotte
+// fuer jeden das Richtige.
 function cardHtml(c){
- const r=c.role||(liveMode==='combat'?'pvp':'mining');
- return r==='mining'?miningCardHtml(c):combatCardHtml(c);
+ return autoRole(c)==='mining'?miningCardHtml(c):combatCardHtml(c);
 }
 // Event-Handler fuer beide Kartentypen; Selektoren, die im jeweiligen Grid nicht
 // vorkommen, treffen einfach nichts.
