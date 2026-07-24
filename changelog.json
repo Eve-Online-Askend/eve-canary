@@ -1,4 +1,7 @@
 [
+ {"v": "1.31", "d": "2026-07-24",
+  "de": ["Sprachansagen: Stimme frei wählbar aus den auf dem System verfügbaren Stimmen, mit sofortiger Hörprobe"],
+  "en": ["Spoken alerts: pick any voice available on your system, with an instant preview"]},
  {"v": "1.30", "d": "2026-07-24",
   "de": ["Neue Zusatzoptionen (standardmäßig aus, in den Optionen aktivierbar):",
          "Sprachansagen bei Alarmen, sagt Charakter und Warnung an, ideal fürs Multiboxing",

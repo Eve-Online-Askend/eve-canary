@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.30.1"
+VERSION = "1.31.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -3933,6 +3933,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   <label><input type="checkbox" id="sndDep" checked> Sound bei leerem Asteroiden</label>
   <label><input type="checkbox" id="sndWatch" checked> Sound bei Watchlist-Treffer</label>
   <label><input type="checkbox" id="ttsAlerts"> 🔊 Sprachansagen bei Alarmen (spricht Charakter und Warnung)</label>
+  <div id="ttsVoiceRow" style="margin:2px 0 4px 22px;font-size:13px;color:var(--dim)"><span>Stimme:</span> <select id="ttsVoice" class="pill"><option value="">Standard</option></select></div>
   <label><input type="checkbox" id="iskCoach"> 💸 ISK-Verlust anzeigen, wenn ein Strip Miner steht</label>
   <div style="margin-top:6px"><button class="btn" id="alertTest">🔔 Alarm testen</button>
    <span class="hint" style="margin:0 0 0 6px">löst einen Beispielalarm aus: Ton, Sprache und Banner, je nach Häkchen oben. Alarme kommen sonst nur bei einem echten Ereignis.</span></div>
@@ -4086,6 +4087,24 @@ document.querySelectorAll('nav span').forEach(x=>x.classList.toggle('on',x.datas
    text:(lang==='en'?'Test: sample alert':'Test: Beispielalarm')}];
  handleAlerts();
 };})();
+// Stimmen-Auswahl fuer die Sprachansage (Angebot haengt von System/Browser ab).
+function fillVoices(){
+ const sel=$('#ttsVoice'); if(!sel||!('speechSynthesis' in window))return;
+ const cur=localStorage.getItem('ttsVoice')||'';
+ sel.innerHTML='<option value="">Standard</option>'+speechSynthesis.getVoices().map(v=>
+  `<option value="${esc(v.voiceURI)}"${v.voiceURI===cur?' selected':''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('');
+}
+function previewVoice(){
+ if(!('speechSynthesis' in window))return;
+ try{const u=new SpeechSynthesisUtterance(lang==='en'?'Voice test. Askend: cargo full.':'Stimmtest. Askend: Frachtraum voll.');
+  const sel=localStorage.getItem('ttsVoice')||''; const v=sel?speechSynthesis.getVoices().find(x=>x.voiceURI===sel):null;
+  if(v){u.voice=v;u.lang=v.lang;}else{u.lang=lang==='en'?'en-US':'de-DE';}
+  u.rate=1.05; speechSynthesis.cancel(); speechSynthesis.speak(u);}catch(e){}
+}
+(function(){const sel=$('#ttsVoice'); if(!sel)return;
+ if('speechSynthesis' in window){fillVoices(); speechSynthesis.onvoiceschanged=fillVoices;}
+ sel.onchange=()=>{localStorage.setItem('ttsVoice',sel.value); previewVoice();};
+})();
 
 $('#gear').onclick=()=>{syncOpts();$('#opts').showModal();};
 $('#close').onclick=()=>$('#opts').close();
@@ -4198,7 +4217,10 @@ function speakAlert(a){
              rate:'Abbaurate gefallen',hw:'Heavy Water fast leer',watch:'Watchlist-Treffer',intel:'Bedrohung erkannt'};
  const phrase=P[a.kind]; if(!phrase)return;
  try{const u=new SpeechSynthesisUtterance((a.char?a.char+': ':'')+phrase);
-  u.lang=en?'en-US':'de-DE'; u.rate=1.05; speechSynthesis.speak(u);}catch(e){}
+  const sel=localStorage.getItem('ttsVoice')||'';
+  const v=sel?speechSynthesis.getVoices().find(x=>x.voiceURI===sel):null;
+  if(v){u.voice=v;u.lang=v.lang;}else{u.lang=en?'en-US':'de-DE';}
+  u.rate=1.05; speechSynthesis.speak(u);}catch(e){}
 }
 function handleAlerts(){
  const list=state.alerts||[];
@@ -5248,7 +5270,7 @@ const EN = {
 'Sound bei Watchlist-Treffer':'Sound on watchlist hit',
 '🔊 Sprachansagen bei Alarmen (spricht Charakter und Warnung)':'🔊 Spoken alerts (says character and warning)',
 '💸 ISK-Verlust anzeigen, wenn ein Strip Miner steht':'💸 Show ISK lost when a strip miner is idle',
-'🔔 Alarm testen':'🔔 Test alert',
+'🔔 Alarm testen':'🔔 Test alert','Stimme:':'Voice:',
 'löst einen Beispielalarm aus: Ton, Sprache und Banner, je nach Häkchen oben. Alarme kommen sonst nur bei einem echten Ereignis.':'triggers a sample alert: sound, speech and banner, depending on the boxes above. Alerts otherwise only fire on a real event.',
 'Watchlist speichern':'Save watchlist','Ziel speichern':'Save goal','Ziel löschen':'Clear goal',
 'ISK-Ziel, z.B. 1000000000':'ISK goal, e.g. 1000000000','Ziel':'Goal',
