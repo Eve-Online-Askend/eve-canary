@@ -37,7 +37,7 @@ else
   exit 1
 fi
 
-FILES="eve_dashboard.py ore_types.json mining_tools.json README_INSTALL.md start_dashboard.sh"
+FILES="eve_dashboard.py ore_types.json mining_tools.json mission_sigs.json README_INSTALL.md start_dashboard.sh"
 
 # Erst vollstaendig in einen Temp-Ordner laden, dann ans Ziel verschieben, damit
 # ein abgebrochener Download keine halbe Installation hinterlaesst.

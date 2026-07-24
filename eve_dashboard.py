@@ -22,9 +22,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.19.0"
+VERSION = "1.20.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
-                "mining_tools.json", "README_INSTALL.md"]
+                "mining_tools.json", "mission_sigs.json", "README_INSTALL.md"]
 from collections import deque
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -91,6 +91,20 @@ def load_json(name, default):
 
 ORE_TYPES = load_json("ore_types.json", {})
 MINING_TOOLS = sorted(load_json("mining_tools.json", []), key=len, reverse=True)
+# Missionserkennung über einzigartige Gegnernamen (nur geprüfte Signaturen).
+MISSION_SIGS = {k.lower(): v for k, v in load_json("mission_sigs.json", {}).items()
+                if not k.startswith("_")}
+
+
+def detect_mission(enemies):
+    """Missionsname aus den Gegnernamen, falls ein einzigartiger Signaturgegner
+    dabei ist (z.B. 'Kruul' -> The Damsel in Distress). Sonst None."""
+    for name, _ in enemies or []:
+        low = (name or "").lower()
+        for sig, mission in MISSION_SIGS.items():
+            if sig in low:
+                return mission
+    return None
 
 REGIONS = {"10000002": "Jita", "10000043": "Amarr", "10000030": "Rens",
            "10000032": "Dodixie", "10000042": "Hek"}
@@ -2316,6 +2330,7 @@ def snapshot_live():
             "weapons": sorted(s.weapons.items(), key=lambda x: -x[1])[:6],
             "top_targets": sorted(s.targets.items(), key=lambda x: -x[1])[:6],
             "top_attackers": sorted(s.attackers.items(), key=lambda x: -x[1])[:6],
+            "mission": detect_mission(sorted(s.targets.items(), key=lambda x: -x[1])),
             "hits_out": s.hits_out, "miss_out": s.miss_out, "miss_in": s.miss_in,
             "ewar": sorted(s.ewar.items(), key=lambda x: -x[1]),
             "salvage": s.salvage,
@@ -2727,12 +2742,14 @@ def query_mission_history(limit=40):
         (mid, char, st, et, sysn, do, di, kills, bounty, hits, mo, mi,
          wj, ej, loot, loot_text) = r
         shots = (hits or 0) + (mo or 0)
+        enemies = json.loads(ej or "[]")
         out.append({
             "mid": mid, "char": char, "start": int(st or 0), "end": int(et or 0),
             "min": round(((et or 0) - (st or 0)) / 60), "system": sysn or "?",
             "dmg_out": do or 0, "dmg_in": di or 0, "kills": kills or 0,
             "bounty": round(bounty or 0), "hit": round(100 * hits / shots) if shots else None,
-            "weapons": json.loads(wj or "[]"), "enemies": json.loads(ej or "[]"),
+            "mission": detect_mission(enemies),
+            "weapons": json.loads(wj or "[]"), "enemies": enemies,
             "loot_isk": round(loot) if loot else None, "loot_text": loot_text or "",
             "total": round((bounty or 0) + (loot or 0))})
     return out
@@ -3295,6 +3312,8 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .spark{display:flex;align-items:flex-end;gap:1px;height:30px;margin-top:8px}
 .spark div{flex:1;background:var(--cyan);opacity:.75;border-radius:1px 1px 0 0;min-height:1px}
 .spark.dmgin div{background:var(--red)}
+.mtag{font-size:12px;color:var(--gold)}
+.mtag a{color:var(--cyan);margin-left:6px}
 .chart{display:flex;align-items:flex-end;gap:3px;height:120px;margin-top:12px}
 .chart .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end}
 .chart .seg1{background:var(--cyan);border-radius:2px 2px 0 0}
@@ -3926,6 +3945,7 @@ function renderCombat(chars,summary){
      <div class="stat"><div class="l">Loot / Cargo</div><div class="v isk">${c.cargo?fmtM(c.cargo.buy):'—'}</div>${cargoLine(c.cargo)}</div>
      <div class="stat"><div class="l">Session gesamt</div><div class="v isk">${fmtM(sessISK)}</div></div>
     </div>
+    ${c.mission?`<div class="mtag" style="margin-top:8px">🎯 ${esc(c.mission)} <a href="https://duckduckgo.com/?q=${encodeURIComponent('EVE Online '+c.mission+' mission guide')}" target="_blank" rel="noopener">Guide</a></div>`:''}
     ${(()=>{const so=c.spark_out||[],si=c.spark_in||[];const mx=Math.max(1,...so,...si);
       return (so.length>1||si.length>1)?`<div class="sect">Kampfverlauf (Schaden/min)</div>
        <div class="spark">${so.map(v=>`<div style="height:${Math.max(2,100*v/mx)}%"></div>`).join('')}</div>
@@ -4257,6 +4277,7 @@ function renderMissions(d){
     <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:baseline">
      <b>${new Date(x.start*1000).toLocaleString().slice(0,16)}</b>
      <span class="sys">${x.system&&x.system!=='?'?'· '+esc(x.system)+' ':''}· ${x.min} min</span>
+     ${x.mission?`<span class="mtag">🎯 ${esc(x.mission)} <a href="https://duckduckgo.com/?q=${encodeURIComponent('EVE Online '+x.mission+' mission guide')}" target="_blank" rel="noopener">Guide</a></span>`:''}
      <span style="margin-left:auto" class="isk"><b>${fmtM(x.total)} ISK</b></span>
     </div>
     <div class="sub">${x.kills} Kills · Bounty ${fmtM(x.bounty)} · Schaden ${fmt(x.dmg_out)} raus / ${fmt(x.dmg_in)} rein${x.hit!=null?' · Trefferquote '+x.hit+'%':''}${x.enemies.length?' · Top: '+esc(x.enemies[0][0]):''}</div>
