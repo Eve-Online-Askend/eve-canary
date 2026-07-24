@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.30.0"
+VERSION = "1.30.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -3934,6 +3934,8 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   <label><input type="checkbox" id="sndWatch" checked> Sound bei Watchlist-Treffer</label>
   <label><input type="checkbox" id="ttsAlerts"> 🔊 Sprachansagen bei Alarmen (spricht Charakter und Warnung)</label>
   <label><input type="checkbox" id="iskCoach"> 💸 ISK-Verlust anzeigen, wenn ein Strip Miner steht</label>
+  <div style="margin-top:6px"><button class="btn" id="alertTest">🔔 Alarm testen</button>
+   <span class="hint" style="margin:0 0 0 6px">löst einen Beispielalarm aus: Ton, Sprache und Banner, je nach Häkchen oben. Alarme kommen sonst nur bei einem echten Ereignis.</span></div>
   <div style="display:flex;gap:6px;align-items:center;margin-top:8px">
    <input type="number" id="idleWarn" min="0" step="30" style="width:110px">
    <span class="hint" style="margin:0">Sekunden ohne Erz bis zur Stillstand-Warnung (0 = aus)</span>
@@ -4076,6 +4078,14 @@ document.querySelectorAll('nav span').forEach(x=>x.classList.toggle('on',x.datas
  const el=$('#'+id); if(!el)return;
  el.checked=localStorage.getItem(id)==='1';
  el.onchange=()=>localStorage.setItem(id,el.checked?'1':'0');});
+// Test-Knopf: schickt einen Beispielalarm durch den ECHTEN Pfad (Banner + Ton +
+// Sprache je nach Haekchen). Der Klick entsperrt zugleich die Audio-Ausgabe.
+(function(){const b=$('#alertTest'); if(!b)return; b.onclick=()=>{
+ const id=(state.alerts||[]).reduce((m,a)=>Math.max(m,a.id||0),lastAlertId||0)+1;
+ state.alerts=[...(state.alerts||[]),{id,ts:Date.now()/1000,kind:'cargo',char:'Test',
+   text:(lang==='en'?'Test: sample alert':'Test: Beispielalarm')}];
+ handleAlerts();
+};})();
 
 $('#gear').onclick=()=>{syncOpts();$('#opts').showModal();};
 $('#close').onclick=()=>$('#opts').close();
@@ -5238,6 +5248,8 @@ const EN = {
 'Sound bei Watchlist-Treffer':'Sound on watchlist hit',
 '🔊 Sprachansagen bei Alarmen (spricht Charakter und Warnung)':'🔊 Spoken alerts (says character and warning)',
 '💸 ISK-Verlust anzeigen, wenn ein Strip Miner steht':'💸 Show ISK lost when a strip miner is idle',
+'🔔 Alarm testen':'🔔 Test alert',
+'löst einen Beispielalarm aus: Ton, Sprache und Banner, je nach Häkchen oben. Alarme kommen sonst nur bei einem echten Ereignis.':'triggers a sample alert: sound, speech and banner, depending on the boxes above. Alerts otherwise only fire on a real event.',
 'Watchlist speichern':'Save watchlist','Ziel speichern':'Save goal','Ziel löschen':'Clear goal',
 'ISK-Ziel, z.B. 1000000000':'ISK goal, e.g. 1000000000','Ziel':'Goal',
 '🎨 Darstellung':'🎨 Appearance','🔑 EVE-Account verbinden':'🔑 Connect EVE account',
