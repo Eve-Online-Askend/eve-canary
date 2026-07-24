@@ -1,10 +1,11 @@
 {
- "version": "1.22.0",
+ "version": "1.24.0",
  "files": [
   "eve_dashboard.py",
   "ore_types.json",
   "mining_tools.json",
   "mission_sigs.json",
+  "market_types.json",
   "README_INSTALL.md",
   "start_dashboard.bat",
   "install.ps1",
@@ -13,5 +14,5 @@
   "install.sh"
  ],
  "repo": "Eve-Online-Askend/eve-canary",
- "tag": "v1.22.0"
+ "tag": "v1.24.0"
 }

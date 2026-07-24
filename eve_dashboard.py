@@ -22,9 +22,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.22.0"
+VERSION = "1.24.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
-                "mining_tools.json", "mission_sigs.json", "README_INSTALL.md"]
+                "mining_tools.json", "mission_sigs.json", "market_types.json",
+                "README_INSTALL.md"]
 from collections import deque
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -50,6 +51,7 @@ ERROR_HELP = {
     "CN-DB-01": "Datenbankfehler",
     "CN-NET-01": "Marktpreise nicht abrufbar",
     "CN-NET-02": "EVE-Serverstatus nicht abrufbar",
+    "CN-NET-03": "System-Gefahrenlage nicht abrufbar",
     "CN-ESI-01": "ESI-Abfrage fehlgeschlagen",
     "CN-INTEL-01": "Bedrohungs-Abfrage fehlgeschlagen",
     "CN-CLIP-01": "Zwischenablage nicht lesbar",
@@ -96,6 +98,29 @@ MINING_TOOLS = sorted(load_json("mining_tools.json", []), key=len, reverse=True)
 # Missionserkennung über einzigartige Gegnernamen (nur geprüfte Signaturen).
 MISSION_SIGS = {k.lower(): v for k, v in load_json("mission_sigs.json", {}).items()
                 if not k.startswith("_")}
+# Alle handelbaren Item-Namen -> typeID, fuer die Autovervollstaendigung der
+# Marktpreis-Suche. Liegt als Datei bei; der Server haelt sie im Speicher und
+# liefert nur die passenden Vorschlaege, damit die Oberflaeche leicht bleibt.
+MARKET_TYPES = load_json("market_types.json", {})
+# Vorsortiert nach Namenslaenge: kurze, exakte Treffer sollen oben stehen.
+_MARKET_INDEX = sorted(((n.lower(), n) for n in MARKET_TYPES), key=lambda x: len(x[0]))
+
+
+def market_suggest(q, limit=12):
+    """Item-Namen-Vorschlaege zu einer Eingabe. Erst Namen, die mit der Eingabe
+    beginnen, dann Namen, die sie enthalten. Gross-/Kleinschreibung egal."""
+    q = (q or "").strip().lower()
+    if len(q) < 2:
+        return []
+    starts, contains = [], []
+    for low, name in _MARKET_INDEX:
+        if low.startswith(q):
+            starts.append(name)
+            if len(starts) >= limit:
+                break
+        elif q in low and len(contains) < limit:
+            contains.append(name)
+    return (starts + contains)[:limit]
 
 
 def detect_mission(enemies, dialogue=""):
@@ -110,7 +135,15 @@ def detect_mission(enemies, dialogue=""):
 
 REGIONS = {"10000002": "Jita", "10000043": "Amarr", "10000030": "Rens",
            "10000032": "Dodixie", "10000042": "Hek"}
+# Handels-Systeme je Region: fuer den ESI-Orderbook-Preis filtern wir auf das
+# eigentliche Hub-System, nicht die ganze Region (sonst zaehlen Randstationen mit).
+HUB_SYSTEMS = {"10000002": 30000142,   # Jita
+               "10000043": 30002187,   # Amarr
+               "10000030": 30002510,   # Rens
+               "10000032": 30002659,   # Dodixie
+               "10000042": 30002053}   # Hek
 PRICE_REFRESH = 900
+ESI_PRICE_TTL = 300          # ESI cached Orders 5 min — so lange halten auch wir
 PORT_DEFAULT = 8765
 SESSION_MAX_AGE = 3 * 3600  # Log länger unverändert -> Session gilt als beendet, keine Live-Karte
 ACTIVE_WINDOW = 300  # ohne Log-Ereignis in den letzten X s gilt ein Char als inaktiv
@@ -1600,11 +1633,11 @@ class Prices(threading.Thread):
             due = time.time() - self.fetched.get(region, 0) > PRICE_REFRESH
             if ids and (due or new_ids):
                 try:
-                    url = (f"https://market.fuzzwork.co.uk/aggregates/"
-                           f"?region={region}&types={','.join(map(str, sorted(ids)))}")
-                    with urllib.request.urlopen(url, timeout=15) as r:
-                        data = json.load(r)
-                    self.cache[region] = {int(k): float(v["buy"]["max"]) for k, v in data.items()}
+                    # Erz-Bewertung bevorzugt das frische CCP-Orderbuch (ESI), faellt
+                    # aber je Typ auf Fuzzwork zurueck. hub_prices liefert (buy, sell);
+                    # fuer die Mining-Anzeige zaehlt der Verkaufserloes = Buy-Preis.
+                    pm = hub_prices(region, ids, prefer_esi=True)
+                    self.cache[region] = {int(t): float(b) for t, (b, s) in pm.items()}
                     self.fetched[region] = time.time()
                     self.requested[region] = set(ids)
                 except Exception as e:
@@ -1650,12 +1683,84 @@ class ServerStatus(threading.Thread):
             time.sleep(wait)
 
 
+class SystemDanger(threading.Thread):
+    """Lagebild je Sonnensystem aus OEFFENTLICHEN Daten: Schiffs-/Pod-/NPC-Kills
+    und Sprungverkehr der letzten Stunde plus Sicherheitsstatus. Kein Login, kein
+    Local-Kopieren. CCP aktualisiert diese Zahlen nur STUENDLICH — das ist ein
+    Lagebild, keine Sekundenwarnung."""
+    daemon = True
+
+    def __init__(self):
+        super().__init__()
+        self.kills = {}    # system_id -> (ship, npc, pod)
+        self.jumps = {}    # system_id -> ship_jumps
+        self.sec = {}      # system_id -> security_status
+        self.ids = {}      # name.lower() -> system_id
+        self.want = set()  # noch aufzuloesende Systemnamen (aus den Logs)
+        self.fetched = 0
+
+    def for_system(self, name):
+        """Gefahrenlage zu einem Systemnamen. Unbekannte Namen werden fuer den
+        naechsten Zyklus zum Aufloesen vorgemerkt und liefern erstmal None."""
+        if not name:
+            return None
+        sid = self.ids.get(name.lower())
+        if not sid:
+            self.want.add(name)
+            return None
+        k = self.kills.get(sid, (0, 0, 0))
+        return {"sec": self.sec.get(sid), "ship_kills": k[0], "npc_kills": k[1],
+                "pod_kills": k[2], "jumps": self.jumps.get(sid, 0),
+                "checked": int(self.fetched)}
+
+    def _pub(self, path):
+        req = urllib.request.Request(ESI_BASE + path, headers={"User-Agent": ESI_UA})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read())
+
+    def tick(self):
+        # 1) offene Systemnamen (aus den Logs) zu IDs aufloesen + Sicherheitsstatus
+        todo = [n for n in list(self.want) if n.lower() not in self.ids]
+        if todo:
+            try:
+                req = urllib.request.Request(
+                    ESI_BASE + "/universe/ids/", data=json.dumps(todo[:100]).encode(),
+                    headers={"Content-Type": "application/json", "User-Agent": ESI_UA})
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    data = json.loads(r.read())
+                for s in data.get("systems", []):
+                    self.ids[s["name"].lower()] = s["id"]
+                    try:
+                        info = self._pub(f"/universe/systems/{s['id']}/")
+                        self.sec[s["id"]] = round(info.get("security_status", 0), 1)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        # 2) Kills + Verkehr sind stuendlich — hoechstens alle ~55 min neu holen
+        if time.time() - self.fetched > 3300:
+            k = {r["system_id"]: (r.get("ship_kills", 0), r.get("npc_kills", 0),
+                                  r.get("pod_kills", 0)) for r in self._pub("/universe/system_kills/")}
+            j = {r["system_id"]: r.get("ship_jumps", 0) for r in self._pub("/universe/system_jumps/")}
+            self.kills, self.jumps, self.fetched = k, j, time.time()
+
+    def run(self):
+        time.sleep(8)
+        while True:
+            try:
+                self.tick()
+            except Exception as e:
+                log_error("CN-NET-03", "SystemDanger.tick", e)
+            time.sleep(120)   # Namen schnell aufloesen; Kills bleiben stuendlich
+
+
 # ---------------------------------------------------------------- ESI (offizielles EVE-SSO, PKCE)
 SSO_AUTH = "https://login.eveonline.com/v2/oauth/authorize"
 SSO_TOKEN = "https://login.eveonline.com/v2/oauth/token"
 ESI_BASE = "https://esi.evetech.net/latest"
 ESI_SCOPES = ("esi-assets.read_assets.v1 esi-location.read_ship_type.v1 "
-              "esi-wallet.read_character_wallet.v1 esi-location.read_online.v1")
+              "esi-wallet.read_character_wallet.v1 esi-location.read_online.v1 "
+              "esi-ui.open_window.v1")
 ESI_UA = f"EVE-Canary/{VERSION} (https://github.com/Eve-Online-Askend/eve-canary)"
 # Eingebaute Canary-ESI-App: so muss kein Nutzer eine eigene App registrieren,
 # er klickt nur "Mit EVE-Account verbinden". Die ID ist bei PKCE bauartbedingt
@@ -1770,6 +1875,40 @@ class Esi(threading.Thread):
         with urllib.request.urlopen(req, timeout=30) as r:
             return json.loads(r.read()), r.headers
 
+    def _post(self, c, path, params=None):
+        """Schreibender ESI-Aufruf (z.B. Client-Fenster oeffnen). Leerer Body,
+        Parameter in der Query — so verlangen es die UI-Endpunkte."""
+        url = ESI_BASE + path + ("?" + urllib.parse.urlencode(params) if params else "")
+        req = urllib.request.Request(url, data=b"", method="POST", headers={
+            "Authorization": "Bearer " + self._access(c), "User-Agent": ESI_UA})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return r.status
+
+    def ui_open(self, name, kind, oid):
+        """Im laufenden Client des Charakters ein Fenster oeffnen. kind:
+        'market' = Markt-Detail eines Item-Typs, 'info' = Info-Fenster einer ID.
+        Setzt voraus, dass der Charakter online ist und der Scope erteilt wurde."""
+        c = (self.cfg().get("chars") or {}).get(name)
+        if not c:
+            return "Charakter nicht verbunden."
+        try:
+            if kind == "market":
+                self._post(c, "/ui/openwindow/marketdetails/", {"type_id": int(oid)})
+            elif kind == "info":
+                self._post(c, "/ui/openwindow/information/", {"target_id": int(oid)})
+            else:
+                return "Unbekannte Aktion."
+            return None
+        except urllib.error.HTTPError as e:
+            if e.code == 403:
+                return (f"{name} muss einmal neu verbunden werden "
+                        "(neue Berechtigung 'Fenster oeffnen' noetig).")
+            if e.code in (401, 400):
+                return f"{name}: Login abgelaufen, bitte neu verbinden."
+            return f"{name}: Client antwortet nicht (ist er offen und online?)."
+        except Exception:
+            return f"{name}: Client nicht erreichbar (offen und online?)."
+
     def type_name(self, tid):
         n = self.type_cache.get(tid)
         if n:
@@ -1837,7 +1976,7 @@ class Esi(threading.Thread):
         qty = {}
         for i in cargo:
             qty[i["type_id"]] = qty.get(i["type_id"], 0) + i["quantity"]
-        pm = hub_prices("10000002", set(qty)) if qty else {}
+        pm = hub_prices("10000002", set(qty), prefer_esi=True) if qty else {}
         rows = []
         for tid, q in qty.items():
             buy, sell = pm.get(tid, (0, 0))
@@ -2217,6 +2356,7 @@ esi = Esi()
 threat = ThreatIntel()
 clipwatch = ClipWatch()
 serverstatus = ServerStatus()
+danger = SystemDanger()
 
 
 # ---------------------------------------------------------------- Abfragen
@@ -2440,6 +2580,7 @@ def snapshot_live():
             "idle_thr": round(s.idle_threshold(int(CONFIG.get("idle_warn", 240) or 0))),
             "name": s.name, "session_min": round(mins),
             "system": s.system or chatwatch.systems.get(s.char_id, "?"),
+            "danger": danger.for_system(s.system or chatwatch.systems.get(s.char_id)),
             "ores": ores, "m3": round(m3), "ore_isk": round(ore_isk),
             "m3h": round(m3 / mins * 60), "bounty": s.bounty, "kills": s.kills,
             "total_isk": round(ore_isk + s.bounty),
@@ -2467,18 +2608,93 @@ CALC_CACHE = {}  # region -> {"ts": Zeit, "prices": {typeID: (buy, sell)}}
 CALC_LOCK = threading.Lock()
 
 
-def hub_prices(region, ids):
-    """Buy/Sell-Preise für die angefragten Typen in einer Region, 15 min Cache."""
-    with CALC_LOCK:
-        e = CALC_CACHE.get(region)
-        if e and time.time() - e["ts"] < PRICE_REFRESH and ids <= set(e["prices"]):
-            return dict(e["prices"])
+ESI_PRICE_CACHE = {}   # (region, tid) -> {"ts", "buy", "sell"}
+ESI_PRICE_LOCK = threading.Lock()
+# Zuletzt genutzte Preisquelle je Region, fuer die Anzeige "Preise: ESI/Jita" bzw.
+# den Fuzzwork-Fallback. "esi" = frisches CCP-Orderbuch, "fuzzwork" = Ausweichquelle.
+PRICE_SOURCE = {}
+
+
+def esi_orderbook(region, ids):
+    """Bestes Kauf-/Verkaufsgebot je Typ direkt aus dem CCP-Orderbuch, gefiltert
+    auf das Hub-System. Oeffentlich (kein Login). Cache 5 min je (Region, Typ).
+    Liefert nur, was ESI hergibt — der Aufrufer faellt fuer den Rest auf Fuzzwork
+    zurueck. So gilt: frische ESI-Preise bevorzugt, sonst das alte System."""
+    sysid = HUB_SYSTEMS.get(str(region))
+    if not sysid:
+        return {}
+    out = {}
+    now = time.time()
+    for tid in ids:
+        key = (str(region), int(tid))
+        with ESI_PRICE_LOCK:
+            e = ESI_PRICE_CACHE.get(key)
+            if e and now - e["ts"] < ESI_PRICE_TTL:
+                out[int(tid)] = (e["buy"], e["sell"])
+                continue
+        buy, sell, page, pages = 0.0, 0.0, 1, 1
+        try:
+            while page <= pages and page <= 10:
+                url = (f"{ESI_BASE}/markets/{region}/orders/"
+                       f"?type_id={int(tid)}&order_type=all&page={page}")
+                req = urllib.request.Request(url, headers={"User-Agent": ESI_UA})
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    orders = json.loads(r.read())
+                    pages = int(r.headers.get("X-Pages") or 1)
+                for o in orders:
+                    if o.get("system_id") != sysid:
+                        continue
+                    p = float(o.get("price") or 0)
+                    if o.get("is_buy_order"):
+                        if p > buy:
+                            buy = p
+                    elif sell == 0.0 or p < sell:
+                        sell = p
+                page += 1
+        except Exception:
+            continue   # dieser Typ nicht ueber ESI -> Aufrufer nimmt Fuzzwork
+        with ESI_PRICE_LOCK:
+            ESI_PRICE_CACHE[key] = {"ts": now, "buy": buy, "sell": sell}
+        out[int(tid)] = (buy, sell)
+    return out
+
+
+def fuzzwork_prices(region, ids):
+    """Buy/Sell aus der Fuzzwork-Aggregation (eine Anfrage fuer viele Typen)."""
     url = (f"https://market.fuzzwork.co.uk/aggregates/?region={region}"
            f"&types={','.join(map(str, sorted(ids)))}")
     with urllib.request.urlopen(url, timeout=15) as r:
         data = json.load(r)
-    fetched = {int(k): (float(v["buy"]["max"]), float(v["sell"]["min"]))
-               for k, v in data.items()}
+    return {int(k): (float(v["buy"]["max"]), float(v["sell"]["min"]))
+            for k, v in data.items()}
+
+
+def hub_prices(region, ids, prefer_esi=False):
+    """Buy/Sell-Preise für die angefragten Typen in einer Region, 15 min Cache.
+    Mit prefer_esi=True zuerst das frische CCP-Orderbuch (ESI), fuer alles was ESI
+    nicht liefert Fuzzwork als Fallback. Ohne prefer_esi bleibt es bei Fuzzwork
+    (schnelle Sammelabfrage, z.B. fuer den Mehr-Hub-Vergleich im Rechner)."""
+    with CALC_LOCK:
+        e = CALC_CACHE.get(region)
+        if e and time.time() - e["ts"] < PRICE_REFRESH and ids <= set(e["prices"]):
+            return dict(e["prices"])
+    fetched = {}
+    if prefer_esi:
+        try:
+            fetched = esi_orderbook(region, ids)
+        except Exception:
+            fetched = {}
+    PRICE_SOURCE[str(region)] = "esi" if fetched else "fuzzwork"
+    rest = set(ids) - {t for t, (b, s) in fetched.items() if b or s}
+    if rest:
+        try:
+            fz = fuzzwork_prices(region, rest)
+            fetched.update(fz)
+            if prefer_esi and any(fetched):
+                PRICE_SOURCE[str(region)] = "esi" if len(rest) < len(set(ids)) else "fuzzwork"
+        except Exception:
+            if not fetched:
+                raise
     with CALC_LOCK:
         merged = CALC_CACHE.get(region, {}).get("prices", {})
         merged.update(fetched)
@@ -2617,6 +2833,39 @@ def calc_loot(text):
             for n, q in qty.items() if n in ids_map]
     rows.sort(key=lambda r: -r["isk"])
     return {"ok": True, "items": rows, "hubs": hubs, "unknown": unknown}
+
+
+def market_item(name):
+    """Einzelnes Item per exaktem Namen suchen und Preise ueber alle Handelshubs
+    zeigen. Namen loest ESI (/universe/ids/, gross-/kleinschreibungs-egal) auf,
+    Preise kommen aus dem frischen CCP-Orderbuch (Fuzzwork nur als Fallback)."""
+    name = (name or "").strip()
+    if not name:
+        return {"ok": False, "msg": "Bitte einen Item-Namen eingeben."}
+    tid, canon = None, name
+    try:
+        req = urllib.request.Request(
+            ESI_BASE + "/universe/ids/", data=json.dumps([name]).encode(),
+            headers={"Content-Type": "application/json", "User-Agent": ESI_UA})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(r.read())
+        for t in data.get("inventory_types", []):
+            tid, canon = t["id"], t["name"]
+            break
+    except Exception:
+        return {"ok": False, "msg": "Marktabfrage nicht möglich (keine Verbindung?)."}
+    if not tid:
+        return {"ok": False,
+                "msg": f"„{name}“ nicht gefunden. Bitte den Item-Namen genau wie im Spiel schreiben."}
+    hubs = {}
+    for rid, rname in REGIONS.items():
+        try:
+            b, s = hub_prices(rid, {tid}, prefer_esi=True).get(tid, (0, 0))
+            hubs[rid] = {"name": rname, "buy": round(b, 2), "sell": round(s, 2)}
+        except Exception:
+            hubs[rid] = {"name": rname, "error": True}
+    return {"ok": True, "type_id": tid, "name": canon, "hubs": hubs,
+            "src": PRICE_SOURCE.get("10000002", "fuzzwork")}
 
 
 def query_summary():
@@ -2841,6 +3090,7 @@ def state_info():
             "version": VERSION,
             "ingesting": not ingest.started_full,
             "progress": ingest.progress, "prices_loaded": bool(prices.get(CONFIG["region"])),
+            "price_src": PRICE_SOURCE.get(str(CONFIG["region"]), "fuzzwork"),
             "watchlist": CONFIG.get("watchlist", []), "goal": CONFIG.get("goal"),
             "esi": {"client_id": (CONFIG.get("esi") or {}).get("client_id", ""),
                     "cb": esi.redirect_uri(),
@@ -3181,6 +3431,18 @@ class Handler(BaseHTTPRequestHandler):
             self._send(json.dumps({"ok": True, "results": results,
                                    "pending": threat.pending()}))
             return
+        elif action == "market_suggest":
+            self._send(json.dumps({"items": market_suggest(body.get("q") or "")}))
+            return
+        elif action == "market_item":
+            self._send(json.dumps(market_item(body.get("name") or "")))
+            return
+        elif action == "ui_open":
+            # Fenster im laufenden Client oeffnen (Markt-Detail oder Info).
+            err = esi.ui_open(str(body.get("char") or ""),
+                              str(body.get("kind") or ""), body.get("id"))
+            self._send(json.dumps({"ok": err is None, "msg": err or "Im Client geöffnet."}))
+            return
         elif action == "esi_login":
             url = esi.login_url()
             self._send(json.dumps({"ok": bool(url), "url": url,
@@ -3448,6 +3710,19 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .spark.dmgin div{background:var(--red)}
 .mtag{font-size:12px;color:var(--gold)}
 .npc{margin-top:6px;padding:6px 9px;border-left:2px solid var(--gold);background:rgba(200,160,60,.07);border-radius:3px;font-size:11px;color:var(--dim);font-style:italic;line-height:1.5}
+.dngline{display:flex;align-items:center;gap:6px;margin-top:2px}
+.dngdot{display:inline-block;width:7px;height:7px;border-radius:50%;flex:none}
+.dngdot.g{background:var(--green)}.dngdot.y{background:var(--gold)}.dngdot.r{background:var(--red)}
+.mkt input{width:100%;box-sizing:border-box}
+.mkt table{width:100%;border-collapse:collapse;margin-top:8px}
+.mkt th,.mkt td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--line);font-size:12px}
+.mkt td.r,.mkt th.r{text-align:right}
+.mkt .uibtn{font-size:11px;padding:2px 8px;margin-left:4px}
+.mktwrap{position:relative;flex:1;min-width:200px}
+.mktwrap input{width:100%;box-sizing:border-box}
+.mktsug{position:absolute;top:100%;left:0;right:0;z-index:30;background:var(--card);border:1px solid var(--line);border-top:none;max-height:260px;overflow-y:auto;box-shadow:0 6px 16px rgba(0,0,0,.35)}
+.mktsug div{padding:6px 10px;cursor:pointer;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mktsug div:hover,.mktsug div.sel{background:var(--inset)}
 .mtag a{color:var(--cyan);margin-left:6px}
 .chart{display:flex;align-items:flex-end;gap:3px;height:120px;margin-top:12px}
 .chart .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end}
@@ -3510,7 +3785,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="analyse">Analyse</span>
  <span data-v="intel">🚦 Intel</span>
  <span data-v="missionen">🎯 Missionen</span>
- <span data-v="rechner">🧮 Ore Calculator</span>
+ <span data-v="rechner">💰 ISKray</span>
 </nav>
 <div id="alerts"></div>
 <div id="hero"></div>
@@ -3609,6 +3884,9 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 const $=s=>document.querySelector(s);
 const fmt=n=>Math.round(n).toLocaleString();
 const fmtM=n=>n>=1e9?(n/1e9).toFixed(2)+' Mrd':n>=1e6?(n/1e6).toFixed(1)+' M':fmt(n);
+// Einzelpreis: bei grossen Werten wie fmtM, bei kleinen mit Nachkommastellen,
+// damit Cent-Preise (Erz ~4 ISK) nicht auf ganze Zahlen gerundet werden.
+const fmtP=n=>n>=1e6?fmtM(n):n>=1000?fmt(n):(n||0).toLocaleString(undefined,{maximumFractionDigits:2});
 // HTML-Escape: Spieler-/Corp-/Schiffsnamen aus Logs, ESI und zKillboard sind
 // fremdbestimmt und dürfen nie ungefiltert in innerHTML landen (XSS).
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -3996,7 +4274,8 @@ function renderLive(chars,summary){
    ${c.laser_stalled?`<div class="cardwarn">⛏ Strip Miner liefert gerade kein Erz, während die Drohnen weiterlaufen.</div>`:''}
    ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur noch ${c.rate_low}%. Vermutlich ist ein Modul oder eine Drohne aus.</div>`:''}
    ${mineIdle(c,state)?`<div class="cardwarn">⚠ Seit ${Math.round(c.mine_idle/60)} min kein Erz. Laser und Drohnen prüfen!</div>`:''}
-   <div class="sub">${c.trips>0?'Trip '+(c.trips+1)+' · seit Abdocken':'Session'} ${c.session_min} min · ${c.depleted} Asteroiden leergebaggert · Preise: ${state.regions[state.region]}</div>
+   <div class="sub">${c.trips>0?'Trip '+(c.trips+1)+' · seit Abdocken':'Session'} ${c.session_min} min · ${c.depleted} Asteroiden leergebaggert · Preise: ${state.price_src==='esi'?'ESI · ':''}${state.regions[state.region]}</div>
+   ${dangerLine(c)}
    <div class="stats">
     <div class="stat"><div class="l">${c.trips>0?'ISK Trip':'ISK Session'}</div><div class="v isk">${fmtM(c.total_isk)}</div></div>
     <div class="stat"><div class="l">Erz (${fmt(c.m3)} m³)</div><div class="v isk">${fmtM(c.ore_isk)}</div></div>
@@ -4300,6 +4579,16 @@ async function toggleOverlay(){
 function mineIdle(c,st){
  return c.mine_idle&&st.idle_warn>0&&c.mine_idle>(c.idle_thr||st.idle_warn)&&c.mine_idle<1800;
 }
+// Lagebild des aktuellen Systems aus offenen Daten (stuendlich). Bewusst als
+// ruhige Info-Zeile, kein Alarm: eine Sekundenwarnung ist damit nicht moeglich.
+function dangerLine(c){
+ const d=c.danger; if(!d) return '';
+ const sec=(d.sec!=null)?d.sec.toFixed(1):'?';
+ const risk=d.ship_kills>=10?'r':(d.ship_kills>=4?'y':'g');
+ const pods=d.pod_kills?', '+d.pod_kills+' Kapseln':'';
+ return `<div class="sub dngline"><span class="dngdot ${risk}"></span>Sicherheit ${sec}`
+  +` · Verluste letzte Stunde: ${d.ship_kills} Schiffe${pods} · Verkehr ${fmt(d.jumps)} Sprünge</div>`;
+}
 function ovStatus(c,st){
  if(c.dps_in>0)return['bad','UNTER BESCHUSS'];
  if(c.cargo_full)return['bad','FRACHTRAUM VOLL'];
@@ -4501,16 +4790,87 @@ function renderMissions(d){
 }
 function renderRechner(){
  if(document.getElementById('calcBox'))return;
- $('#grid').innerHTML=`<div class="card" id="calcBox" style="grid-column:1/-1">
-  <b>🧮 Ore Calculator</b>
+ $('#grid').innerHTML=`<div class="card mkt" id="mktBox" style="grid-column:1/-1">
+  <b>🔎 Einzel-Item</b>
+  <div style="font-size:12px;color:var(--dim);margin:6px 0">Item-Namen tippen, Canary schlägt passende vor. Preise kommen aus dem frischen CCP-Orderbuch über alle Handelsplätze.</div>
+  <div class="btnrow"><span class="mktwrap"><input id="mktIn" placeholder="z.B. Tritanium" autocomplete="off"><div id="mktSug" class="mktsug" hidden></div></span><button class="btn" id="mktGo">Suchen</button></div>
+  <span id="mktStat" class="sub"></span>
+  <div id="mktOut" style="overflow-x:auto"></div></div>
+ <div class="card" id="calcBox" style="grid-column:1/-1">
+  <b>📦 Frachtraum</b>
   <div style="font-size:12px;color:var(--dim);margin:6px 0">Im Spiel den Frachtraum oder Container öffnen, alles markieren (Strg+A) und kopieren (Strg+C), dann hier einfügen.
   Einzelne Zeilen wie "Compressed Veldspar 50000" funktionieren genauso.</div>
   <textarea id="calcIn" rows="7" style="width:100%" placeholder="Compressed Veldspar	49.105&#10;Compressed Scordite	42.990"></textarea>
   <div style="margin:8px 0"><button class="btn" id="calcGo">Berechnen</button> <span id="calcStat" style="font-size:12px;color:var(--dim)"></span></div>
   <div id="calcOut" style="overflow-x:auto"></div></div>`;
  $('#calcGo').onclick=doCalc;
+ $('#mktGo').onclick=()=>{$('#mktSug').hidden=true;doMarket();};
+ $('#mktIn').oninput=()=>{clearTimeout(mktSugTimer);mktSugTimer=setTimeout(doSuggest,160);};
+ $('#mktIn').onkeydown=e=>{
+  const box=$('#mktSug');
+  if(box&&!box.hidden&&mktSugItems.length){
+   if(e.key==='ArrowDown'){mktSugI=Math.min(mktSugI+1,mktSugItems.length-1);paintSug();e.preventDefault();return;}
+   if(e.key==='ArrowUp'){mktSugI=Math.max(mktSugI-1,0);paintSug();e.preventDefault();return;}
+   if(e.key==='Enter'&&mktSugI>=0){pickSug(mktSugItems[mktSugI]);e.preventDefault();return;}
+   if(e.key==='Escape'){box.hidden=true;return;}
+  }
+  if(e.key==='Enter'){if(box)box.hidden=true;doMarket();}
+ };
+ // Klick ausserhalb schliesst die Vorschlagsliste
+ document.addEventListener('click',e=>{if(!e.target.closest('.mktwrap')){const b=document.getElementById('mktSug');if(b)b.hidden=true;}});
  const saved=localStorage.getItem('calcText');
  if(saved)$('#calcIn').value=saved;
+}
+let mktSugTimer=null, mktSugItems=[], mktSugI=-1;
+async function doSuggest(){
+ const q=$('#mktIn')?$('#mktIn').value.trim():'';
+ const box=$('#mktSug'); if(!box)return;
+ if(q.length<2){box.hidden=true;box.innerHTML='';return;}
+ let r;try{r=await post({action:'market_suggest',q});}catch(e){r=null;}
+ if(!document.getElementById('mktSug'))return;
+ mktSugItems=(r&&r.items)||[]; mktSugI=-1; paintSug();
+}
+function paintSug(){
+ const box=$('#mktSug'); if(!box)return;
+ if(!mktSugItems.length){box.hidden=true;box.innerHTML='';return;}
+ box.hidden=false;
+ box.innerHTML=mktSugItems.map((n,i)=>`<div data-i="${i}"${i===mktSugI?' class="sel"':''}>${esc(n)}</div>`).join('');
+ box.querySelectorAll('div').forEach(d=>d.onclick=()=>pickSug(mktSugItems[+d.dataset.i]));
+}
+function pickSug(name){
+ if($('#mktIn'))$('#mktIn').value=name;
+ const b=$('#mktSug'); if(b){b.hidden=true;b.innerHTML='';}
+ mktSugItems=[]; doMarket();
+}
+async function doMarket(){
+ const name=$('#mktIn').value.trim();
+ if(!name)return;
+ $('#mktStat').textContent='Suche Preise …';$('#mktOut').innerHTML='';
+ let r;try{r=await post({action:'market_item',name});}catch(e){r=null;}
+ if(!$('#mktOut'))return;
+ if(!r){$('#mktStat').textContent='Marktabfrage fehlgeschlagen.';return;}
+ if(!r.ok){$('#mktStat').textContent=r.msg||'Nicht gefunden.';return;}
+ $('#mktStat').textContent='';
+ const hubs=Object.values(r.hubs||{}).filter(h=>!h.error);
+ const bestBuy=hubs.length?Math.max(...hubs.map(h=>h.buy)):0;
+ // Charakter-Auswahl fuer "im Client oeffnen" (nur verbundene Charaktere)
+ const chars=((state.esi&&state.esi.chars)||[]).map(c=>c.name);
+ const picker=chars.length
+  ?`<select id="mktChar" class="pill">`+chars.map(n=>`<option>${esc(n)}</option>`).join('')+`</select>`
+   +`<button class="btn uibtn" id="mktOpenMkt" data-tid="${r.type_id}">Markt im Client öffnen</button>`
+  :`<span class="sub">Für „im Client öffnen“ zuerst einen Charakter über den EVE-Login verbinden.</span>`;
+ $('#mktOut').innerHTML=`<div style="font-size:13px;margin:6px 0"><b>${esc(r.name)}</b> <span class="sub">· Preisquelle: ${r.src==='esi'?'ESI (CCP)':'Fuzzwork'}</span></div>`
+  +`<table><tr><th>Handelsplatz</th><th class="r">Sofortverkauf (Buy)</th><th class="r">Kaufen (Sell)</th></tr>`
+  +hubs.map(h=>`<tr><td>${esc(h.name)}${h.buy===bestBuy&&bestBuy>0?' ★':''}</td><td class="r isk">${h.buy>0?fmtP(h.buy):'—'}</td><td class="r">${h.sell>0?fmtP(h.sell):'—'}</td></tr>`).join('')
+  +`</table><div class="btnrow" style="margin-top:10px;align-items:center">${picker}</div>`;
+ const om=$('#mktOpenMkt');
+ if(om)om.onclick=()=>uiOpen('market',om.dataset.tid);
+}
+async function uiOpen(kind,tid){
+ const char=$('#mktChar')?$('#mktChar').value:'';
+ $('#mktStat').textContent='Öffne im Client …';
+ let r;try{r=await post({action:'ui_open',char,kind,id:Number(tid)});}catch(e){r=null;}
+ $('#mktStat').textContent=r?(r.msg||''):'Client nicht erreichbar.';
 }
 async function doCalc(){
  const text=$('#calcIn').value;
@@ -4587,7 +4947,8 @@ const EN = {
 'Standardmäßig zeigt Live nur eingeloggte Charaktere. Hier einschalten, um auch Offline-Charaktere zu sehen.':
  'Live normally shows only logged-in characters. Turn this on to see offline ones too.',
 'Live':'Live','30 Tage':'30 days','Gesamt':'All time','Analyse':'Analysis',
-'🚦 Intel':'🚦 Intel','🎯 Missionen':'🎯 Missions','🧮 Ore Calculator':'🧮 Ore calculator',
+'🚦 Intel':'🚦 Intel','🎯 Missionen':'🎯 Missions','💰 ISKray':'💰 ISKray',
+'🔎 Einzel-Item':'🔎 Single item','📦 Frachtraum':'📦 Cargo',
 '⚙ Optionen':'⚙ Options','◱ Overlay':'◱ Overlay',
 '◱ Mini-Overlay öffnen/schließen':'Open/close mini overlay',
 'Sprache umschalten / switch language':'Sprache umschalten / switch language',
@@ -4817,6 +5178,29 @@ const EN_PATTERNS = [
  [/Frachtraum voll, Mining gestoppt!/, 'Cargo hold full, mining stopped!'],
  [/^SPIELER-ANGRIFF: /, 'PLAYER ATTACK: '], [/ schießt auf /, ' is shooting at '],
  [/^Watchlist: (.*) ist im Local aktiv!/, 'Watchlist: $1 is active in local!'],
+ // System-Gefahrenlage (Mining-Karte)
+ [/Sicherheit /, 'Security '], [/Verluste letzte Stunde: /, 'Losses last hour: '],
+ [/([0-9]+) Schiffe/, '$1 ships'], [/([0-9]+) Kapseln/, '$1 pods'],
+ [/Verkehr /, 'Traffic '], [/([0-9.]+) Sprünge/, '$1 jumps'],
+ // Markt / Item-Suche
+ [/Item-Preis suchen/, 'Item price lookup'],
+ [/Item-Namen tippen, Canary schlägt passende vor[.] Preise kommen aus dem frischen CCP-Orderbuch über alle Handelsplätze[.]/,
+  'Type an item name and Canary suggests matches. Prices come from the fresh CCP order book across all trade hubs.'],
+ [/^Suchen$/, 'Search'], [/Suche Preise …/, 'Fetching prices …'],
+ [/Marktabfrage fehlgeschlagen[.]/, 'Market lookup failed.'],
+ [/Preisquelle: /, 'Price source: '], [/^Handelsplatz$/, 'Trade hub'],
+ [/Sofortverkauf [(]Buy[)]/, 'Instant sell (buy)'], [/Kaufen [(]Sell[)]/, 'Buy (sell)'],
+ [/Markt im Client öffnen/, 'Open market in client'], [/^Info öffnen$/, 'Open info'],
+ [/Öffne im Client …/, 'Opening in client …'], [/Im Client geöffnet[.]/, 'Opened in client.'],
+ [/Für „im Client öffnen“ zuerst einen Charakter über den EVE-Login verbinden[.]/,
+  'To use “open in client”, first connect a character via the EVE login.'],
+ [/(.*) muss einmal neu verbunden werden [(]neue Berechtigung 'Fenster oeffnen' noetig[)][.]/,
+  '$1 needs to be reconnected once (new permission “open window” required).'],
+ [/(.*): Client antwortet nicht [(]ist er offen und online[?][)][.]/,
+  '$1: client not responding (is it open and online?).'],
+ [/(.*): Client nicht erreichbar [(]offen und online[?][)][.]/,
+  '$1: client unreachable (open and online?).'],
+ [/(.*): Login abgelaufen, bitte neu verbinden[.]/, '$1: login expired, please reconnect.'],
 ];
 const DICTS = {en:EN};
 let lang = localStorage.getItem('uiLang');
@@ -4968,6 +5352,7 @@ if __name__ == "__main__":
     threat.start()
     clipwatch.start()
     serverstatus.start()
+    danger.start()
     print(f"EVE Canary läuft:  http://localhost:{port}")
     if "--no-browser" not in sys.argv:
         # Browser erst jetzt öffnen, wo der Port sicher gebunden ist
