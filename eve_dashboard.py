@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.17.4"
+VERSION = "1.18.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "README_INSTALL.md"]
 from collections import deque
@@ -1655,6 +1655,11 @@ class Esi(threading.Thread):
             self.value_cargo(name, c, items, ship["ship_item_id"], asof, exp)
         except Exception as e:
             log_error("CN-ESI-01", "value_cargo", e)
+        try:
+            self.read_fitting(name, c, items, ship["ship_item_id"],
+                              ship["ship_type_id"], asof, exp)
+        except Exception as e:
+            log_error("CN-ESI-01", "read_fitting", e)
         in_ship = [i for i in items if i.get("location_id") == ship["ship_item_id"]]
         units = sum(i["quantity"] for i in in_ship if i["type_id"] == HW_TYPE_ID)
         core = next((CORE_TYPES[i["type_id"]] for i in in_ship
@@ -1692,6 +1697,30 @@ class Esi(threading.Thread):
                 "sell": round(sum(q * pm.get(t, (0, 0))[1] for t, q in qty.items())),
                 "as_of": int(asof), "next": int(nxt),
                 "n": len(cargo), "items": rows[:12]}
+
+    # Slot-Gruppe je location_flag (High/Mid/Low/Rig/Subsystem) fuer die grafische Anzeige
+    SLOT_GROUP = [("hi", "HiSlot"), ("med", "MedSlot"), ("low", "LoSlot"),
+                  ("rig", "RigSlot"), ("sub", "SubSystemSlot")]
+
+    def read_fitting(self, name, c, items, ship_item_id, ship_tid, asof, nxt):
+        """Gefittete Module des aktiven Schiffs aus den Assets lesen, nach Slot
+        gruppiert. Fuer die grafische Fitting-Anzeige (Icons vom EVE-Bilderdienst)."""
+        mods = []
+        for i in items:
+            if i.get("location_id") != ship_item_id:
+                continue
+            flag = i.get("location_flag", "")
+            grp = next((g for g, pre in self.SLOT_GROUP if flag.startswith(pre)), None)
+            if not grp:
+                continue
+            slot = int(re.search(r"\d+", flag).group())
+            mods.append({"grp": grp, "slot": slot, "tid": i["type_id"],
+                         "name": self.type_name(i["type_id"]) or str(i["type_id"])})
+        order = {g: n for n, (g, _) in enumerate(self.SLOT_GROUP)}
+        mods.sort(key=lambda x: (order.get(x["grp"], 9), x["slot"]))
+        with CONFIG_LOCK:
+            c["fitting"] = {"ship_tid": ship_tid, "as_of": int(asof), "next": int(nxt),
+                            "mods": mods}
 
     def sync_journal(self, name, c):
         """Wallet-Journal einlesen: Missions-Belohnungen, Boni, Bounty-Ticks.
@@ -2266,6 +2295,7 @@ def snapshot_live():
             "ship": (esi_char or {}).get("ship"),
             "wallet": (esi_char or {}).get("wallet"),
             "cargo": (esi_char or {}).get("cargo"),
+            "fitting": (esi_char or {}).get("fitting"),
             "trips": s.trips,
             "compressed": comp, "tool_warns": s.tool_warns(),
             "lasers_off": [] if drone_only else [{"tool": t, "since": int(i["since"])}
@@ -3269,6 +3299,16 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .spark{display:flex;align-items:flex-end;gap:1px;height:30px;margin-top:8px}
 .spark div{flex:1;background:var(--cyan);opacity:.75;border-radius:1px 1px 0 0;min-height:1px}
 .spark.dmgin div{background:var(--red)}
+.fitsec{margin-top:10px}
+.fittoggle{cursor:pointer;color:var(--cyan);font-size:12px}
+.fitbox{margin-top:8px}
+.fitwrap{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.fitship{width:132px;height:132px;border-radius:8px;border:1px solid var(--line);object-fit:cover;background:var(--inset)}
+.fitslots{flex:1;min-width:200px;display:flex;flex-direction:column;gap:6px}
+.fitrow{display:flex;align-items:center;gap:8px}
+.fitlbl{width:34px;flex:none;font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)}
+.fiticons{display:flex;flex-wrap:wrap;gap:4px}
+.fiticon{width:34px;height:34px;border-radius:5px;border:1px solid var(--line);background:var(--inset)}
 .chart{display:flex;align-items:flex-end;gap:3px;height:120px;margin-top:12px}
 .chart .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end}
 .chart .seg1{background:var(--cyan);border-radius:2px 2px 0 0}
@@ -3812,8 +3852,10 @@ function renderLive(chars,summary){
      `<tr><td>${esc(t[0])}</td><td class="r">${fmt(t[1])}</td></tr>`).join('')+`</table>`:''}
    ${c.top_attackers.length?`<div class="sect">Top-Angreifer</div><table>`+c.top_attackers.map(t=>
      `<tr><td>${esc(t[0])}</td><td class="r">${fmt(t[1])}</td></tr>`).join('')+`</table>`:''}
+   ${fittingSection(c)}
    </div>
   </div>`}).join('');
+ bindFit();
  document.querySelectorAll('.chead').forEach(h=>h.onclick=()=>toggleChar(h.dataset.c));
  document.querySelectorAll('.rolesel').forEach(s=>{
   s.onclick=e=>e.stopPropagation();  // Klick soll die Karte nicht ein-/ausklappen
@@ -3851,6 +3893,34 @@ function cargoLine(cg){
  const nxt=Math.round((cg.next-now)/60);
  const when=new Date(cg.as_of*1000).toISOString().slice(11,16);
  return `<div class="l">Stand: vor ${age} min · EVE ${when} · ${nxt>0?'nächste in '+nxt+' min':'wird aktualisiert'}</div>`;
+}
+// Grafischer Fitting-Block: Schiffs-Render + Modul-Icons nach Slot, einklappbar.
+// Bilder vom offiziellen EVE-Bilderdienst (wie die Portraits). Für beide Ansichten.
+const SLOT_LBL={hi:'Hi',med:'Mid',low:'Low',rig:'Rig',sub:'Sub'};
+function fittingSection(c){
+ const ft=c.fitting;
+ if(!ft||!ft.mods||!ft.mods.length)return '';
+ const age=Math.max(0,Math.round((Date.now()/1000-ft.as_of)/60));
+ const row=g=>{const ms=ft.mods.filter(m=>m.grp===g);if(!ms.length)return '';
+  return `<div class="fitrow"><span class="fitlbl">${SLOT_LBL[g]}</span><span class="fiticons">`
+   +ms.map(m=>`<img class="fiticon" loading="lazy" src="https://images.evetech.net/types/${m.tid}/icon?size=64" title="${esc(m.name)}" alt="${esc(m.name)}">`).join('')
+   +`</span></div>`;};
+ return `<div class="fitsec">
+   <span class="fittoggle" data-c="${esc(c.name)}">🔧 Fitting</span>
+   <div class="fitbox" data-c="${esc(c.name)}" hidden>
+    <div class="fitwrap">
+     <img class="fitship" loading="lazy" src="https://images.evetech.net/types/${ft.ship_tid}/render?size=256" alt="">
+     <div class="fitslots">${['hi','med','low','rig','sub'].map(row).join('')}</div>
+    </div>
+    <div class="l">Stand: vor ${age} min · aus EVE-Login</div>
+   </div>
+  </div>`;
+}
+function bindFit(){
+ document.querySelectorAll('.fittoggle').forEach(t=>t.onclick=e=>{
+  e.stopPropagation();
+  const b=[...document.querySelectorAll('.fitbox')].find(x=>x.dataset.c===t.dataset.c);
+  if(b)b.hidden=!b.hidden;});
 }
 function renderCombat(chars,summary){
  lastChars=chars;
@@ -3926,6 +3996,7 @@ function renderCombat(chars,summary){
     ${c.top_attackers.length?`<div class="sect">Top-Angreifer</div><table>`+c.top_attackers.map(t=>
       `<tr><td>${esc(t[0])}</td><td class="r">${fmt(t[1])}</td></tr>`).join('')+`</table>`:''}
     ${(c.salvage&&(c.salvage.ok||c.salvage.empty||c.salvage.fail))?`<div class="sect">Salvage</div><div class="l">${c.salvage.ok} Wracks geborgen · ${c.salvage.empty} leer · ${c.salvage.fail} Fehlversuch</div>`:''}
+    ${fittingSection(c)}
    </div>
   </div>`}).join('');
  document.querySelectorAll('.chead').forEach(h=>h.onclick=()=>toggleChar(h.dataset.c));
@@ -3934,6 +4005,7 @@ function renderCombat(chars,summary){
   s.onchange=async()=>{await post({action:'set_role',char:s.dataset.c,role:s.value});
    if(lastChars){lastChars.forEach(c=>{if(c.name===s.dataset.c)c.role=s.value;});renderCombat(lastChars,lastSummary);}};
  });
+ bindFit();
 }
 
 function renderMonth(days){
@@ -4568,6 +4640,7 @@ const EN_PATTERNS = [
  [/DPS ([0-9]+) raus [/] ([0-9]+) rein/, 'DPS $1 out / $2 in'],
  // PvP/Missionen-Ansicht: Zeitstempel, Salvage, EWAR
  [/Stand: vor ([0-9]+) min/, 'As of $1 min ago'], [/nächste in ([0-9]+) min/, 'next in $1 min'],
+ [/aus EVE-Login/, 'from EVE login'],
  [/wird aktualisiert/, 'updating'],
  [/([0-9]+) Wracks geborgen/, '$1 wrecks salvaged'], [/([0-9]+) leer/, '$1 empty'],
  [/([0-9]+) Fehlversuch/, '$1 failed'], [/EWAR gegen dich:/, 'EWAR against you:'],
