@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.25.2"
+VERSION = "1.26.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -61,6 +61,7 @@ ERROR_HELP = {
 }
 ERRORS = deque(maxlen=60)
 ERROR_SEEN = {}
+ERROR_LOCK = threading.Lock()
 
 
 def log_error(code, where, exc=None):
@@ -69,17 +70,20 @@ def log_error(code, where, exc=None):
     ueberschreibt ein Dauerfehler im 2s-Takt alles andere)."""
     msg = f"{type(exc).__name__}: {exc}" if isinstance(exc, BaseException) else str(exc or "")
     key = (code, where, msg[:120])
-    e = ERROR_SEEN.get(key)
-    if e is not None:
-        e["n"] += 1
-        e["ts"] = time.time()
-        return
-    e = {"ts": time.time(), "first": time.time(), "code": code,
-         "where": where, "msg": msg[:300], "n": 1}
-    ERROR_SEEN[key] = e
-    ERRORS.append(e)
-    if len(ERROR_SEEN) > 200:
-        ERROR_SEEN.clear()   # Neustart der Zaehlung, damit der Speicher nicht waechst
+    # Lock: log_error kommt aus vielen Threads; ohne Lock ist die Pruefung-dann-
+    # Einfuegung nicht atomar (doppelte Eintraege / verlorene Zaehlung).
+    with ERROR_LOCK:
+        e = ERROR_SEEN.get(key)
+        if e is not None:
+            e["n"] += 1
+            e["ts"] = time.time()
+            return
+        e = {"ts": time.time(), "first": time.time(), "code": code,
+             "where": where, "msg": msg[:300], "n": 1}
+        ERROR_SEEN[key] = e
+        ERRORS.append(e)
+        if len(ERROR_SEEN) > 200:
+            ERROR_SEEN.clear()   # Neustart der Zaehlung, damit der Speicher nicht waechst
     # flush: sonst haengt die Meldung im Puffer, sobald die Ausgabe umgeleitet
     # ist (Autostart, nohup) und der Nutzer sieht im Fenster gar nichts.
     print(f"[{code}] {where}: {msg[:300]}", flush=True)
@@ -155,7 +159,9 @@ HW_CORE_GAP = 300  # laengere Kompressions-Pause -> Kern gilt als aus (Verbrauch
 TS_RE = re.compile(r"^\[ (\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2}):(\d{2}) \] \((\w+)\) (.*)$")
 HINT_RE = re.compile(r'hint="([^"]+)"')
 STRIP_RE = re.compile(r"<[^>]+>")
-NUM_RE = re.compile(r"([\d][\d.,   ]*)")
+# NBSP (\xa0) mit aufnehmen: manche Client-Sprachen (z.B. RU) nutzen ein
+# geschuetztes Leerzeichen als Tausendertrenner — sonst wird "1<NBSP>234" zu "1".
+NUM_RE = re.compile("([\\d][\\d.,\xa0 ]*)")
 CHAR_FILE_RE = re.compile(r"^\d{8}_\d{6}_(\d+)\.txt$")
 CHAT_LINE_RE = re.compile(r"^\[ [\d. :]+ \] ([^>]+?) > (.*)$")
 CHAT_TS_RE = re.compile(r"^\[ (\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2}):(\d{2}) \]")
@@ -230,7 +236,7 @@ def note_unknown(text):
 
 
 def num(s):
-    return int(re.sub(r"[.,   ]", "", s) or 0)
+    return int(re.sub("[.,\xa0 ]", "", s) or 0)
 
 
 def parse_line(raw):
@@ -239,8 +245,14 @@ def parse_line(raw):
     if not m:
         return None
     y, mo, d, h, mi, s, tag, body = m.groups()
-    ts = datetime(int(y), int(mo), int(d), int(h), int(mi), int(s),
-                  tzinfo=timezone.utc).timestamp()
+    # Eine halb geschriebene oder korrupte Zeile kann unmoegliche Werte liefern
+    # (z.B. Monat 13, Stunde 25). datetime() wuerde ValueError werfen; das darf
+    # die Zeile nur ueberspringen, nicht den Ingest-Thread auf ihr haengen lassen.
+    try:
+        ts = datetime(int(y), int(mo), int(d), int(h), int(mi), int(s),
+                      tzinfo=timezone.utc).timestamp()
+    except (ValueError, OverflowError):
+        return None
     day = f"{y}-{mo}-{d}"
     base = {"ts": ts, "day": day}
     if tag == "mining":
@@ -478,8 +490,22 @@ def save_config(cfg=None):
     # Atomar und thread-sicher: mehrere Threads (hw_tick, Esi.poll, do_POST …)
     # schreiben sonst gleichzeitig und hinterlassen kaputtes JSON.
     with CONFIG_LOCK:
+        # Esi.poll mutiert Char-Dicts (wallet/ship/...) ohne CONFIG_LOCK; faellt
+        # so ein Schreibzugriff mitten in json.dumps, wirft es RuntimeError
+        # ("dictionary changed size during iteration"). Kurz erneut versuchen,
+        # statt Einstellungen/Tokens still zu verlieren.
+        data = None
+        for _ in range(6):
+            try:
+                data = json.dumps(cfg or CONFIG, indent=1, ensure_ascii=False)
+                break
+            except RuntimeError:
+                time.sleep(0.02)
+        if data is None:
+            log_error("CN-CFG-01", "save_config",
+                      "Serialisierung fehlgeschlagen (nebenlaeufige Mutation)")
+            return
         try:
-            data = json.dumps(cfg or CONFIG, indent=1, ensure_ascii=False)
             tmp = CONFIG_PATH.with_suffix(".tmp")
             tmp.write_text(data, encoding="utf-8")
             os.replace(tmp, CONFIG_PATH)
@@ -601,6 +627,13 @@ def do_backup():
     name = f"dashboard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
     with DB_LOCK:
         DB.commit()
+        # WAL-Modus: frisch geschriebene Zeilen stehen evtl. nur im -wal. Erst in
+        # die Haupt-DB schreiben (TRUNCATE), sonst enthaelt die Kopie einen
+        # veralteten Stand. Ist WAL aus, ist das ein No-op.
+        try:
+            DB.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except Exception:
+            pass
         shutil.copy2(DB_PATH, BACKUP_DIR / name)
     for f in sorted(BACKUP_DIR.glob("dashboard_*.db"))[:-10]:
         f.unlink(missing_ok=True)
@@ -1021,6 +1054,8 @@ class CharSession:
             self.cargo_ts = ev["ts"]
         elif k == "drone_idle":
             e = self.tool_off.setdefault("Mining Drone", [0, 0])
+            if ev["ts"] - e[1] > 60:
+                e[0] = 0  # alter Vorfall abgelaufen -> neu zaehlen (wie bei depleted)
             e[0] += 1
             e[1] = ev["ts"]
         elif k == "drone_engage":
@@ -1196,36 +1231,40 @@ class Ingest(threading.Thread):
     def hw_tick(self):
         """Schweres-Wasser-Buchhaltung: Verbrauch seit letztem Checkpoint abziehen,
         Stand in der Config sichern (uebersteht Neustarts), bei <30 min warnen."""
-        with CONFIG_LOCK:
-            hw = dict(CONFIG.get("heavy_water") or {})  # Kopie: do_POST/sync_ship mutieren parallel
-        if not hw:
-            return
         now = time.time()
-        changed = False
         with self.lock:
             by_name = {s.name: s for s in self.sessions.values()}
-        for char, e in hw.items():
-            if now - e.get("ck", 0) < 60:
-                continue
-            e["ck"] = now
-            s = by_name.get(char)
-            if s is None:
-                continue
-            rate = HW_RATE.get(e.get("core"), HW_RATE["t1"])
-            active = s.core_active_since(e.get("ts", now))
-            if active > 0:
-                e["units"] = max(0.0, e["units"] - active * rate)
-                e["ts"] = now
-                changed = True
-            if (s.core_on() and not e.get("warned")
-                    and e["units"] < rate * 1800):
-                e["warned"] = True
-                changed = True
-                mins = int(e["units"] / rate / 60)
-                alerts.push("hw", char,
-                            f"{char}: Heavy Water fast leer, reicht noch etwa {mins} Minuten!")
-        if changed:
-            save_config()
+        # Die Eintraege werden hier mutiert UND parallel von do_POST/sync_ship
+        # geschrieben. Deshalb die ganze Runde inkl. save_config unter CONFIG_LOCK
+        # (RLock, save_config nimmt es reentrant erneut) — sonst zerreisst ein
+        # paralleler json.dumps(CONFIG) oder ueberschreibt einen Wert.
+        with CONFIG_LOCK:
+            hw = CONFIG.get("heavy_water") or {}
+            if not hw:
+                return
+            changed = False
+            for char, e in list(hw.items()):
+                if now - e.get("ck", 0) < 60:
+                    continue
+                e["ck"] = now
+                s = by_name.get(char)
+                if s is None:
+                    continue
+                rate = HW_RATE.get(e.get("core"), HW_RATE["t1"])
+                active = s.core_active_since(e.get("ts", now))
+                if active > 0:
+                    e["units"] = max(0.0, e.get("units", 0.0) - active * rate)
+                    e["ts"] = now
+                    changed = True
+                if (s.core_on() and not e.get("warned")
+                        and e.get("units", 0.0) < rate * 1800):
+                    e["warned"] = True
+                    changed = True
+                    mins = int(e.get("units", 0.0) / rate / 60)
+                    alerts.push("hw", char,
+                                f"{char}: Heavy Water fast leer, reicht noch etwa {mins} Minuten!")
+            if changed:
+                save_config()
 
     def check_idle(self):
         """Warnt, wenn ein aktiver Miner laenger als idle_warn kein Erz mehr liefert."""
@@ -1308,8 +1347,9 @@ class Ingest(threading.Thread):
                 if full:
                     self.progress["done"] = done
                 continue
-            row = DB.execute("SELECT offset, skipped, char_name, first_ts, last_ts "
-                             "FROM files WHERE name=?", (f.name,)).fetchone()
+            with DB_LOCK:
+                row = DB.execute("SELECT offset, skipped, char_name, first_ts, last_ts "
+                                 "FROM files WHERE name=?", (f.name,)).fetchone()
             if row is None:
                 skip = (CONFIG["mode"] == "fresh"
                         and st.st_mtime < float(CONFIG["install_ts"])
@@ -1373,6 +1413,7 @@ class Ingest(threading.Thread):
                     continue
                 new_offset = offset + cut + 1
                 now = time.time()
+                mined_now = False   # Mining-System erst NACH Freigabe der Locks lernen
                 # Session-Mutation unter self.lock, damit snapshot_live (HTTP-Thread)
                 # nicht mitten in der Iteration von mining/rate_min/win_out crasht.
                 with self.lock:
@@ -1396,26 +1437,37 @@ class Ingest(threading.Thread):
                             if not catch_up and now - ev["ts"] < 600:
                                 self.live_alerts(ev, cname)
                                 if ev["kind"] == "ore":
-                                    self.learn_mine_system(cid)
+                                    mined_now = True
                 with DB_LOCK:
-                    for ev in batch:
-                        if ev["kind"] in ("drone_engage", "hold_reset"):
-                            continue  # reine Live-Signale, nicht historisieren
-                        db_add(ev["day"], cid, cname, ev["kind"], ev["key"], ev["value"])
-                        if ev["kind"] == "dmg_out" and "weapon" in ev:
-                            db_add(ev["day"], cid, cname, "weapon", ev["weapon"], ev["value"])
-                        if ev["kind"] == "dmg_in" and ev.get("player"):
-                            db_add(ev["day"], cid, cname, "pvp_in", ev["key"], ev["value"])
-                    for md in missions_done:
-                        save_mission(md)
-                    if batch:
-                        ts = [ev["ts"] for ev in batch]
-                        first_ts = min(first_ts or ts[0], *ts)
-                        last_ts = max(last_ts or ts[0], *ts)
-                        DB.execute("UPDATE files SET first_ts=?, last_ts=? WHERE name=?",
-                                   (first_ts, last_ts, f.name))
+                    try:
+                        for ev in batch:
+                            if ev["kind"] in ("drone_engage", "hold_reset"):
+                                continue  # reine Live-Signale, nicht historisieren
+                            db_add(ev["day"], cid, cname, ev["kind"], ev["key"], ev["value"])
+                            if ev["kind"] == "dmg_out" and "weapon" in ev:
+                                db_add(ev["day"], cid, cname, "weapon", ev["weapon"], ev["value"])
+                            if ev["kind"] == "dmg_in" and ev.get("player"):
+                                db_add(ev["day"], cid, cname, "pvp_in", ev["key"], ev["value"])
+                        for md in missions_done:
+                            save_mission(md)
+                        if batch:
+                            ts = [ev["ts"] for ev in batch]
+                            first_ts = min(first_ts or ts[0], *ts)
+                            last_ts = max(last_ts or ts[0], *ts)
+                            DB.execute("UPDATE files SET first_ts=?, last_ts=? WHERE name=?",
+                                       (first_ts, last_ts, f.name))
+                    except Exception as e:
+                        # Historisierung fehlgeschlagen: das Offset TROTZDEM
+                        # fortschreiben. Die Live-Session wurde oben bereits
+                        # gefuettert; ein erneutes Einlesen derselben Zeilen wuerde
+                        # die Mining-/Kampfwerte doppelt zaehlen.
+                        log_error("CN-DB-01", "Ingest.tick historize", e)
                     DB.execute("UPDATE files SET offset=? WHERE name=?", (new_offset, f.name))
                     DB.commit()
+                # Ausserhalb self.lock UND DB_LOCK: learn_mine_system macht Disk-I/O
+                # (save_config); unter self.lock wuerde es HTTP-Snapshots blockieren.
+                if mined_now:
+                    self.learn_mine_system(cid)
             except OSError:
                 pass
             done += 1
@@ -1433,10 +1485,12 @@ class Ingest(threading.Thread):
         sysname = chatwatch.systems.get(cid)
         if not sysname or sysname == "?":
             return
-        ms = CONFIG.setdefault("mine_systems", {})
-        if sysname not in ms:
+        with CONFIG_LOCK:
+            ms = CONFIG.setdefault("mine_systems", {})
+            if sysname in ms:
+                return
             ms[sysname] = 0  # System-ID löst der ESI-Thread nach
-            save_config()
+        save_config()
 
     def live_alerts(self, ev, cname):
         # Entwarnung: Gegensignal im Log macht alte Alarme sofort hinfaellig
@@ -1474,11 +1528,16 @@ class ChatWatch(threading.Thread):
         self.npc = {}          # char_id -> deque[(ts, text)] NPC-/Missions-Funk (Absender "Message")
         self.offsets = {}      # file -> offset
         self.started_full = False
+        # Schuetzt self.npc: dialogue() (HTTP-/Ingest-Thread) liest, waehrend
+        # tick()/backfill() (Chat-Thread) anhaengen -> sonst "deque mutated".
+        self.lock = threading.Lock()
 
     def dialogue(self, cid, t0, t1=None):
         """NPC-Funk eines Zeitfensters als Liste von Texten (fuer Missionserkennung
         und Anzeige)."""
-        return [txt for ts, txt in self.npc.get(cid, ())
+        with self.lock:
+            items = list(self.npc.get(cid, ()))   # unter Lock kopieren, dann filtern
+        return [txt for ts, txt in items
                 if ts >= (t0 or 0) and (t1 is None or ts <= t1)]
 
     def chat_dir(self):
@@ -1533,7 +1592,8 @@ class ChatWatch(threading.Thread):
                 elif sender == "Message":
                     n = self._npc_line(line)
                     if n:
-                        self.npc.setdefault(cid, deque(maxlen=400)).append(n)
+                        with self.lock:
+                            self.npc.setdefault(cid, deque(maxlen=400)).append(n)
             self.offsets[f] = usable   # Live-Schleife setzt hier auf
 
     def run(self):
@@ -1588,7 +1648,8 @@ class ChatWatch(threading.Thread):
                                            tzinfo=timezone.utc).timestamp() if tm else time.time())
                         except Exception:
                             ts = time.time()
-                        self.npc.setdefault(cid, deque(maxlen=400)).append((ts, msg))
+                        with self.lock:
+                            self.npc.setdefault(cid, deque(maxlen=400)).append((ts, msg))
                     elif self.started_full:
                         if watch and sender.lower() in watch:
                             alerts.push("watch", sender,
@@ -1611,7 +1672,9 @@ class Prices(threading.Thread):
 
     def wanted_ids(self):
         ids = set()
-        for (ore,) in DB.execute("SELECT DISTINCT key FROM daily WHERE kind IN ('ore','compressed')"):
+        with DB_LOCK:
+            rows = DB.execute("SELECT DISTINCT key FROM daily WHERE kind IN ('ore','compressed')").fetchall()
+        for (ore,) in rows:
             t = ORE_TYPES.get(ore)
             if t:
                 ids.add(t["typeID"])
@@ -1645,6 +1708,10 @@ class Prices(threading.Thread):
                 except Exception as e:
                     log_error("CN-NET-01", f"Prices.run(region={region})", e)
                     self.fetched[region] = time.time() - PRICE_REFRESH + 60
+                    # Auch bei Fehlschlag als "angefragt" merken: sonst bleibt
+                    # new_ids gefuellt und der 60s-Backoff (ueber 'due') wird bei
+                    # neuen Erzsorten umgangen -> Retry-Sturm alle 3s.
+                    self.requested[region] = set(ids)
             time.sleep(3)
 
 
@@ -1800,6 +1867,10 @@ class Esi(threading.Thread):
         self.status = {}      # char -> Klartext-Status fuer die Optionen-Seite
         self.type_cache = {}  # type_id -> Name (Schiffstypen, öffentlicher Endpunkt)
         self.party_names = {} # id -> Name (Agenten aus dem Wallet-Journal)
+        # Serialisiert den Token-Refresh: poll-Thread und HTTP-Thread (ui_open)
+        # duerfen nicht gleichzeitig dasselbe Refresh-Token einloesen (CCP
+        # invalidiert es beim ersten Gebrauch -> der zweite bekommt 400).
+        self.token_lock = threading.Lock()
 
     def cfg(self):
         return CONFIG.setdefault("esi", {"client_id": "", "chars": {}})
@@ -1846,11 +1917,12 @@ class Esi(threading.Thread):
             pay = tok["access_token"].split(".")[1]
             pay = json.loads(base64.urlsafe_b64decode(pay + "==="))
             name = pay["name"]
-            self.cfg()["chars"][name] = {
-                "char_id": int(pay["sub"].split(":")[-1]),
-                "refresh": tok["refresh_token"], "access": tok["access_token"],
-                "exp": time.time() + tok.get("expires_in", 1199) - 60,
-                "assets_next": 0}
+            with CONFIG_LOCK:
+                self.cfg()["chars"][name] = {
+                    "char_id": int(pay["sub"].split(":")[-1]),
+                    "refresh": tok["refresh_token"], "access": tok["access_token"],
+                    "exp": time.time() + tok.get("expires_in", 1199) - 60,
+                    "assets_next": 0}
             save_config()
             self.status[name] = "verbunden"
             return None
@@ -1858,17 +1930,24 @@ class Esi(threading.Thread):
             return f"Token-Tausch fehlgeschlagen: {e}"
 
     def _access(self, c):
-        if time.time() >= c.get("exp", 0) or not c.get("access"):
+        if time.time() < c.get("exp", 0) and c.get("access"):
+            return c["access"]
+        with self.token_lock:
+            # Double-Check: waehrend des Wartens hat evtl. ein anderer Thread schon
+            # erneuert -> dann NICHT nochmal (sonst zweite Einloesung -> 400).
+            if time.time() < c.get("exp", 0) and c.get("access"):
+                return c["access"]
             tok = self._token_request({
                 "grant_type": "refresh_token", "refresh_token": c["refresh"],
                 "client_id": self.client_id()})
-            c["refresh"] = tok.get("refresh_token", c["refresh"])
-            c["access"] = tok["access_token"]
-            c["exp"] = time.time() + tok.get("expires_in", 1199) - 60
+            with CONFIG_LOCK:
+                c["refresh"] = tok.get("refresh_token", c["refresh"])
+                c["access"] = tok["access_token"]
+                c["exp"] = time.time() + tok.get("expires_in", 1199) - 60
             # Rotiertes Refresh-Token SOFORT sichern: CCP invalidiert das alte,
             # ein späterer Fehler im selben poll dürfte es sonst nie speichern.
             save_config()
-        return c["access"]
+            return c["access"]
 
     def _get(self, c, path, params=None):
         url = ESI_BASE + path + ("?" + urllib.parse.urlencode(params) if params else "")
@@ -1926,9 +2005,11 @@ class Esi(threading.Thread):
             self.type_cache[tid] = n
         return n
 
-    def sync_ship(self, name, c):
-        """Heavy Water + Kern-Typ aus dem aktuellen Schiff uebernehmen."""
-        ship, _ = self._get(c, f"/characters/{c['char_id']}/ship/")
+    def sync_ship(self, name, c, ship=None):
+        """Heavy Water + Kern-Typ aus dem aktuellen Schiff uebernehmen.
+        ship kann uebergeben werden (poll hat es schon geladen), sonst nachladen."""
+        if ship is None:
+            ship, _ = self._get(c, f"/characters/{c['char_id']}/ship/")
         items, page = [], 1
         while True:
             data, hdr = self._get(c, f"/characters/{c['char_id']}/assets/",
@@ -2066,7 +2147,7 @@ class Esi(threading.Thread):
                 if new_ship:
                     c["assets_next"] = 0  # Schiffswechsel -> Laderaum sofort neu abgleichen
                 if time.time() >= c.get("assets_next", 0):
-                    self.sync_ship(name, c)
+                    self.sync_ship(name, c, ship)
                 # Online-Status (Scope esi-location.read_online.v1). Fehlt der Scope
                 # (Char noch nicht neu verbunden), liefert ESI 403 -> still ignorieren,
                 # dann greift der Log-Aktivitäts-Fallback.
@@ -2276,7 +2357,13 @@ class ThreatIntel(threading.Thread):
                         data = self._profile(real, cid)
                 except Exception as e:
                     data = {"level": "unknown", "note": f"Abfrage fehlgeschlagen: {str(e)[:60]}"}
-                self._store(raw, data)
+                # _store (DB-Schreibzugriff) und das discard MUESSEN abgesichert sein:
+                # eine Ausnahme hier wuerde sonst aus run() heraus den Daemon-Thread
+                # beenden und alle weiteren Bedrohungs-Scans der Session lahmlegen.
+                try:
+                    self._store(raw, data)
+                except Exception as e:
+                    log_error("CN-INTEL-01", "ThreatIntel._store", e)
                 with self.lock:
                     self.queued.discard(raw.lower())
                 time.sleep(1.1)  # zKillboard-Etikette: nicht schneller als ~1 Request/s
@@ -2423,11 +2510,15 @@ def log_dir_status():
         if not p.is_dir():
             log_error("CN-LOG-02", "log_dir_status", d)
         else:
+            listed = False
             try:
                 n = sum(1 for f in p.iterdir() if CHAR_FILE_RE.match(f.name))
+                listed = True
             except OSError as e:
                 log_error("CN-LOG-04", "log_dir_status", e)
-            if n == 0:
+            # "keine Gamelogs" nur melden, wenn das Auflisten auch geklappt hat —
+            # sonst steht neben dem echten Fehler (CN-LOG-04) eine falsche Meldung.
+            if listed and n == 0:
                 log_error("CN-LOG-03", "log_dir_status", d)
     c.update(ts=time.time(), path=d, ok=n > 0, n=n)
     return c["ok"], n
@@ -2539,7 +2630,7 @@ def snapshot_live():
         hw = None
         if hw_cfg:
             rate = HW_RATE.get(hw_cfg.get("core"), HW_RATE["t1"])
-            rem = max(0.0, hw_cfg["units"]
+            rem = max(0.0, hw_cfg.get("units", 0.0)
                       - s.core_active_since(hw_cfg.get("ts", 0)) * rate)
             on = s.core_on()
             hw = {"units": round(rem), "core": hw_cfg.get("core", "t1"), "on": on,
@@ -2686,20 +2777,27 @@ def hub_prices(region, ids, prefer_esi=False):
             fetched = esi_orderbook(region, ids)
         except Exception:
             fetched = {}
-    PRICE_SOURCE[str(region)] = "esi" if fetched else "fuzzwork"
-    rest = set(ids) - {t for t, (b, s) in fetched.items() if b or s}
-    if rest:
+    PRICE_SOURCE[str(region)] = "esi" if (prefer_esi and fetched) else "fuzzwork"
+    result = dict(fetched)
+    # Jeden Typ ergaenzen, bei dem ESI eine Seite (oder beide) mit 0 liefert:
+    # sonst wuerde z.B. ein Item mit Buy-Orders aber ohne Sell-Order faelschlich
+    # Sell=0 zeigen, obwohl Fuzzwork einen Sell-Preis kennt.
+    incomplete = {t for t in ids
+                  if result.get(t, (0.0, 0.0))[0] == 0 or result.get(t, (0.0, 0.0))[1] == 0}
+    if incomplete:
         try:
-            fz = fuzzwork_prices(region, rest)
-            fetched.update(fz)
-            if prefer_esi and any(fetched):
-                PRICE_SOURCE[str(region)] = "esi" if len(rest) < len(set(ids)) else "fuzzwork"
+            fz = fuzzwork_prices(region, incomplete)
+            for t in incomplete:
+                eb, es = result.get(t, (0.0, 0.0))
+                fb, fs = fz.get(t, (0.0, 0.0))
+                # ESI-Seite bevorzugen, nur die fehlende (0) Seite aus Fuzzwork.
+                result[t] = (eb or fb, es or fs)
         except Exception:
-            if not fetched:
+            if not result:
                 raise
     with CALC_LOCK:
         merged = CALC_CACHE.get(region, {}).get("prices", {})
-        merged.update(fetched)
+        merged.update(result)
         CALC_CACHE[region] = {"ts": time.time(), "prices": merged}
         return dict(merged)
 
@@ -2779,12 +2877,15 @@ def resolve_item_ids(names):
                 headers={"Content-Type": "application/json", "User-Agent": ESI_UA})
             with urllib.request.urlopen(req, timeout=20) as r:
                 data = json.loads(r.read())
-            found = {t["name"]: t["id"] for t in data.get("inventory_types", [])}
+            # Case-insensitiv indexieren: ESI liefert den kanonischen Namen
+            # ("Tritanium"), der Nutzer tippt evtl. "tritanium" -> sonst wird 0
+            # gecacht und das Item gilt dauerhaft als unbekannt.
+            found = {t["name"].lower(): t["id"] for t in data.get("inventory_types", [])}
         except Exception as e:
             log_error("CN-NET-01", "resolve_item_ids", e)
         with DB_LOCK:
             for n in batch:
-                tid = found.get(n)
+                tid = found.get(n.lower())
                 # auch 0/NULL merken, damit ein unbekannter Name nicht bei jedem
                 # Einfügen erneut ESI belastet
                 DB.execute("INSERT OR REPLACE INTO item_ids VALUES(?,?)", (n, tid or 0))
@@ -3060,8 +3161,14 @@ def query_analyse():
         avg = sum(last7) / max(len(last7), 1)
         remaining = max(0, goal["isk"] - total["total_isk"])
         eta_days = round(remaining / avg, 1) if avg > 0 else None
-        eta_date = ((datetime.now() + timedelta(days=eta_days)).strftime("%Y-%m-%d")
-                    if eta_days is not None else None)
+        # timedelta wirft bei riesigen Werten OverflowError (winziger Schnitt +
+        # grosses Ziel). Nur bei plausibler Reichweite ein Datum berechnen.
+        eta_date = None
+        if eta_days is not None and 0 <= eta_days < 3650000:
+            try:
+                eta_date = (datetime.now() + timedelta(days=eta_days)).strftime("%Y-%m-%d")
+            except (OverflowError, ValueError):
+                eta_date = None
         goal_info = {"isk": goal["isk"], "deadline": goal.get("deadline"),
                      "current": total["total_isk"],
                      "pct": round(100 * total["total_isk"] / goal["isk"], 1),
@@ -3427,7 +3534,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(json.dumps({"ok": True, "isk": isk, "unknown": res.get("unknown", [])}))
             return
         elif action == "threat_scan":
-            names = [str(n).strip() for n in body.get("names", [])][:200]
+            names = [str(n).strip() for n in (body.get("names") or [])][:200]
             names = [n for n in names if n]
             results = threat.request(names, prio=True)
             self._send(json.dumps({"ok": True, "results": results,
@@ -3476,7 +3583,7 @@ class Handler(BaseHTTPRequestHandler):
                     if s.name == body.get("char"):
                         s.lasers_off.pop(body.get("tool"), None)
         elif action == "watchlist":
-            CONFIG["watchlist"] = [str(n).strip() for n in body.get("names", []) if str(n).strip()][:50]
+            CONFIG["watchlist"] = [str(n).strip() for n in (body.get("names") or []) if str(n).strip()][:50]
         elif action == "goal":
             isk = body.get("isk")
             CONFIG["goal"] = ({"isk": int(isk), "deadline": str(body.get("deadline") or "")}
@@ -3672,7 +3779,7 @@ padding:8px 16px;font-weight:600;cursor:pointer;font-size:13px}
 .pill.srv b{color:var(--txt);font-weight:600}
 .laserok{float:right;border:1px solid var(--line);border-radius:20px;padding:1px 9px;
 color:var(--dim);cursor:pointer;font-weight:400;margin-left:8px}
-.laserok:hover{color:var(--fg);border-color:var(--fg)}
+.laserok:hover{color:var(--txt);border-color:var(--txt)}
 .hwset{cursor:pointer;opacity:.55}
 .hwset:hover{opacity:1}
 tr.lvl-red td{background:rgba(232,86,79,.10)}
@@ -4059,41 +4166,48 @@ function handleAlerts(){
  $('#alerts').innerHTML=list.filter(a=>now-a.ts<300).slice(-4).reverse().map(a=>{
   const t=new Date(a.ts*1000).toLocaleTimeString();
   return `<div class="alert ${a.kind}">[${t}] ${esc(a.text)}</div>`}).join('');
+ // Notification-API kann fehlen (aelterer Browser/WebView, kein Secure-Context).
+ // Ohne diese Pruefung wuerde jeder tick() hier werfen und die Seite bliebe leer.
+ const canNotify=('Notification' in window)&&Notification.permission==='granted';
+ const notify=(title,a)=>{if(canNotify)new Notification(title,{body:a.text});};
  for(const a of list){
   if(a.id<=lastAlertId)continue;
+  lastAlertId=a.id;                 // immer hochsetzen, auch fuer alte Alarme
+  // Alte Alarme (frisches Profil/privates Fenster: lastAlertId=0 -> ganze Historie)
+  // nicht nachtoenen; im Banner erscheinen sie ohnehin nur < 300 s.
+  if(now-a.ts>=300)continue;
   if(a.kind==='pvp'){
    if($('#sndPvp').checked)beep(880,3,0.18);
-   if(Notification.permission==='granted')new Notification('EVE: SPIELER-ANGRIFF!',{body:a.text});
+   notify('EVE: SPIELER-ANGRIFF!',a);
   }else if(a.kind==='depleted'&&$('#sndDep').checked)beep(520,1,0.12);
   else if(a.kind==='drones'){
    if($('#sndDep').checked)beep(590,2,0.15);
-   if(Notification.permission==='granted')new Notification('EVE: Drohnen prüfen!',{body:a.text});
+   notify('EVE: Drohnen prüfen!',a);
   }
   else if(a.kind==='cargo'){
    if($('#sndDep').checked)beep(700,3,0.18);
-   if(Notification.permission==='granted')new Notification('EVE: Frachtraum voll!',{body:a.text});
+   notify('EVE: Frachtraum voll!',a);
   }
   else if(a.kind==='idle'){
    if($('#sndDep').checked)beep(470,2,0.2);
-   if(Notification.permission==='granted')new Notification('EVE: Mining steht!',{body:a.text});
+   notify('EVE: Mining steht!',a);
   }
   else if(a.kind==='rate'){
    if($('#sndDep').checked)beep(505,2,0.18);
-   if(Notification.permission==='granted')new Notification('EVE: Abbaurate gefallen!',{body:a.text});
+   notify('EVE: Abbaurate gefallen!',a);
   }
   else if(a.kind==='watch'){
    if($('#sndWatch').checked)beep(660,2,0.15);
-   if(Notification.permission==='granted')new Notification('EVE: Watchlist',{body:a.text});
+   notify('EVE: Watchlist',a);
   }
   else if(a.kind==='intel'){
    if($('#sndWatch').checked)beep(770,3,0.16);
-   if(Notification.permission==='granted')new Notification('EVE: Bedrohung erkannt!',{body:a.text});
+   notify('EVE: Bedrohung erkannt!',a);
   }
   else if(a.kind==='hw'){
    if($('#sndDep').checked)beep(430,2,0.2);
-   if(Notification.permission==='granted')new Notification('EVE: Heavy Water fast leer!',{body:a.text});
+   notify('EVE: Heavy Water fast leer!',a);
   }
-  lastAlertId=a.id;
  }
  localStorage.setItem('lastAlertId',lastAlertId);
 }
@@ -4309,7 +4423,7 @@ function renderLive(chars,summary){
      <option value="mission"${c.role==='mission'?' selected':''}>🎯 Missionen</option>
      <option value="pvp"${c.role==='pvp'?' selected':''}>⚔ PvP</option>
     </select>
-    <span class="mini">${c.cargo_full?'<span class="warnbadge drone">⚠ Frachtraum voll!</span> · ':''}${(c.tool_warns||[]).map(w=>'<span class="warnbadge'+(w.drone?' drone':'')+'">⚠ '+w.tool+(w.count>1?' ×'+w.count:'')+'</span> · ').join('')}${(c.lasers_off||[]).map(w=>'<span class="warnbadge">⛔ '+w.tool+' aus</span> · ').join('')}${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'<span class="warnbadge drone">⛽ HW ~'+c.heavy_water.min_left+' min</span> · ':''}${c.drones_idle?'<span class="warnbadge">🤖 Drohnen ohne Erz</span> · ':''}${c.laser_stalled?'<span class="warnbadge">⛏ Laser ohne Erz</span> · ':''}${c.rate_low?'<span class="warnbadge">⚠ Rate '+c.rate_low+'%</span> · ':''}${mineIdle(c,state)?'<span class="warnbadge">⚠ Kein Erz seit '+Math.round(c.mine_idle/60)+' min</span> · ':''}${fmtM(c.total_isk)} ISK · ${fmt(c.m3h)} m³/h${c.dps_in>0?' · <span class=\"in\">⚠ '+c.dps_in+' DPS rein</span>':''}</span>
+    <span class="mini">${c.cargo_full?'<span class="warnbadge drone">⚠ Frachtraum voll!</span> · ':''}${(c.tool_warns||[]).map(w=>'<span class="warnbadge'+(w.drone?' drone':'')+'">⚠ '+esc(w.tool)+(w.count>1?' ×'+w.count:'')+'</span> · ').join('')}${(c.lasers_off||[]).map(w=>'<span class="warnbadge">⛔ '+esc(w.tool)+' aus</span> · ').join('')}${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'<span class="warnbadge drone">⛽ HW ~'+c.heavy_water.min_left+' min</span> · ':''}${c.drones_idle?'<span class="warnbadge">🤖 Drohnen ohne Erz</span> · ':''}${c.laser_stalled?'<span class="warnbadge">⛏ Laser ohne Erz</span> · ':''}${c.rate_low?'<span class="warnbadge">⚠ Rate '+c.rate_low+'%</span> · ':''}${mineIdle(c,state)?'<span class="warnbadge">⚠ Kein Erz seit '+Math.round(c.mine_idle/60)+' min</span> · ':''}${fmtM(c.total_isk)} ISK · ${fmt(c.m3h)} m³/h${c.dps_in>0?' · <span class=\"in\">⚠ '+c.dps_in+' DPS rein</span>':''}</span>
    </div>
    <div class="cbody">
    ${c.cargo_full?`<div class="cardwarn drone">⚠ Frachtraum voll! Erz verladen oder komprimieren.</div>`:''}
@@ -4645,10 +4759,10 @@ function ovStatus(c,st){
  if(c.cargo_full)return['bad','FRACHTRAUM VOLL'];
  const tw=c.tool_warns||[];
  const dr=tw.find(w=>w.drone);
- if(dr)return['bad','DROHNEN PRÜFEN ('+dr.tool+')'];
- if(tw.length)return['warn',tw[0].tool.toUpperCase()+(tw[0].count>1?' ×'+tw[0].count:'')+' AUS'];
+ if(dr)return['bad','DROHNEN PRÜFEN ('+esc(dr.tool)+')'];
+ if(tw.length)return['warn',esc(tw[0].tool.toUpperCase())+(tw[0].count>1?' ×'+tw[0].count:'')+' AUS'];
  const lo=c.lasers_off||[];
- if(lo.length)return['warn',lo[0].tool.toUpperCase()+' AUS'];
+ if(lo.length)return['warn',esc(lo[0].tool.toUpperCase())+' AUS'];
  if(c.drones_idle)return['warn','DROHNEN OHNE ERZ'];
  if(c.laser_stalled)return['warn','LASER OHNE ERZ'];
  if(c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30)return['warn','HEAVY WATER ~'+c.heavy_water.min_left+' MIN'];
@@ -4833,10 +4947,10 @@ function renderMissions(d){
   const ta=[...document.querySelectorAll('.mlootin')].find(t=>t.dataset.mid===mid);
   const st=[...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===mid);
   st.textContent='Prüfe …';
-  const r=await post({action:'mission_loot',mid,text:ta?ta.value:''});
+  let r;try{r=await post({action:'mission_loot',mid,text:ta?ta.value:''});}catch(e){r=null;}
   if(r&&r.ok){st.textContent='Loot: '+fmtM(r.isk)+(r.unknown&&r.unknown.length?' · nicht erkannt: '+r.unknown.join(', '):'');
    setTimeout(tick,600);}
-  else st.textContent='Fehler';
+  else st.textContent=r?'Fehler':'Server nicht erreichbar';
  });
 }
 function renderRechner(){
@@ -4868,7 +4982,10 @@ function renderRechner(){
   if(e.key==='Enter'){if(box)box.hidden=true;doMarket();}
  };
  // Klick ausserhalb schliesst die Vorschlagsliste
- document.addEventListener('click',e=>{if(!e.target.closest('.mktwrap')){const b=document.getElementById('mktSug');if(b)b.hidden=true;}});
+ // Nur EINMAL binden: renderRechner laeuft bei jedem Wechsel auf den Tab erneut,
+ // sonst sammeln sich mit jedem Besuch weitere globale Click-Listener an.
+ if(!window._mktClickBound){window._mktClickBound=true;
+  document.addEventListener('click',e=>{if(!e.target.closest('.mktwrap')){const b=document.getElementById('mktSug');if(b)b.hidden=true;}});}
  const saved=localStorage.getItem('calcText');
  if(saved)$('#calcIn').value=saved;
 }
@@ -4973,7 +5090,8 @@ function renderSetup(){
  </div>`;
  const go=async()=>{
   const st=$('#setupStat');st.textContent='Prüfe …';st.style.color='';
-  const r=await post({action:'log_dir',path:$('#setupDir').value});
+  let r;try{r=await post({action:'log_dir',path:$('#setupDir').value});}catch(e){r=null;}
+  if(!r){st.textContent='Server nicht erreichbar.';st.style.color='var(--red)';return;}
   st.textContent=r.msg||'';st.style.color=r.ok?'var(--green)':'var(--red)';
   if(r.ok){if(r.state)state=r.state;box.dataset.built='';box.hidden=true;box.innerHTML='';tick();}
  };
@@ -5361,11 +5479,6 @@ if __name__ == "__main__":
                   "steamuser/Documents/EVE/logs/Gamelogs")
     else:
         print(f"Gamelog-Ordner: {CONFIG['log_dir']} ({_log_n} Logdateien)")
-    if DB_PATH.exists():
-        try:
-            do_backup()
-        except Exception:
-            pass
     port = int(CONFIG.get("port", PORT_DEFAULT))
 
     class Server(ThreadingHTTPServer):
