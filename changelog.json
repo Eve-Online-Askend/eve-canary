@@ -1,4 +1,7 @@
 [
+ {"v": "1.39", "d": "2026-07-24",
+  "de": ["Kampf-Karte: wenn ein Char kämpft, aber der Client keine Bounty-Zeilen ins Log schreibt, erscheint jetzt ein dezenter Hinweis, warum Kills und Bounty auf 0 stehen, plus der Tipp, die Bounty-Meldungen im EVE-Combat-Log zu aktivieren. Die echte Bounty-ISK kommt bei EVE-Login weiterhin aus dem Wallet"],
+  "en": ["Combat card: when a character is fighting but the client writes no bounty lines to the log, a subtle note now explains why kills and bounty read 0, plus a tip to enable the bounty messages in the EVE combat log. The actual bounty ISK still comes from the wallet with the EVE login"]},
  {"v": "1.38", "d": "2026-07-24",
   "de": ["Mining Fleet Power Stufe 3: teilbares Bild. Ein Klick auf 📤 Teilen rendert ein sauberes PNG deiner Flotten-Power (Zahl, Rang, ✅ ESI-verifiziert-Siegel, Canary-Logo, Homepage-Link), lädt es herunter und legt es zugleich in die Zwischenablage. Ideal für Discord, Twitch oder Reddit", "Der Ø-Wert des Mining Ledgers wird jetzt kompakt abgekürzt (z. B. 233 K/Tag statt 232.729)"],
   "en": ["Mining Fleet Power stage 3: shareable image. One click on 📤 Share renders a clean PNG of your fleet power (number, rank, ✅ ESI-verified seal, Canary logo, homepage link), downloads it and copies it to the clipboard at the same time. Great for Discord, Twitch or Reddit", "The mining ledger average is now shown compact (e.g. 233 K/day instead of 232,729)"]},
