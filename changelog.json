@@ -1,4 +1,7 @@
 [
+ {"v": "1.36", "d": "2026-07-24",
+  "de": ["Neu: Mining Fleet Power. Eine Hashrate-artige Zahl für die Förderleistung deiner ganzen Flotte in m³/min, mit Rang von Prospektor bis Rorqual-Overlord. Stufe 1 rechnet aus der echten geloggten Minutenrate (als 'geschätzt' gekennzeichnet); die ESI-verifizierte Version mit Siegel folgt als Nächstes"],
+  "en": ["New: Mining Fleet Power. A hashrate-style number for your whole fleet's mining output in m³/min, with a rank from Prospector to Rorqual Overlord. Stage 1 computes from the real logged per-minute rate (marked 'estimated'); the ESI-verified version with a seal is coming next"]},
  {"v": "1.35", "d": "2026-07-24",
   "de": ["Abyss und anderer Kampf ohne Bounty: statt 'Kills: 0' zeigt Canary jetzt ehrlich 'Gegner bekämpft: N Typen' und die vollständige Gegnerliste mit Schaden je Typ (vorher nur Top 6). EVE protokolliert keine NPC-Tode, darum ist die Zahl der bekämpften Gegnertypen der einzige gesicherte Wert, keine geratene Kill-Zahl", "Bei echtem Ratting/Missionen mit Bounty bleibt der Kill-Zähler wie gehabt"],
   "en": ["Abyss and other combat without bounty: instead of 'Kills: 0', Canary now honestly shows 'Enemies fought: N types' and the full enemy list with damage per type (was top 6 only). EVE does not log NPC deaths, so the number of enemy types fought is the only verifiable figure, not a guessed kill count", "For real ratting/missions with bounty the kill counter stays as before"]},
