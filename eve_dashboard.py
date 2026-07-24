@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.24.0"
+VERSION = "1.25.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -675,8 +675,10 @@ UPDATE_INFO = {"ts": 0, "available": False, "latest": None}
 
 
 def refresh_update_info():
-    """Alle 6 Stunden still nach einer neuen Version schauen (für den Kopfleisten-Badge)."""
-    if time.time() - UPDATE_INFO["ts"] < 6 * 3600:
+    """Regelmaessig nach einer neuen Version schauen. 15 min ist praktisch das
+    Minimum, weil raw.githubusercontent die version.json ~5 min cached; haeufiger
+    zu fragen bringt nichts. Beim ersten Lauf (ts=0) wird sofort geprueft."""
+    if time.time() - UPDATE_INFO["ts"] < 15 * 60:
         return
     UPDATE_INFO["ts"] = time.time()
     chk = check_update()
@@ -3653,6 +3655,14 @@ padding:7px 10px;font-size:12px;font-weight:600;margin-bottom:8px;overflow:hidde
 .warnbadge.drone{color:var(--red)}
 .pill.upd{border-color:var(--gold);color:var(--gold);animation:updpulse 2.4s ease-in-out infinite}
 @keyframes updpulse{0%,100%{box-shadow:0 0 0 rgba(232,198,69,0)}50%{box-shadow:0 0 9px rgba(232,198,69,.45)}}
+#updBanner{margin:10px 0;padding:12px 16px;border:1px solid var(--gold);border-radius:8px;
+background:rgba(232,198,69,.10);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+#updBanner .ub-txt{flex:1;min-width:220px;font-size:14px;color:var(--txt)}
+#updBanner .ub-txt b{color:var(--gold)}
+#updBanner .ub-sub{display:block;font-size:12px;color:var(--dim);margin-top:2px}
+#updBanner button{background:var(--gold);color:#1a1400;border:none;border-radius:6px;
+padding:8px 16px;font-weight:600;cursor:pointer;font-size:13px}
+#updBanner button:disabled{opacity:.6;cursor:default}
 .pill.srv{cursor:default}
 .pill.srv .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle}
 .pill.srv.up .dot{background:var(--green);box-shadow:0 0 5px var(--green)}
@@ -3787,6 +3797,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="missionen">🎯 Missionen</span>
  <span data-v="rechner">💰 ISKray</span>
 </nav>
+<div id="updBanner" hidden></div>
 <div id="alerts"></div>
 <div id="hero"></div>
 <div id="setup" hidden></div>
@@ -4109,6 +4120,44 @@ function updateBadge(){
  if(u.available&&u.latest){b.hidden=false;b.textContent='⬆ Update v'+u.latest;}
  else b.hidden=true;
 }
+// Deutliche Update-Meldung als Banner. Text gleich in der aktiven Sprache bauen,
+// damit die dynamische Versionsnummer nicht in tr() haengen bleibt.
+function updateBanner(){
+ const u=(state&&state.update)||{};
+ const b=$('#updBanner'); if(!b)return;
+ if(b.dataset.busy==='1')return;            // waehrend des Updates nicht neu aufbauen
+ if(!(u.available&&u.latest)){b.hidden=true;b.innerHTML='';return;}
+ const en=(lang==='en');
+ b.hidden=false;
+ b.innerHTML=`<div class="ub-txt"><b>${en?'Update available':'Update verfügbar'}: v${esc(u.latest)}</b>`
+  +`<span class="ub-sub">${en?'A newer version of Canary is online. Update now to get the latest features.'
+                            :'Eine neuere Version von Canary ist online. Jetzt aktualisieren für die neuesten Funktionen.'}</span></div>`
+  +`<button id="ubGo">${en?'Update now':'Jetzt aktualisieren'}</button>`;
+ $('#ubGo').onclick=runUpdate;
+}
+async function runUpdate(){
+ const b=$('#updBanner'), badge=$('#updBadge'), en=(lang==='en');
+ if(b){b.dataset.busy='1';b.hidden=false;
+  b.innerHTML=`<div class="ub-txt"><b>${en?'Updating …':'Update läuft …'}</b>`
+   +`<span class="ub-sub">${en?'Downloading and restarting. The page reloads by itself.'
+                             :'Wird geladen und neu gestartet, die Seite lädt gleich von selbst neu.'}</span></div>`;}
+ if(badge)badge.textContent=en?'Updating …':'Update läuft …';
+ let r;try{r=await post({action:'do_update'});}catch(e){r=null;}
+ if(r&&r.ok&&r.updated){waitForRestart();return;}
+ if(b)b.dataset.busy='';
+ alert((r&&(r.error||r.message))||(en?'Update failed.':'Update fehlgeschlagen.'));
+ updateBanner();updateBadge();
+}
+async function waitForRestart(){
+ // Erst neu laden, wenn der neu gestartete Server wirklich wieder antwortet —
+ // sonst laeuft der Refresh in einen kurzen Moment ohne Server (Fehlerseite).
+ for(let i=0;i<45;i++){
+  await new Promise(r=>setTimeout(r,1000));
+  try{const resp=await fetch('/data?view=live',{cache:'no-store'});
+      if(resp.ok){const d=await resp.json(); if(d&&d.state){location.reload();return;}}}catch(e){}
+ }
+ location.reload();
+}
 // Serverstatus (Tranquility). Text und Titel gleich in der aktiven Sprache
 // bauen — dann muss tr() hier nichts nachtraeglich uebersetzen (die Spielerzahl
 // wechselt jede Minute, ein zwischengespeicherter Titel wuerde sonst einfrieren).
@@ -4143,14 +4192,7 @@ function serverBadge(){
  }
  b.title=tip;
 }
-$('#updBadge').onclick=async()=>{
- const v=(state&&state.update&&state.update.latest)||'?';
- if(!confirm('Update auf v'+v+' installieren? Canary startet danach automatisch neu.'))return;
- $('#updBadge').textContent='Update läuft …';
- const r=await post({action:'do_update'});
- if(r.ok&&r.updated)setTimeout(()=>location.reload(),4000);
- else{alert(r.error||r.message||'Update fehlgeschlagen.');updateBadge();}
-};
+$('#updBadge').onclick=runUpdate;
 function regionPills(){
  $('#regions').innerHTML=Object.entries(state.regions).map(([id,n])=>
   `<span class="pill ${id===state.region?'on':''}" data-r="${id}">${n}</span>`).join('');
@@ -5267,7 +5309,7 @@ async function tick(){
  try{
   const d=await (await fetch('/data?view='+reqView)).json();
   if(reqView!==view)return;  // Nutzer hat inzwischen gewechselt -> Antwort verwerfen
-  state=d.state;regionPills();handleAlerts();updateBadge();serverBadge();bootScreen();
+  state=d.state;regionPills();handleAlerts();updateBadge();updateBanner();serverBadge();bootScreen();
   if(state.log_ok===false){renderSetup();return;}
   if(!$('#setup').hidden){$('#setup').hidden=true;$('#setup').dataset.built='';}
   if(view!=='live'&&view!=='month'&&view!=='total'&&view!=='analyse')$('#empty').hidden=true;

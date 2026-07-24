@@ -1,4 +1,11 @@
 [
+ {"v": "1.25", "d": "2026-07-24",
+  "de": ["Besserer Update-Hinweis: Canary prüft jetzt alle 15 Minuten auf neue Versionen",
+         "Deutliche Meldung als Banner, sobald ein Update online ist, mit einem Klick aktualisieren",
+         "Nach dem Update lädt die Seite erst neu, wenn der Server wirklich wieder bereit ist"],
+  "en": ["Better update notice: Canary now checks for new versions every 15 minutes",
+         "Clear banner as soon as an update is online, update with one click",
+         "After updating, the page reloads only once the server is truly back up"]},
  {"v": "1.24", "d": "2026-07-24",
   "de": ["Neuer Bereich ISKray: Marktpreise über alle Handelsplätze",
          "Einzel-Item mit Autovervollständigung, einfach tippen und Vorschlag wählen",
