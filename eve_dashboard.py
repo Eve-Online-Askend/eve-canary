@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.51.0"
+VERSION = "1.52.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -174,22 +174,20 @@ FACTIONS = [
                         "pleasure hub", "pleasure garden"],
      ["therm", "kin"], ["kin", "therm"], "damp"),
     ("Blood Raiders",  ["corpus", "corpii", "corpior", "corpum", "corpatis",
-                        "corpse", "corax", "blood ", "dark blood", "corelior blood"],
+                        "corpse", "blood raider", "blood clone", "dark blood"],
      ["em", "therm"], ["em", "therm"], "neut"),
     ("Sansha",         ["sansha", "centii", "centus", "centior", "centum",
-                        "centatis", "true sansha", "true creation", "eystur"],
+                        "centatis", "true sansha"],
      ["em", "therm"], ["em", "therm"], "td"),
-    ("Angel Cartel",   ["gist", "arch gist", "angel", "domination", "gistii",
-                        "gistum", "gistatis", "gistior"],
+    ("Angel Cartel",   ["gistii", "gistum", "gistatis", "gistior", "gist ",
+                        "arch gist", "angel cartel", "domination"],
      ["exp", "kin"], ["exp", "kin"], "web"),
     ("Mordu's Legion", ["mordu"],
      ["kin", "therm"], ["kin", "em"], "scram"),
     ("Rogue Drones",   ["alvus", "alvi", "alvior", "alvum", "alvatis", "defeater",
-                        "rogue drone", "strain ", "spearhead", "matriarch",
-                        "render", "atomizer", "hunter alvi"],
+                        "rogue drone"],
      ["therm", "em"], ["em", "therm"], None),
-    ("Mercenaries",    ["mercenary", "wildcat", "cutthroat", "commando",
-                        "extremist", "corporate"],
+    ("Mercenaries",    ["mercenary"],
      ["therm", "kin"], ["kin", "therm"], "jam"),
     ("Federation Navy", ["federation navy", "roden shipyard", "federation ",
                          "gallente "],
@@ -2330,6 +2328,15 @@ class Esi(threading.Thread):
                 with urllib.request.urlopen(req, timeout=15) as r:
                     d = json.loads(r.read())
                 nm, tid = d.get("name"), d.get("type_id")
+            elif 30000000 <= loc_id < 32000000:    # Sonnensystem = Erz im Erzladeraum/
+                # Fleet-Hangar des Mining-Schiffs in diesem System. Oeffentlich
+                # aufloesbar, kein Stations-Icon.
+                req = urllib.request.Request(f"{ESI_BASE}/universe/systems/{loc_id}/",
+                                             headers={"User-Agent": ESI_UA})
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    d = json.loads(r.read())
+                if d.get("name"):
+                    nm = f"{d['name']} · im Schiff"
             elif loc_id >= 100000000:              # Upwell-Struktur (Zugang noetig)
                 d, _ = self._get(c, f"/universe/structures/{loc_id}/")
                 nm, tid = d.get("name"), d.get("type_id")
@@ -3012,7 +3019,11 @@ def snapshot_live():
             "lasers_off": [] if drone_only else [{"tool": t, "since": int(i["since"]),
                             "before": round(i["before"] or 0, 1)}  # m³/min vor dem Stopp
                            for t, i in sorted(s.lasers_off.items())],
-            "rate_low": (lambda rs: round(100 * rs[1] / rs[0])
+            # Bei Command Ships / Drohnen-Boostern (Orca/Porpoise/Rorqual, aktiver
+            # Kern) NICHT die generische "Abbaurate runter"-Warnung zeigen — die
+            # ergibt dort keinen Sinn (kein reiner Miner). Dort greift nur die
+            # Drohnen-Idle-Warnung (drones_idle). Wie schon bei laser_stalled.
+            "rate_low": None if drone_only else (lambda rs: round(100 * rs[1] / rs[0])
                          if rs and 0 < rs[1] < 0.55 * rs[0] else None)(s.rate_status()),
             "cargo_full": s.cargo_full and (time.time() - s.cargo_ts) < 300,
             "drones_idle": s.drones_idle(),
@@ -3547,6 +3558,10 @@ def query_analyse():
 
 def state_info():
     return {"region": CONFIG["region"], "regions": REGIONS, "mode": CONFIG["mode"],
+            # Lokaler Demo-Schalter: blendet den "Simulation"-Play-Button im
+            # Missionen-Tab ein. Steht nur in der lokalen config.json (wird nie
+            # mit ausgeliefert), fuer Nutzer ohne das Flag existiert der Button nicht.
+            "sim": bool(CONFIG.get("sim_mode")),
             "baseline_day": meta_get("baseline_day"), "log_dir": CONFIG["log_dir"],
             "idle_warn": int(CONFIG.get("idle_warn", 240) or 0),
             "clip_watch": bool(CONFIG.get("clip_watch")),
@@ -3657,23 +3672,28 @@ def query_vault():
         v = c.get("vault")
         if not v:
             continue
-        tot_m3 += v.get("total_m3", 0)
-        tot_isk += v.get("total_isk", 0)
+        # Nur GELAGERTES Erz zeigen (Stationen/Strukturen). Erz, das gerade im
+        # Mining-Schiff liegt, hat einen Sonnensystem-Standort (30000000-32000000)
+        # und wird hier ausgeblendet — samt seiner Menge/ISK in den Summen.
+        locs, cm3, cisk = [], 0, 0
+        for l in v.get("locs", []):
+            if 30000000 <= (l.get("loc_id") or 0) < 32000000:
+                continue
+            info = esi.loc_info(c, l["loc_id"])
+            locs.append({**l, "name": info["name"], "icon": info.get("type_id")})
+            cm3 += l.get("m3", 0)
+            cisk += l.get("isk", 0)
+        if not locs:                       # nur Erz im Schiff -> Char nicht listen
+            continue
+        tot_m3 += cm3
+        tot_isk += cisk
         oldest = v["as_of"] if oldest is None else min(oldest, v.get("as_of") or oldest)
         if v.get("next"):
             soonest = v["next"] if soonest is None else min(soonest, v["next"])
-        # Standort-Info beim Abfragen (neu) aufloesen, gecacht: Name + Typ-ID fuers
-        # Icon. So erscheinen Namen/Bilder sofort, auch wenn der Vault mit noch
-        # unaufgeloesten IDs gebaut wurde.
-        locs = []
-        for l in v.get("locs", []):
-            info = esi.loc_info(c, l["loc_id"])
-            locs.append({**l, "name": info["name"], "icon": info.get("type_id")})
-        chars.append({"name": nm, "total_m3": v.get("total_m3", 0),
-                      "total_isk": v.get("total_isk", 0), "locs": locs,
-                      "as_of": v.get("as_of"), "next": v.get("next")})
+        chars.append({"name": nm, "total_m3": round(cm3), "total_isk": round(cisk),
+                      "locs": locs, "as_of": v.get("as_of"), "next": v.get("next")})
     chars.sort(key=lambda x: -x["total_isk"])
-    return {"total_m3": tot_m3, "total_isk": tot_isk, "as_of": oldest,
+    return {"total_m3": round(tot_m3), "total_isk": round(tot_isk), "as_of": oldest,
             "next": soonest, "chars": chars}
 
 
@@ -3788,6 +3808,10 @@ class Handler(BaseHTTPRequestHandler):
             body = body.encode()
         self.send_response(200)
         self.send_header("Content-Type", ctype)
+        # Nie cachen: sonst serviert der Browser bei einem Reload alte /data-
+        # Antworten (z.B. alte Standort-Namen), obwohl der Server längst neue liefert.
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Pragma", "no-cache")
         if download:
             self.send_header("Content-Disposition", f'attachment; filename="{download}"')
         self.send_header("Content-Length", str(len(body)))
@@ -4300,31 +4324,35 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .fdim{color:var(--dim);font-size:11px}
 .falpha{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--bg);background:var(--gold);border-radius:3px;padding:1px 5px}
 .vreward{margin-top:6px;color:var(--green)}
-.alphabanner{background:rgba(200,160,60,.1);border:1px solid var(--gold);border-radius:6px;padding:9px 13px;font-size:12px;color:var(--fg);line-height:1.5}
-/* Live-Missionskampf: EVE-artiges HUD, Char-Portrait mittig, Schaden raus/rein daneben */
-.mlive{position:relative;grid-column:1/-1;background:linear-gradient(160deg,rgba(20,28,36,.96),rgba(12,17,22,.98));border:1px solid var(--cyan);border-radius:4px;overflow:hidden;box-shadow:0 0 24px rgba(0,180,220,.12),inset 0 0 44px rgba(0,120,160,.06)}
+.alphabanner{background:rgba(200,160,60,.1);border:1px solid var(--gold);border-radius:10px;padding:9px 13px;font-size:12px;color:var(--txt);line-height:1.5}
+.btn.simon{border-color:var(--red);color:var(--red)}
+/* Live-Missionskampf: EVE-HUD an den Design-Tokens. Verlauf ueber var(--card)/
+   var(--inset) (theme-fest), Radius/Border wie die uebrigen Karten, Schaden
+   raus=Cyan / rein=Rot / ISK=Gold wie in der ganzen App. */
+.mlive{position:relative;grid-column:1/-1;background:linear-gradient(160deg,var(--card),var(--inset));border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.mlive::after{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--cyan);opacity:.8}
 .mlive+.mlive{margin-top:12px}
-.mlive::before{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,200,255,.06),transparent 42%);pointer-events:none}
-.mlive-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 14px;border-bottom:1px solid rgba(0,180,220,.25);background:rgba(0,150,190,.08)}
-.mlive-title{font-size:12px;font-weight:700;letter-spacing:.18em;color:var(--cyan);text-transform:uppercase}
-.mlive-title .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#ff4d4d;margin-right:7px;box-shadow:0 0 8px #ff4d4d;animation:mlpulse 1.4s infinite;vertical-align:middle}
+.mlive-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 14px 9px 17px;border-bottom:1px solid var(--line)}
+.mlive-title{font-size:12px;font-weight:700;letter-spacing:.16em;color:var(--cyan);text-transform:uppercase}
+.mlive-phase{font-size:11px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--dim);margin-left:8px}
+.mlive-title .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--red);margin-right:7px;box-shadow:0 0 8px var(--red);animation:mlpulse 1.4s infinite;vertical-align:middle}
 @keyframes mlpulse{0%,100%{opacity:1}50%{opacity:.3}}
 .mlive-sys{font-size:11px;color:var(--dim)}
 .mlive-body{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;padding:20px 16px}
 .mlive-side{text-align:center}
 .mlive-side .l{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:5px}
 .mlive-num{font-size:30px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
-.mlive-num.out{color:var(--gold);text-shadow:0 0 14px rgba(220,180,70,.35)}
-.mlive-num.in{color:#ff7a5c;text-shadow:0 0 14px rgba(255,90,60,.3)}
+.mlive-num.out{color:var(--cyan)}
+.mlive-num.in{color:var(--red)}
 .mlive-dps{font-size:11px;color:var(--dim);margin-top:5px}
 .mlive-center{display:flex;flex-direction:column;align-items:center;gap:7px}
-.mlive-ring{position:relative;width:98px;height:98px;border-radius:50%;padding:3px;background:conic-gradient(from 0deg,var(--cyan),rgba(0,180,220,.12),var(--cyan));box-shadow:0 0 22px rgba(0,180,220,.35);animation:mlspin 8s linear infinite}
-.mlive-ring img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block;border:2px solid var(--bg);animation:mlspin 8s linear infinite reverse}
-@keyframes mlspin{to{transform:rotate(360deg)}}
-.mlive-nm{font-size:15px;font-weight:700;color:var(--fg)}
-.mlive-foot{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid rgba(0,180,220,.2)}
+.mlive-ring{position:relative;width:96px;height:96px;border-radius:50%;padding:3px;background:var(--cyan);box-shadow:0 0 0 1px var(--line),0 0 16px rgba(53,200,232,.25)}
+.mlive-ring img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block;border:2px solid var(--card)}
+.mlive-ring.noimg{background:var(--inset);border:1px solid var(--cyan);display:flex;align-items:center;justify-content:center;font-size:34px}
+.mlive-nm{font-size:15px;font-weight:700;color:var(--txt)}
+.mlive-foot{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line)}
 .mlive-foot .cell{text-align:center;padding:11px 6px}
-.mlive-foot .cell+.cell{border-left:1px solid rgba(0,180,220,.15)}
+.mlive-foot .cell+.cell{border-left:1px solid var(--line)}
 .mlive-foot .l{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:4px}
 .mlive-foot .v{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
 .mlive-extra{padding:2px 16px 14px}
@@ -4942,6 +4970,131 @@ function toggleChar(name){
  renderLiveView();
 }
 let lastChars=null,lastSummary=null;
+// ---- Lokale Missions-Simulation (nur Frontend, keine Logs/DB, nie hochgeladen) ----
+// Sichtbar nur mit lokalem sim_mode-Flag. Ein Demo-Char durchlaeuft komplette
+// Missions-Zyklen (Abdocken -> Warp -> Anflug -> Kampf -> Andocken) und fuellt
+// dabei eine Historie aus 50 Missionen mit zufaelligem Loot. Wichtig: nach jedem
+// Render tr() aufrufen, sonst flackert die UI zwischen DE (frisch gerendert) und
+// EN (vom Poll nachuebersetzt).
+let lastMissionD=null;
+const SIM={on:false,char:null,timer:null,history:[],summary:null};
+const SIM_FACS=[
+ {fac:'Guristas',shoot:['kin','therm'],deal:['kin','therm'],ewar:'jam',
+  rats:['Pith Eradicator','Pith Destroyer','Dire Pithum Abolisher','Pithatis Enforcer'],
+  missions:['Guristas Extravaganza','The Rogue Slave Trader','Worlds Collide','Dread Pirate Scarlet']},
+ {fac:'Serpentis',shoot:['kin','therm'],deal:['therm','kin'],ewar:'damp',
+  rats:['Coreli Guardian Patroller','Corelum Chief Safeguard','Shadow Serpentis Sentinel'],
+  missions:['Serpentis Extravaganza','Silence the Informant','Gone Berserk','Pleasure Hub Takedown']},
+ {fac:'Angel Cartel',shoot:['exp','kin'],deal:['exp','kin'],ewar:'web',
+  rats:['Gistum Centurion','Arch Gistii Outlaw','Gist Warlord'],
+  missions:['Angel Extravaganza','Vengeance','Buzz Kill','Stop the Thief']},
+ {fac:'Blood Raiders',shoot:['em','therm'],deal:['em','therm'],ewar:'neut',
+  rats:['Corpus Prophet','Corpatis Fanatic','Corpum Arch Priest'],
+  missions:['The Damsel in Distress','Unauthorized Military Presence','Blood Raider Retort']},
+ {fac:'Sansha',shoot:['em','therm'],deal:['em','therm'],ewar:'td',
+  rats:['Centus Slavelord','Centii Enslaver','True Sansha Lord'],
+  missions:['The Right Hand of Zazzmatazz','Portal to War','Sansha Command Relay']},
+ {fac:'Rogue Drones',shoot:['em','therm'],deal:['therm','em'],ewar:null,
+  rats:['Alvus Ruler','Defeater Alvatis','Strain Render Alvi'],
+  missions:['Rogue Drone Harassment','Infiltrated Outposts','Cleanup Operation']},
+];
+const SIM_SYS=['Anttiri','Juunigaishi','Kusomonmon','Osoggur','Nourvukaiken','Akkilen','Hasmijaala','Uotila'];
+const SIM_PHASES=[
+ {k:'undock',n:1,de:'🛰 Abgedockt',en:'🛰 Undocked'},
+ {k:'warp',n:2,de:'🚀 Warp zum Missionsort',en:'🚀 Warping to mission'},
+ {k:'approach',n:1,de:'➡ Anflug aufs Objekt',en:'➡ Approaching objective'},
+ {k:'combat',n:0,de:'⚔ Im Kampf',en:'⚔ In combat'},
+ {k:'dock',n:1,de:'⚓ Andocken, Mission fertig',en:'⚓ Docking, mission complete'},
+];
+function simRi(a,b){return a+Math.floor(Math.random()*(b-a+1));}
+function simPick(a){return a[Math.floor(Math.random()*a.length)];}
+// Eine abgeschlossene Demo-Mission (Format wie query_mission_history).
+function simMission(endTs){
+ const f=simPick(SIM_FACS), min=simRi(5,42), kills=simRi(6,32);
+ const reward=simRi(120,700)*1000, bonus=Math.round(reward*(0.6+Math.random()*0.6));
+ const bounty=kills*simRi(18000,120000), loot=Math.random()<0.8?simRi(120,7200)*1000:null;
+ const ew=(f.ewar&&Math.random()<0.7)?[[f.ewar,simRi(1,14)]]:[];
+ return {mid:'sim:'+endTs+':'+simRi(1,9999),char:'Rihan Vex',start:endTs-min*60,end:endTs,min:min,
+   system:simPick(SIM_SYS),dmg_out:simRi(14000,120000),dmg_in:simRi(2000,26000),kills:kills,
+   bounty:bounty,hit:simRi(78,99),mission:{name:simPick(f.missions),conf:simRi(70,95)},npc:[],
+   faction:{fac:f.fac,deal:f.deal,shoot:f.shoot,ewar:f.ewar,share:simRi(80,100)},ewar:ew,
+   reward:reward,bonus:bonus,weapons:[],enemies:f.rats.map(r=>[r,simRi(2000,40000)]),
+   loot_isk:loot,loot_text:loot?(lang==='en'?'(simulated loot)':'(simuliertes Loot)'):'',
+   total:reward+bonus+bounty+(loot||0)};
+}
+// 50 Missionen ueber die letzten 7 Tage streuen und Tages-/Heute-Summen bauen.
+function simBuild(){
+ const now=Math.floor(Date.now()/1000), list=[];
+ for(let i=0;i<50;i++)list.push(simMission(now-simRi(0,7*86400)));
+ list.sort((a,b)=>b.start-a.start);
+ SIM.history=list;
+ const days={};
+ for(const m of list){
+  const day=new Date(m.start*1000).toISOString().slice(0,10);
+  const d=days[day]||(days[day]={day:day,missions:0,reward:0,bonus:0,bounty:0,total:0});
+  d.missions++; d.reward+=m.reward; d.bonus+=m.bonus; d.bounty+=m.bounty; d.total+=m.reward+m.bonus+m.bounty;
+ }
+ const today=new Date().toISOString().slice(0,10);
+ SIM.summary={linked:true,asof:now-120,next:now+2400,mine_systems:[],foes:[],agents:[],chars:[],
+   today:days[today]||{day:today,missions:0,reward:0,bonus:0,bounty:0,total:0},
+   days:Object.values(days).sort((a,b)=>a.day<b.day?1:-1)};
+}
+// Neuer Missions-Run (Char frisch, Phase 0).
+function simNewRun(){
+ const f=simPick(SIM_FACS);
+ return {active:true,name:'Rihan Vex (Demo)',ship:'Dominix',system:simPick(SIM_SYS),session_min:0,
+   dmg_out:0,dmg_in:0,dps_out:0,dps_in:0,kills:0,enemy_types:f.rats.length,bounty:0,
+   portrait:'https://images.evetech.net/characters/2121914571/portrait?size=64',
+   mission:{name:simPick(f.missions),conf:simRi(72,95)},
+   faction:{fac:f.fac,deal:f.deal,shoot:f.shoot,ewar:f.ewar,share:simRi(82,100)},
+   ewar:f.ewar?[[f.ewar,0]]:[],top_targets:f.rats.map(r=>[r,1]),
+   phase:(lang==='en'?SIM_PHASES[0].en:SIM_PHASES[0].de),
+   _fac:f,_phase:0,_phaseLeft:SIM_PHASES[0].n,_combatLeft:simRi(6,13),_start:Date.now()};
+}
+function simRender(){
+ if(view!=='missionen')return;
+ renderMissions(lastMissionD||{missions:{},chars:[]});
+ if(lang!=='de')tr(document.body);   // wie der Poll -> kein DE/EN-Flackern
+}
+function simStep(){
+ const c=SIM.char; if(!c)return;
+ const ph=SIM_PHASES[c._phase];
+ c.phase=(lang==='en'?ph.en:ph.de);
+ let advance=false;
+ if(ph.k==='combat'){
+  const secs=Math.max(1,(Date.now()-c._start)/1000);
+  c.dmg_out+=simRi(400,1400); c.dmg_in+=simRi(120,600);
+  if(Math.random()<0.7){c.kills++; c.bounty+=simPick([25000,45000,62000,90000,120000]);}
+  if(c.ewar.length&&Math.random()<0.35)c.ewar[0][1]++;
+  c.dps_out=Math.round(c.dmg_out/secs); c.dps_in=Math.round(c.dmg_in/secs*10)/10;
+  c.session_min=Math.floor(secs/60);
+  if(--c._combatLeft<=0)advance=true;
+ }else if(--c._phaseLeft<=0)advance=true;
+ if(advance){
+  if(ph.k==='dock'){
+   const loot=Math.random()<0.85?simRi(150,6800)*1000:null;
+   const reward=simRi(150,650)*1000, bonus=Math.round(reward*(0.6+Math.random()*0.5));
+   const end=Math.floor(Date.now()/1000);
+   SIM.history.unshift({mid:'sim:live:'+end,char:'Rihan Vex',start:end-Math.max(1,c.session_min)*60-120,
+     end:end,min:Math.max(1,c.session_min),system:c.system,dmg_out:c.dmg_out,dmg_in:c.dmg_in,
+     kills:c.kills,bounty:c.bounty,hit:simRi(80,99),mission:c.mission,npc:[],faction:c.faction,
+     ewar:c.ewar.filter(e=>e[1]>0),reward:reward,bonus:bonus,weapons:[],
+     enemies:c._fac.rats.map(r=>[r,simRi(2000,40000)]),loot_isk:loot,
+     loot_text:loot?(lang==='en'?'(simulated loot)':'(simuliertes Loot)'):'',
+     total:reward+bonus+c.bounty+(loot||0)});
+   if(SIM.summary){const t=SIM.summary.today;t.missions++;t.reward+=reward;t.bonus+=bonus;t.bounty+=c.bounty;t.total+=reward+bonus+c.bounty;}
+   SIM.char=simNewRun();
+  }else{
+   c._phase++; c._phaseLeft=SIM_PHASES[c._phase].n||1;
+  }
+ }
+ simRender();
+}
+function toggleSim(){
+ if(SIM.on){clearInterval(SIM.timer);SIM.on=false;SIM.char=null;SIM.timer=null;}
+ else{SIM.on=true;simBuild();SIM.char=simNewRun();SIM.timer=setInterval(simStep,2600);}
+ simRender();
+}
 $('#charFilter').value=localStorage.getItem('charFilter')||'';
 $('#charFilter').onchange=()=>{
  localStorage.setItem('charFilter',$('#charFilter').value);
@@ -5248,7 +5401,7 @@ function miningCardHtml(c){
    ${c.laser_stalled?`<div class="cardwarn">⛏ Strip Miner liefert gerade kein Erz, während die Drohnen weiterlaufen.</div>`:''}
    ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur noch ${c.rate_low}%. Vermutlich ist ein Modul oder eine Drohne aus.</div>`:''}
    ${mineIdle(c,state)?`<div class="cardwarn">⚠ Seit ${Math.round(c.mine_idle/60)} min kein Erz. Laser und Drohnen prüfen!</div>`:''}
-   ${(localStorage.getItem('iskCoach')==='1'&&c.lost_isk>=1000)?`<div class="cardwarn">💸 ${lang==='en'?'Downtime loss this session':'Stillstand-Verlust diese Session'}: ≈ ${fmtM(c.lost_isk)} ISK${c.lost_paused?(lang==='en'?' <span style="color:var(--dim);font-weight:400">(paused, docked/warp)</span>':' <span style="color:var(--dim);font-weight:400">(pausiert, angedockt/Warp)</span>'):''}</div>`:''}
+   ${(localStorage.getItem('iskCoach')==='1'&&c.lost_isk>=1000&&!c.command_ship)?`<div class="cardwarn">💸 ${lang==='en'?'Downtime loss this session':'Stillstand-Verlust diese Session'}: ≈ ${fmtM(c.lost_isk)} ISK${c.lost_paused?(lang==='en'?' <span style="color:var(--dim);font-weight:400">(paused, docked/warp)</span>':' <span style="color:var(--dim);font-weight:400">(pausiert, angedockt/Warp)</span>'):''}</div>`:''}
    <div class="sub">${c.trips>0?'Trip '+(c.trips+1)+' · seit Abdocken':'Session'} ${c.session_min} min · ${c.depleted} Asteroiden leergebaggert · Preise: ${state.price_src==='esi'?'ESI · ':''}${state.regions[state.region]}</div>
    ${dangerLine(c)}
    <div class="stats">
@@ -5678,6 +5831,10 @@ function drawOverlayCanvas(d){
   x.strokeStyle='#e8564f';x.lineWidth=3;x.strokeRect(1.5,1.5,W-3,H-3);}
 }
 function mineIdle(c,st){
+ // Command Ships (Orca/Porpoise/Rorqual) minen nicht selbst nennenswert, sie
+ // boosten und komprimieren -> kein "Kein Erz seit X min"-Alarm. Dort greift nur
+ // die Drohnen-Idle-Warnung (drones_idle).
+ if(c.command_ship)return false;
  return c.mine_idle&&st.idle_warn>0&&c.mine_idle>(c.idle_thr||st.idle_warn)&&c.mine_idle<1800;
 }
 // Der Stillstand-Verlust wird jetzt im Backend als tatsaechlicher, kumulierter
@@ -5843,8 +6000,12 @@ function renderVault(v){
 // mittig, Schaden raus links, Schaden rein rechts, darunter Gesamtschaden,
 // eliminierte Gegner (Kills, sonst bekaempfte Typen) und eingesammelte Bounty.
 function renderMissionLive(chars){
+ // Nur wer WIRKLICH kämpft: eigener ausgeteilter Schaden > 0. So taucht ein
+ // Miner, der beim Flotten-Mining nur Bounty-Anteile für Gürtel-Ratten bekommt
+ // (kills>0, aber dmg_out=0, z.B. Askend im Hulk), hier nicht als Mission auf.
+ // Ausnahme: der Sim-Demo-Char (hat c.phase) wird auch in Reise-Phasen gezeigt.
  const act=(chars||[]).filter(c=>c.active&&autoRole(c)!=='mining'
-   &&((c.dmg_out||0)>0||(c.kills||0)>0||(c.top_targets&&c.top_targets.length)));
+   &&(c.phase||(c.dmg_out||0)>0));
  if(!act.length)return '';
  return act.map(c=>{
   const out=c.dmg_out||0,inc=c.dmg_in||0,tot=out+inc;
@@ -5859,7 +6020,7 @@ function renderMissionLive(chars){
     :'EVE protokolliert keine NPC-Tode. Ohne Bounty-Daten ist dies die Zahl der bekämpften Gegnertypen.');
   return `<div class="mlive">
    <div class="mlive-head">
-    <span class="mlive-title"><span class="dot"></span>${lang==='en'?'Live mission':'Live-Mission'}</span>
+    <span class="mlive-title"><span class="dot"></span>${lang==='en'?'Live mission':'Live-Mission'}${c.phase?` <span class="mlive-phase">${esc(c.phase)}</span>`:''}</span>
     <span class="mlive-sys">${esc(c.name)}${c.ship?' · '+esc(c.ship):''}${c.system&&c.system!=='?'?' · '+esc(c.system):''} · ${c.session_min||0} min</span>
    </div>
    <div class="mlive-body">
@@ -5869,7 +6030,7 @@ function renderMissionLive(chars){
      <div class="mlive-dps">DPS ${c.dps_out||0}</div>
     </div>
     <div class="mlive-center">
-     <div class="mlive-ring">${c.portrait?`<img src="${c.portrait}" alt="">`:''}</div>
+     <div class="mlive-ring${c.portrait?'':' noimg'}">${c.portrait?`<img src="${c.portrait}" alt="">`:'👤'}</div>
      <div class="mlive-nm">${esc(c.name)}</div>
      ${c.mission?`<div class="mtag">${missionHtml(c.mission)}</div>`:''}
     </div>
@@ -5880,7 +6041,7 @@ function renderMissionLive(chars){
     </div>
    </div>
    <div class="mlive-foot">
-    <div class="cell"><div class="l">${lang==='en'?'Total damage':'Schaden gesamt'}</div><div class="v out">${fmt(tot)}</div></div>
+    <div class="cell"><div class="l">${lang==='en'?'Total damage':'Schaden gesamt'}</div><div class="v">${fmt(tot)}</div></div>
     <div class="cell"${elimTip?` title="${elimTip}"`:''}><div class="l">${elimL}</div><div class="v">${elimN}</div></div>
     <div class="cell"><div class="l">${lang==='en'?'Bounty collected':'Bounty eingesammt'}</div><div class="v isk">${fmtM(c.bounty||0)}</div></div>
    </div>
@@ -5889,6 +6050,13 @@ function renderMissionLive(chars){
  }).join('');
 }
 function renderMissions(d){
+ lastMissionD=d;                         // fuer die lokale Simulation merken
+ // Lokale Demo (nur mit sim_mode-Flag, reine Frontend-Simulation): Live-Char,
+ // 50-Missionen-Historie und Journal-Summen einspeisen, nichts davon aus DB/Logs.
+ if(SIM.on&&SIM.char)d=Object.assign({},d,{
+   chars:[SIM.char].concat(d.chars||[]),
+   mission_log:(SIM.history||[]).concat(d.mission_log||[]),
+   missions:SIM.summary||d.missions});
  const m=d.missions||{},t=m.today||{};
  const live=(d.chars||[]).filter(c=>c.bounty>0||c.kills>0);
  const byDay={};(m.days||[]).forEach(x=>byDay[x.day]=x);
@@ -5900,6 +6068,9 @@ function renderMissions(d){
   (t.missions||0)+' Missionen',wMis+' Missionen · Ø '+fmtM(wIsk/7)+'/Tag');
  $('#grid').innerHTML=`
  <div class="alphabanner" style="grid-column:1/-1">🧪 <b>${lang==='en'?'Alpha phase, module in development':'Alpha-Phase, Modul in Entwicklung'}</b> · ${lang==='en'?'faction tips and verified rewards are still being checked against real logs. Feedback welcome.':'Fraktions-Tipps und verifizierte Belohnungen werden noch an echten Logs geprüft. Rückmeldungen willkommen.'}</div>
+ ${state.sim?`<div style="grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;align-items:center">
+   <span class="sub" style="color:var(--dim)">${lang==='en'?'Local demo (not shipped)':'Lokale Demo (nicht ausgeliefert)'}</span>
+   <button class="btn${SIM.on?' simon':''}" onclick="toggleSim()">${SIM.on?(lang==='en'?'⏹ Stop simulation':'⏹ Simulation stoppen'):(lang==='en'?'▶ Start simulation':'▶ Simulation starten')}</button></div>`:''}
  ${renderMissionLive(d.chars)}
  <div class="card" style="grid-column:1/-1">
   <b>Heute im Detail (EVE-Zeit)</b>
@@ -6362,6 +6533,10 @@ const EN_PATTERNS = [
  [/[/]Tag/, '/day'],
  [/Ø letzte 7 Tage:/, 'Ø last 7 days:'], [/Bester Tag:/, 'Best day:'],
  [/Seit ([0-9]+) min kein Erz/, 'No ore for $1 min'],
+ // Heavy-Water-Reichweite: "reicht bis ~22:47 Uhr" -> "lasts until ~22:47"
+ [/reicht bis ~(.+?) Uhr/, 'lasts until ~$1'],
+ // Schatzkammer: Erz im Erzladeraum/Fleet-Hangar des Mining-Schiffs
+ [/· im Schiff/, '· on ship'],
  [/DPS ([0-9]+) raus [/] ([0-9]+) rein/, 'DPS $1 out / $2 in'],
  // PvP/Missionen-Ansicht: Zeitstempel, Salvage, EWAR
  [/Stand: vor ([0-9]+) min/, 'As of $1 min ago'], [/nächste in ([0-9]+) min/, 'next in $1 min'],
@@ -6490,7 +6665,7 @@ async function tick(){
  tickBusy=true;
  const reqView=view;  // View einfrieren: nach dem await zählt der Stand von JETZT
  try{
-  const d=await (await fetch('/data?view='+reqView)).json();
+  const d=await (await fetch('/data?view='+reqView,{cache:'no-store'})).json();
   if(reqView!==view)return;  // Nutzer hat inzwischen gewechselt -> Antwort verwerfen
   state=d.state;regionPills();handleAlerts();updateBadge();updateBanner();serverBadge();bootScreen();
   if(state.log_ok===false){renderSetup();return;}
