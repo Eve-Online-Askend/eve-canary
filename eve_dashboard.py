@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.47.3"
+VERSION = "1.48.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -4326,6 +4326,9 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <div class="optgroup">
   <div class="sect">🖥 System &amp; Daten</div>
   <label id="autostartRow"><input type="checkbox" id="autostart"> Canary beim Systemstart automatisch mitstarten (still im Hintergrund, ohne Konsolenfenster)</label>
+  <div style="margin-top:10px"><b>Main-Charakter (für das Teilen-Bild)</b>
+   <div class="hint">Welcher Name auf dem geteilten Mining-Fleet-Power-Bild steht. Automatisch = Command Ship, sonst der aktivste Miner.</div>
+   <select id="mainCharSel" class="pill" style="margin-top:4px"><option value="">Automatisch</option></select></div>
   <div style="margin-top:10px"><b>Log-Ordner</b>
    <div class="hint">Findet Canary die Logs nicht von selbst, hier den Ordner <b>Gamelogs</b> eintragen.
     Unter Linux liegt der im Wine-Präfix, bei Steam etwa
@@ -4531,6 +4534,12 @@ function syncOpts(){
  $('#baseinfo').textContent=state.baseline_day?('Aktive Baseline: zählt seit '+state.baseline_day+' (UTC).'):'Keine Baseline aktiv.';
  $('#loginfo').textContent='Log-Ordner: '+(state.log_dir||'nicht gefunden!')+' · Dateien: '+state.progress.done+'/'+state.progress.total;
  $('#watchlist').value=(state.watchlist||[]).join('\\n');
+ // Main-Charakter-Auswahl aus den bekannten Chars fuellen (fuers Teilen-Bild)
+ const ms=$('#mainCharSel');
+ if(ms){const names=[...new Set((lastChars||[]).map(c=>c.name))].sort();
+  const cur=localStorage.getItem('mainChar')||'';
+  ms.innerHTML='<option value="">Automatisch</option>'+names.map(n=>`<option value="${esc(n)}"${n===cur?' selected':''}>${esc(n)}</option>`).join('');
+  ms.value=names.includes(cur)?cur:'';}
  $('#idleWarn').value=state.idle_warn??240;
  $('#verinfo').textContent='Installiert: EVE Canary v'+(state.version||'?')+' · by Askend';
  if(state.goal){$('#goalIsk').value=state.goal.isk;$('#goalDate').value=state.goal.deadline||'';}
@@ -4793,6 +4802,7 @@ $('#charFilter').onchange=()=>{
   document.querySelectorAll('.rolef').forEach(x=>x.classList.toggle('on',x.dataset.role===''));
  }
  renderLiveView();};
+{const ms=$('#mainCharSel'); if(ms)ms.onchange=()=>localStorage.setItem('mainChar',ms.value);}
 $('#collapseAll').onclick=()=>{
  const names=(lastChars||[]).map(c=>c.name);
  if(names.length&&names.every(n=>collapsed.has(n)))names.forEach(n=>collapsed.delete(n));
@@ -4886,8 +4896,16 @@ function mfpValues(chars){
  const bonusVals=ver.map(c=>c.skill_bonus).filter(b=>b!=null);
  const avgBonus=bonusVals.length?Math.round(bonusVals.reduce((s,b)=>s+b,0)/bonusVals.length):null;
  const top=[...miners].sort((a,b)=>sustainedRate(b)-sustainedRate(a))[0];
+ // Name fuers Teilen: gesetzter Main-Char > Command-Ship-Pilot (Flottenchef) >
+ // Top-Miner. So steht auf dem geteilten Bild der gewuenschte Char, nicht zufaellig
+ // der mit der hoechsten Rate.
+ const act=chars.filter(c=>c.active);
+ const mainName=(localStorage.getItem('mainChar')||'');
+ let owner='';
+ if(mainName&&act.some(c=>c.name===mainName))owner=mainName;
+ else{const b=act.find(c=>c.command_ship);owner=b?b.name:(top?top.name:'');}
  return {miners,m3min,ver,mined,avgBonus,tier:mfpTier(m3min),
-         fullVer:ver.length>0&&ver.length===miners.length,owner:top?top.name:''};
+         fullVer:ver.length>0&&ver.length===miners.length,owner};
 }
 function fleetPowerCard(chars){
  const v=mfpValues(chars);
@@ -5962,6 +5980,8 @@ const EN = {
 '😴 Canary müde, heute keine Arbeit mehr':'😴 Canary is tired, no more work today',
 '🛰 Aktuelle Flotte':'🛰 Current fleet','m³ komprimiert':'m³ compressed',
 '💎 Erz-Schatzkammer':'💎 Ore treasury','m³ Erz':'m³ of ore','Kein Erz im Bestand.':'No ore in storage.',
+'Main-Charakter (für das Teilen-Bild)':'Main character (for the share image)','Automatisch':'Automatic',
+'Welcher Name auf dem geteilten Mining-Fleet-Power-Bild steht. Automatisch = Command Ship, sonst der aktivste Miner.':'Which name appears on the shared Mining Fleet Power image. Automatic = command ship, otherwise the most active miner.',
 'keine Stimmen im Browser (bei Firefox unter Windows häufig). Für auswählbare Stimmen Chrome oder Edge nutzen.':'no voices in this browser (common in Firefox on Windows). Use Chrome or Edge to pick a voice.',
 'Noch keine Asset-Daten. Verbinde deine Chars per EVE-Login (⚙ Optionen). Nach dem ersten Abgleich (bis zu 1 Stunde) erscheint hier dein Erz-Bestand.':'No asset data yet. Connect your chars via the EVE login (⚙ Options). After the first sync (up to one hour) your ore stock shows up here.',
 '✅ Command Ship erkannt':'✅ Command ship detected',
