@@ -5385,7 +5385,7 @@ function renderMissions(d){
   <tr><th>Gegner</th><th class="r">Schaden ausgeteilt</th><th class="r">Schaden kassiert</th></tr>`+
   m.foes.map(f=>`<tr><td>${esc(f.name)}</td><td class="r out">${f.dealt?fmt(f.dealt):'&ndash;'}</td><td class="r in">${f.taken?fmt(f.taken):'&ndash;'}</td></tr>`).join('')+
   `</table></div>
-  <div class="sub" style="margin-top:8px">Kommt direkt aus den Gamelogs. Belt-Ratten stehen hier mit drin, die lassen sich am Schaden nicht vom Missionsgegner trennen.</div>
+  <div class="sub" style="margin-top:8px">Kommt direkt aus den Gamelogs. Reine Belt-Ratten-Trips (nur Flotten-Bounty ohne echten Kampf) werden herausgefiltert.</div>
  </div>`:''}
  ${(m.agents&&m.agents.length)?`<div class="card">
   <div class="sect">Top-Agenten</div><table>
@@ -5728,8 +5728,8 @@ const EN = {
  '. With auto-scan that is already enough, Canary spots the copied list by itself. Alternatively paste it here and click Scan. Sources: zKillboard and ESI (public, no login). About one pilot per second, results are kept for 12 hours.',
 '(Der Inhalt bleibt lokal, nur erkannte Pilotennamen werden bei ESI und zKillboard nachgeschlagen.)':
  '(The content stays local, only recognised pilot names are looked up at ESI and zKillboard.)',
-'Kommt direkt aus den Gamelogs. Belt-Ratten stehen hier mit drin, die lassen sich am Schaden nicht vom Missionsgegner trennen.':
- 'Comes straight from the game logs. Belt rats are included, damage alone cannot separate them from mission enemies.',
+'Kommt direkt aus den Gamelogs. Reine Belt-Ratten-Trips (nur Flotten-Bounty ohne echten Kampf) werden herausgefiltert.':
+ 'Comes straight from the game logs. Pure belt-rat trips (fleet bounty without real combat) are filtered out.',
 'Noch keine Journal-Daten. Nach dem ersten ESI-Abgleich (spätestens in einer Stunde) erscheinen hier die letzten 30 Tage.':
  'No journal data yet. After the first ESI sync (within an hour at the latest) the last 30 days appear here.',
 'Im Spiel den Frachtraum oder Container öffnen, alles markieren (Strg+A) und kopieren (Strg+C), dann hier einfügen. Einzelne Zeilen wie "Compressed Veldspar 50000" funktionieren genauso.':
