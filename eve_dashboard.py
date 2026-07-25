@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.47.2"
+VERSION = "1.47.3"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -4283,7 +4283,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   <label><input type="checkbox" id="sndDep" checked> Sound bei leerem Asteroiden</label>
   <label><input type="checkbox" id="sndWatch" checked> Sound bei Watchlist-Treffer</label>
   <label><input type="checkbox" id="ttsAlerts"> 🔊 Sprachansagen bei Alarmen (spricht Charakter und Warnung)</label>
-  <div id="ttsVoiceRow" style="margin:2px 0 4px 22px;font-size:13px;color:var(--dim)"><span>Stimme:</span> <select id="ttsVoice" class="pill"><option value="">Standard</option></select></div>
+  <div id="ttsVoiceRow" style="margin:2px 0 4px 22px;font-size:13px;color:var(--dim)"><span>Stimme:</span> <select id="ttsVoice" class="pill"><option value="">Standard</option></select> <span id="ttsVoiceHint" hidden style="color:var(--gold);font-size:11px"></span></div>
   <label><input type="checkbox" id="iskCoach"> 💸 ISK-Verlust anzeigen, wenn ein Strip Miner steht</label>
   <div style="margin-top:6px"><button class="btn" id="alertTest">🔔 Alarm testen</button>
    <span class="hint" style="margin:0 0 0 6px">löst einen Beispielalarm aus: Ton, Sprache und Banner, je nach Häkchen oben. Alarme kommen sonst nur bei einem echten Ereignis.</span></div>
@@ -4443,8 +4443,17 @@ document.querySelectorAll('nav span').forEach(x=>x.classList.toggle('on',x.datas
 function fillVoices(){
  const sel=$('#ttsVoice'); if(!sel||!('speechSynthesis' in window))return;
  const cur=localStorage.getItem('ttsVoice')||'';
- sel.innerHTML='<option value="">Standard</option>'+speechSynthesis.getVoices().map(v=>
+ const voices=speechSynthesis.getVoices();
+ sel.innerHTML='<option value="">Standard</option>'+voices.map(v=>
   `<option value="${esc(v.voiceURI)}"${v.voiceURI===cur?' selected':''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('');
+ // Firefox liefert unter Windows oft KEINE Stimmen ueber die Web-Speech-API.
+ // Dann ehrlich darauf hinweisen, statt nur "Standard" ohne Erklaerung zu zeigen.
+ const hint=$('#ttsVoiceHint');
+ if(hint){
+  if(voices.length===0){hint.hidden=false;
+   hint.textContent='keine Stimmen im Browser (bei Firefox unter Windows häufig). Für auswählbare Stimmen Chrome oder Edge nutzen.';
+  }else hint.hidden=true;
+ }
 }
 function previewVoice(){
  if(!('speechSynthesis' in window))return;
@@ -4452,7 +4461,8 @@ function previewVoice(){
  speak(lang==='en'?'Voice test. Askend: cargo full.':'Stimmtest. Askend: Frachtraum voll.');
 }
 (function(){const sel=$('#ttsVoice'); if(!sel)return;
- if('speechSynthesis' in window){fillVoices(); speechSynthesis.onvoiceschanged=fillVoices;}
+ if('speechSynthesis' in window){fillVoices(); speechSynthesis.onvoiceschanged=fillVoices;
+  [300,1200,2500].forEach(t=>setTimeout(fillVoices,t));}   // Firefox liefert Stimmen oft verspaetet
  sel.onchange=()=>{localStorage.setItem('ttsVoice',sel.value); previewVoice();};
 })();
 
@@ -5952,6 +5962,7 @@ const EN = {
 '😴 Canary müde, heute keine Arbeit mehr':'😴 Canary is tired, no more work today',
 '🛰 Aktuelle Flotte':'🛰 Current fleet','m³ komprimiert':'m³ compressed',
 '💎 Erz-Schatzkammer':'💎 Ore treasury','m³ Erz':'m³ of ore','Kein Erz im Bestand.':'No ore in storage.',
+'keine Stimmen im Browser (bei Firefox unter Windows häufig). Für auswählbare Stimmen Chrome oder Edge nutzen.':'no voices in this browser (common in Firefox on Windows). Use Chrome or Edge to pick a voice.',
 'Noch keine Asset-Daten. Verbinde deine Chars per EVE-Login (⚙ Optionen). Nach dem ersten Abgleich (bis zu 1 Stunde) erscheint hier dein Erz-Bestand.':'No asset data yet. Connect your chars via the EVE login (⚙ Options). After the first sync (up to one hour) your ore stock shows up here.',
 '✅ Command Ship erkannt':'✅ Command ship detected',
 '🗜 Noch keiner komprimiert diese Session':'🗜 No one has compressed this session yet',
