@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.48.0"
+VERSION = "1.49.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -4243,7 +4243,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <div class="pills" id="regions"></div>
  <span class="pill srv" id="srvStatus" hidden title="EVE-Server (Tranquility)"></span>
  <span class="pill upd" id="updBadge" hidden title="Neue Version verfügbar, Klick installiert sie"></span>
- <span class="pill" id="ovToggle" title="Always-on-top Mini-Overlay (Chrome/Edge)">◱ Overlay</span>
+ <span class="pill" id="ovToggle" title="Always-on-top Mini-Overlay (Chrome, Edge, Firefox)">◱ Overlay</span>
  <span class="pill" id="fontsize" title="Schriftgröße (3 Stufen)">A</span>
  <span class="pill" id="theme" title="Dark/Light">◐</span>
  <span class="pill" id="gear">⚙ Optionen</span>
@@ -4274,7 +4274,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   <label><input type="radio" name="skin" value="photon"> Photon (angelehnt ans EVE-Interface: dunkel, kantig, Gold-Akzente)</label>
   <div class="btnrow"><button class="btn" id="ovBtn">◱ Mini-Overlay öffnen/schließen</button></div>
   <div class="hint">Das Overlay ist ein schwebendes Always-on-top-Fenster mit Status und Alarmen,
-  bleibt über dem EVE-Client (Fenstermodus/randlos). Benötigt Chrome oder Edge, Start nur per Klick.</div>
+  bleibt über dem EVE-Client (Fenstermodus/randlos). In Chrome und Edge klickbar, in Firefox als Bild. Start nur per Klick.</div>
  </div>
 
  <div class="optgroup">
@@ -5411,6 +5411,9 @@ function renderAnalyse(a){
 }
 
 let pipWin=null;
+// Firefox/Safari-Overlay: Video-Picture-in-Picture mit einer live gezeichneten Canvas
+// (diese Browser haben kein Document-PiP, aber Video-PiP ist echtes Always-on-top).
+let ffVid=null, ffCanvas=null, ffCtx=null, ffStream=null;
 const OV_CSS=`*{margin:0;box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif}
 body{background:#0b0e14;padding:8px;overflow-y:auto}
 .hd{display:flex;justify-content:space-between;align-items:center;font-size:9px;
@@ -5434,18 +5437,71 @@ border-radius:8px;padding:6px 10px;margin-bottom:5px}
 body.alarm{outline:3px solid #e8564f;outline-offset:-3px}`;
 
 async function toggleOverlay(){
+ // Schon offen? Beide Pfade sauber schliessen.
  if(pipWin){pipWin.close();pipWin=null;return;}
- if(!('documentPictureInPicture' in window)){
-  alert('Das Mini-Overlay benötigt Chrome oder Edge (Document Picture-in-Picture).');return;}
- try{
-  pipWin=await documentPictureInPicture.requestWindow({width:330,height:240});
- }catch(e){return;}
- const d=pipWin.document;
- const st=d.createElement('style');st.textContent=OV_CSS;d.head.appendChild(st);
- d.title='EVE Canary';
- d.body.innerHTML='<div id="ov"><div class="hd"><span>🐤 <b>CANARY</b></span></div></div>';
- pipWin.addEventListener('pagehide',()=>{pipWin=null;});
+ if(ffVid){try{if(document.pictureInPictureElement)await document.exitPictureInPicture();}catch(e){}ffCleanup();return;}
+ // Chrome/Edge: reiches, klickbares HTML-Overlay via Document-PiP.
+ if('documentPictureInPicture' in window){
+  try{pipWin=await documentPictureInPicture.requestWindow({width:330,height:260});}catch(e){return;}
+  const d=pipWin.document;
+  const st=d.createElement('style');st.textContent=OV_CSS;d.head.appendChild(st);
+  d.title='EVE Canary';
+  d.body.innerHTML='<div id="ov"><div class="hd"><span>🐤 <b>CANARY</b></span></div></div>';
+  pipWin.addEventListener('pagehide',()=>{pipWin=null;});
+  overlayTick();
+  return;
+ }
+ // Firefox/Safari: Video-PiP mit Canvas (Bild-Overlay, echtes Always-on-top).
+ const vid=document.createElement('video');
+ if(!('requestPictureInPicture' in vid)||!document.pictureInPictureEnabled){
+  alert('Dein Browser unterstützt kein schwebendes Overlay (kein Picture-in-Picture).');return;}
+ ffCanvas=document.createElement('canvas');ffCanvas.width=340;ffCanvas.height=320;
+ ffCtx=ffCanvas.getContext('2d');
+ drawOverlayCanvas(null);                        // erste Zeichnung, bevor der Stream startet
+ ffStream=ffCanvas.captureStream(4);
+ vid.srcObject=ffStream;vid.muted=true;vid.playsInline=true;
+ vid.style.cssText='position:fixed;left:-10000px;top:0;width:340px;height:320px;opacity:0';
+ document.body.appendChild(vid);ffVid=vid;
+ vid.addEventListener('leavepictureinpicture',ffCleanup);
+ try{await vid.play();await vid.requestPictureInPicture();}
+ catch(e){ffCleanup();alert('Overlay konnte nicht gestartet werden ('+(e&&e.message||e)+').');return;}
  overlayTick();
+}
+function ffCleanup(){
+ try{if(ffStream)ffStream.getTracks().forEach(t=>t.stop());}catch(e){}
+ try{if(ffVid&&ffVid.parentNode)ffVid.parentNode.removeChild(ffVid);}catch(e){}
+ ffVid=ffCanvas=ffCtx=ffStream=null;
+}
+function ovColor(cls){return cls==='bad'?'#e8564f':cls==='warn'?'#e8c645':'#57c98a';}
+// Overlay-Inhalt fuer Firefox/Safari auf die Canvas zeichnen (dasselbe wie das
+// HTML-Overlay, nur als Bild). d=null -> Platzhalter.
+function drawOverlayCanvas(d){
+ const x=ffCtx; if(!x)return; const W=ffCanvas.width,H=ffCanvas.height;
+ x.fillStyle='#0b0e13';x.fillRect(0,0,W,H);x.textBaseline='alphabetic';
+ x.font='bold 16px sans-serif';x.fillStyle='#eaf0f7';x.textAlign='left';x.fillText('🐤 CANARY',10,24);
+ x.font='12px sans-serif';x.fillStyle='#8a94a6';x.textAlign='right';x.fillText(new Date().toLocaleTimeString(),W-10,22);
+ x.strokeStyle='#2a313d';x.lineWidth=1;x.beginPath();x.moveTo(8,32);x.lineTo(W-8,32);x.stroke();
+ if(!d){x.textAlign='left';x.fillStyle='#8a94a6';x.font='13px sans-serif';x.fillText('warte auf Daten ...',12,58);return;}
+ const now=Date.now()/1000; let y=50;
+ (d.chars||[]).slice(0,6).forEach(c=>{
+  const r=ovStatus(c,d.state),cls=r[0],txt=r[1];
+  x.beginPath();x.arc(14,y+1,5,0,7);x.fillStyle=ovColor(cls);x.fill();
+  x.textAlign='left';x.fillStyle='#eaf0f7';x.font='bold 14px sans-serif';
+  x.fillText(c.name+' · '+(c.system||'?'),26,y+5);
+  if(txt){x.fillStyle=cls==='bad'?'#e8564f':'#e8c645';x.font='12px sans-serif';x.fillText(txt,26,y+22);}
+  x.textAlign='right';x.fillStyle='#eaf0f7';x.font='13px sans-serif';x.fillText(fmtM(c.total_isk),W-10,y+5);
+  x.fillStyle='#8a94a6';x.font='11px sans-serif';x.fillText(fmt(c.m3h)+' m³/h',W-10,y+21);
+  y+=37;
+ });
+ const alerts=(d.state.alerts||[]).filter(a=>now-a.ts<180).slice(-3).reverse();
+ x.textAlign='left';x.font='11px sans-serif';
+ alerts.forEach(a=>{
+  x.fillStyle=(a.kind==='pvp'||a.kind==='cargo'||a.kind==='drones')?'#e8564f':'#e8c645';
+  let t='['+new Date(a.ts*1000).toLocaleTimeString()+'] '+a.text; if(t.length>54)t=t.slice(0,53)+'…';
+  x.fillText(t,10,y+4); y+=17;
+ });
+ if(alerts.some(a=>(a.kind==='pvp'||a.kind==='cargo'||a.kind==='drones')&&now-a.ts<45)){
+  x.strokeStyle='#e8564f';x.lineWidth=3;x.strokeRect(1.5,1.5,W-3,H-3);}
 }
 function mineIdle(c,st){
  return c.mine_idle&&st.idle_warn>0&&c.mine_idle>(c.idle_thr||st.idle_warn)&&c.mine_idle<1800;
@@ -5480,9 +5536,10 @@ function ovStatus(c,st){
  return['ok',''];
 }
 async function overlayTick(){
- if(!pipWin)return;
+ if(!pipWin&&!ffVid)return;
  try{
   const d=await (await fetch('/data?view=live')).json();
+  if(ffVid){drawOverlayCanvas(d);return;}   // Firefox/Safari: Canvas neu zeichnen
   const doc=pipWin.document, now=Date.now()/1000;
   doc.body.style.zoom={1:'1',2:'1.15',3:'1.3'}[fontsize]||'1';
   const alerts=(d.state.alerts||[]).filter(a=>now-a.ts<180).slice(-3).reverse();
@@ -6028,8 +6085,8 @@ const EN = {
  'Open your cargo hold or a container in game, select everything (Ctrl+A) and copy (Ctrl+C), then paste it here. Single lines like "Compressed Veldspar 50000" work just as well.',
 'Photon (angelehnt ans EVE-Interface: dunkel, kantig, Gold-Akzente)':
  'Photon (modelled on the EVE interface: dark, angular, gold accents)',
-'Das Overlay ist ein schwebendes Always-on-top-Fenster mit Status und Alarmen, bleibt über dem EVE-Client (Fenstermodus/randlos). Benötigt Chrome oder Edge, Start nur per Klick.':
- 'The overlay is a floating always-on-top window with status and alerts, staying above the EVE client (windowed or borderless). Needs Chrome or Edge, starts only by click.',
+'Das Overlay ist ein schwebendes Always-on-top-Fenster mit Status und Alarmen, bleibt über dem EVE-Client (Fenstermodus/randlos). In Chrome und Edge klickbar, in Firefox als Bild. Start nur per Klick.':
+ 'The overlay is a floating always-on-top window with status and alerts, staying above the EVE client (windowed or borderless). Clickable in Chrome and Edge, an image in Firefox. Starts only by click.',
 'Das Mini-Overlay benötigt Chrome oder Edge (Document Picture-in-Picture).':
  'The mini overlay needs Chrome or Edge (Document Picture-in-Picture).',
 'Canary beim Systemstart automatisch mitstarten (still im Hintergrund, ohne Konsolenfenster)':
