@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.49.0"
+VERSION = "1.49.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -2947,6 +2947,10 @@ def snapshot_live():
             # Tatsaechlicher Stillstand-Verlust dieser Session (kumuliert), zum
             # ISK/m³-Schnitt der Session bewertet.
             "lost_isk": round(s.lost_m3 * (ore_isk / m3)) if m3 > 0 else 0,
+            # Pausiert der Verlustzaehler gerade? (angedockt/Warp oder kein Erz in 3 min)
+            # Dann ist die Zahl eingefroren, nicht steigend -> in der UI so kennzeichnen.
+            "lost_paused": bool(s.traveling) or s.last_ore_ts is None
+                           or (time.time() - s.last_ore_ts) > 180,
             "m3h": round(m3 / mins * 60), "bounty": s.bounty, "kills": s.kills,
             "total_isk": round(ore_isk + s.bounty),
             "dmg_out": s.dmg_out, "dmg_in": s.dmg_in,
@@ -5098,7 +5102,7 @@ function miningCardHtml(c){
    ${c.laser_stalled?`<div class="cardwarn">⛏ Strip Miner liefert gerade kein Erz, während die Drohnen weiterlaufen.</div>`:''}
    ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur noch ${c.rate_low}%. Vermutlich ist ein Modul oder eine Drohne aus.</div>`:''}
    ${mineIdle(c,state)?`<div class="cardwarn">⚠ Seit ${Math.round(c.mine_idle/60)} min kein Erz. Laser und Drohnen prüfen!</div>`:''}
-   ${(localStorage.getItem('iskCoach')==='1'&&c.lost_isk>=1000)?`<div class="cardwarn">💸 ${lang==='en'?'Downtime loss this session':'Stillstand-Verlust diese Session'}: ≈ ${fmtM(c.lost_isk)} ISK</div>`:''}
+   ${(localStorage.getItem('iskCoach')==='1'&&c.lost_isk>=1000)?`<div class="cardwarn">💸 ${lang==='en'?'Downtime loss this session':'Stillstand-Verlust diese Session'}: ≈ ${fmtM(c.lost_isk)} ISK${c.lost_paused?(lang==='en'?' <span style="color:var(--dim);font-weight:400">(paused, docked/warp)</span>':' <span style="color:var(--dim);font-weight:400">(pausiert, angedockt/Warp)</span>'):''}</div>`:''}
    <div class="sub">${c.trips>0?'Trip '+(c.trips+1)+' · seit Abdocken':'Session'} ${c.session_min} min · ${c.depleted} Asteroiden leergebaggert · Preise: ${state.price_src==='esi'?'ESI · ':''}${state.regions[state.region]}</div>
    ${dangerLine(c)}
    <div class="stats">
