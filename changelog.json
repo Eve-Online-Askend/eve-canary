@@ -1,4 +1,7 @@
 [
+ {"v": "1.40", "d": "2026-07-25",
+  "de": ["Missions-Erkenner: Canary erkennt jetzt viele Level-4-Missionen und zeigt den Namen mit einer Genauigkeit in Prozent (z. B. 'Angel Extravaganza ~95% sicher'). Die Signaturen sind web-verifiziert (eve-survival), nichts geraten", "Wird keine Mission erkannt, sagt Canary es ehrlich mit einem Augenzwinkern: '😴 Canary müde, heute keine Arbeit mehr'", "Grundlage für weitere Missionen: die Datenbank ist leicht erweiterbar, Level 1 bis 3 folgen"],
+  "en": ["Mission recognizer: Canary now identifies many Level 4 missions and shows the name with an accuracy percentage (e.g. 'Angel Extravaganza ~95% sure'). The signatures are web-verified (eve-survival), nothing guessed", "When no mission is recognized, Canary says so with a wink: '😴 Canary is tired, no more work today'", "Foundation for more: the database is easy to extend, levels 1 to 3 to follow"]},
  {"v": "1.39", "d": "2026-07-24",
   "de": ["Kampf-Karte: wenn ein Char kämpft, aber der Client keine Bounty-Zeilen ins Log schreibt, erscheint jetzt ein dezenter Hinweis, warum Kills und Bounty auf 0 stehen, plus der Tipp, die Bounty-Meldungen im EVE-Combat-Log zu aktivieren. Die echte Bounty-ISK kommt bei EVE-Login weiterhin aus dem Wallet"],
   "en": ["Combat card: when a character is fighting but the client writes no bounty lines to the log, a subtle note now explains why kills and bounty read 0, plus a tip to enable the bounty messages in the EVE combat log. The actual bounty ISK still comes from the wallet with the EVE login"]},
