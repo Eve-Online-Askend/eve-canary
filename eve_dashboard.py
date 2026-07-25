@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.53.0"
+VERSION = "1.54.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -687,6 +687,15 @@ try:  # v1.50: EWAR-Profil je Mission (Scram/Web/Jam/Neut … gegen dich)
     DB.commit()
 except sqlite3.OperationalError:
     pass
+# v1.54: Zeitachse/Verlauf. Schlanke Ereignis-Tabelle fuer Episoden, die sonst
+# nirgends zeitgestempelt liegen: Mining-Trips und Bedrohungen. Kampf kommt aus
+# missions, ISK aus journal (beide schon zeitgestempelt) und werden bei der
+# Abfrage dazugemischt. detail = JSON mit den Feldern zum Rendern (i18n im Frontend).
+DB.execute("""
+CREATE TABLE IF NOT EXISTS events(char_id TEXT, ts REAL, kind TEXT, char TEXT,
+    detail TEXT, UNIQUE(char_id, ts, kind));
+""")
+DB.commit()
 
 
 def meta_get(key, default=None):
@@ -724,6 +733,20 @@ def db_add(day, char_id, char_name, kind, key, value):
                   ON CONFLICT(day,char_id,kind,key)
                   DO UPDATE SET value=value+excluded.value, char_name=excluded.char_name""",
                (day, char_id, char_name, kind, key, value))
+
+
+def log_event(char_id, char, kind, detail, ts=None):
+    """Ein Zeitachsen-Ereignis ablegen (Mining-Trip, Bedrohung). detail = dict,
+    wird als JSON gespeichert und im Frontend sprachabhaengig gerendert. Dedupe
+    ueber UNIQUE(char_id, ts, kind), damit ein Re-Ingest nichts doppelt."""
+    try:
+        with DB_LOCK:
+            DB.execute("INSERT OR IGNORE INTO events VALUES(?,?,?,?,?)",
+                       (str(char_id), float(ts or time.time()), kind, char,
+                        json.dumps(detail, ensure_ascii=False)))
+            DB.commit()
+    except Exception as e:
+        log_error("CN-DB-01", "log_event", e)
 
 
 def save_mission(m):
@@ -1577,6 +1600,7 @@ class Ingest(threading.Thread):
                 batch = []
                 missions_done = []   # beim Undock abgeschlossene Missionen
                 lost_done = []       # beim Undock festgehaltener Stillstand-Verlust (Tag, ISK)
+                mine_done = []       # Mining-Trip-Episoden fuer die Zeitachse (char_id, char, ts, detail)
                 with open(f, "rb") as fh:
                     fh.seek(offset)
                     data = fh.read()
@@ -1603,17 +1627,28 @@ class Ingest(threading.Thread):
                                         md["dialog"] = " ".join(chatwatch.dialogue(
                                             cid, md["start_ts"], ev["ts"]))[:2000] or None
                                         missions_done.append(md)
-                                    # Stillstand-Verlust dieses Trips festhalten,
-                                    # BEVOR feed() ihn zuruecksetzt.
+                                    # Trip-Mining bewerten, BEVOR feed() sess.mining leert
+                                    # (beim Andocken haelt sess.mining genau diesen Trip).
+                                    pm = prices.get(CONFIG["region"]) or {}
+                                    vm3 = visk = 0.0
+                                    top_ore, top_u = None, 0
+                                    for ore, u in sess.mining.items():
+                                        i, vv = ore_value(ore, u, pm)
+                                        visk += i
+                                        vm3 += vv
+                                        if u > top_u:
+                                            top_u, top_ore = u, ore
                                     if sess.lost_m3 > 0:
-                                        pm = prices.get(CONFIG["region"]) or {}
-                                        vm3 = visk = 0.0
-                                        for ore, u in sess.mining.items():
-                                            i, vv = ore_value(ore, u, pm)
-                                            visk += i; vm3 += vv
                                         li = round(sess.lost_m3 * (visk / vm3)) if vm3 > 0 else 0
                                         if li > 0:
                                             lost_done.append((ev["day"], li))
+                                    # Mining-Trip als Zeitachsen-Episode (nur frisch, nicht Re-Ingest)
+                                    if not catch_up and now - ev["ts"] < 600 and vm3 > 0:
+                                        mins = max(1, round((ev["ts"] - (sess.first_ts or ev["ts"])) / 60))
+                                        mine_done.append((sess.char_id, cname, ev["ts"],
+                                                          {"m3": round(vm3), "isk": round(visk),
+                                                           "min": mins, "ore": top_ore,
+                                                           "sys": sess.system or "?"}))
                                 sess.feed(ev, live=not catch_up)
                             # Live-Alarme nur für wirklich frische Ereignisse (< 10 min).
                             # Schaltet man später auf "alle Logs", werden sonst Jahre an
@@ -1636,6 +1671,8 @@ class Ingest(threading.Thread):
                             save_mission(md)
                         for lday, li in lost_done:
                             db_add(lday, cid, cname, "lost", "isk", li)
+                        for ecid, ename, ets, edet in mine_done:
+                            log_event(ecid, ename, "mine", edet, ets)
                         if batch:
                             ts = [ev["ts"] for ev in batch]
                             first_ts = min(first_ts or ts[0], *ts)
@@ -3750,6 +3787,66 @@ def query_mission_history(limit=40):
     return out
 
 
+def query_timelines():
+    """Zeitachse/Verlauf je Charakter: chronologischer Strom aus Mining-Trips
+    (events-Tabelle), Kampf-Episoden (missions) und ISK-Ereignissen (Wallet-Journal).
+    Liefert IMMER den heutigen Tag (EVE-/UTC-Zeit); das Frontend filtert zusaetzlich
+    auf 8h/Trip. trip_start je Char kommt aus der laufenden Live-Session."""
+    now = time.time()
+    midnight = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0,
+                                                  microsecond=0).timestamp()
+    cut = midnight
+    per = {}   # char -> list of items
+
+    def add(char, item):
+        per.setdefault(char, []).append(item)
+
+    with DB_LOCK:
+        mrows = DB.execute(
+            """SELECT char, start_ts, end_ts, system, kills, bounty, dmg_out, dmg_in,
+                      enemies, ewar FROM missions WHERE start_ts>=?""", (cut,)).fetchall()
+        erows = DB.execute(
+            "SELECT char, ts, detail FROM events WHERE ts>=? AND kind='mine'", (cut,)).fetchall()
+        jrows = DB.execute(
+            "SELECT char, ts, ref_type, amount, party FROM journal WHERE ts>=? "
+            "AND ref_type LIKE 'agent_mission%'", (cut,)).fetchall()
+
+    for char, st, et, sysn, kills, bounty, do, di, ej, ewj in mrows:
+        enemies = json.loads(ej or "[]")
+        mission = detect_mission(enemies, "")
+        # Belt-Ratten raus, wie in der Missions-Historie
+        if not mission and (do or 0) < 5000 and (bounty or 0) < 100000:
+            continue
+        add(char, {"ts": int(st or 0), "kind": "combat",
+                   "mission": mission, "faction": faction_info(enemies),
+                   "kills": kills or 0, "bounty": round(bounty or 0),
+                   "dmg_out": do or 0, "dmg_in": di or 0,
+                   "min": round(((et or 0) - (st or 0)) / 60),
+                   "sys": sysn or "?", "ewar": json.loads(ewj or "[]")})
+    for char, ts, det in erows:
+        try:
+            d = json.loads(det or "{}")
+        except Exception:
+            d = {}
+        add(char, {"ts": int(ts), "kind": "mine", **d})
+    for char, ts, ref, amount, party in jrows:
+        add(char, {"ts": int(ts),
+                   "kind": "bonus" if ref == "agent_mission_time_bonus_reward" else "reward",
+                   "amount": round(amount or 0), "agent": party or ""})
+
+    trip = {}
+    with ingest.lock:
+        for s in ingest.sessions.values():
+            if s.first_ts:
+                trip[s.name] = int(s.first_ts)
+    chars = []
+    for char, items in per.items():
+        items.sort(key=lambda x: -x["ts"])
+        chars.append({"char": char, "items": items[:80], "trip_start": trip.get(char)})
+    chars.sort(key=lambda c: c["char"])
+    return {"chars": chars, "day_start": int(midnight), "now": int(now)}
+
+
 def query_vault():
     """Erz-Schatzkammer: Erz-Bestand aller ESI-verbundenen Chars (aus den Assets),
     Gesamtsumme (m³/ISK) plus Aufschluesselung je Char und Standort."""
@@ -3955,6 +4052,8 @@ class Handler(BaseHTTPRequestHandler):
                 data["chars"] = snapshot_live()
             elif view == "vault":
                 data["vault"] = query_vault()
+            elif view == "timeline":
+                data["timeline"] = query_timelines()
             elif view == "rechner":
                 pass  # der Rechner holt seine Daten per calc-POST
             else:
@@ -4413,6 +4512,13 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .vreward{margin-top:6px;color:var(--green)}
 .alphabanner{background:rgba(200,160,60,.1);border:1px solid var(--gold);border-radius:10px;padding:9px 13px;font-size:12px;color:var(--txt);line-height:1.5}
 .btn.simon{border-color:var(--red);color:var(--red)}
+.tlwins{margin-left:8px}
+.tlchip{display:inline-block;font-size:11px;padding:2px 9px;margin-left:4px;border:1px solid var(--line);border-radius:11px;color:var(--dim);cursor:pointer}
+.tlchip.on{border-color:var(--cyan);color:var(--cyan)}
+.tlrow{display:flex;gap:10px;align-items:baseline;padding:5px 0;border-top:1px solid var(--line);font-size:13px}
+.tlrow:first-of-type{border-top:none}
+.tlt{color:var(--dim);font-variant-numeric:tabular-nums;flex:none;width:40px}
+.tlsrc{font-size:10px;color:var(--dim);border:1px solid var(--line);border-radius:3px;padding:0 4px;margin-left:4px}
 /* Live-Missionskampf: EVE-HUD an den Design-Tokens. Verlauf ueber var(--card)/
    var(--inset) (theme-fest), Radius/Border wie die uebrigen Karten, Schaden
    raus=Cyan / rein=Rot / ISK=Gold wie in der ganzen App. */
@@ -4520,6 +4626,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="analyse">Analyse</span>
  <span data-v="intel">🚦 Intel</span>
  <span data-v="missionen">🎯 Missionen</span>
+ <span data-v="timeline">🕑 Verlauf</span>
  <span data-v="vault">💎 Erz-Schatzkammer</span>
  <span data-v="rechner">💰 ISKray</span>
 </nav>
@@ -4645,7 +4752,7 @@ const fmtP=n=>n>=1e6?fmtM(n):n>=1000?fmt(n):(n||0).toLocaleString(undefined,{max
 // fremdbestimmt und dürfen nie ungefiltert in innerHTML landen (XSS).
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function lsGet(key,fallback){try{const v=localStorage.getItem(key);return v==null?fallback:JSON.parse(v);}catch(e){return fallback;}}
-const VIEWS=['live','month','total','analyse','intel','missionen','vault','rechner'];
+const VIEWS=['live','month','total','analyse','intel','missionen','timeline','vault','rechner'];
 let view=location.pathname.replace(/^\\//,'')||'live', state=null, lastAlertId=Number(localStorage.getItem('lastAlertId')||0);
 if(!VIEWS.includes(view))view='live';
 window.addEventListener('popstate',()=>{
@@ -6068,6 +6175,45 @@ async function intelPoll(){
  }catch(e){}
  intelBusy=false;
 }
+// ---- Verlauf / Zeitachse: chronologischer Ereignisstrom je Charakter ----
+let lastTimeline=null, tlWin=localStorage.getItem('tlWin')||'today';
+function tlRow(it){
+ const t=new Date(it.ts*1000).toLocaleTimeString().slice(0,5);
+ if(it.kind==='mine')
+  return `<div class="tlrow"><span class="tlt">${t}</span><span>⛏ <b>Mining-Trip</b> ${fmt(it.m3)} m³ · <span class="isk">${fmtM(it.isk)}</span> · ${it.min} min${it.ore?' · '+esc(it.ore):''}${it.sys&&it.sys!=='?'?' · '+esc(it.sys):''}</span></div>`;
+ if(it.kind==='combat'){
+  const nm=it.mission?missionHtml(it.mission):(lang==='en'?'<b>Combat</b>':'<b>Kampf</b>');
+  return `<div class="tlrow"><span class="tlt">${t}</span><span>⚔ ${nm} · ${it.kills} Kills · <span class="isk">${fmtM(it.bounty)}</span> · ${it.min} min${it.sys&&it.sys!=='?'?' · '+esc(it.sys):''}</span></div>`;
+ }
+ if(it.kind==='reward')
+  return `<div class="tlrow"><span class="tlt">${t}</span><span>✅ <b>${lang==='en'?'Mission reward':'Missions-Belohnung'}</b> <span class="isk">${fmtM(it.amount)}</span>${it.agent?' · '+esc(it.agent):''} <span class="tlsrc">ESI</span></span></div>`;
+ if(it.kind==='bonus')
+  return `<div class="tlrow"><span class="tlt">${t}</span><span>⏱ <b>${lang==='en'?'Time bonus':'Zeitbonus'}</b> <span class="isk">${fmtM(it.amount)}</span> <span class="tlsrc">ESI</span></span></div>`;
+ return '';
+}
+function renderTimeline(tl){
+ lastTimeline=tl=tl||{}; const chars=tl.chars||[]; const now=tl.now||Date.now()/1000;
+ $('#hero').innerHTML='';
+ const chip=(k,l)=>`<span class="tlchip${tlWin===k?' on':''}" data-w="${k}">${l}</span>`;
+ let html=`<div class="card" style="grid-column:1/-1">
+   <b>🕑 ${lang==='en'?'Timeline':'Verlauf'}</b>
+   <span class="tlwins">${chip('today',lang==='en'?'Today':'Heute')}${chip('h8',lang==='en'?'Last 8h':'Letzte 8h')}${chip('trip',lang==='en'?'Current trip':'Aktueller Trip')}</span>
+   <div class="sub" style="margin-top:6px">${lang==='en'?'Per character, EVE time. Log events are instant, ESI events are marked. Mining trips and missions appear as they complete.':'Pro Charakter, EVE-Zeit. Log-Ereignisse sofort, ESI-Ereignisse markiert. Mining-Trips und Missionen erscheinen, sobald sie abgeschlossen sind.'}</div></div>`;
+ if(!chars.length)
+  html+=`<div class="card" style="grid-column:1/-1"><div class="sub">${lang==='en'?'Nothing recorded yet today.':'Heute noch nichts erfasst.'}</div></div>`;
+ for(const c of chars){
+  let cut;
+  if(tlWin==='h8')cut=now-8*3600;
+  else if(tlWin==='trip')cut=c.trip_start||tl.day_start||0;
+  else cut=tl.day_start||0;
+  const items=(c.items||[]).filter(it=>it.ts>=cut);
+  html+=`<div class="card" style="grid-column:1/-1">
+    <div class="chead" style="cursor:default"><span class="char">${esc(c.char)}</span> <span class="sub">· ${items.length} ${lang==='en'?'events':'Ereignisse'}</span></div>
+    ${items.length?items.map(tlRow).join(''):`<div class="sub">${lang==='en'?'Nothing in this window.':'Nichts in diesem Zeitfenster.'}</div>`}</div>`;
+ }
+ $('#grid').innerHTML=html;
+ document.querySelectorAll('.tlchip').forEach(ch=>ch.onclick=()=>{tlWin=ch.dataset.w;localStorage.setItem('tlWin',tlWin);renderTimeline(lastTimeline);});
+}
 function renderVault(v){
  v=v||{}; const chars=v.chars||[];
  if(!chars.length){
@@ -6417,7 +6563,7 @@ const EN = {
 'Standardmäßig zeigt Live nur eingeloggte Charaktere. Hier einschalten, um auch Offline-Charaktere zu sehen.':
  'Live normally shows only logged-in characters. Turn this on to see offline ones too.',
 'Live':'Live','30 Tage':'30 days','Gesamt':'All time','Analyse':'Analysis',
-'🚦 Intel':'🚦 Intel','🎯 Missionen':'🎯 Missions','💰 ISKray':'💰 ISKray',
+'🚦 Intel':'🚦 Intel','🎯 Missionen':'🎯 Missions','💰 ISKray':'💰 ISKray','🕑 Verlauf':'🕑 Timeline',
 '🔎 Einzel-Item':'🔎 Single item','📦 Frachtraum':'📦 Cargo',
 '⚙ Optionen':'⚙ Options','◱ Overlay':'◱ Overlay',
 '◱ Mini-Overlay öffnen/schließen':'Open/close mini overlay',
@@ -6787,6 +6933,7 @@ async function tick(){
    else if(view==='analyse')renderAnalyse(d.analyse);
    else if(view==='intel')renderIntel(d.intel_auto);
    else if(view==='vault')renderVault(d.vault);
+   else if(view==='timeline')renderTimeline(d.timeline);
    else if(view==='rechner')renderRechner();
    else renderTotal(d.total);
   }
