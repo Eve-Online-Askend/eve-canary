@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.42.0"
+VERSION = "1.42.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -2792,8 +2792,11 @@ def snapshot_live():
             "esi_linked": esi_char is not None,
             "ship": (esi_char or {}).get("ship"),
             # Command Ship (Orca/Porpoise/Rorqual) am Steuer? Nur dann macht der
-            # Flotten-/Kompressions-Block Sinn. Erkennung ueber ESI-Schiffstyp/-name.
-            "command_ship": drone_only,
+            # Flotten-Block Sinn. NUR ueber den echten Schiffstyp/-namen, NICHT ueber
+            # drone_only (das ist auch bei Drohnen-Mining/aktivem Kern True und wuerde
+            # z.B. einen komprimierenden Hulk faelschlich als Command Ship markieren).
+            "command_ship": (((esi_char or {}).get("ship_type_id") in DRONE_ONLY_SHIP_IDS)
+                             or any(n in _shipname for n in DRONE_ONLY_SHIP_NAMES)),
             "wallet": (esi_char or {}).get("wallet"),
             "cargo": (esi_char or {}).get("cargo"),
             # ESI-verifizierte Mining-Daten (nur wenn neue Scopes erteilt)
