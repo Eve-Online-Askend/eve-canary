@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.52.0"
+VERSION = "1.52.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -2992,9 +2992,12 @@ def snapshot_live():
         # Porpoise/Orca/Rorqual minern nur mit Drohnen (kein Strip Miner) -> keine
         # Laser-Warnungen. Läuft ein Industriekern, ist es ebenfalls so ein Boost-Schiff.
         _shipname = (esi_char or {}).get("ship") or ""
-        drone_only = ((esi_char or {}).get("ship_type_id") in DRONE_ONLY_SHIP_IDS
-                      or any(n in _shipname for n in DRONE_ONLY_SHIP_NAMES)
-                      or s.core_on())
+        # Echtes Command Ship (Orca/Porpoise/Rorqual) am Steuer? Booster/Kompressor,
+        # kein reiner Miner -> gar keine Mining-Nörgel-Warnungen (auch keine Drohnen-
+        # Idle-Warnung, die feuert sonst wenn er die Drohnen einzieht).
+        is_cmd = (((esi_char or {}).get("ship_type_id") in DRONE_ONLY_SHIP_IDS)
+                  or any(n in _shipname for n in DRONE_ONLY_SHIP_NAMES))
+        drone_only = (is_cmd or s.core_on())
         chars.append({
             "heavy_water": hw,
             "active": active,
@@ -3006,8 +3009,7 @@ def snapshot_live():
             # Flotten-Block Sinn. NUR ueber den echten Schiffstyp/-namen, NICHT ueber
             # drone_only (das ist auch bei Drohnen-Mining/aktivem Kern True und wuerde
             # z.B. einen komprimierenden Hulk faelschlich als Command Ship markieren).
-            "command_ship": (((esi_char or {}).get("ship_type_id") in DRONE_ONLY_SHIP_IDS)
-                             or any(n in _shipname for n in DRONE_ONLY_SHIP_NAMES)),
+            "command_ship": is_cmd,
             "wallet": (esi_char or {}).get("wallet"),
             "cargo": (esi_char or {}).get("cargo"),
             # ESI-verifizierte Mining-Daten (nur wenn neue Scopes erteilt)
@@ -3021,12 +3023,13 @@ def snapshot_live():
                            for t, i in sorted(s.lasers_off.items())],
             # Bei Command Ships / Drohnen-Boostern (Orca/Porpoise/Rorqual, aktiver
             # Kern) NICHT die generische "Abbaurate runter"-Warnung zeigen — die
-            # ergibt dort keinen Sinn (kein reiner Miner). Dort greift nur die
-            # Drohnen-Idle-Warnung (drones_idle). Wie schon bei laser_stalled.
+            # ergibt dort keinen Sinn (kein reiner Miner). Wie schon bei laser_stalled.
             "rate_low": None if drone_only else (lambda rs: round(100 * rs[1] / rs[0])
                          if rs and 0 < rs[1] < 0.55 * rs[0] else None)(s.rate_status()),
             "cargo_full": s.cargo_full and (time.time() - s.cargo_ts) < 300,
-            "drones_idle": s.drones_idle(),
+            # Command Ships sind Booster, keine Drohnen-Miner: die Drohnen-Idle-
+            # Warnung feuert dort nur, wenn er die Drohnen einzieht -> ausblenden.
+            "drones_idle": False if is_cmd else s.drones_idle(),
             "laser_stalled": False if drone_only else s.laser_stalled(),
             "hold_isk": round(hold_isk), "hold_m3": round(hold_m3),
             "hold_prices": hold_prices,
