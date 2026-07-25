@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.45.2"
+VERSION = "1.46.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -1974,6 +1974,7 @@ class Esi(threading.Thread):
         self.status = {}      # char -> Klartext-Status fuer die Optionen-Seite
         self.type_cache = {}  # type_id -> Name (Schiffstypen, öffentlicher Endpunkt)
         self.vol_cache = {}   # type_id -> Volumen je Einheit (fuer Mining-Ledger-m³)
+        self.loc_cache = {}   # location_id -> Name (Stationen/Strukturen, fuer die Erz-Schatzkammer)
         self.party_names = {} # id -> Name (Agenten aus dem Wallet-Journal)
         # Serialisiert den Token-Refresh: poll-Thread und HTTP-Thread (ui_open)
         # duerfen nicht gleichzeitig dasselbe Refresh-Token einloesen (CCP
@@ -2193,6 +2194,10 @@ class Esi(threading.Thread):
             self.value_cargo(name, c, items, ship["ship_item_id"], asof, exp)
         except Exception as e:
             log_error("CN-ESI-01", "value_cargo", e)
+        try:
+            self.build_vault(name, c, items, asof, exp)
+        except Exception as e:
+            log_error("CN-ESI-01", "build_vault", e)
         in_ship = [i for i in items if i.get("location_id") == ship["ship_item_id"]]
         units = sum(i["quantity"] for i in in_ship if i["type_id"] == HW_TYPE_ID)
         core = next((CORE_TYPES[i["type_id"]] for i in in_ship
@@ -2230,6 +2235,64 @@ class Esi(threading.Thread):
                 "sell": round(sum(q * pm.get(t, (0, 0))[1] for t, q in qty.items())),
                 "as_of": int(asof), "next": int(nxt),
                 "n": len(cargo), "items": rows[:12]}
+
+    def loc_name(self, c, loc_id):
+        """Name eines Lagerorts. NPC-Stationen oeffentlich, Spieler-Strukturen ueber
+        den Char-Token (nur mit Zugang). Ohne Aufloesung bleibt eine lesbare ID."""
+        if loc_id in self.loc_cache:
+            return self.loc_cache[loc_id]
+        nm = None
+        try:
+            if 60000000 <= loc_id < 64000000:      # NPC-Station (oeffentlich)
+                nm = (self._pub(f"/universe/stations/{loc_id}/") or {}).get("name")
+            elif loc_id >= 100000000:              # Upwell-Struktur (Zugang noetig)
+                d, _ = self._get(c, f"/universe/structures/{loc_id}/")
+                nm = d.get("name")
+        except Exception:
+            nm = None
+        if not nm:
+            nm = f"Struktur #{loc_id}" if loc_id >= 100000000 else f"Ort #{loc_id}"
+        self.loc_cache[loc_id] = nm
+        return nm
+
+    def build_vault(self, name, c, items, asof, nxt):
+        """Erz-Schatzkammer: gesamter Erz-Bestand (roh + komprimiert) ueber ALLE
+        Lagerorte des Chars, aus den ESI-Assets. Menge, m³ und ISK-Wert (Jita-Buy)
+        je Standort und Erztyp. Erz in Containern/Schiffen wird zum obersten
+        Stations-/Struktur-Standort hochgereicht."""
+        by_id = {it["item_id"]: it for it in items if "item_id" in it}
+        ore_items = [it for it in items if it.get("type_id") in ORE_BY_TID]
+        if not ore_items:
+            with CONFIG_LOCK:
+                c["vault"] = {"as_of": int(asof), "next": int(nxt),
+                              "total_m3": 0, "total_isk": 0, "locs": []}
+            return
+        pm = hub_prices("10000002", set(it["type_id"] for it in ore_items), prefer_esi=True)
+        locs = {}
+        for it in ore_items:
+            loc = it.get("location_id"); seen = set()
+            while loc in by_id and loc not in seen:   # Container/Schiff -> Station hochreichen
+                seen.add(loc); loc = by_id[loc].get("location_id")
+            d = locs.setdefault(loc, {})
+            d[it["type_id"]] = d.get(it["type_id"], 0) + it["quantity"]
+        out, tot_m3, tot_isk = [], 0.0, 0.0
+        for loc_id, ores in locs.items():
+            orelist, lm3, lisk = [], 0.0, 0.0
+            for tid, units in ores.items():
+                oname, vol = ORE_BY_TID[tid]
+                m3 = units * vol
+                isk = units * pm.get(tid, (0, 0))[0]
+                lm3 += m3; lisk += isk
+                orelist.append({"ore": oname, "units": units,
+                                "m3": round(m3), "isk": round(isk)})
+            orelist.sort(key=lambda x: -x["isk"])
+            tot_m3 += lm3; tot_isk += lisk
+            out.append({"loc_id": loc_id, "name": self.loc_name(c, loc_id),
+                        "m3": round(lm3), "isk": round(lisk), "ores": orelist})
+        out.sort(key=lambda x: -x["isk"])
+        with CONFIG_LOCK:
+            c["vault"] = {"as_of": int(asof), "next": int(nxt),
+                          "total_m3": round(tot_m3), "total_isk": round(tot_isk), "locs": out}
 
     def sync_journal(self, name, c):
         """Wallet-Journal einlesen: Missions-Belohnungen, Boni, Bounty-Ticks.
@@ -3466,6 +3529,24 @@ def query_mission_history(limit=40):
     return out
 
 
+def query_vault():
+    """Erz-Schatzkammer: Erz-Bestand aller ESI-verbundenen Chars (aus den Assets),
+    Gesamtsumme (m³/ISK) plus Aufschluesselung je Char und Standort."""
+    chars, tot_m3, tot_isk, oldest = [], 0, 0, None
+    for nm, c in ((CONFIG.get("esi") or {}).get("chars", {})).items():
+        v = c.get("vault")
+        if not v:
+            continue
+        tot_m3 += v.get("total_m3", 0)
+        tot_isk += v.get("total_isk", 0)
+        oldest = v["as_of"] if oldest is None else min(oldest, v["as_of"])
+        chars.append({"name": nm, "total_m3": v.get("total_m3", 0),
+                      "total_isk": v.get("total_isk", 0), "locs": v.get("locs", []),
+                      "as_of": v.get("as_of"), "next": v.get("next")})
+    chars.sort(key=lambda x: -x["total_isk"])
+    return {"total_m3": tot_m3, "total_isk": tot_isk, "as_of": oldest, "chars": chars}
+
+
 def query_missions():
     """Missions-Statistik aus dem Wallet-Journal: Tage, Quellen, Agenten, Chars.
     Bounties aus bekannten Mining-Systemen bleiben draussen (Belt-Ratten)."""
@@ -3631,6 +3712,8 @@ class Handler(BaseHTTPRequestHandler):
                 data["missions"] = query_missions()
                 data["mission_log"] = query_mission_history()
                 data["chars"] = snapshot_live()
+            elif view == "vault":
+                data["vault"] = query_vault()
             elif view == "rechner":
                 pass  # der Rechner holt seine Daten per calc-POST
             else:
@@ -4157,6 +4240,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="analyse">Analyse</span>
  <span data-v="intel">🚦 Intel</span>
  <span data-v="missionen">🎯 Missionen</span>
+ <span data-v="vault">💎 Erz-Schatzkammer</span>
  <span data-v="rechner">💰 ISKray</span>
 </nav>
 <div id="updBanner" hidden></div>
@@ -4278,7 +4362,7 @@ const fmtP=n=>n>=1e6?fmtM(n):n>=1000?fmt(n):(n||0).toLocaleString(undefined,{max
 // fremdbestimmt und dürfen nie ungefiltert in innerHTML landen (XSS).
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function lsGet(key,fallback){try{const v=localStorage.getItem(key);return v==null?fallback:JSON.parse(v);}catch(e){return fallback;}}
-const VIEWS=['live','month','total','analyse','intel','missionen','rechner'];
+const VIEWS=['live','month','total','analyse','intel','missionen','vault','rechner'];
 let view=location.pathname.replace(/^\\//,'')||'live', state=null, lastAlertId=Number(localStorage.getItem('lastAlertId')||0);
 if(!VIEWS.includes(view))view='live';
 window.addEventListener('popstate',()=>{
@@ -5439,6 +5523,37 @@ async function intelPoll(){
  }catch(e){}
  intelBusy=false;
 }
+function renderVault(v){
+ v=v||{}; const chars=v.chars||[];
+ if(!chars.length){
+  $('#grid').innerHTML='<div class="card" style="grid-column:1/-1"><div class="sub">Noch keine Asset-Daten. Verbinde deine Chars per EVE-Login (⚙ Optionen). Nach dem ersten Abgleich (bis zu 1 Stunde) erscheint hier dein Erz-Bestand.</div></div>';
+  return;
+ }
+ const now=Date.now()/1000;
+ const stand=v.as_of?'Stand: vor '+Math.max(0,Math.round((now-v.as_of)/60))+' min':'';
+ let html=`<div class="card mfp" style="grid-column:1/-1">
+   <div class="mfphead"><span class="mfptitle">💎 Erz-Schatzkammer</span></div>
+   <div class="mfpmain">
+    <span class="mfpval gold">${fmtC(v.total_m3||0)}</span>
+    <span class="mfpunit">m³ Erz</span>
+    <span class="mfpsub">≈ ${fmtM(v.total_isk||0)} ISK · ${chars.length} ${chars.length===1?'Char':'Chars'}${stand?' · '+stand:''}</span>
+   </div></div>`;
+ chars.forEach(c=>{
+  html+=`<div class="card" style="grid-column:1/-1">
+   <div class="chead"><span class="char">${esc(c.name)} <span class="sys">· ${fmtC(c.total_m3)} m³ · ${fmtM(c.total_isk)} ISK</span></span></div>`;
+  if(!c.locs.length){html+='<div class="sub">Kein Erz im Bestand.</div></div>';return;}
+  c.locs.forEach(l=>{
+   html+=`<div style="border-top:1px solid var(--line);padding:8px 0">
+     <div style="display:flex;gap:6px;align-items:baseline;flex-wrap:wrap"><b>${esc(l.name)}</b>
+      <span style="margin-left:auto" class="isk">${fmtC(l.m3)} m³ · <b>${fmtM(l.isk)} ISK</b></span></div>
+     <table class="fleetcomp">`+l.ores.map(o=>
+       `<tr><td>${esc(o.ore)}</td><td class="r">${fmt(o.units)} Stk</td><td class="r">${fmt(o.m3)} m³</td><td class="r isk">${fmtM(o.isk)} ISK</td></tr>`).join('')
+     +`</table></div>`;
+  });
+  html+='</div>';
+ });
+ $('#grid').innerHTML=html;
+}
 function renderMissions(d){
  const m=d.missions||{},t=m.today||{};
  const live=(d.chars||[]).filter(c=>c.bounty>0||c.kills>0);
@@ -5810,6 +5925,8 @@ const EN = {
 'Gegner bekämpft':'Enemies fought','Typen · aus Log':'types · from log',
 '😴 Canary müde, heute keine Arbeit mehr':'😴 Canary is tired, no more work today',
 '🛰 Aktuelle Flotte':'🛰 Current fleet','m³ komprimiert':'m³ compressed',
+'💎 Erz-Schatzkammer':'💎 Ore treasury','m³ Erz':'m³ of ore','Kein Erz im Bestand.':'No ore in storage.',
+'Noch keine Asset-Daten. Verbinde deine Chars per EVE-Login (⚙ Optionen). Nach dem ersten Abgleich (bis zu 1 Stunde) erscheint hier dein Erz-Bestand.':'No asset data yet. Connect your chars via the EVE login (⚙ Options). After the first sync (up to one hour) your ore stock shows up here.',
 '✅ Command Ship erkannt':'✅ Command ship detected',
 '🗜 Noch keiner komprimiert diese Session':'🗜 No one has compressed this session yet',
 'ℹ️ Für diese Mission liegen keine Bounty-Daten im Log vor, daher werden Kills und Bounty hier nicht gezählt. In EVE die Bounty-Meldungen im Combat-Log aktivieren, dann zählt Canary sie live mit. Die echte Bounty-ISK kommt bei EVE-Login aus dem Wallet.':'ℹ️ No bounty data in the log for this session, so kills and bounty are not counted here. Enable the bounty messages in the EVE combat log and Canary will count them live. The actual bounty ISK comes from the wallet when you use the EVE login.',
@@ -5917,6 +6034,7 @@ const EN_PATTERNS = [
  [/~([0-9]+)% sicher/, '~$1% sure'],
  [/([0-9]+) Spieler komprimieren:/, '$1 pilots compressing:'],
  [/([0-9]+) Spieler komprimiert:/, '$1 pilot compressing:'],
+ [/([0-9]+) Chars/, '$1 chars'], [/([0-9]+) Char\b/, '$1 char'],
  [/([0-9]+) Schiffe? · geschätzt aus Log/, '$1 ships · estimated from log'],
  [/([0-9]+) Schiffe? · ✅ ESI-verifiziert/, '$1 ships · ✅ ESI-verified'],
  [/([0-9]+) von ([0-9]+) ESI-verifiziert · Rest geschätzt/, '$1 of $2 ESI-verified · rest estimated'],
@@ -6045,6 +6163,7 @@ async function tick(){
    if(view==='month')renderMonth(d.days);
    else if(view==='analyse')renderAnalyse(d.analyse);
    else if(view==='intel')renderIntel(d.intel_auto);
+   else if(view==='vault')renderVault(d.vault);
    else if(view==='rechner')renderRechner();
    else renderTotal(d.total);
   }
