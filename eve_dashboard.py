@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.52.2"
+VERSION = "1.52.3"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -5422,7 +5422,9 @@ function miningCardHtml(c){
     <div class="stat"><div class="l">Schaden raus/rein</div><div class="v"><span class="out">${fmtM(c.dmg_out)}</span> / <span class="in">${fmtM(c.dmg_in)}</span></div></div>
     <div class="stat"><div class="l">DPS raus/rein</div><div class="v"><span class="out">${c.dps_out}</span> / <span class="in">${c.dps_in}</span></div></div>
    </div>
-   ${c.spark.length>1?`<div class="spark">${c.spark.map(v=>`<div style="height:${Math.max(3,100*v/maxS)}%"></div>`).join('')}</div><div class="sub">Mining m³/min</div>`:''}
+   ${c.spark.length>1?(()=>{const sp=c.spark,n=sp.length,peak=Math.max(...sp),avg=Math.round(sp.reduce((a,b)=>a+b,0)/n);
+     return `<div class="spark" title="${lang==='en'?'Ore mined per minute, one bar per minute':'Gefördertes Erz pro Minute, ein Balken je Minute'}">${sp.map((v,i)=>`<div title="${lang==='en'?'min':'Min'} -${n-1-i}: ${fmt(v)} m³" style="height:${Math.max(3,100*v/maxS)}%"></div>`).join('')}</div>
+     <div class="sub">${lang==='en'?'Mining m³/min · last':'Mining m³/min · letzte'} ${n} min · ${lang==='en'?'peak':'Spitze'} ${fmt(peak)} · Ø ${fmt(avg)}</div>`;})():''}
    ${c.ores.length?`<div class="sect">Mining</div><table>`+c.ores.map(o=>o.known
      ?`<tr><td>${esc(o.ore)}<div class="bar" style="width:${100*o.isk/maxOre}%"></div></td>
       <td class="r">${fmt(o.units)} Stk</td><td class="r isk">${fmtM(o.isk)}</td></tr>`

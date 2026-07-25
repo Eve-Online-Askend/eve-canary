@@ -1,4 +1,7 @@
 [
+ {"v": "1.52.3", "d": "2026-07-25",
+  "de": ["Mining-Verlaufsbalken (m³/min) sind jetzt ablesbar: die Beschriftung zeigt Zeitfenster, Spitzenwert und Durchschnitt (z.B. 'letzte 60 min · Spitze 409 · Ø 365'), und beim Draufzeigen auf einen Balken erscheint der genaue Minutenwert. Vorher war es nur eine Balkenreihe ohne Zahlen"],
+  "en": ["The mining history bars (m³/min) are now readable: the caption shows the time window, peak and average (e.g. 'last 60 min · peak 409 · avg 365'), and hovering a bar reveals that minute's exact value. Before it was just bars with no numbers"]},
  {"v": "1.52.2", "d": "2026-07-25",
   "de": ["Missionen: wird eine Mission nicht eindeutig erkannt, steht jetzt klar 'Keine Erkennungsdaten gefunden' statt einer verspielten Meldung. Ehrlich und eindeutig, viele Missionen haben nun mal keine eindeutige Signatur im Log"],
   "en": ["Missions: when a mission cannot be clearly identified, it now says 'No recognition data found' instead of a playful message. Honest and clear, since many missions simply have no unique signature in the log"]},
