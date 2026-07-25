@@ -75,6 +75,14 @@ td,th{padding:6px 12px;border-top:1px solid var(--line);text-align:left;vertical
 td:first-child,th:first-child{padding-left:0}
 th{border-top:none;color:var(--dim);font-weight:400;font-size:11px;
 text-transform:uppercase;letter-spacing:1px}
+.cmp td,.cmp th{text-align:center}
+.cmp td:first-child,.cmp th:first-child{text-align:left;width:42%}
+.cmp .can{background:rgba(95,193,212,.09)}
+.cmp th.can{color:var(--cyan);font-weight:700}
+.cmp .yes{color:var(--green);font-weight:700}
+.cmp .no{color:var(--dim)}
+.cmp .part{color:var(--gold)}
+.cmp-wrap{overflow-x:auto}
 .note{border-left:2px solid var(--gold);padding:2px 0 2px 15px;color:var(--dim);font-size:13.5px}
 footer{margin:64px 0 40px;padding-top:22px;border-top:1px solid var(--line);
 text-align:center;color:var(--dim);font-size:12.5px}
@@ -199,6 +207,29 @@ must be enabled in the EVE client, which is the default setting.</p>
     and cargo hold. Read only, no setup, revocable at any time.</p></div>
 </div>
 
+<h2 data-i18n="h.compare">How Canary compares</h2>
+<p data-i18n="compare.intro">Other tools each cover a single piece. Canary is the only one that fuses live mining, your whole compression fleet and mission tactics in one window, and it does it fully local, with no cloud and no account. Your data stays yours.</p>
+<div class="cmp-wrap">
+<table class="cmp">
+  <tr>
+    <th></th>
+    <th class="can" data-i18n="cmp.canary">EVE Canary</th>
+    <th data-i18n="cmp.cloud">Cloud dashboards</th>
+    <th data-i18n="cmp.dps">DPS overlays</th>
+  </tr>
+  <tr><td data-i18n="cmp.local">Runs locally, no server</td><td class="can yes">✓</td><td class="no">✗</td><td class="yes">✓</td></tr>
+  <tr><td data-i18n="cmp.account">No account, no login</td><td class="can yes">✓</td><td class="no">✗</td><td class="yes">✓</td></tr>
+  <tr><td data-i18n="cmp.data">Your data stays on your machine</td><td class="can yes">✓</td><td class="no">✗</td><td class="yes">✓</td></tr>
+  <tr><td data-i18n="cmp.mining">Live mining m³/h from the game log</td><td class="can yes">✓</td><td class="no">✗</td><td class="no">✗</td></tr>
+  <tr><td data-i18n="cmp.fleet">Fleet-wide compression, even pilots without the tool</td><td class="can yes">✓</td><td class="no">✗</td><td class="no">✗</td></tr>
+  <tr><td data-i18n="cmp.mission">Mission faction tips and verified rewards</td><td class="can yes">✓</td><td class="no">✗</td><td class="no">✗</td></tr>
+  <tr><td data-i18n="cmp.treasury">Ore treasury across every location</td><td class="can yes">✓</td><td class="part">~</td><td class="no">✗</td></tr>
+  <tr><td data-i18n="cmp.combat">Combat and DPS</td><td class="can yes">✓</td><td class="part">~</td><td class="yes">✓</td></tr>
+  <tr><td data-i18n="cmp.free">Free</td><td class="can yes">✓</td><td class="part">~</td><td class="yes">✓</td></tr>
+</table>
+</div>
+<p class="tiny" data-i18n="compare.note">Categories, not specific products. A "~" means partly, or only in some of them.</p>
+
 <h2 data-i18n="h.privacy">Your data stays with you</h2>
 <ul>
   <li data-i18n="pv1">Canary runs entirely on your machine at <code>localhost:8765</code>.
@@ -315,6 +346,19 @@ const LANGS = {
     'f10.p': 'Boostest du in einer Orca, Porpoise oder Rorqual? Canary erkennt das Command Ship automatisch und zeigt die Flotten-Mining-Power sowie, wer wie viel über den Kompressionsdienst komprimiert hat, mit Name und Menge. Sogar Flottenmitglieder ohne eigenes Canary tauchen auf, direkt aus deinem Booster-Log. Setzt den optionalen EVE-Login voraus, damit das Schiff erkannt wird.',
     'f11.t': 'Erz-Schatzkammer',
     'f11.p': 'Dein gesamter Erz-Bestand, roh und komprimiert, über alle Stationen und Strukturen deiner EVE-verbundenen Chars. Gesamtmenge und ISK-Wert auf einen Blick, dann im Detail was wo liegt, mit Stations-Icon. Kommt aus den ESI-Assets, mit klarer Angabe von wann die Daten sind und wann der nächste Abgleich kommt.',
+    'h.compare': 'Warum Canary',
+    'compare.intro': 'Andere Tools decken jeweils nur ein Stück ab. Canary ist das einzige, das Live-Mining, deine ganze Kompressions-Flotte und Missions-Taktik in einem Fenster vereint, und das komplett lokal, ohne Cloud und ohne Konto. Deine Daten bleiben deine.',
+    'cmp.canary': 'EVE Canary', 'cmp.cloud': 'Cloud-Dashboards', 'cmp.dps': 'DPS-Overlays',
+    'cmp.local': 'Läuft lokal, kein Server',
+    'cmp.account': 'Kein Konto, keine Anmeldung',
+    'cmp.data': 'Deine Daten bleiben auf deinem Rechner',
+    'cmp.mining': 'Live-Mining m³/h aus dem Gamelog',
+    'cmp.fleet': 'Flottenweite Kompression, auch Piloten ohne das Tool',
+    'cmp.mission': 'Missions-Fraktionstipps und verifizierte Belohnungen',
+    'cmp.treasury': 'Erz-Schatzkammer über alle Standorte',
+    'cmp.combat': 'Kampf und DPS',
+    'cmp.free': 'Kostenlos',
+    'compare.note': 'Kategorien, keine konkreten Produkte. Ein „~" heißt teilweise oder nur bei manchen.',
     'h.privacy': 'Deine Daten bleiben bei dir',
     pv1: 'Canary läuft komplett auf deinem Rechner unter <code>localhost:8765</code>. Es gibt keinen Server, kein Konto und keine Anmeldung.',
     pv2: 'Es liest nur die Textdateien, die dein EVE-Client selbst schreibt. Nichts wird verändert, nichts automatisiert, nichts an das Spiel gesendet.',
@@ -377,6 +421,19 @@ const LANGS = {
     'f10.p': 'Vous boostez dans un Orca, un Porpoise ou un Rorqual ? Canary détecte le vaisseau de commandement automatiquement et affiche la puissance minière de la flotte ainsi que qui a compressé combien via son service de compression, par nom et quantité. Même les membres de flotte qui n\'utilisent pas Canary apparaissent, directement depuis votre propre journal de booster. Nécessite la connexion EVE optionnelle pour que le vaisseau soit détecté.',
     'f11.t': 'Trésor de minerai',
     'f11.p': 'Tout votre stock de minerai, brut et compressé, dans toutes les stations et structures de vos personnages connectés à EVE. Volume total et valeur en ISK d\'un coup d\'oeil, puis le détail de ce qui est stocké où, avec les icônes de station. Issu des assets ESI, avec l\'heure exacte des données et du prochain rafraîchissement.',
+    'h.compare': 'Pourquoi Canary',
+    'compare.intro': 'Les autres outils ne couvrent chacun qu\'une partie. Canary est le seul à réunir le minage en direct, toute votre flotte de compression et la tactique de missions dans une seule fenêtre, et ce entièrement en local, sans cloud et sans compte. Vos données restent les vôtres.',
+    'cmp.canary': 'EVE Canary', 'cmp.cloud': 'Tableaux de bord cloud', 'cmp.dps': 'Overlays DPS',
+    'cmp.local': 'Tourne en local, sans serveur',
+    'cmp.account': 'Sans compte, sans connexion',
+    'cmp.data': 'Vos données restent sur votre machine',
+    'cmp.mining': 'Minage en direct m³/h depuis le journal de jeu',
+    'cmp.fleet': 'Compression de toute la flotte, même les pilotes sans l\'outil',
+    'cmp.mission': 'Conseils de faction et récompenses vérifiées pour les missions',
+    'cmp.treasury': 'Trésor de minerai sur tous les emplacements',
+    'cmp.combat': 'Combat et DPS',
+    'cmp.free': 'Gratuit',
+    'compare.note': 'Des catégories, pas des produits précis. Un « ~ » signifie en partie ou seulement chez certains.',
     'h.privacy': 'Vos données restent chez vous',
     pv1: 'Canary tourne entièrement sur votre machine sur <code>localhost:8765</code>. Il n\'y a ni serveur, ni compte, ni inscription.',
     pv2: 'Il lit uniquement les fichiers texte que votre client EVE écrit lui-même. Rien n\'est modifié, rien n\'est automatisé, rien n\'est envoyé au jeu.',
@@ -439,6 +496,19 @@ const LANGS = {
     'f10.p': 'Бустите на Orca, Porpoise или Rorqual? Canary сам распознаёт командный корабль и показывает добывающую мощь флота, а также кто сколько сжал через его сервис компрессии, по имени и количеству. Даже члены флота без своего Canary попадают в список, прямо из лога вашего бустера. Требует опционального входа EVE, чтобы корабль был распознан.',
     'f11.t': 'Хранилище руды',
     'f11.p': 'Весь ваш запас руды, сырой и сжатой, по всем станциям и структурам ваших подключённых к EVE персонажей. Общий объём и стоимость в ISK с первого взгляда, затем разбивка, что где хранится, со значками станций. Берётся из ассетов ESI, с точным временем данных и следующего обновления.',
+    'h.compare': 'Почему Canary',
+    'compare.intro': 'Другие инструменты покрывают лишь по одной части. Canary единственный объединяет добычу в реальном времени, весь ваш флот сжатия и тактику миссий в одном окне, и делает это полностью локально, без облака и без учётной записи. Ваши данные остаются вашими.',
+    'cmp.canary': 'EVE Canary', 'cmp.cloud': 'Облачные панели', 'cmp.dps': 'DPS-оверлеи',
+    'cmp.local': 'Работает локально, без сервера',
+    'cmp.account': 'Без учётной записи и входа',
+    'cmp.data': 'Ваши данные остаются на вашем компьютере',
+    'cmp.mining': 'Добыча в реальном времени м³/ч из игрового лога',
+    'cmp.fleet': 'Сжатие по всему флоту, даже пилоты без инструмента',
+    'cmp.mission': 'Подсказки по фракциям и проверенные награды за миссии',
+    'cmp.treasury': 'Хранилище руды по всем местам',
+    'cmp.combat': 'Бой и DPS',
+    'cmp.free': 'Бесплатно',
+    'compare.note': 'Категории, а не конкретные продукты. «~» означает частично или только у некоторых.',
     'h.privacy': 'Ваши данные остаются у вас',
     pv1: 'Canary работает целиком на вашем компьютере по адресу <code>localhost:8765</code>. Нет ни сервера, ни учётной записи, ни регистрации.',
     pv2: 'Он читает только текстовые файлы, которые пишет сам клиент EVE. Ничего не изменяется, ничего не автоматизируется, в игру ничего не отправляется.',
