@@ -1,4 +1,7 @@
 [
+ {"v": "1.45", "d": "2026-07-25",
+  "de": ["Flotten-Kompression jetzt auch für deutsche Clients: Canary erkennt den Wortlaut 'X hat N Erz mithilfe Ihrer Kompressionsanlage komprimiert' und listet damit die ganze Flotte, auch Fremdspieler", "Fix: seltene Serverfehler beim Laden (InterfaceError/TypeError) behoben. Ursache waren gleichzeitige Datenbank-Zugriffe ohne Sperre und ein Sonderfall bei der Erz-Bewertung"],
+  "en": ["Fleet compression now works for German clients too: Canary reads the wording 'X compressed N ore using your compression services' in its German form and lists the whole fleet, including outside pilots", "Fix: rare server errors on load (InterfaceError/TypeError) resolved. They were caused by concurrent database access without a lock and an edge case in ore valuation"]},
  {"v": "1.44", "d": "2026-07-25",
   "de": ["Flotten-Kompression jetzt echt flottenweit: das Log des Command Ships (Orca/Porpoise/Rorqual) nennt jeden Piloten namentlich, der über den Kompressionsdienst komprimiert, auch fremde Flottenmitglieder, die selbst kein Canary nutzen. Die 'Aktuelle Flotte'-Kachel listet damit alle Kompressoren mit Name und Menge, nicht mehr nur die eigenen Accounts"],
   "en": ["Fleet compression is now truly fleet-wide: the command ship's log (Orca/Porpoise/Rorqual) names every pilot who compresses via its compression service, including fleet members who do not run Canary themselves. The 'Current fleet' panel now lists all of them by name and amount, not just your own accounts"]},
