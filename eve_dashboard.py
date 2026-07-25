@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.54.0"
+VERSION = "1.54.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -710,7 +710,8 @@ def meta_get(key, default=None):
 # "4" = Missions-Historie an Undock-Grenzen rueckwirkend aus allen Logs aufbauen
 # "5" = Missionsort aus dem Gamelog (Undock-Ziel/Sprung) rueckwirkend nachtragen
 # "6" = EWAR-Profil je Mission rueckwirkend aus allen Logs mitschreiben
-PARSE_VER = "6"
+# "7" = Mining-Trip-Episoden (Verlauf/Zeitachse) der letzten 48h aus Logs rekonstruieren
+PARSE_VER = "7"
 
 
 def rebuild_if_needed():
@@ -1627,28 +1628,33 @@ class Ingest(threading.Thread):
                                         md["dialog"] = " ".join(chatwatch.dialogue(
                                             cid, md["start_ts"], ev["ts"]))[:2000] or None
                                         missions_done.append(md)
-                                    # Trip-Mining bewerten, BEVOR feed() sess.mining leert
+                                    # Trip-Mining festhalten, BEVOR feed() sess.mining leert
                                     # (beim Andocken haelt sess.mining genau diesen Trip).
-                                    pm = prices.get(CONFIG["region"]) or {}
-                                    vm3 = visk = 0.0
-                                    top_ore, top_u = None, 0
-                                    for ore, u in sess.mining.items():
-                                        i, vv = ore_value(ore, u, pm)
-                                        visk += i
-                                        vm3 += vv
-                                        if u > top_u:
-                                            top_u, top_ore = u, ore
                                     if sess.lost_m3 > 0:
+                                        pm = prices.get(CONFIG["region"]) or {}
+                                        vm3 = visk = 0.0
+                                        for ore, u in sess.mining.items():
+                                            i, vv = ore_value(ore, u, pm)
+                                            visk += i
+                                            vm3 += vv
                                         li = round(sess.lost_m3 * (visk / vm3)) if vm3 > 0 else 0
                                         if li > 0:
                                             lost_done.append((ev["day"], li))
-                                    # Mining-Trip als Zeitachsen-Episode (nur frisch, nicht Re-Ingest)
-                                    if not catch_up and now - ev["ts"] < 600 and vm3 > 0:
-                                        mins = max(1, round((ev["ts"] - (sess.first_ts or ev["ts"])) / 60))
-                                        mine_done.append((sess.char_id, cname, ev["ts"],
-                                                          {"m3": round(vm3), "isk": round(visk),
-                                                           "min": mins, "ore": top_ore,
-                                                           "sys": sess.system or "?"}))
+                                    # Mining-Trip als Zeitachsen-Episode. m³ ist statisch
+                                    # (Volumen, keine Preise noetig), ISK wird bei der Abfrage
+                                    # mit aktuellen Preisen berechnet -> robust auch beim
+                                    # Re-Ingest (Preise evtl. noch nicht geladen). Bis 48h
+                                    # zurueck rekonstruieren, dedupe ueber UNIQUE.
+                                    if now - ev["ts"] < 172800 and sess.mining:
+                                        m3 = sum(u * ORE_TYPES.get(o, {}).get("volume", 0.0)
+                                                 for o, u in sess.mining.items())
+                                        if m3 > 0:
+                                            top_ore = max(sess.mining, key=sess.mining.get)
+                                            mins = max(1, round((ev["ts"] - (sess.first_ts or ev["ts"])) / 60))
+                                            mine_done.append((sess.char_id, cname, ev["ts"],
+                                                              {"ores": dict(sess.mining), "m3": round(m3),
+                                                               "min": mins, "top": top_ore,
+                                                               "sys": sess.system or "?"}))
                                 sess.feed(ev, live=not catch_up)
                             # Live-Alarme nur für wirklich frische Ereignisse (< 10 min).
                             # Schaltet man später auf "alle Logs", werden sonst Jahre an
@@ -3790,12 +3796,13 @@ def query_mission_history(limit=40):
 def query_timelines():
     """Zeitachse/Verlauf je Charakter: chronologischer Strom aus Mining-Trips
     (events-Tabelle), Kampf-Episoden (missions) und ISK-Ereignissen (Wallet-Journal).
-    Liefert IMMER den heutigen Tag (EVE-/UTC-Zeit); das Frontend filtert zusaetzlich
-    auf 8h/Trip. trip_start je Char kommt aus der laufenden Live-Session."""
+    Liefert die letzten 48 Stunden; das Frontend filtert zusaetzlich auf heute/Trip.
+    trip_start je Char kommt aus der laufenden Live-Session."""
     now = time.time()
     midnight = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0,
                                                   microsecond=0).timestamp()
-    cut = midnight
+    cut = now - 172800          # letzte 48 Stunden; Frontend filtert auf heute/Trip
+    pm = prices.get(CONFIG["region"]) or {}
     per = {}   # char -> list of items
 
     def add(char, item):
@@ -3828,17 +3835,50 @@ def query_timelines():
             d = json.loads(det or "{}")
         except Exception:
             d = {}
-        add(char, {"ts": int(ts), "kind": "mine", **d})
+        # ISK jetzt mit aktuellen Preisen aus den gespeicherten Erz-Mengen
+        ores = d.get("ores") or {}
+        isk = sum(ore_value(o, u, pm)[0] for o, u in ores.items())
+        add(char, {"ts": int(ts), "kind": "mine", "m3": d.get("m3", 0),
+                   "isk": round(isk), "min": d.get("min", 0),
+                   "ore": d.get("top"), "sys": d.get("sys", "?")})
     for char, ts, ref, amount, party in jrows:
         add(char, {"ts": int(ts),
                    "kind": "bonus" if ref == "agent_mission_time_bonus_reward" else "reward",
                    "amount": round(amount or 0), "agent": party or ""})
 
     trip = {}
+    nowi = int(now)
     with ingest.lock:
         for s in ingest.sessions.values():
             if s.first_ts:
                 trip[s.name] = int(s.first_ts)
+            # Laufende Aktivitaet dieses Trips als "live"-Eintrag oben, damit der
+            # Verlauf nicht leer wirkt, waehrend man gerade mint/kaempft (die
+            # abgeschlossenen Episoden kommen erst beim Andocken/Missionsende).
+            if not (s.last_event_ts and now - s.last_event_ts < 300):
+                continue
+            mins = max(1, round((now - (s.first_ts or now)) / 60))
+            # Mining zuerst: ein Miner mit Flotten-Bounty (kills>0, aber dmg_out=0)
+            # ist KEIN Kampf. Kampf nur bei echtem ausgeteiltem Schaden.
+            if s.mining:
+                vm3 = visk = 0.0
+                top_ore, top_u = None, 0
+                for ore, u in s.mining.items():
+                    i, vv = ore_value(ore, u, pm)
+                    visk += i
+                    vm3 += vv
+                    if u > top_u:
+                        top_u, top_ore = u, ore
+                if vm3 > 0:
+                    add(s.name, {"ts": nowi, "kind": "live", "sub": "mine",
+                                 "m3": round(vm3), "isk": round(visk), "min": mins,
+                                 "ore": top_ore, "sys": s.system or "?"})
+            elif s.dmg_out > 0:
+                add(s.name, {"ts": nowi, "kind": "live", "sub": "combat",
+                             "kills": s.kills, "bounty": round(s.bounty), "min": mins,
+                             "sys": s.mission_system or s.system or "?",
+                             "mission": detect_mission(
+                                 sorted(s.targets.items(), key=lambda x: -x[1]), "")})
     chars = []
     for char, items in per.items():
         items.sort(key=lambda x: -x["ts"])
@@ -4519,6 +4559,8 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .tlrow:first-of-type{border-top:none}
 .tlt{color:var(--dim);font-variant-numeric:tabular-nums;flex:none;width:40px}
 .tlsrc{font-size:10px;color:var(--dim);border:1px solid var(--line);border-radius:3px;padding:0 4px;margin-left:4px}
+.tlrow.live{background:rgba(200,60,60,.06)}
+.tllive{color:var(--red);animation:mlpulse 1.4s infinite}
 /* Live-Missionskampf: EVE-HUD an den Design-Tokens. Verlauf ueber var(--card)/
    var(--inset) (theme-fest), Radius/Border wie die uebrigen Karten, Schaden
    raus=Cyan / rein=Rot / ISK=Gold wie in der ganzen App. */
@@ -6176,9 +6218,17 @@ async function intelPoll(){
  intelBusy=false;
 }
 // ---- Verlauf / Zeitachse: chronologischer Ereignisstrom je Charakter ----
-let lastTimeline=null, tlWin=localStorage.getItem('tlWin')||'today';
+let lastTimeline=null, tlWin=localStorage.getItem('tlWin')||'48h';
 function tlRow(it){
  const t=new Date(it.ts*1000).toLocaleTimeString().slice(0,5);
+ if(it.kind==='live'){
+  const now=lang==='en'?'now':'jetzt';
+  if(it.sub==='combat'){
+   const nm=it.mission?missionHtml(it.mission):(lang==='en'?'<b>Combat</b>':'<b>Kampf</b>');
+   return `<div class="tlrow live"><span class="tlt">${now}</span><span><span class="tllive">●</span> ${lang==='en'?'live':'läuft'} ⚔ ${nm} · ${it.kills} Kills · <span class="isk">${fmtM(it.bounty)}</span> · ${it.min} min${it.sys&&it.sys!=='?'?' · '+esc(it.sys):''}</span></div>`;
+  }
+  return `<div class="tlrow live"><span class="tlt">${now}</span><span><span class="tllive">●</span> ${lang==='en'?'mining now':'am Minen'} ⛏ ${fmt(it.m3)} m³ · <span class="isk">${fmtM(it.isk)}</span> · ${it.min} min${it.ore?' · '+esc(it.ore):''}${it.sys&&it.sys!=='?'?' · '+esc(it.sys):''}</span></div>`;
+ }
  if(it.kind==='mine')
   return `<div class="tlrow"><span class="tlt">${t}</span><span>⛏ <b>Mining-Trip</b> ${fmt(it.m3)} m³ · <span class="isk">${fmtM(it.isk)}</span> · ${it.min} min${it.ore?' · '+esc(it.ore):''}${it.sys&&it.sys!=='?'?' · '+esc(it.sys):''}</span></div>`;
  if(it.kind==='combat'){
@@ -6193,19 +6243,20 @@ function tlRow(it){
 }
 function renderTimeline(tl){
  lastTimeline=tl=tl||{}; const chars=tl.chars||[]; const now=tl.now||Date.now()/1000;
+ if(!['48h','today','trip'].includes(tlWin))tlWin='48h';
  $('#hero').innerHTML='';
  const chip=(k,l)=>`<span class="tlchip${tlWin===k?' on':''}" data-w="${k}">${l}</span>`;
  let html=`<div class="card" style="grid-column:1/-1">
    <b>🕑 ${lang==='en'?'Timeline':'Verlauf'}</b>
-   <span class="tlwins">${chip('today',lang==='en'?'Today':'Heute')}${chip('h8',lang==='en'?'Last 8h':'Letzte 8h')}${chip('trip',lang==='en'?'Current trip':'Aktueller Trip')}</span>
+   <span class="tlwins">${chip('48h',lang==='en'?'Last 48h':'Letzte 48h')}${chip('today',lang==='en'?'Today':'Heute')}${chip('trip',lang==='en'?'Current trip':'Aktueller Trip')}</span>
    <div class="sub" style="margin-top:6px">${lang==='en'?'Per character, EVE time. Log events are instant, ESI events are marked. Mining trips and missions appear as they complete.':'Pro Charakter, EVE-Zeit. Log-Ereignisse sofort, ESI-Ereignisse markiert. Mining-Trips und Missionen erscheinen, sobald sie abgeschlossen sind.'}</div></div>`;
  if(!chars.length)
-  html+=`<div class="card" style="grid-column:1/-1"><div class="sub">${lang==='en'?'Nothing recorded yet today.':'Heute noch nichts erfasst.'}</div></div>`;
+  html+=`<div class="card" style="grid-column:1/-1"><div class="sub">${lang==='en'?'Nothing in the last 48h yet. Live activity shows at the top while a character is active; completed mining trips appear on docking.':'In den letzten 48h noch nichts. Laufende Aktivität steht oben, sobald ein Char aktiv ist; abgeschlossene Mining-Trips erscheinen beim Andocken.'}</div></div>`;
  for(const c of chars){
   let cut;
-  if(tlWin==='h8')cut=now-8*3600;
+  if(tlWin==='today')cut=tl.day_start||0;
   else if(tlWin==='trip')cut=c.trip_start||tl.day_start||0;
-  else cut=tl.day_start||0;
+  else cut=0;   // 48h: alles Gelieferte (Server hat schon auf 48h geschnitten)
   const items=(c.items||[]).filter(it=>it.ts>=cut);
   html+=`<div class="card" style="grid-column:1/-1">
     <div class="chead" style="cursor:default"><span class="char">${esc(c.char)}</span> <span class="sub">· ${items.length} ${lang==='en'?'events':'Ereignisse'}</span></div>
