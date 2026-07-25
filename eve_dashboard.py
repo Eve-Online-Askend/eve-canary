@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.40.0"
+VERSION = "1.40.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -3362,13 +3362,18 @@ def state_info():
 def query_mission_history(limit=40):
     """Einzelne Missionen (aus den Gamelogs, an Undock-Grenzen getrennt), neueste
     zuerst, inkl. vom Nutzer eingefügtem Loot."""
+    # Mehr Zeilen holen als angezeigt werden, weil gleich Belt-Ratten-Sessions
+    # herausgefiltert werden (Mining-Trips, in denen nur die Flotten-Bounty ein
+    # paar Gürtel-Ratten enthält). Ohne den Puffer bliebe die Liste sonst leer.
     with DB_LOCK:
         rows = DB.execute(
             """SELECT mid,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
                       hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,char_id
-               FROM missions ORDER BY start_ts DESC LIMIT ?""", (limit,)).fetchall()
+               FROM missions ORDER BY start_ts DESC LIMIT ?""", (limit * 5,)).fetchall()
     out = []
     for r in rows:
+        if len(out) >= limit:
+            break
         (mid, char, st, et, sysn, do, di, kills, bounty, hits, mo, mi,
          wj, ej, loot, loot_text, dialog, char_id) = r
         shots = (hits or 0) + (mo or 0)
@@ -3377,6 +3382,13 @@ def query_mission_history(limit=40):
         # Chat-Watcher), aus dem heute im Speicher gehaltenen NPC-Funk nachfuellen.
         if not dialog and char_id:
             dialog = " ".join(chatwatch.dialogue(str(char_id), st or 0, et or None))[:2000]
+        mission = detect_mission(enemies, dialog or "")
+        # Belt-Ratten raus: eine echte Mission ist entweder erkannt, oder hat
+        # spuerbaren eigenen Schaden (>5000), oder echte Bounty (>100k). Reine
+        # Flotten-Bounty beim Mining (winziger/kein Schaden, Kleinst-Bounty von
+        # Guertel-Ratten) faellt hier raus, das ist keine Mission.
+        if not mission and (do or 0) < 5000 and (bounty or 0) < 100000:
+            continue
         # NPC-Funk: bis zu 3 aussagekräftige Zeilen als Story-Schnipsel
         dlines = [d.strip() for d in re.split(r"(?<=[.!?])\s+", dialog or "") if len(d.strip()) > 12][:3]
         out.append({
@@ -3384,7 +3396,7 @@ def query_mission_history(limit=40):
             "min": round(((et or 0) - (st or 0)) / 60), "system": sysn or "?",
             "dmg_out": do or 0, "dmg_in": di or 0, "kills": kills or 0,
             "bounty": round(bounty or 0), "hit": round(100 * hits / shots) if shots else None,
-            "mission": detect_mission(enemies, dialog or ""), "npc": dlines,
+            "mission": mission, "npc": dlines,
             "weapons": json.loads(wj or "[]"), "enemies": enemies,
             "loot_isk": round(loot) if loot else None, "loot_text": loot_text or "",
             "total": round((bounty or 0) + (loot or 0))})
