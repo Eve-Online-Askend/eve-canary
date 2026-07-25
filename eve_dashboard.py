@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.55.1"
+VERSION = "1.55.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -6327,6 +6327,14 @@ function renderTimeline(tl){
 // ---- Spielstil-Radar je Charakter (6 Achsen, letzte 30 Tage) ----
 const PROF_LABELS={de:{mine:'Mining',missions:'Missionen',pvp:'PvP',combat:'Kampfkraft',industry:'Industrie',ertrag:'Ertrag'},
                    en:{mine:'Mining',missions:'Missions',pvp:'PvP',combat:'Combat',industry:'Industry',ertrag:'Earnings'}};
+// Achsen-Wert mit passender Einheit fuer den Hover-Tooltip.
+function profVal(key,raw){
+ if(key==='ertrag')return fmtM(raw)+' ISK';
+ if(key==='missions')return raw+' '+(lang==='en'?'missions':'Missionen');
+ if(key==='mine')return fmt(raw)+' m³';
+ if(key==='industry')return fmt(raw)+' m³ '+(lang==='en'?'compressed':'komprimiert');
+ return fmt(raw)+' '+(lang==='en'?'damage':'Schaden');   // pvp / combat
+}
 function radarSvg(axes){
  const cx=160,cy=140,R=92,n=axes.length;
  const L=PROF_LABELS[lang==='en'?'en':'de'];
@@ -6336,10 +6344,14 @@ function radarSvg(axes){
  let grid='';for(const f of [0.25,0.5,0.75,1])grid+=`<polygon points="${poly(R*f)}" fill="none" stroke="var(--line)" stroke-width="1"/>`;
  const spokes=axes.map((_,i)=>{const [x,y]=pt(i,R);return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>`;}).join('');
  const dv=a=>Math.max(0,Math.min(100,a.value));
+ const tip=a=>esc((L[a.key]||a.key)+': '+profVal(a.key,a.raw));
  const dpoly=axes.map((a,i)=>pt(i,R*dv(a)/100).map(v=>v.toFixed(1)).join(',')).join(' ');
- const dots=axes.map((a,i)=>{const [x,y]=pt(i,R*dv(a)/100);return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.2" style="fill:var(--red)"/>`;}).join('');
+ // je Achse ein groesserer, unsichtbarer Hover-Kreis (leicht zu treffen) + der sichtbare Punkt
+ const dots=axes.map((a,i)=>{const [x,y]=pt(i,R*dv(a)/100);const t=tip(a);
+   return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="10" fill="transparent"><title>${t}</title></circle>`
+     +`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.2" style="fill:var(--red)" pointer-events="none"/>`;}).join('');
  const labels=axes.map((a,i)=>{const [x,y]=pt(i,R+16);const anc=Math.abs(x-cx)<8?'middle':(x>cx?'start':'end');
-   return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anc}" dominant-baseline="middle" style="fill:var(--dim);font-size:11px">${esc(L[a.key]||a.key)}</text>`;}).join('');
+   return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anc}" dominant-baseline="middle" style="fill:var(--dim);font-size:11px;cursor:default">${esc(L[a.key]||a.key)}<title>${tip(a)}</title></text>`;}).join('');
  return `<svg viewBox="0 0 320 280" style="width:100%;max-width:340px;height:auto">${grid}${spokes}<polygon points="${dpoly}" style="fill:var(--cyan);fill-opacity:.22;stroke:var(--cyan)" stroke-width="2"/>${dots}${labels}</svg>`;
 }
 function renderProfiles(list){

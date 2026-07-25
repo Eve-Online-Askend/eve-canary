@@ -1,4 +1,7 @@
 [
+ {"v": "1.55.2", "d": "2026-07-25",
+  "de": ["Spielstil-Radar: fahr mit der Maus über einen Punkt oder eine Achsen-Beschriftung, dann zeigt Canary den echten Wert in der passenden Einheit (Ertrag in ISK, Mining/Industrie in m³, Kampfkraft/PvP als Schaden, Missionen als Anzahl). So ist jeder Ausschlag jetzt auch beziffert"],
+  "en": ["Playstyle radar: hover a point or an axis label and Canary shows the real value in the right unit (earnings in ISK, mining/industry in m³, combat/PvP as damage, missions as a count). Every spike is now quantified"]},
  {"v": "1.55.1", "d": "2026-07-25",
   "de": ["Spielstil-Radar: die Achse 'Aktivität' durch 'Ertrag' ersetzt, die erwirtschaftete ISK der letzten 30 Tage (Mining-Wert + Bounty + Missions-Belohnungen). Das sagt mehr über den Char aus als bloße aktive Tage"],
   "en": ["Playstyle radar: replaced the 'activity' axis with 'earnings', the ISK made in the last 30 days (mining value + bounties + mission rewards). That says more about a character than just active days"]},
