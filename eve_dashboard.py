@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.39.0"
+VERSION = "1.40.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -131,14 +131,20 @@ def market_suggest(q, limit=12):
 
 
 def detect_mission(enemies, dialogue=""):
-    """Missionsname aus Gegnernamen UND NPC-Funk (Local-Dialog). Der Funk ist die
-    stärkere Quelle: er ist missions-spezifisch, kommt beim Reinwarpen und erkennt
-    auch Missionen mit generischen Gegnern (z.B. 'Kruul' -> The Damsel in Distress)."""
+    """Missionsname + Genauigkeit (%) aus Gegnernamen UND NPC-Funk (Local-Dialog).
+    Der Funk ist die stärkere Quelle: er ist missions-spezifisch, kommt beim
+    Reinwarpen und erkennt auch Missionen mit generischen Gegnern. Jede Signatur
+    trägt eine Confidence; passt mehr als eine, gewinnt die mit der höchsten. Gibt
+    {'name','conf'} oder None zurück (None = keine Mission erkannt)."""
     text = (" ".join(n for n, _ in (enemies or [])) + " " + (dialogue or "")).lower()
-    for sig, mission in MISSION_SIGS.items():
-        if sig in text:
-            return mission
-    return None
+    best = None
+    for sig, val in MISSION_SIGS.items():
+        if sig and sig in text:
+            name = val.get("m") if isinstance(val, dict) else val
+            conf = int(val.get("c", 80)) if isinstance(val, dict) else 80
+            if name and (best is None or conf > best["conf"]):
+                best = {"name": name, "conf": conf}
+    return best
 
 REGIONS = {"10000002": "Jita", "10000043": "Amarr", "10000030": "Rens",
            "10000032": "Dodixie", "10000042": "Hek"}
@@ -3994,6 +4000,8 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .spark div{flex:1;background:var(--cyan);opacity:.75;border-radius:1px 1px 0 0;min-height:1px}
 .spark.dmgin div{background:var(--red)}
 .mtag{font-size:12px;color:var(--gold)}
+.mtag.mtired{color:var(--dim);font-style:italic}
+.mconf{color:var(--dim);font-weight:600;font-size:11px}
 .npc{margin-top:6px;padding:6px 9px;border-left:2px solid var(--gold);background:rgba(200,160,60,.07);border-radius:3px;font-size:11px;color:var(--dim);font-style:italic;line-height:1.5}
 .dngline{display:flex;align-items:center;gap:6px;margin-top:2px}
 .dngdot{display:inline-block;width:7px;height:7px;border-radius:50%;flex:none}
@@ -4649,6 +4657,12 @@ function heroBar(s){
 // Mining Fleet Power: eine Hashrate-artige Zahl fuer die Foerderleistung der
 // ganzen Flotte in m³/min. Stufe 1 (hier) rechnet aus der real geloggten Rate,
 // darum als "geschaetzt" gekennzeichnet; das ESI-Siegel kommt in Stufe 2.
+// Missions-Kachel: Name + Genauigkeit in % + Guide-Link. m ist {name,conf} oder null.
+function missionHtml(m){
+ if(!m||!m.name)return '';
+ const c=m.conf!=null?` <span class="mconf">~${m.conf}% sicher</span>`:'';
+ return `🎯 ${esc(m.name)}${c} <a href="https://duckduckgo.com/?q=${encodeURIComponent('EVE Online '+m.name+' mission guide')}" target="_blank" rel="noopener">Guide</a>`;
+}
 function mfpTier(m){
  if(m>=15000)return {n:'Rorqual-Overlord',c:'gold'};
  if(m>=6000)return {n:'Erz-Baron',c:'gold'};
@@ -4983,7 +4997,11 @@ function combatCardHtml(c){
      <div class="stat"><div class="l">Loot / Cargo</div><div class="v isk">${c.cargo?fmtM(c.cargo.buy):'—'}</div>${cargoLine(c.cargo)}</div>
      <div class="stat"><div class="l">Session gesamt</div><div class="v isk">${fmtM(sessISK)}</div></div>
     </div>
-    ${c.mission?`<div class="mtag" style="margin-top:8px">🎯 ${esc(c.mission)} <a href="https://duckduckgo.com/?q=${encodeURIComponent('EVE Online '+c.mission+' mission guide')}" target="_blank" rel="noopener">Guide</a></div>`:''}
+    ${c.mission
+      ?`<div class="mtag" style="margin-top:8px">${missionHtml(c.mission)}</div>`
+      :(((c.dmg_out||0)>0||(c.top_targets&&c.top_targets.length))
+        ?`<div class="mtag mtired" style="margin-top:8px" title="Keine Mission erkannt. Entweder Ratting ohne feste Mission oder eine Signatur, die Canary noch nicht kennt.">😴 Canary müde, heute keine Arbeit mehr</div>`
+        :'')}
     ${(c.npc&&c.npc.length)?`<div class="npc">${c.npc.map(l=>`<div>💬 ${esc(l)}</div>`).join('')}</div>`:''}
     ${(()=>{const so=c.spark_out||[],si=c.spark_in||[];const mx=Math.max(1,...so,...si);
       return (so.length>1||si.length>1)?`<div class="sect">Kampfverlauf (Schaden/min)</div>
@@ -5329,7 +5347,7 @@ function renderMissions(d){
     <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:baseline">
      <b>${new Date(x.start*1000).toLocaleString().slice(0,16)}</b>
      <span class="sys">${x.system&&x.system!=='?'?'· '+esc(x.system)+' ':''}· ${x.min} min</span>
-     ${x.mission?`<span class="mtag">🎯 ${esc(x.mission)} <a href="https://duckduckgo.com/?q=${encodeURIComponent('EVE Online '+x.mission+' mission guide')}" target="_blank" rel="noopener">Guide</a></span>`:''}
+     ${x.mission?`<span class="mtag">${missionHtml(x.mission)}</span>`:''}
      <span style="margin-left:auto" class="isk"><b>${fmtM(x.total)} ISK</b></span>
     </div>
     <div class="sub">${x.kills} Kills · Bounty ${fmtM(x.bounty)} · Schaden ${fmt(x.dmg_out)} raus / ${fmt(x.dmg_in)} rein${x.hit!=null?' · Trefferquote '+x.hit+'%':''}${x.enemies.length?' · Top: '+esc(x.enemies[0][0]):''}</div>
@@ -5663,6 +5681,7 @@ const EN = {
 'Schaden ausgeteilt':'Damage dealt','Schaden kassiert':'Damage taken',
 'Top-Ziele':'Top targets','Top-Angreifer':'Top attackers',
 'Gegner bekämpft':'Enemies fought','Typen · aus Log':'types · from log',
+'😴 Canary müde, heute keine Arbeit mehr':'😴 Canary is tired, no more work today',
 'ℹ️ Für diese Mission liegen keine Bounty-Daten im Log vor, daher werden Kills und Bounty hier nicht gezählt. In EVE die Bounty-Meldungen im Combat-Log aktivieren, dann zählt Canary sie live mit. Die echte Bounty-ISK kommt bei EVE-Login aus dem Wallet.':'ℹ️ No bounty data in the log for this session, so kills and bounty are not counted here. Enable the bounty messages in the EVE combat log and Canary will count them live. The actual bounty ISK comes from the wallet when you use the EVE login.',
 'Rorqual-Overlord':'Rorqual Overlord','Erz-Baron':'Ore Baron','Industrie-Flotte':'Industrial Fleet',
 'Flotten-Operator':'Fleet Operator','Gürtel-Miner':'Belt Miner','Prospektor':'Prospector',
@@ -5765,6 +5784,7 @@ const EN_PATTERNS = [
  [/Schaden ([0-9.]+) raus [/] ([0-9.]+) rein/, 'Damage $1 out / $2 in'],
  [/Trefferquote ([0-9]+)%/, 'Hit rate $1%'], [/([0-9]+) Kills/, '$1 kills'],
  [/Bekämpfte Gegner · ([0-9]+) Typen/, 'Enemies fought · $1 types'],
+ [/~([0-9]+)% sicher/, '~$1% sure'],
  [/([0-9]+) Schiffe? · geschätzt aus Log/, '$1 ships · estimated from log'],
  [/([0-9]+) Schiffe? · ✅ ESI-verifiziert/, '$1 ships · ✅ ESI-verified'],
  [/([0-9]+) von ([0-9]+) ESI-verifiziert · Rest geschätzt/, '$1 of $2 ESI-verified · rest estimated'],

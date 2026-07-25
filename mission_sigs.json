@@ -1,5 +1,23 @@
 {
- "_hinweis": "Einzigartiger Gegner-/Struktur-Name ODER NPC-Funk-Text (Teilstring) -> Missionsname. Nur GEPRUEFTE Eintraege, eine falsche Erkennung ist schlimmer als keine. Erweiterbar: neue Zeile 'Signatur': 'Mission'. Gross-/Kleinschreibung egal. Der Text wird gegen Gegnernamen UND den Missions-Funk im Local geprueft.",
- "Kruul": "The Damsel in Distress",
- "make use of this fair repair station": "Striking Down Two Flies In One Swing"
+ "_hinweis": "Signatur (einzigartiger Gegner-/Struktur-Name ODER NPC-Funk-Teilstring, klein/gross egal) -> {m: Missionsname, c: Genauigkeit 50-95}. c = wie eindeutig die Signatur auf GENAU diese Mission zeigt. Nur GEPRUEFTE Eintraege (Web, nie aus dem Gedaechtnis). Wird gegen Gegnernamen UND Missions-Funk im Local geprueft. Passt mehr als eine Signatur, gewinnt die hoechste c. Quelle der L4-Signaturen: eve-survival (cyberrodent.github.io Mirror).",
+
+ "tiogo kargaz": {"m": "Angel Extravaganza", "c": 95},
+ "kruul's pleasure garden": {"m": "The Damsel in Distress", "c": 95},
+ "kruul's casino": {"m": "The Damsel in Distress", "c": 95},
+ "anire scarlet": {"m": "Dread Pirate Scarlet", "c": 94},
+ "krayek sarpanti": {"m": "Serpentis Extravaganza", "c": 90},
+ "jericho tezmar": {"m": "Silence the Informant", "c": 90},
+ "arika tosch": {"m": "Guristas Extravaganza", "c": 87},
+ "kayzum mother drone": {"m": "Rogue Drone Harassment", "c": 85},
+ "kubi gayar": {"m": "Cargo Delivery (Blood Raiders)", "c": 80},
+ "hoborak moon": {"m": "Vengeance (Angel Cartel)", "c": 78},
+ "damaged heron": {"m": "Worlds Collide", "c": 74},
+ "ammatar holy dome": {"m": "Unauthorized Military Presence (Blood Raiders)", "c": 74},
+ "dysfunctional solar harvester": {"m": "Gone Berserk", "c": 72},
+ "slave pen": {"m": "The Rogue Slave Trader", "c": 70},
+ "smugglers stargate": {"m": "Enemies Abound (final part)", "c": 68},
+ "angel lookout": {"m": "Buzz Kill", "c": 66},
+ "black market facility": {"m": "The Right Hand of Zazzmatazz", "c": 64},
+
+ "make use of this fair repair station": {"m": "Striking Down Two Flies In One Swing", "c": 90}
 }
