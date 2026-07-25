@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.40.1"
+VERSION = "1.41.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -4807,6 +4807,28 @@ function shareMfp(btn){
 function tierEn(n){const m={'Rorqual-Overlord':'Rorqual Overlord','Erz-Baron':'Ore Baron',
  'Industrie-Flotte':'Industrial Fleet','Flotten-Operator':'Fleet Operator',
  'Gürtel-Miner':'Belt Miner','Prospektor':'Prospector'};return m[n]||n;}
+// Flotten-Kompression: summiert das in dieser Session komprimierte Erz ueber alle
+// Chars (nur der Orca/Porpoise/Rorqual-Pilot loggt die Kompression, also = Flotte).
+// Zeigt Gesamt-m³, Gesamtwert und wer komprimiert hat. Nur wenn ueberhaupt was da ist.
+function fleetCompressionCard(chars){
+ let m3=0,isk=0; const per=[];
+ chars.filter(c=>c.active).forEach(c=>{
+  const cm=(c.compressed||[]).reduce((a,x)=>({m3:a.m3+(x.m3||0),isk:a.isk+(x.isk||0)}),{m3:0,isk:0});
+  m3+=cm.m3; isk+=cm.isk;
+  if(cm.m3>0)per.push([c.name,cm.m3]);
+ });
+ if(m3<=0)return '';
+ per.sort((a,b)=>b[1]-a[1]);
+ const who=per.map(([n,v])=>`${esc(n)} ${fmt(v)} m³`).join(' · ');
+ return `<div class="card mfp" style="grid-column:1/-1">
+   <div class="mfphead"><span class="mfptitle">🗜 Komprimiert (Flotte · Session)</span></div>
+   <div class="mfpmain">
+    <span class="mfpval cyan">${fmt(m3)}</span>
+    <span class="mfpunit">m³</span>
+    <span class="mfpsub">≈ ${fmtM(isk)} ISK · ${who}</span>
+   </div>
+  </div>`;
+}
 function renderLive(chars,summary){
  lastChars=chars;
  if(summary!==undefined)lastSummary=summary;
@@ -4819,7 +4841,7 @@ function renderLive(chars,summary){
  // Live zeigt nur eingeloggte Chars. Offline nur, wenn ausdrücklich gewünscht.
  const showOff=localStorage.getItem('showOffline')==='1';
  if(!showOff)chars=chars.filter(c=>c.active);
- $('#hero').innerHTML=fleetPowerCard(chars)+heroBar(summary);
+ $('#hero').innerHTML=fleetPowerCard(chars)+fleetCompressionCard(chars)+heroBar(summary);
  if(!chars.length){$('#empty').hidden=false;
   $('#empty').textContent=!showOff?'Gerade ist kein Charakter eingeloggt. Mit „💤 Offline zeigen" siehst du auch die abgemeldeten.':(rf?'Kein Charakter mit dieser Rolle. Tippe auf einer Karte auf das Rollen-Symbol, um sie zuzuweisen.':'Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern" aktivieren.)');
   $('#grid').innerHTML='';return;}
@@ -5694,6 +5716,7 @@ const EN = {
 'Top-Ziele':'Top targets','Top-Angreifer':'Top attackers',
 'Gegner bekämpft':'Enemies fought','Typen · aus Log':'types · from log',
 '😴 Canary müde, heute keine Arbeit mehr':'😴 Canary is tired, no more work today',
+'🗜 Komprimiert (Flotte · Session)':'🗜 Compressed (fleet · session)',
 'ℹ️ Für diese Mission liegen keine Bounty-Daten im Log vor, daher werden Kills und Bounty hier nicht gezählt. In EVE die Bounty-Meldungen im Combat-Log aktivieren, dann zählt Canary sie live mit. Die echte Bounty-ISK kommt bei EVE-Login aus dem Wallet.':'ℹ️ No bounty data in the log for this session, so kills and bounty are not counted here. Enable the bounty messages in the EVE combat log and Canary will count them live. The actual bounty ISK comes from the wallet when you use the EVE login.',
 'Rorqual-Overlord':'Rorqual Overlord','Erz-Baron':'Ore Baron','Industrie-Flotte':'Industrial Fleet',
 'Flotten-Operator':'Fleet Operator','Gürtel-Miner':'Belt Miner','Prospektor':'Prospector',
