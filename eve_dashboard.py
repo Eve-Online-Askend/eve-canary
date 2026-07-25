@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.54.1"
+VERSION = "1.55.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -3887,6 +3887,53 @@ def query_timelines():
     return {"chars": chars, "day_start": int(midnight), "now": int(now)}
 
 
+def query_profiles():
+    """Spielstil-Radar je Charakter: 6 Achsen (Mining, Missionen, PvP, Kampfkraft,
+    Industrie, Aktivitaet) ueber die letzten 30 Tage. Skaliert RELATIV zu deinen
+    Chars (Achsen-Bestwert der Flotte = 100%), damit die Form den Spielstil-Mix
+    zeigt und nicht von willkuerlichen Obergrenzen oder der Datenmenge abhaengt."""
+    now = time.time()
+    rows = all_rows(30, ("ore", "dmg_out", "pvp_in", "compressed"))
+    agg = {}
+
+    def a(c):
+        return agg.setdefault(c, {"mine": 0.0, "combat": 0.0, "pvp": 0.0,
+                                  "industry": 0.0, "days": set()})
+    for day, cid, cname, kind, key, val in rows:
+        d = a(cname)
+        d["days"].add(day)
+        v = val or 0
+        if kind == "ore":
+            d["mine"] += v * ORE_TYPES.get(key, {}).get("volume", 0.0)
+        elif kind == "dmg_out":
+            d["combat"] += v
+        elif kind == "pvp_in":
+            d["pvp"] += v
+        elif kind == "compressed":
+            d["industry"] += v * ORE_TYPES.get(key, {}).get("volume", 0.0)
+    with DB_LOCK:
+        jr = DB.execute("SELECT char, COUNT(*) FROM journal WHERE ts>=? "
+                        "AND ref_type='agent_mission_reward' GROUP BY char",
+                        (now - 30 * 86400,)).fetchall()
+    miss = {c: n for c, n in jr}
+    order = ("mine", "missions", "pvp", "combat", "industry", "activity")
+    raws = {}
+    for c in set(agg) | set(miss):
+        d = agg.get(c, {"mine": 0, "combat": 0, "pvp": 0, "industry": 0, "days": set()})
+        raws[c] = {"mine": d["mine"], "missions": miss.get(c, 0), "pvp": d["pvp"],
+                   "combat": d["combat"], "industry": d["industry"], "activity": len(d["days"])}
+    # Achsen-Bestwert ueber alle Chars = 100%.
+    axmax = {k: max([r[k] for r in raws.values()] + [0]) for k in order}
+    out = []
+    for c, raw in raws.items():
+        axes = [{"key": k, "raw": round(raw[k]),
+                 "value": round(100 * raw[k] / axmax[k]) if axmax[k] else 0} for k in order]
+        if any(x["raw"] > 0 for x in axes):     # voellig leere Chars weglassen
+            out.append({"char": c, "axes": axes})
+    out.sort(key=lambda x: x["char"])
+    return out
+
+
 def query_vault():
     """Erz-Schatzkammer: Erz-Bestand aller ESI-verbundenen Chars (aus den Assets),
     Gesamtsumme (m³/ISK) plus Aufschluesselung je Char und Standort."""
@@ -4094,6 +4141,8 @@ class Handler(BaseHTTPRequestHandler):
                 data["vault"] = query_vault()
             elif view == "timeline":
                 data["timeline"] = query_timelines()
+            elif view == "profil":
+                data["profiles"] = query_profiles()
             elif view == "rechner":
                 pass  # der Rechner holt seine Daten per calc-POST
             else:
@@ -4669,6 +4718,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="intel">🚦 Intel</span>
  <span data-v="missionen">🎯 Missionen</span>
  <span data-v="timeline">🕑 Verlauf</span>
+ <span data-v="profil">🕸 Profil</span>
  <span data-v="vault">💎 Erz-Schatzkammer</span>
  <span data-v="rechner">💰 ISKray</span>
 </nav>
@@ -4794,7 +4844,7 @@ const fmtP=n=>n>=1e6?fmtM(n):n>=1000?fmt(n):(n||0).toLocaleString(undefined,{max
 // fremdbestimmt und dürfen nie ungefiltert in innerHTML landen (XSS).
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function lsGet(key,fallback){try{const v=localStorage.getItem(key);return v==null?fallback:JSON.parse(v);}catch(e){return fallback;}}
-const VIEWS=['live','month','total','analyse','intel','missionen','timeline','vault','rechner'];
+const VIEWS=['live','month','total','analyse','intel','missionen','timeline','profil','vault','rechner'];
 let view=location.pathname.replace(/^\\//,'')||'live', state=null, lastAlertId=Number(localStorage.getItem('lastAlertId')||0);
 if(!VIEWS.includes(view))view='live';
 window.addEventListener('popstate',()=>{
@@ -6265,6 +6315,37 @@ function renderTimeline(tl){
  $('#grid').innerHTML=html;
  document.querySelectorAll('.tlchip').forEach(ch=>ch.onclick=()=>{tlWin=ch.dataset.w;localStorage.setItem('tlWin',tlWin);renderTimeline(lastTimeline);});
 }
+// ---- Spielstil-Radar je Charakter (6 Achsen, letzte 30 Tage) ----
+const PROF_LABELS={de:{mine:'Mining',missions:'Missionen',pvp:'PvP',combat:'Kampfkraft',industry:'Industrie',activity:'Aktivität'},
+                   en:{mine:'Mining',missions:'Missions',pvp:'PvP',combat:'Combat',industry:'Industry',activity:'Activity'}};
+function radarSvg(axes){
+ const cx=160,cy=140,R=92,n=axes.length;
+ const L=PROF_LABELS[lang==='en'?'en':'de'];
+ const ang=i=>(-90+i*360/n)*Math.PI/180;
+ const pt=(i,r)=>[cx+Math.cos(ang(i))*r,cy+Math.sin(ang(i))*r];
+ const poly=r=>axes.map((_,i)=>pt(i,r).map(v=>v.toFixed(1)).join(',')).join(' ');
+ let grid='';for(const f of [0.25,0.5,0.75,1])grid+=`<polygon points="${poly(R*f)}" fill="none" stroke="var(--line)" stroke-width="1"/>`;
+ const spokes=axes.map((_,i)=>{const [x,y]=pt(i,R);return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>`;}).join('');
+ const dv=a=>Math.max(0,Math.min(100,a.value));
+ const dpoly=axes.map((a,i)=>pt(i,R*dv(a)/100).map(v=>v.toFixed(1)).join(',')).join(' ');
+ const dots=axes.map((a,i)=>{const [x,y]=pt(i,R*dv(a)/100);return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.2" style="fill:var(--red)"/>`;}).join('');
+ const labels=axes.map((a,i)=>{const [x,y]=pt(i,R+16);const anc=Math.abs(x-cx)<8?'middle':(x>cx?'start':'end');
+   return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anc}" dominant-baseline="middle" style="fill:var(--dim);font-size:11px">${esc(L[a.key]||a.key)}</text>`;}).join('');
+ return `<svg viewBox="0 0 320 280" style="width:100%;max-width:340px;height:auto">${grid}${spokes}<polygon points="${dpoly}" style="fill:var(--cyan);fill-opacity:.22;stroke:var(--cyan)" stroke-width="2"/>${dots}${labels}</svg>`;
+}
+function renderProfiles(list){
+ $('#hero').innerHTML=''; list=list||[];
+ const L=PROF_LABELS[lang==='en'?'en':'de'];
+ let html=`<div class="card" style="grid-column:1/-1"><b>🕸 ${lang==='en'?'Playstyle profile':'Spielstil-Profil'}</b>
+   <div class="sub" style="margin-top:6px">${lang==='en'?'Per character, last 30 days. Each axis is scaled relative to your strongest character on that axis (100%), so the shape shows the playstyle mix. From logs and ESI.':'Pro Charakter, letzte 30 Tage. Jede Achse ist relativ zu deinem stärksten Char auf dieser Achse skaliert (100%), so zeigt die Form den Spielstil-Mix. Aus Logs und ESI.'}</div></div>`;
+ if(!list.length)html+=`<div class="card" style="grid-column:1/-1"><div class="sub">${lang==='en'?'No activity in the last 30 days yet.':'In den letzten 30 Tagen noch keine Aktivität.'}</div></div>`;
+ for(const p of list){
+  const top=[...p.axes].sort((a,b)=>b.value-a.value)[0];
+  html+=`<div class="card"><div class="chead" style="cursor:default"><span class="char">${esc(p.char)}</span> <span class="sub">· ${lang==='en'?'focus':'Schwerpunkt'}: ${esc(L[top.key]||top.key)}</span></div>
+    <div style="display:flex;justify-content:center">${radarSvg(p.axes)}</div></div>`;
+ }
+ $('#grid').innerHTML=html;
+}
 function renderVault(v){
  v=v||{}; const chars=v.chars||[];
  if(!chars.length){
@@ -6614,7 +6695,7 @@ const EN = {
 'Standardmäßig zeigt Live nur eingeloggte Charaktere. Hier einschalten, um auch Offline-Charaktere zu sehen.':
  'Live normally shows only logged-in characters. Turn this on to see offline ones too.',
 'Live':'Live','30 Tage':'30 days','Gesamt':'All time','Analyse':'Analysis',
-'🚦 Intel':'🚦 Intel','🎯 Missionen':'🎯 Missions','💰 ISKray':'💰 ISKray','🕑 Verlauf':'🕑 Timeline',
+'🚦 Intel':'🚦 Intel','🎯 Missionen':'🎯 Missions','💰 ISKray':'💰 ISKray','🕑 Verlauf':'🕑 Timeline','🕸 Profil':'🕸 Profile',
 '🔎 Einzel-Item':'🔎 Single item','📦 Frachtraum':'📦 Cargo',
 '⚙ Optionen':'⚙ Options','◱ Overlay':'◱ Overlay',
 '◱ Mini-Overlay öffnen/schließen':'Open/close mini overlay',
@@ -6985,6 +7066,7 @@ async function tick(){
    else if(view==='intel')renderIntel(d.intel_auto);
    else if(view==='vault')renderVault(d.vault);
    else if(view==='timeline')renderTimeline(d.timeline);
+   else if(view==='profil')renderProfiles(d.profiles);
    else if(view==='rechner')renderRechner();
    else renderTotal(d.total);
   }
