@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.47.1"
+VERSION = "1.47.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -2856,9 +2856,9 @@ def snapshot_live():
         # Schiffs lief, je Pilot aggregiert (auch fremde Flottenmitglieder). Wert
         # ueber die komprimierte Variante, wie beim eigenen Erz.
         fleet_comp = []
-        for pname, ores in s.fleet_compress.items():
+        for pname, pores in s.fleet_compress.items():   # NICHT 'ores' (das ist oben die Erz-Liste!)
             fu = fm3 = fisk = 0.0
-            for oname, ounits in ores.items():
+            for oname, ounits in pores.items():
                 i, v = ore_value(oname, ounits, pm)
                 fu += ounits; fm3 += v; fisk += i
             fleet_comp.append({"name": pname, "units": round(fu),
