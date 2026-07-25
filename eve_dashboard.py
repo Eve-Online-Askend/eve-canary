@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.52.4"
+VERSION = "1.53.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -1714,6 +1714,10 @@ class ChatWatch(threading.Thread):
         self.npc = {}          # char_id -> deque[(ts, text)] NPC-/Missions-Funk (Absender "Message")
         self.offsets = {}      # file -> offset
         self.started_full = False
+        # Jeder Local-Sprecher (name_lower -> {name, system, ts}), rollend, fuer die
+        # passive Gank-Flotten-Erkennung (mehrere geflaggte Piloten derselben Corp).
+        self.speakers = {}
+        self.fleet_alerted = {}   # corp_lower -> letzter Alarm-Zeitpunkt (Cooldown)
         # Schuetzt self.npc: dialogue() (HTTP-/Ingest-Thread) liest, waehrend
         # tick()/backfill() (Chat-Thread) anhaengen -> sonst "deque mutated".
         self.lock = threading.Lock()
@@ -1842,8 +1846,69 @@ class ChatWatch(threading.Thread):
                                         f"Watchlist: {sender} ist im Local aktiv!")
                         # Jeden Local-Sprecher still einstufen; Alarm nur bei Rot
                         threat.request([sender], alert="red")
+                        # Fuer die Gank-Flotten-Erkennung merken, WO und WANN er sprach.
+                        self.speakers[sender.lower()] = {
+                            "name": sender, "system": self.systems.get(cid, "?"),
+                            "ts": time.time()}
             except OSError:
                 pass
+        self._fleet_watch()
+
+    def _recent_hostiles(self, window=900):
+        """Kuerzlich aktive Local-Sprecher, die zKill/ESI als geflaggt kennt, mit
+        Corp/Level/System. Rein passiv aus den Chat-Nachrichten, kein Local-Kopieren."""
+        now = time.time()
+        # Alte Sprecher ausduennen, damit die Struktur nicht waechst.
+        self.speakers = {k: v for k, v in self.speakers.items() if now - v["ts"] < window}
+        out = []
+        for v in self.speakers.values():
+            prof = threat.cached(v["name"])            # zKill/ESI-Profil (gecacht)
+            if not prof or prof.get("level") not in ("red", "yellow"):
+                continue
+            out.append({"name": v["name"], "system": v["system"],
+                        "corp": prof.get("corp"), "alliance": prof.get("alliance"),
+                        "level": prof.get("level"), "miner": prof.get("miner_kills", 0)})
+        return out
+
+    def fleet_groups(self):
+        """Geflaggte Local-Sprecher nach Corp gruppieren. Eine Gruppe gilt als
+        moegliche Gank-Flotte, wenn >=2 verschiedene geflaggte Piloten derselben
+        Corp aktiv sind UND mindestens einer rot ist oder zusammen >=3 Miner-Kills."""
+        groups = {}
+        for h in self._recent_hostiles():
+            key = (h["corp"] or "").lower()
+            if not key:
+                continue
+            g = groups.setdefault(key, {"corp": h["corp"], "alliance": h["alliance"],
+                                        "pilots": {}, "systems": set(), "miner": 0,
+                                        "red": False})
+            if h["name"] not in g["pilots"]:
+                g["pilots"][h["name"]] = h["level"]
+                g["miner"] += h["miner"] or 0
+            g["systems"].add(h["system"])
+            if h["level"] == "red":
+                g["red"] = True
+        out = []
+        for g in groups.values():
+            if len(g["pilots"]) >= 2 and (g["red"] or g["miner"] >= 3):
+                out.append({"corp": g["corp"], "alliance": g["alliance"],
+                            "pilots": sorted(g["pilots"]), "n": len(g["pilots"]),
+                            "systems": sorted(s for s in g["systems"] if s and s != "?"),
+                            "miner": g["miner"], "red": g["red"]})
+        out.sort(key=lambda x: (-int(x["red"]), -x["n"]))
+        return out
+
+    def _fleet_watch(self):
+        """Bei erkannter Gank-Flotte einen Alarm ausloesen (Cooldown je Corp)."""
+        now = time.time()
+        for g in self.fleet_groups():
+            k = (g["corp"] or "").lower()
+            if now - self.fleet_alerted.get(k, 0) < 600:   # max. 1 Alarm/10 min je Corp
+                continue
+            self.fleet_alerted[k] = now
+            alerts.push("fleet", g["corp"],
+                        f"🚨 Mögliche Gank-Flotte im Local: {g['n']} geflaggte Piloten "
+                        f"von {g['corp']}, {g['miner']} Miner-Kills.")
 
 
 # ---------------------------------------------------------------- Preise
@@ -3882,7 +3947,8 @@ class Handler(BaseHTTPRequestHandler):
             elif view == "analyse":
                 data["analyse"] = query_analyse()
             elif view == "intel":
-                data["intel_auto"] = {"ts": clipwatch.ts, "names": clipwatch.names}
+                data["intel_auto"] = {"ts": clipwatch.ts, "names": clipwatch.names,
+                                      "fleets": chatwatch.fleet_groups()}
             elif view == "missionen":
                 data["missions"] = query_missions()
                 data["mission_log"] = query_mission_history()
@@ -5917,9 +5983,22 @@ $('#ovBtn').onclick=toggleOverlay;
 
 let intelNames=lsGet('intelNames',[]),intelSettled=false;
 let intelBusy=false,intelAutoTs=Number(localStorage.getItem('intelAutoTs')||0);
+// Live-Warnung: geflaggte Local-Sprecher nach Corp gruppiert (Gank-Flotte).
+function fleetWarnHtml(fleets){
+ if(!fleets||!fleets.length)return '';
+ return `<div class="cardwarn drone" style="margin:0 0 10px">🚨 <b>${lang==='en'?'Possible gank fleet in local':'Mögliche Gank-Flotte im Local'}</b> `
+  +`<span style="color:var(--dim);font-weight:400">${lang==='en'?'(from chat, passive)':'(aus dem Chat, passiv)'}</span></div>`
+  +fleets.map(g=>`<div style="border-top:1px solid var(--line);padding:8px 0">
+    <div><b style="color:var(--red)">${esc(g.corp)}</b>${g.alliance?` <span class="sub">[${esc(g.alliance)}]</span>`:''}
+     · ${g.n} ${lang==='en'?'flagged pilots':'geflaggte Piloten'}${g.red?` <span class="warnbadge">🔴</span>`:''}
+     ${g.systems&&g.systems.length?`· ${esc(g.systems.join(', '))}`:''}
+     ${g.miner?`· ${g.miner} ${lang==='en'?'miner kills':'Miner-Kills'}`:''}</div>
+    <div class="sub">${g.pilots.map(esc).join(', ')}</div></div>`).join('');
+}
 function renderIntel(auto){
  if(!document.getElementById('intelBox')){
-  $('#grid').innerHTML=`<div class="card" id="intelBox" style="grid-column:1/-1">
+  $('#grid').innerHTML=`<div class="card" id="fleetWarn" style="grid-column:1/-1;display:none"></div>
+   <div class="card" id="intelBox" style="grid-column:1/-1">
    <b>🚦 Bedrohungs-Ampel (Local-Scan)</b>
    <div style="font-size:12px;color:var(--dim);margin:6px 0">Im EVE-Local-Fenster in die Mitgliederliste klicken, dann <b>Strg+A</b> und <b>Strg+C</b>. Mit Auto-Scan reicht das schon, Canary erkennt die kopierte Liste von selbst.
    Alternativ hier einfügen und auf Scannen klicken. Quellen: zKillboard und ESI (öffentlich, ohne Login). Etwa ein Pilot pro Sekunde, Ergebnisse bleiben 12 Stunden gespeichert.</div>
@@ -5950,6 +6029,8 @@ function renderIntel(auto){
   $('#intelIn').value=intelNames.join('\\n');
   $('#intelTbl').innerHTML='';
  }
+ const fw=document.getElementById('fleetWarn');
+ if(fw){const h=fleetWarnHtml(auto&&auto.fleets);fw.innerHTML=h;fw.style.display=h?'':'none';}
  intelPoll();
 }
 async function intelPoll(){
@@ -6551,6 +6632,8 @@ const EN_PATTERNS = [
  // Karte mit "." am Ende — zwei lose Muster fangen beide Varianten.
  [/Abbaurate nur noch ([0-9]+)%/, 'Mining rate down to $1%'],
  [/Vermutlich ist ein Modul oder eine Drohne aus/, 'A module or a drone is probably off'],
+ [/Mögliche Gank-Flotte im Local: ([0-9]+) geflaggte Piloten von (.+?), ([0-9]+) Miner-Kills/,
+  'Possible gank fleet in local: $1 flagged pilots from $2, $3 miner kills'],
  [/ in 30 Tagen gefördert · Ø (.+?)[/]Tag · Skill-Bonus [+]([0-9]+)%/, ' mined in 30 days · avg $1/day · skill bonus +$2%'],
  [/ in 30 Tagen gefördert · Ø (.+?)[/]Tag/, ' mined in 30 days · avg $1/day'],
  [/[/]Tag/, '/day'],
