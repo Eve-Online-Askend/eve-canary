@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.50.0"
+VERSION = "1.51.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -4301,6 +4301,34 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .falpha{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--bg);background:var(--gold);border-radius:3px;padding:1px 5px}
 .vreward{margin-top:6px;color:var(--green)}
 .alphabanner{background:rgba(200,160,60,.1);border:1px solid var(--gold);border-radius:6px;padding:9px 13px;font-size:12px;color:var(--fg);line-height:1.5}
+/* Live-Missionskampf: EVE-artiges HUD, Char-Portrait mittig, Schaden raus/rein daneben */
+.mlive{position:relative;grid-column:1/-1;background:linear-gradient(160deg,rgba(20,28,36,.96),rgba(12,17,22,.98));border:1px solid var(--cyan);border-radius:4px;overflow:hidden;box-shadow:0 0 24px rgba(0,180,220,.12),inset 0 0 44px rgba(0,120,160,.06)}
+.mlive+.mlive{margin-top:12px}
+.mlive::before{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,200,255,.06),transparent 42%);pointer-events:none}
+.mlive-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 14px;border-bottom:1px solid rgba(0,180,220,.25);background:rgba(0,150,190,.08)}
+.mlive-title{font-size:12px;font-weight:700;letter-spacing:.18em;color:var(--cyan);text-transform:uppercase}
+.mlive-title .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#ff4d4d;margin-right:7px;box-shadow:0 0 8px #ff4d4d;animation:mlpulse 1.4s infinite;vertical-align:middle}
+@keyframes mlpulse{0%,100%{opacity:1}50%{opacity:.3}}
+.mlive-sys{font-size:11px;color:var(--dim)}
+.mlive-body{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;padding:20px 16px}
+.mlive-side{text-align:center}
+.mlive-side .l{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:5px}
+.mlive-num{font-size:30px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.mlive-num.out{color:var(--gold);text-shadow:0 0 14px rgba(220,180,70,.35)}
+.mlive-num.in{color:#ff7a5c;text-shadow:0 0 14px rgba(255,90,60,.3)}
+.mlive-dps{font-size:11px;color:var(--dim);margin-top:5px}
+.mlive-center{display:flex;flex-direction:column;align-items:center;gap:7px}
+.mlive-ring{position:relative;width:98px;height:98px;border-radius:50%;padding:3px;background:conic-gradient(from 0deg,var(--cyan),rgba(0,180,220,.12),var(--cyan));box-shadow:0 0 22px rgba(0,180,220,.35);animation:mlspin 8s linear infinite}
+.mlive-ring img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block;border:2px solid var(--bg);animation:mlspin 8s linear infinite reverse}
+@keyframes mlspin{to{transform:rotate(360deg)}}
+.mlive-nm{font-size:15px;font-weight:700;color:var(--fg)}
+.mlive-foot{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid rgba(0,180,220,.2)}
+.mlive-foot .cell{text-align:center;padding:11px 6px}
+.mlive-foot .cell+.cell{border-left:1px solid rgba(0,180,220,.15)}
+.mlive-foot .l{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:4px}
+.mlive-foot .v{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
+.mlive-extra{padding:2px 16px 14px}
+@media(max-width:560px){.mlive-body{grid-template-columns:1fr;gap:18px}.mlive-num{font-size:26px}}
 .npc{margin-top:6px;padding:6px 9px;border-left:2px solid var(--gold);background:rgba(200,160,60,.07);border-radius:3px;font-size:11px;color:var(--dim);font-style:italic;line-height:1.5}
 .dngline{display:flex;align-items:center;gap:6px;margin-top:2px}
 .dngdot{display:inline-block;width:7px;height:7px;border-radius:50%;flex:none}
@@ -5811,6 +5839,55 @@ function renderVault(v){
  });
  $('#grid').innerHTML=html;
 }
+// Live-Kampfkachel(n) fuer Chars, die gerade eine Mission fliegen: Portrait
+// mittig, Schaden raus links, Schaden rein rechts, darunter Gesamtschaden,
+// eliminierte Gegner (Kills, sonst bekaempfte Typen) und eingesammelte Bounty.
+function renderMissionLive(chars){
+ const act=(chars||[]).filter(c=>c.active&&autoRole(c)!=='mining'
+   &&((c.dmg_out||0)>0||(c.kills||0)>0||(c.top_targets&&c.top_targets.length)));
+ if(!act.length)return '';
+ return act.map(c=>{
+  const out=c.dmg_out||0,inc=c.dmg_in||0,tot=out+inc;
+  // Eliminierte Gegner: EVE loggt keine NPC-Tode. Mit Bounty-Meldungen kennen wir
+  // die Kills, sonst zeigen wir ehrlich die Zahl der bekaempften Gegnertypen.
+  const hasKills=(c.kills||0)>0;
+  const elimN=hasKills?c.kills:(c.enemy_types||0);
+  const elimL=hasKills?(lang==='en'?'Enemies eliminated':'Gegner eliminiert')
+                      :(lang==='en'?'Enemies engaged':'Gegner bekämpft');
+  const elimTip=hasKills?'':(lang==='en'
+    ?'EVE does not log NPC kills. Without bounty data this is the number of enemy types fought.'
+    :'EVE protokolliert keine NPC-Tode. Ohne Bounty-Daten ist dies die Zahl der bekämpften Gegnertypen.');
+  return `<div class="mlive">
+   <div class="mlive-head">
+    <span class="mlive-title"><span class="dot"></span>${lang==='en'?'Live mission':'Live-Mission'}</span>
+    <span class="mlive-sys">${esc(c.name)}${c.ship?' · '+esc(c.ship):''}${c.system&&c.system!=='?'?' · '+esc(c.system):''} · ${c.session_min||0} min</span>
+   </div>
+   <div class="mlive-body">
+    <div class="mlive-side">
+     <div class="l">${lang==='en'?'Damage out':'Schaden raus'}</div>
+     <div class="mlive-num out">${fmt(out)}</div>
+     <div class="mlive-dps">DPS ${c.dps_out||0}</div>
+    </div>
+    <div class="mlive-center">
+     <div class="mlive-ring">${c.portrait?`<img src="${c.portrait}" alt="">`:''}</div>
+     <div class="mlive-nm">${esc(c.name)}</div>
+     ${c.mission?`<div class="mtag">${missionHtml(c.mission)}</div>`:''}
+    </div>
+    <div class="mlive-side">
+     <div class="l">${lang==='en'?'Damage in':'Schaden rein'}</div>
+     <div class="mlive-num in">${fmt(inc)}</div>
+     <div class="mlive-dps">DPS ${c.dps_in||0}</div>
+    </div>
+   </div>
+   <div class="mlive-foot">
+    <div class="cell"><div class="l">${lang==='en'?'Total damage':'Schaden gesamt'}</div><div class="v out">${fmt(tot)}</div></div>
+    <div class="cell"${elimTip?` title="${elimTip}"`:''}><div class="l">${elimL}</div><div class="v">${elimN}</div></div>
+    <div class="cell"><div class="l">${lang==='en'?'Bounty collected':'Bounty eingesammt'}</div><div class="v isk">${fmtM(c.bounty||0)}</div></div>
+   </div>
+   ${(c.faction||(c.ewar&&c.ewar.length))?`<div class="mlive-extra">${factionHtml(c.faction)}${ewarHtml(c.ewar)}</div>`:''}
+  </div>`;
+ }).join('');
+}
 function renderMissions(d){
  const m=d.missions||{},t=m.today||{};
  const live=(d.chars||[]).filter(c=>c.bounty>0||c.kills>0);
@@ -5823,6 +5900,7 @@ function renderMissions(d){
   (t.missions||0)+' Missionen',wMis+' Missionen · Ø '+fmtM(wIsk/7)+'/Tag');
  $('#grid').innerHTML=`
  <div class="alphabanner" style="grid-column:1/-1">🧪 <b>${lang==='en'?'Alpha phase, module in development':'Alpha-Phase, Modul in Entwicklung'}</b> · ${lang==='en'?'faction tips and verified rewards are still being checked against real logs. Feedback welcome.':'Fraktions-Tipps und verifizierte Belohnungen werden noch an echten Logs geprüft. Rückmeldungen willkommen.'}</div>
+ ${renderMissionLive(d.chars)}
  <div class="card" style="grid-column:1/-1">
   <b>Heute im Detail (EVE-Zeit)</b>
   ${(m.asof||m.next)?(()=>{const now=Date.now()/1000;const p=['Aus dem Wallet-Journal (ESI)'];
