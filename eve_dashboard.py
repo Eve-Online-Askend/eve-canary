@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.42.1"
+VERSION = "1.43.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -3975,6 +3975,9 @@ tr.lvl-yellow td{background:rgba(228,179,76,.07)}
 .mfpval.dim,.mfprank.dim{color:var(--dim)} .mfpbar.dim{background:var(--dim)}
 .mfpver{margin-top:9px;font-size:12px;color:var(--green)}
 .mfpver b{color:var(--white)}
+.fleetcomp{width:100%;border-collapse:collapse;margin-top:5px;font-size:12.5px}
+.fleetcomp td{padding:3px 0;border-top:1px solid var(--line)}
+.fleetcomp td:first-child{color:var(--white)}
 .mfphr{display:flex;align-items:center;gap:10px}
 .mfpshare{background:var(--inset);border:1px solid var(--line);color:var(--dim);font-size:12px;
   font-weight:600;padding:4px 11px;border-radius:20px;cursor:pointer;font-family:inherit}
@@ -4819,30 +4822,33 @@ function tierEn(n){const m={'Rorqual-Overlord':'Rorqual Overlord','Erz-Baron':'O
 function fleetCard(chars){
  const active=chars.filter(c=>c.active);
  const boosters=active.filter(c=>c.command_ship);
- if(!boosters.length)return '';
+ if(!boosters.length)return '';                       // nur mit Command Ship
  const miners=active.filter(c=>autoRole(c)==='mining'||c.command_ship);
- const ships=miners.length;
  const power=Math.round(miners.reduce((s,c)=>s+sustainedRate(c),0));
- let m3=0,isk=0; const per=[];
+ // Welches Command Ship (Schiff · Pilot), bei mehreren alle.
+ const ship=boosters.map(c=>esc(c.ship||'Command Ship')+' ('+esc(c.name)+')').join(', ');
+ // Wer komprimiert wie viel (nach Menge sortiert).
+ const per=[];
  active.forEach(c=>{
   const cm=(c.compressed||[]).reduce((a,x)=>({m3:a.m3+(x.m3||0),isk:a.isk+(x.isk||0)}),{m3:0,isk:0});
-  m3+=cm.m3; isk+=cm.isk;
-  if(cm.m3>0)per.push([c.name,cm.m3]);
+  if(cm.m3>0)per.push([c.name,cm.m3,cm.isk]);
  });
  per.sort((a,b)=>b[1]-a[1]);
- const boosterNames=boosters.map(c=>esc(c.name)+(c.ship?' ('+esc(c.ship)+')':'')).join(', ');
- const compLine=m3>0
-   ?`<div class="mfpver" style="color:var(--cyan)">🗜 Komprimiert: <b>${fmt(m3)} m³</b> ≈ ${fmtM(isk)} ISK${per.length?' · '+per.map(([n,v])=>esc(n)+' '+fmt(v)+' m³').join(' · '):''}</div>`
-   :'';
+ const list=per.length
+   ?`<div class="mfpver">🗜 ${per.length} ${per.length===1?'Spieler komprimiert':'Spieler komprimieren'}:</div>`
+    +`<table class="fleetcomp">`+per.map(([n,m3,isk])=>
+      `<tr><td>${esc(n)}</td><td class="r">${fmt(m3)} m³</td><td class="r isk">${fmtM(isk)} ISK</td></tr>`).join('')
+    +`</table>`
+   :`<div class="mfpver" style="color:var(--dim)">🗜 Noch keiner komprimiert diese Session</div>`;
  return `<div class="card mfp" style="grid-column:1/-1">
    <div class="mfphead"><span class="mfptitle">🛰 Aktuelle Flotte</span>
-    <span class="mfprank cyan">${boosterNames}</span></div>
+    <span class="mfprank cyan">✅ Command Ship erkannt</span></div>
    <div class="mfpmain">
-    <span class="mfpval cyan">${ships}</span>
-    <span class="mfpunit">${ships===1?'Schiff':'Schiffe'}</span>
-    <span class="mfpsub">Mining Power ${fmt(power)} m³/min</span>
+    <span class="mfpval cyan">${fmt(power)}</span>
+    <span class="mfpunit">m³/min</span>
+    <span class="mfpsub">Mining Power · Boost: ${ship}</span>
    </div>
-   ${compLine}
+   ${list}
   </div>`;
 }
 function renderLive(chars,summary){
@@ -5732,8 +5738,9 @@ const EN = {
 'Top-Ziele':'Top targets','Top-Angreifer':'Top attackers',
 'Gegner bekämpft':'Enemies fought','Typen · aus Log':'types · from log',
 '😴 Canary müde, heute keine Arbeit mehr':'😴 Canary is tired, no more work today',
-'🛰 Aktuelle Flotte':'🛰 Current fleet','🗜 Komprimiert:':'🗜 Compressed:',
-'Schiffe':'ships','Schiff':'ship',
+'🛰 Aktuelle Flotte':'🛰 Current fleet',
+'✅ Command Ship erkannt':'✅ Command ship detected',
+'🗜 Noch keiner komprimiert diese Session':'🗜 No one has compressed this session yet',
 'ℹ️ Für diese Mission liegen keine Bounty-Daten im Log vor, daher werden Kills und Bounty hier nicht gezählt. In EVE die Bounty-Meldungen im Combat-Log aktivieren, dann zählt Canary sie live mit. Die echte Bounty-ISK kommt bei EVE-Login aus dem Wallet.':'ℹ️ No bounty data in the log for this session, so kills and bounty are not counted here. Enable the bounty messages in the EVE combat log and Canary will count them live. The actual bounty ISK comes from the wallet when you use the EVE login.',
 'Rorqual-Overlord':'Rorqual Overlord','Erz-Baron':'Ore Baron','Industrie-Flotte':'Industrial Fleet',
 'Flotten-Operator':'Fleet Operator','Gürtel-Miner':'Belt Miner','Prospektor':'Prospector',
@@ -5837,6 +5844,8 @@ const EN_PATTERNS = [
  [/Trefferquote ([0-9]+)%/, 'Hit rate $1%'], [/([0-9]+) Kills/, '$1 kills'],
  [/Bekämpfte Gegner · ([0-9]+) Typen/, 'Enemies fought · $1 types'],
  [/~([0-9]+)% sicher/, '~$1% sure'],
+ [/([0-9]+) Spieler komprimieren:/, '$1 pilots compressing:'],
+ [/([0-9]+) Spieler komprimiert:/, '$1 pilot compressing:'],
  [/([0-9]+) Schiffe? · geschätzt aus Log/, '$1 ships · estimated from log'],
  [/([0-9]+) Schiffe? · ✅ ESI-verifiziert/, '$1 ships · ✅ ESI-verified'],
  [/([0-9]+) von ([0-9]+) ESI-verifiziert · Rest geschätzt/, '$1 of $2 ESI-verified · rest estimated'],
