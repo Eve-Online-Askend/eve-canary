@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.52.3"
+VERSION = "1.52.4"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -1446,6 +1446,11 @@ class Ingest(threading.Thread):
                         s.lost_m3 += (base - cur) * (dt / 60.0)
                 if thr <= 0:
                     continue
+                # Command Ships / Booster (Orca/Porpoise/Rorqual oder laufender
+                # Industriekern) minen nicht selbst -> KEINE Mining-Stillstand- oder
+                # Raten-Alarme, wie schon in der Charakter-Karte.
+                if _is_booster(s):
+                    continue
                 if s.last_ore_ts is None or s.idle_alerted:
                     continue
                 idle = now - s.last_ore_ts
@@ -2040,6 +2045,19 @@ DRONE_ONLY_SHIP_IDS = {42244,  # Porpoise
                        28606,  # Orca
                        28352}  # Rorqual
 DRONE_ONLY_SHIP_NAMES = ("Porpoise", "Orca", "Rorqual")
+
+
+def _is_booster(s):
+    """True, wenn dieser Char ein Command Ship (Orca/Porpoise/Rorqual per ESI)
+    fliegt ODER einen Industriekern laufen hat. Solche Booster/Kompressoren minen
+    nicht selbst nennenswert -> keine Mining-Stillstand-/Raten-Alarme (wie in der
+    Karte). core_on() deckt Nutzer ohne ESI ab."""
+    c = (CONFIG.get("esi") or {}).get("chars", {}).get(s.name) or {}
+    if c.get("ship_type_id") in DRONE_ONLY_SHIP_IDS:
+        return True
+    if any(n in (c.get("ship") or "") for n in DRONE_ONLY_SHIP_NAMES):
+        return True
+    return s.core_on()
 
 
 class Esi(threading.Thread):
