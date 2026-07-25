@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.46.0"
+VERSION = "1.46.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -2243,8 +2243,11 @@ class Esi(threading.Thread):
             return self.loc_cache[loc_id]
         nm = None
         try:
-            if 60000000 <= loc_id < 64000000:      # NPC-Station (oeffentlich)
-                nm = (self._pub(f"/universe/stations/{loc_id}/") or {}).get("name")
+            if 60000000 <= loc_id < 64000000:      # NPC-Station (oeffentlich, kein Token)
+                req = urllib.request.Request(f"{ESI_BASE}/universe/stations/{loc_id}/",
+                                             headers={"User-Agent": ESI_UA})
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    nm = json.loads(r.read()).get("name")
             elif loc_id >= 100000000:              # Upwell-Struktur (Zugang noetig)
                 d, _ = self._get(c, f"/universe/structures/{loc_id}/")
                 nm = d.get("name")
@@ -3540,8 +3543,11 @@ def query_vault():
         tot_m3 += v.get("total_m3", 0)
         tot_isk += v.get("total_isk", 0)
         oldest = v["as_of"] if oldest is None else min(oldest, v["as_of"])
+        # Standortnamen beim Abfragen (neu) aufloesen, gecacht. So erscheinen Namen
+        # sofort, auch wenn der Vault mit noch unaufgeloesten IDs gebaut wurde.
+        locs = [{**l, "name": esi.loc_name(c, l["loc_id"])} for l in v.get("locs", [])]
         chars.append({"name": nm, "total_m3": v.get("total_m3", 0),
-                      "total_isk": v.get("total_isk", 0), "locs": v.get("locs", []),
+                      "total_isk": v.get("total_isk", 0), "locs": locs,
                       "as_of": v.get("as_of"), "next": v.get("next")})
     chars.sort(key=lambda x: -x["total_isk"])
     return {"total_m3": tot_m3, "total_isk": tot_isk, "as_of": oldest, "chars": chars}
