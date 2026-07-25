@@ -1,4 +1,7 @@
 [
+ {"v": "1.44", "d": "2026-07-25",
+  "de": ["Flotten-Kompression jetzt echt flottenweit: das Log des Command Ships (Orca/Porpoise/Rorqual) nennt jeden Piloten namentlich, der über den Kompressionsdienst komprimiert, auch fremde Flottenmitglieder, die selbst kein Canary nutzen. Die 'Aktuelle Flotte'-Kachel listet damit alle Kompressoren mit Name und Menge, nicht mehr nur die eigenen Accounts"],
+  "en": ["Fleet compression is now truly fleet-wide: the command ship's log (Orca/Porpoise/Rorqual) names every pilot who compresses via its compression service, including fleet members who do not run Canary themselves. The 'Current fleet' panel now lists all of them by name and amount, not just your own accounts"]},
  {"v": "1.43", "d": "2026-07-25",
   "de": ["'Aktuelle Flotte' überarbeitet: zeigt jetzt klar 'Command Ship erkannt', welches Schiff boostet (z. B. Porpoise), wie viele Spieler komprimieren, und eine nach Menge sortierte Liste, wer wie viel komprimiert hat (m³ und ISK)"],
   "en": ["'Current fleet' reworked: now clearly shows 'command ship detected', which ship is boosting (e.g. Porpoise), how many pilots are compressing, and a list sorted by amount of who compressed how much (m³ and ISK)"]},
