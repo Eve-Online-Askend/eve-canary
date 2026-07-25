@@ -1,4 +1,7 @@
 [
+ {"v": "1.55.1", "d": "2026-07-25",
+  "de": ["Spielstil-Radar: die Achse 'Aktivität' durch 'Ertrag' ersetzt, die erwirtschaftete ISK der letzten 30 Tage (Mining-Wert + Bounty + Missions-Belohnungen). Das sagt mehr über den Char aus als bloße aktive Tage"],
+  "en": ["Playstyle radar: replaced the 'activity' axis with 'earnings', the ISK made in the last 30 days (mining value + bounties + mission rewards). That says more about a character than just active days"]},
  {"v": "1.55", "d": "2026-07-25",
   "de": ["Neuer Tab 'Profil': ein Spielstil-Radar pro Charakter mit 6 Achsen (Mining, Missionen, PvP, Kampfkraft, Industrie, Aktivität) über die letzten 30 Tage. Der Blob zeigt auf einen Blick, was ein Char ist, ein Miner spitzt auf Mining/Industrie, ein Missionsläufer auf Missionen/Kampfkraft. Jede Achse ist relativ zu deinem stärksten Char skaliert, damit die Form den Mix zeigt. Alles aus Logs und ESI, lokal gezeichnet"],
   "en": ["New 'Profile' tab: a playstyle radar per character with 6 axes (mining, missions, PvP, combat, industry, activity) over the last 30 days. The blob shows at a glance what a character is: a miner spikes on mining/industry, a mission runner on missions/combat. Each axis is scaled relative to your strongest character so the shape shows the mix. All from logs and ESI, drawn locally"]},

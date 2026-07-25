@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.55.0"
+VERSION = "1.55.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -3889,39 +3889,48 @@ def query_timelines():
 
 def query_profiles():
     """Spielstil-Radar je Charakter: 6 Achsen (Mining, Missionen, PvP, Kampfkraft,
-    Industrie, Aktivitaet) ueber die letzten 30 Tage. Skaliert RELATIV zu deinen
+    Industrie, Ertrag) ueber die letzten 30 Tage. Skaliert RELATIV zu deinen
     Chars (Achsen-Bestwert der Flotte = 100%), damit die Form den Spielstil-Mix
-    zeigt und nicht von willkuerlichen Obergrenzen oder der Datenmenge abhaengt."""
+    zeigt und nicht von willkuerlichen Obergrenzen oder der Datenmenge abhaengt.
+    Ertrag = erwirtschaftete ISK (Mining-Wert + Bounty + Missions-Belohnungen)."""
     now = time.time()
-    rows = all_rows(30, ("ore", "dmg_out", "pvp_in", "compressed"))
+    pm = prices.get(CONFIG["region"]) or {}
+    rows = all_rows(30, ("ore", "dmg_out", "pvp_in", "compressed", "bounty"))
     agg = {}
 
     def a(c):
         return agg.setdefault(c, {"mine": 0.0, "combat": 0.0, "pvp": 0.0,
-                                  "industry": 0.0, "days": set()})
+                                  "industry": 0.0, "mine_isk": 0.0, "bounty": 0.0})
     for day, cid, cname, kind, key, val in rows:
         d = a(cname)
-        d["days"].add(day)
         v = val or 0
         if kind == "ore":
             d["mine"] += v * ORE_TYPES.get(key, {}).get("volume", 0.0)
+            d["mine_isk"] += ore_value(key, v, pm)[0]
         elif kind == "dmg_out":
             d["combat"] += v
         elif kind == "pvp_in":
             d["pvp"] += v
         elif kind == "compressed":
             d["industry"] += v * ORE_TYPES.get(key, {}).get("volume", 0.0)
+        elif kind == "bounty":
+            d["bounty"] += v
+    # Missionen: Anzahl + Belohnungs-ISK (Reward + Zeitbonus) aus dem Journal, 30d
+    miss, miss_isk = {}, {}
     with DB_LOCK:
-        jr = DB.execute("SELECT char, COUNT(*) FROM journal WHERE ts>=? "
-                        "AND ref_type='agent_mission_reward' GROUP BY char",
-                        (now - 30 * 86400,)).fetchall()
-    miss = {c: n for c, n in jr}
-    order = ("mine", "missions", "pvp", "combat", "industry", "activity")
+        jr = DB.execute("SELECT char, ref_type, amount FROM journal WHERE ts>=? "
+                        "AND ref_type LIKE 'agent_mission%'", (now - 30 * 86400,)).fetchall()
+    for c, ref, amount in jr:
+        if ref == "agent_mission_reward":
+            miss[c] = miss.get(c, 0) + 1
+        miss_isk[c] = miss_isk.get(c, 0) + (amount or 0)
+    order = ("mine", "missions", "pvp", "combat", "industry", "ertrag")
     raws = {}
-    for c in set(agg) | set(miss):
-        d = agg.get(c, {"mine": 0, "combat": 0, "pvp": 0, "industry": 0, "days": set()})
+    for c in set(agg) | set(miss) | set(miss_isk):
+        d = agg.get(c, {"mine": 0, "combat": 0, "pvp": 0, "industry": 0, "mine_isk": 0, "bounty": 0})
         raws[c] = {"mine": d["mine"], "missions": miss.get(c, 0), "pvp": d["pvp"],
-                   "combat": d["combat"], "industry": d["industry"], "activity": len(d["days"])}
+                   "combat": d["combat"], "industry": d["industry"],
+                   "ertrag": d["mine_isk"] + d["bounty"] + miss_isk.get(c, 0)}
     # Achsen-Bestwert ueber alle Chars = 100%.
     axmax = {k: max([r[k] for r in raws.values()] + [0]) for k in order}
     out = []
@@ -6316,8 +6325,8 @@ function renderTimeline(tl){
  document.querySelectorAll('.tlchip').forEach(ch=>ch.onclick=()=>{tlWin=ch.dataset.w;localStorage.setItem('tlWin',tlWin);renderTimeline(lastTimeline);});
 }
 // ---- Spielstil-Radar je Charakter (6 Achsen, letzte 30 Tage) ----
-const PROF_LABELS={de:{mine:'Mining',missions:'Missionen',pvp:'PvP',combat:'Kampfkraft',industry:'Industrie',activity:'Aktivität'},
-                   en:{mine:'Mining',missions:'Missions',pvp:'PvP',combat:'Combat',industry:'Industry',activity:'Activity'}};
+const PROF_LABELS={de:{mine:'Mining',missions:'Missionen',pvp:'PvP',combat:'Kampfkraft',industry:'Industrie',ertrag:'Ertrag'},
+                   en:{mine:'Mining',missions:'Missions',pvp:'PvP',combat:'Combat',industry:'Industry',ertrag:'Earnings'}};
 function radarSvg(axes){
  const cx=160,cy=140,R=92,n=axes.length;
  const L=PROF_LABELS[lang==='en'?'en':'de'];
