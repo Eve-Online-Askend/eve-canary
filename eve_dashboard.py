@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.49.1"
+VERSION = "1.50.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -156,6 +156,76 @@ def detect_mission(enemies, dialogue=""):
             if name and (best is None or conf > best["conf"]):
                 best = {"name": name, "conf": conf}
     return best
+
+
+# Fraktions-Erkennung aus den Gegnernamen: welchen Schaden du BEKOMMST (tanken)
+# und welchen du am besten AUSTEILST (Schwaeche). Anders als der Missionsname
+# funktioniert das fast immer, weil die Rat-Namen die Fraktion verraten, auch
+# wenn Canary die Mission selbst nicht kennt. Quelle: EVE University Wiki
+# "NPC damage types" (web-verifiziert 2026-07-25) und gegen die echten Kampflogs
+# geprueft (Guristas Pith*, Blood Corp*, Angel Gist*, Serpentis Shadow*, Rogue
+# Drone Alv*, Mordu's Legion, Federation Navy). Schadenscodes: em/therm/kin/exp.
+# Reihenfolge: der erste Treffer je Gegner zaehlt, spezifische Praefixe zuerst.
+FACTIONS = [
+    ("Guristas",       ["pith", "guristas", "dread guri"],
+     ["kin", "therm"], ["kin", "therm"], "jam"),
+    ("Serpentis",      ["serpenti", "coreli", "corelum", "corelior", "coretus",
+                        "coreatis", "shadow", "core admiral", "core lord",
+                        "pleasure hub", "pleasure garden"],
+     ["therm", "kin"], ["kin", "therm"], "damp"),
+    ("Blood Raiders",  ["corpus", "corpii", "corpior", "corpum", "corpatis",
+                        "corpse", "corax", "blood ", "dark blood", "corelior blood"],
+     ["em", "therm"], ["em", "therm"], "neut"),
+    ("Sansha",         ["sansha", "centii", "centus", "centior", "centum",
+                        "centatis", "true sansha", "true creation", "eystur"],
+     ["em", "therm"], ["em", "therm"], "td"),
+    ("Angel Cartel",   ["gist", "arch gist", "angel", "domination", "gistii",
+                        "gistum", "gistatis", "gistior"],
+     ["exp", "kin"], ["exp", "kin"], "web"),
+    ("Mordu's Legion", ["mordu"],
+     ["kin", "therm"], ["kin", "em"], "scram"),
+    ("Rogue Drones",   ["alvus", "alvi", "alvior", "alvum", "alvatis", "defeater",
+                        "rogue drone", "strain ", "spearhead", "matriarch",
+                        "render", "atomizer", "hunter alvi"],
+     ["therm", "em"], ["em", "therm"], None),
+    ("Mercenaries",    ["mercenary", "wildcat", "cutthroat", "commando",
+                        "extremist", "corporate"],
+     ["therm", "kin"], ["kin", "therm"], "jam"),
+    ("Federation Navy", ["federation navy", "roden shipyard", "federation ",
+                         "gallente "],
+     ["kin", "therm"], ["kin", "therm"], None),
+    ("Caldari Navy",   ["caldari navy", "caldari state"],
+     ["kin", "therm"], ["kin", "therm"], None),
+    ("Amarr Navy",     ["amarr navy", "imperial "],
+     ["em", "therm"], ["em", "therm"], None),
+    ("Republic Fleet", ["republic fleet", "minmatar "],
+     ["exp", "kin"], ["exp", "kin"], None),
+    ("EoM",            ["equilibrium", "eom "],
+     ["kin", "therm"], ["kin"], None),
+]
+
+
+def faction_info(enemies):
+    """Aus einer Gegnerliste [(Name, Anzahl), …] die dominante Fraktion ableiten,
+    inkl. Schaden-tanken/-schiessen und typischer EWAR. None, wenn kein Name auf
+    eine bekannte Fraktion passt (dann lieber nichts anzeigen als falsch raten)."""
+    scores = {}
+    for name, cnt in (enemies or []):
+        low = (name or "").lower()
+        for fac, keys, _deal, _shoot, _ew in FACTIONS:
+            if any(k in low for k in keys):
+                scores[fac] = scores.get(fac, 0) + (cnt or 1)
+                break
+    if not scores:
+        return None
+    top = max(scores, key=scores.get)
+    total = sum(scores.values()) or 1
+    share = round(100 * scores[top] / total)
+    if share < 50:            # zu gemischt fuer eine ehrliche Empfehlung
+        return None
+    prof = next(f for f in FACTIONS if f[0] == top)
+    return {"fac": top, "deal": prof[2], "shoot": prof[3], "ewar": prof[4],
+            "share": share}
 
 REGIONS = {"10000002": "Jita", "10000043": "Amarr", "10000030": "Rens",
            "10000032": "Dodixie", "10000042": "Hek"}
@@ -614,6 +684,11 @@ try:  # v1.21: NPC-Funk je Mission (fuer Erkennung + Anzeige)
     DB.commit()
 except sqlite3.OperationalError:
     pass
+try:  # v1.50: EWAR-Profil je Mission (Scram/Web/Jam/Neut … gegen dich)
+    DB.execute("ALTER TABLE missions ADD COLUMN ewar TEXT")
+    DB.commit()
+except sqlite3.OperationalError:
+    pass
 
 
 def meta_get(key, default=None):
@@ -627,7 +702,8 @@ def meta_get(key, default=None):
 # "3" = Gegnernamen im Kampflog des englischen Clients (standen vorher alle als "?")
 # "4" = Missions-Historie an Undock-Grenzen rueckwirkend aus allen Logs aufbauen
 # "5" = Missionsort aus dem Gamelog (Undock-Ziel/Sprung) rueckwirkend nachtragen
-PARSE_VER = "5"
+# "6" = EWAR-Profil je Mission rueckwirkend aus allen Logs mitschreiben
+PARSE_VER = "6"
 
 
 def rebuild_if_needed():
@@ -659,18 +735,19 @@ def save_mission(m):
     mid = f"{m['char_id']}:{int(m['start_ts'])}"
     DB.execute("""INSERT INTO missions
         (mid,char_id,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
-         hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,ewar)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(mid) DO UPDATE SET
          char=excluded.char, end_ts=excluded.end_ts, system=excluded.system,
          dmg_out=excluded.dmg_out, dmg_in=excluded.dmg_in, kills=excluded.kills,
          bounty=excluded.bounty, hits=excluded.hits, miss_out=excluded.miss_out,
          miss_in=excluded.miss_in, weapons=excluded.weapons, enemies=excluded.enemies,
-         dialog=COALESCE(excluded.dialog, missions.dialog)""",
+         dialog=COALESCE(excluded.dialog, missions.dialog), ewar=excluded.ewar""",
         (mid, m["char_id"], m["char"], m["start_ts"], m["end_ts"], m["system"],
          m["dmg_out"], m["dmg_in"], m["kills"], m["bounty"], m["hits"],
          m["miss_out"], m["miss_in"], json.dumps(m["weapons"], ensure_ascii=False),
-         json.dumps(m["enemies"], ensure_ascii=False), None, None, m.get("dialog")))
+         json.dumps(m["enemies"], ensure_ascii=False), None, None, m.get("dialog"),
+         json.dumps(m.get("ewar") or [], ensure_ascii=False)))
 
 
 def do_backup():
@@ -1268,7 +1345,11 @@ class CharSession:
                 "bounty": self.bounty, "hits": self.hits_out,
                 "miss_out": self.miss_out, "miss_in": self.miss_in,
                 "weapons": sorted(self.weapons.items(), key=lambda x: -x[1])[:6],
-                "enemies": sorted(self.targets.items(), key=lambda x: -x[1])[:8]}
+                # Bis 30 Gegner speichern (statt 8): in L4s dominieren Strukturen
+                # den Schaden, die fraktionsverratenden Rat-Schiffe stehen weiter
+                # unten. Fuer die Fraktions-Erkennung in der Historie noetig.
+                "enemies": sorted(self.targets.items(), key=lambda x: -x[1])[:30],
+                "ewar": sorted(self.ewar.items(), key=lambda x: -x[1])}
 
 
 # ---------------------------------------------------------------- Ingest
@@ -2965,6 +3046,7 @@ def snapshot_live():
             "top_attackers": sorted(s.attackers.items(), key=lambda x: -x[1])[:12],
             "mission": detect_mission(sorted(s.targets.items(), key=lambda x: -x[1]),
                                       " ".join(chatwatch.dialogue(s.char_id, s.first_ts))),
+            "faction": faction_info(sorted(s.targets.items(), key=lambda x: -x[1])),
             "npc": chatwatch.dialogue(s.char_id, s.first_ts)[-3:],
             "hits_out": s.hits_out, "miss_out": s.miss_out, "miss_in": s.miss_in,
             "ewar": sorted(s.ewar.items(), key=lambda x: -x[1]),
@@ -3503,14 +3585,38 @@ def query_mission_history(limit=40):
     with DB_LOCK:
         rows = DB.execute(
             """SELECT mid,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
-                      hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,char_id
+                      hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,
+                      char_id,ewar
                FROM missions ORDER BY start_ts DESC LIMIT ?""", (limit * 5,)).fetchall()
+        # Verifizierte Missions-Belohnungen aus dem Wallet-Journal (Server-Wahrheit).
+        # Jede wird gleich der Mission zugeordnet, die kurz davor endete.
+        jrows = DB.execute(
+            "SELECT char, ts, ref_type, amount FROM journal "
+            "WHERE ref_type LIKE 'agent_mission%'").fetchall()
+    # (mid, char, start, end) je Missionszeile fuer die Zuordnung unten.
+    cand = [(x[0], x[1], x[2] or 0, x[3] or 0) for x in rows]
+    verified = {}
+    for jchar, jts, jref, jamt in jrows:
+        best_mid, best_gap = None, None
+        for mid_, mchar, mst, met in cand:
+            if mchar != jchar or jts < mst - 300:
+                continue
+            gap = jts - (met or mst)           # Belohnung faellt nach Kampfende
+            if -300 <= gap <= 3600 and (best_gap is None or abs(gap) < best_gap):
+                best_gap, best_mid = abs(gap), mid_
+        if best_mid is None:
+            continue
+        v = verified.setdefault(best_mid, {"reward": 0, "bonus": 0})
+        if jref == "agent_mission_reward":
+            v["reward"] += jamt or 0
+        else:
+            v["bonus"] += jamt or 0
     out = []
     for r in rows:
         if len(out) >= limit:
             break
         (mid, char, st, et, sysn, do, di, kills, bounty, hits, mo, mi,
-         wj, ej, loot, loot_text, dialog, char_id) = r
+         wj, ej, loot, loot_text, dialog, char_id, ewj) = r
         shots = (hits or 0) + (mo or 0)
         enemies = json.loads(ej or "[]")
         # Fehlt der gespeicherte Funk (aeltere Mission, oder Reingest lief vor dem
@@ -3526,15 +3632,20 @@ def query_mission_history(limit=40):
             continue
         # NPC-Funk: bis zu 3 aussagekräftige Zeilen als Story-Schnipsel
         dlines = [d.strip() for d in re.split(r"(?<=[.!?])\s+", dialog or "") if len(d.strip()) > 12][:3]
+        ver = verified.get(mid)
+        vreward = round(ver["reward"]) if ver else None
+        vbonus = round(ver["bonus"]) if ver else None
         out.append({
             "mid": mid, "char": char, "start": int(st or 0), "end": int(et or 0),
             "min": round(((et or 0) - (st or 0)) / 60), "system": sysn or "?",
             "dmg_out": do or 0, "dmg_in": di or 0, "kills": kills or 0,
             "bounty": round(bounty or 0), "hit": round(100 * hits / shots) if shots else None,
-            "mission": mission, "npc": dlines,
+            "mission": mission, "npc": dlines, "faction": faction_info(enemies),
+            "ewar": json.loads(ewj or "[]"),
+            "reward": vreward, "bonus": vbonus,
             "weapons": json.loads(wj or "[]"), "enemies": enemies,
             "loot_isk": round(loot) if loot else None, "loot_text": loot_text or "",
-            "total": round((bounty or 0) + (loot or 0))})
+            "total": round((bounty or 0) + (loot or 0) + (vreward or 0) + (vbonus or 0))})
     return out
 
 
@@ -4183,6 +4294,13 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .mtag{font-size:12px;color:var(--gold)}
 .mtag.mtired{color:var(--dim);font-style:italic}
 .mconf{color:var(--dim);font-weight:600;font-size:11px}
+.ftag{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:8px;font-size:12px}
+.fbadge{font-weight:700;color:var(--cyan)}
+.fshoot b{color:var(--gold)} .ftank b{color:#ff9b57}
+.fdim{color:var(--dim);font-size:11px}
+.falpha{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--bg);background:var(--gold);border-radius:3px;padding:1px 5px}
+.vreward{margin-top:6px;color:var(--green)}
+.alphabanner{background:rgba(200,160,60,.1);border:1px solid var(--gold);border-radius:6px;padding:9px 13px;font-size:12px;color:var(--fg);line-height:1.5}
 .npc{margin-top:6px;padding:6px 9px;border-left:2px solid var(--gold);background:rgba(200,160,60,.07);border-radius:3px;font-size:11px;color:var(--dim);font-style:italic;line-height:1.5}
 .dngline{display:flex;align-items:center;gap:6px;margin-top:2px}
 .dngdot{display:inline-block;width:7px;height:7px;border-radius:50%;flex:none}
@@ -5201,6 +5319,29 @@ function wireCards(){
 
 // PvP/Missions-Ansicht: getrennt von der Miner-Ansicht, gleiche Filter.
 const EWAR_LABEL={scramble:'🔴 Scram',disrupt:'Point',web:'Web',jam:'Jam',neut:'Neut',paint:'Paint',damp:'Damp',td:'TD'};
+// Fraktions-Tipp (Alpha): welchen Schaden du bekommst (tanken) und welchen du
+// am besten austeilst (schiessen). Kommt aus den Gegnernamen im Kampflog.
+const DMG_LABEL={de:{em:'EM',therm:'Thermal',kin:'Kinetik',exp:'Explosiv'},
+                 en:{em:'EM',therm:'Thermal',kin:'Kinetic',exp:'Explosive'}};
+function dmgList(codes){const M=DMG_LABEL[lang==='en'?'en':'de'];return (codes||[]).map(c=>M[c]||c).join('/');}
+function factionHtml(f){
+ if(!f||!f.fac)return '';
+ const mixed=f.share!=null&&f.share<85?` <span class="fdim">~${f.share}%</span>`:'';
+ const ew=f.ewar?(EWAR_LABEL[f.ewar]||f.ewar):'';
+ return `<div class="ftag">
+   <span class="fbadge">🛡️ ${esc(f.fac)}${mixed}</span>
+   <span class="fshoot">${lang==='en'?'shoot':'schieße'} <b>${dmgList(f.shoot)}</b></span>
+   <span class="ftank">${lang==='en'?'tank':'tanke'} <b>${dmgList(f.deal)}</b></span>
+   ${ew?`<span class="fdim">${lang==='en'?'their EWAR':'ihr EWAR'}: ${ew}</span>`:''}
+   <span class="falpha" title="${lang==='en'?'Experimental, being verified':'Experimentell, wird noch geprüft'}">Alpha</span>
+  </div>`;
+}
+// EWAR gegen dich als kompakte Zeile (Missions-Historie und Live-Karte).
+function ewarHtml(ewar){
+ if(!ewar||!ewar.length)return '';
+ return `<div class="cardwarn drone">⚠ ${lang==='en'?'EWAR against you':'EWAR gegen dich'}: `
+   +ewar.map(e=>(EWAR_LABEL[e[0]]||e[0])+' ×'+e[1]).join(' · ')+`</div>`;
+}
 function cargoLine(cg){
  if(!cg)return '<div class="l">über EVE-Login</div>';
  const now=Date.now()/1000;
@@ -5270,6 +5411,7 @@ function combatCardHtml(c){
       :(((c.dmg_out||0)>0||(c.top_targets&&c.top_targets.length))
         ?`<div class="mtag mtired" style="margin-top:8px" title="Keine Mission erkannt. Entweder Ratting ohne feste Mission oder eine Signatur, die Canary noch nicht kennt.">😴 Canary müde, heute keine Arbeit mehr</div>`
         :'')}
+    ${factionHtml(c.faction)}
     ${(c.npc&&c.npc.length)?`<div class="npc">${c.npc.map(l=>`<div>💬 ${esc(l)}</div>`).join('')}</div>`:''}
     ${(()=>{const so=c.spark_out||[],si=c.spark_in||[];const mx=Math.max(1,...so,...si);
       return (so.length>1||si.length>1)?`<div class="sect">Kampfverlauf (Schaden/min)</div>
@@ -5680,6 +5822,7 @@ function renderMissions(d){
  $('#hero').innerHTML=heroTiles('🎯 Verdient heute',t.total||0,y.total||0,wIsk,
   (t.missions||0)+' Missionen',wMis+' Missionen · Ø '+fmtM(wIsk/7)+'/Tag');
  $('#grid').innerHTML=`
+ <div class="alphabanner" style="grid-column:1/-1">🧪 <b>${lang==='en'?'Alpha phase, module in development':'Alpha-Phase, Modul in Entwicklung'}</b> · ${lang==='en'?'faction tips and verified rewards are still being checked against real logs. Feedback welcome.':'Fraktions-Tipps und verifizierte Belohnungen werden noch an echten Logs geprüft. Rückmeldungen willkommen.'}</div>
  <div class="card" style="grid-column:1/-1">
   <b>Heute im Detail (EVE-Zeit)</b>
   ${(m.asof||m.next)?(()=>{const now=Date.now()/1000;const p=['Aus dem Wallet-Journal (ESI)'];
@@ -5708,6 +5851,9 @@ function renderMissions(d){
      <span style="margin-left:auto" class="isk"><b>${fmtM(x.total)} ISK</b></span>
     </div>
     <div class="sub">${x.kills} Kills · Bounty ${fmtM(x.bounty)} · Schaden ${fmt(x.dmg_out)} raus / ${fmt(x.dmg_in)} rein${x.hit!=null?' · Trefferquote '+x.hit+'%':''}${x.enemies.length?' · Top: '+esc(x.enemies[0][0]):''}</div>
+    ${(x.reward!=null||x.bonus!=null)?`<div class="sub vreward">✅ ${lang==='en'?'ESI verified':'ESI-verifiziert'}: ${lang==='en'?'reward':'Belohnung'} <b class="isk">${fmtM(x.reward||0)}</b>${x.bonus?` + ${lang==='en'?'time bonus':'Zeitbonus'} <b class="isk">${fmtM(x.bonus)}</b>`:''}${x.min>0?` · ${fmtM(Math.round(((x.reward||0)+(x.bonus||0))/(x.min/60)))}/h`:''}</div>`:''}
+    ${factionHtml(x.faction)}
+    ${ewarHtml(x.ewar)}
     ${(x.npc&&x.npc.length)?`<div class="npc">${x.npc.map(l=>`<div>💬 ${esc(l)}</div>`).join('')}</div>`:''}
     <div class="sub" style="margin-top:6px">${x.loot_isk!=null?'Loot: <b class="isk">'+fmtM(x.loot_isk)+'</b>':''}
      <span class="mloottoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px">${x.loot_isk!=null?'✎ Loot ändern':'＋ Loot eintragen'}</span></div>
