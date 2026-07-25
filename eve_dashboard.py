@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.47.0"
+VERSION = "1.47.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -5038,7 +5038,7 @@ function renderLive(chars,summary){
   $('#empty').textContent=!showOff?'Gerade ist kein Charakter eingeloggt. Mit „💤 Offline zeigen" siehst du auch die abgemeldeten.':(rf?'Kein Charakter mit dieser Rolle. Tippe auf einer Karte auf das Rollen-Symbol, um sie zuzuweisen.':'Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern" aktivieren.)');
   $('#grid').innerHTML='';return;}
  $('#empty').hidden=true;
- $('#grid').innerHTML=chars.map(cardHtml).join('');
+ $('#grid').innerHTML=safeCards(chars);
  wireCards();
 }
 // Mining-Karte eines Charakters (Erz, m³, Heavy Water, Lager, Gefahr).
@@ -5124,6 +5124,16 @@ function autoRole(c){
 function cardHtml(c){
  return autoRole(c)==='mining'?miningCardHtml(c):combatCardHtml(c);
 }
+// Grid robust rendern: ein Char, dessen Karte einen Fehler wirft, darf nicht das
+// ganze Grid leeren. Er bekommt eine kleine Fehler-Karte (mit Grund), der Rest steht.
+function safeCards(chars){
+ return chars.map(c=>{
+  try{return cardHtml(c);}
+  catch(e){console.error('cardHtml',c&&c.name,e);
+   return `<div class="card"><div class="chead"><span class="char">${esc((c&&c.name)||'?')}</span></div>`
+     +`<div class="cardwarn">⚠ Anzeige-Fehler: ${esc(e&&e.message||String(e))}</div></div>`;}
+ }).join('');
+}
 // Event-Handler fuer beide Kartentypen; Selektoren, die im jeweiligen Grid nicht
 // vorkommen, treffen einfach nichts.
 function wireCards(){
@@ -5190,7 +5200,7 @@ function renderCombat(chars,summary){
   $('#empty').textContent=!showOff?'Gerade ist kein Charakter eingeloggt. Mit „💤 Offline zeigen" siehst du auch die abgemeldeten.':'Kein Charakter mit dieser Rolle.';
   $('#grid').innerHTML='';return;}
  $('#empty').hidden=true;
- $('#grid').innerHTML=chars.map(cardHtml).join('');
+ $('#grid').innerHTML=safeCards(chars);
  wireCards();
 }
 // Kampf-Karte eines Charakters (Bounty, Loot, Offense/Defense, Waffen).
