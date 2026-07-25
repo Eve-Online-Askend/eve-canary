@@ -1,4 +1,7 @@
 [
+ {"v": "1.56", "d": "2026-07-25",
+  "de": ["Der Profil-Bereich heißt jetzt 'Steckbrief' und ist eine richtige Charakter-Karte: links Portrait, Name, Wallet-ISK, Corporation und Allianz, aktuelles Schiff mit Sicherheitsstatus, aktuelles System und Erz-Vermögen aus der Schatzkammer, rechts daneben das Spielstil-Radar. Mit Frische-Zeile, von wann die ESI-Daten sind und wann der nächste Abgleich kommt. Am Radar zeigt Hovern weiterhin die echten Werte"],
+  "en": ["The Profile area is now called 'Character sheet' and is a proper character card: on the left portrait, name, wallet ISK, corporation and alliance, current ship with security status, current system and ore worth from the treasury; on the right the playstyle radar. With a freshness line showing how old the ESI data is and when the next sync happens. Hovering the radar still shows the real values"]},
  {"v": "1.55.2", "d": "2026-07-25",
   "de": ["Spielstil-Radar: fahr mit der Maus über einen Punkt oder eine Achsen-Beschriftung, dann zeigt Canary den echten Wert in der passenden Einheit (Ertrag in ISK, Mining/Industrie in m³, Kampfkraft/PvP als Schaden, Missionen als Anzahl). So ist jeder Ausschlag jetzt auch beziffert"],
   "en": ["Playstyle radar: hover a point or an axis label and Canary shows the real value in the right unit (earnings in ISK, mining/industry in m³, combat/PvP as damage, missions as a count). Every spike is now quantified"]},

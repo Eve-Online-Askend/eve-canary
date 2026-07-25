@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.55.2"
+VERSION = "1.56.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -2610,6 +2610,7 @@ class Esi(threading.Thread):
                 except Exception:
                     c.pop("esi_mining", None)
                     c.pop("mined_30d", None)
+                c["poll_ts"] = time.time()   # ESI-Stand fuer die Steckbrief-Frische
                 self.status[name] = "verbunden"
                 changed = True
             except urllib.error.HTTPError as e:
@@ -3933,12 +3934,32 @@ def query_profiles():
                    "ertrag": d["mine_isk"] + d["bounty"] + miss_isk.get(c, 0)}
     # Achsen-Bestwert ueber alle Chars = 100%.
     axmax = {k: max([r[k] for r in raws.values()] + [0]) for k in order}
+    # Steckbrief-Infos: Corp/Allianz/Sec aus dem Threat-Cache (zKill/ESI), Portrait/
+    # Wallet/Schiff/Vault aus der ESI-Config, System live aus der Session.
+    echars = (CONFIG.get("esi") or {}).get("chars", {})
+    sysmap = {}
+    with ingest.lock:
+        for s in ingest.sessions.values():
+            if s.system:
+                sysmap[s.name] = s.system
+    active = [c for c in raws if any(raws[c][k] for k in order)]
+    threat.request(active)     # loest Corp/Allianz/Sec fuer die eigenen Chars auf (gecacht)
     out = []
-    for c, raw in raws.items():
+    for c in active:
+        raw = raws[c]
         axes = [{"key": k, "raw": round(raw[k]),
                  "value": round(100 * raw[k] / axmax[k]) if axmax[k] else 0} for k in order]
-        if any(x["raw"] > 0 for x in axes):     # voellig leere Chars weglassen
-            out.append({"char": c, "axes": axes})
+        ec = echars.get(c, {})
+        cid = ec.get("char_id")
+        prof = threat.cached(c) or {}
+        sysn = sysmap.get(c) or (chatwatch.systems.get(str(cid)) if cid else None)
+        out.append({"char": c, "axes": axes,
+                    "portrait": portrait_url(c), "wallet": ec.get("wallet"),
+                    "ship": ec.get("ship"), "sec": prof.get("sec"),
+                    "corp": prof.get("corp"), "alliance": prof.get("alliance"),
+                    "system": sysn or "?",
+                    "ore_isk": (ec.get("vault") or {}).get("total_isk"),
+                    "poll_ts": ec.get("poll_ts")})
     out.sort(key=lambda x: x["char"])
     return out
 
@@ -4619,6 +4640,14 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .tlsrc{font-size:10px;color:var(--dim);border:1px solid var(--line);border-radius:3px;padding:0 4px;margin-left:4px}
 .tlrow.live{background:rgba(200,60,60,.06)}
 .tllive{color:var(--red);animation:mlpulse 1.4s infinite}
+.steckbrief{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+.sbinfo{flex:0 0 190px;min-width:160px}
+.sbradar{flex:1;min-width:250px}
+.sbpf{width:74px;height:74px;border-radius:50%;object-fit:cover;border:2px solid var(--cyan);display:block}
+.sbpf-none{display:flex;align-items:center;justify-content:center;font-size:34px;background:var(--inset);border:2px solid var(--line)}
+.sbname{font-size:17px;color:var(--white);font-weight:600;margin:8px 0 6px}
+.sbrow{font-size:13px;margin:3px 0;color:var(--txt)}
+.sbfresh{margin-top:8px}
 /* Live-Missionskampf: EVE-HUD an den Design-Tokens. Verlauf ueber var(--card)/
    var(--inset) (theme-fest), Radius/Border wie die uebrigen Karten, Schaden
    raus=Cyan / rein=Rot / ISK=Gold wie in der ganzen App. */
@@ -4727,7 +4756,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="intel">🚦 Intel</span>
  <span data-v="missionen">🎯 Missionen</span>
  <span data-v="timeline">🕑 Verlauf</span>
- <span data-v="profil">🕸 Profil</span>
+ <span data-v="profil">🪪 Steckbrief</span>
  <span data-v="vault">💎 Erz-Schatzkammer</span>
  <span data-v="rechner">💰 ISKray</span>
 </nav>
@@ -6356,14 +6385,24 @@ function radarSvg(axes){
 }
 function renderProfiles(list){
  $('#hero').innerHTML=''; list=list||[];
- const L=PROF_LABELS[lang==='en'?'en':'de'];
- let html=`<div class="card" style="grid-column:1/-1"><b>🕸 ${lang==='en'?'Playstyle profile':'Spielstil-Profil'}</b>
-   <div class="sub" style="margin-top:6px">${lang==='en'?'Per character, last 30 days. Each axis is scaled relative to your strongest character on that axis (100%), so the shape shows the playstyle mix. From logs and ESI.':'Pro Charakter, letzte 30 Tage. Jede Achse ist relativ zu deinem stärksten Char auf dieser Achse skaliert (100%), so zeigt die Form den Spielstil-Mix. Aus Logs und ESI.'}</div></div>`;
- if(!list.length)html+=`<div class="card" style="grid-column:1/-1"><div class="sub">${lang==='en'?'No activity in the last 30 days yet.':'In den letzten 30 Tagen noch keine Aktivität.'}</div></div>`;
+ const en=lang==='en', L=PROF_LABELS[en?'en':'de'], now=Date.now()/1000;
+ let html=`<div class="card" style="grid-column:1/-1"><b>🪪 ${en?'Character sheet':'Steckbrief'}</b>
+   <div class="sub" style="margin-top:6px">${en?'Per character: portrait, wallet, corp, ship, system and a playstyle radar over the last 30 days. Wallet/corp/ship from ESI, system live from the log; radar scaled relative to your strongest character per axis.':'Pro Charakter: Portrait, Wallet, Corp, Schiff, System und ein Spielstil-Radar über die letzten 30 Tage. Wallet/Corp/Schiff aus ESI, System live aus dem Log; Radar relativ zu deinem stärksten Char je Achse.'}</div></div>`;
+ if(!list.length)html+=`<div class="card" style="grid-column:1/-1"><div class="sub">${en?'No activity in the last 30 days yet.':'In den letzten 30 Tagen noch keine Aktivität.'}</div></div>`;
  for(const p of list){
   const top=[...p.axes].sort((a,b)=>b.value-a.value)[0];
-  html+=`<div class="card"><div class="chead" style="cursor:default"><span class="char">${esc(p.char)}</span> <span class="sub">· ${lang==='en'?'focus':'Schwerpunkt'}: ${esc(L[top.key]||top.key)}</span></div>
-    <div style="display:flex;justify-content:center">${radarSvg(p.axes)}</div></div>`;
+  const fresh=p.poll_ts?`🛰 ${en?'ESI as of':'ESI-Stand vor'} ${Math.max(0,Math.round((now-p.poll_ts)/60))} min · ${en?'synced every ~2 min':'Abgleich alle ~2 min'}`:(en?'🛰 no EVE login':'🛰 kein EVE-Login');
+  const info=`<div class="sbinfo">
+    ${p.portrait?`<img class="sbpf" src="${p.portrait}" alt="">`:'<div class="sbpf sbpf-none">👤</div>'}
+    <div class="sbname">${esc(p.char)}</div>
+    <div class="sbrow">💰 <b class="isk">${p.wallet!=null?fmtM(p.wallet)+' ISK':'—'}</b></div>
+    <div class="sbrow">🏢 ${p.corp?esc(p.corp):`<span class="sub">${en?'syncing …':'wird abgeglichen …'}</span>`}${p.alliance?' · '+esc(p.alliance):''}</div>
+    <div class="sbrow">🚀 ${p.ship?esc(p.ship):'—'}${p.sec!=null?' · Sec '+p.sec:''}</div>
+    <div class="sbrow">📍 ${p.system&&p.system!=='?'?esc(p.system):'—'}</div>
+    <div class="sbrow">💎 ${p.ore_isk!=null?fmtM(p.ore_isk)+' ISK '+(en?'ore':'Erz'):'—'}</div>
+    <div class="sub sbfresh">${fresh}</div></div>`;
+  const radar=`<div class="sbradar"><div class="sub" style="text-align:center;margin-bottom:2px">${en?'focus':'Schwerpunkt'}: ${esc(L[top.key]||top.key)}</div>${radarSvg(p.axes)}</div>`;
+  html+=`<div class="card"><div class="steckbrief">${info}${radar}</div></div>`;
  }
  $('#grid').innerHTML=html;
 }
@@ -6716,7 +6755,7 @@ const EN = {
 'Standardmäßig zeigt Live nur eingeloggte Charaktere. Hier einschalten, um auch Offline-Charaktere zu sehen.':
  'Live normally shows only logged-in characters. Turn this on to see offline ones too.',
 'Live':'Live','30 Tage':'30 days','Gesamt':'All time','Analyse':'Analysis',
-'🚦 Intel':'🚦 Intel','🎯 Missionen':'🎯 Missions','💰 ISKray':'💰 ISKray','🕑 Verlauf':'🕑 Timeline','🕸 Profil':'🕸 Profile',
+'🚦 Intel':'🚦 Intel','🎯 Missionen':'🎯 Missions','💰 ISKray':'💰 ISKray','🕑 Verlauf':'🕑 Timeline','🪪 Steckbrief':'🪪 Character sheet',
 '🔎 Einzel-Item':'🔎 Single item','📦 Frachtraum':'📦 Cargo',
 '⚙ Optionen':'⚙ Options','◱ Overlay':'◱ Overlay',
 '◱ Mini-Overlay öffnen/schließen':'Open/close mini overlay',
