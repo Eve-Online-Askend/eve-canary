@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.43.0"
+VERSION = "1.44.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -349,6 +349,17 @@ def parse_line(raw):
                     "key": mc.group(3).strip().rstrip("*").strip(),
                     "raw": mc.group(1).strip().rstrip("*").strip(),
                     "value": num(mc.group(2))}
+        # Command Ship (Orca/Porpoise/Rorqual): das Log des Boosters nennt JEDEN
+        # Flottenpiloten namentlich, der ueber den Kompressionsdienst komprimiert,
+        # auch fremde Spieler. "FivaS compressed 1440 Plagioclase II-Grade using
+        # your compression services." -> Flotten-Kompression je Pilot.
+        mfc = re.search(r"^(.+?) compressed ([\d.,  ]+?) (.+?) using your compression services",
+                        text)
+        if mfc:
+            return {**base, "kind": "fleet_compress",
+                    "key": mfc.group(1).strip().rstrip("*").strip(),
+                    "raw": mfc.group(3).strip().rstrip("*").strip(),
+                    "value": num(mfc.group(2))}
         if any(t in text for t in TRADE_TEXTS):
             LOG_TEXT_HITS["trade"] += 1
             return {**base, "kind": "hold_reset", "key": "trade", "value": 1}
@@ -890,6 +901,9 @@ class CharSession:
         self.trips = 0  # Anzahl Station-Stopps (Abdocken) in dieser Session
         self.mining = {}
         self.compressed = {}
+        # Command-Ship-Booster: Pilotname -> {Erz: Einheiten}, die ueber den
+        # Kompressionsdienst dieses Schiffs liefen (auch fremde Flottenmitglieder).
+        self.fleet_compress = {}
         self.hold_raw = {}    # Laderaum-Schaetzung: unkomprimiertes Erz
         self.hold_comp = {}   # Laderaum-Schaetzung: komprimiertes Erz
         self.weapons = {}
@@ -1016,6 +1030,9 @@ class CharSession:
         elif k == "bounty":
             self.bounty += ev["value"]
             self.kills += 1
+        elif k == "fleet_compress":
+            d = self.fleet_compress.setdefault(ev["key"], {})
+            d[ev["raw"]] = d.get(ev["raw"], 0) + ev["value"]
         elif k == "compressed":
             self.cargo_full = False  # Kompression schafft Platz
             # Kern-Laufzeit aus Kompressions-Kadenz: Luecken > HW_CORE_GAP
@@ -1047,6 +1064,7 @@ class CharSession:
                 self.trips += 1
                 self.mining = {}
                 self.compressed = {}
+                self.fleet_compress = {}
                 self.weapons = {}
                 self.targets = {}
                 self.attackers = {}
@@ -2741,6 +2759,18 @@ def snapshot_live():
                          "m3": round(units * t.get("volume", 0.0)),
                          "isk": round(units * pm.get(t.get("typeID"), 0.0))})
         comp.sort(key=lambda k: -k["isk"])
+        # Flotten-Kompression: was ueber den Kompressionsdienst dieses (Booster-)
+        # Schiffs lief, je Pilot aggregiert (auch fremde Flottenmitglieder). Wert
+        # ueber die komprimierte Variante, wie beim eigenen Erz.
+        fleet_comp = []
+        for pname, ores in s.fleet_compress.items():
+            fu = fm3 = fisk = 0.0
+            for oname, ounits in ores.items():
+                i, v = ore_value(oname, ounits, pm)
+                fu += ounits; fm3 += v; fisk += i
+            fleet_comp.append({"name": pname, "units": round(fu),
+                               "m3": round(fm3), "isk": round(fisk)})
+        fleet_comp.sort(key=lambda k: -k["m3"])
         hold_isk = hold_m3 = 0.0
         hold_types = hold_missing = 0
         for tname, units in list(s.hold_raw.items()) + list(s.hold_comp.items()):
@@ -2804,7 +2834,7 @@ def snapshot_live():
             "mined_30d": (esi_char or {}).get("mined_30d"),
             "skill_bonus": (esi_char or {}).get("skill_bonus"),
             "trips": s.trips,
-            "compressed": comp, "tool_warns": s.tool_warns(),
+            "compressed": comp, "fleet_compress": fleet_comp, "tool_warns": s.tool_warns(),
             "lasers_off": [] if drone_only else [{"tool": t, "since": int(i["since"]),
                             "before": round(i["before"] or 0, 1)}  # m³/min vor dem Stopp
                            for t, i in sorted(s.lasers_off.items())],
@@ -4827,13 +4857,17 @@ function fleetCard(chars){
  const power=Math.round(miners.reduce((s,c)=>s+sustainedRate(c),0));
  // Welches Command Ship (Schiff · Pilot), bei mehreren alle.
  const ship=boosters.map(c=>esc(c.ship||'Command Ship')+' ('+esc(c.name)+')').join(', ');
- // Wer komprimiert wie viel (nach Menge sortiert).
- const per=[];
- active.forEach(c=>{
-  const cm=(c.compressed||[]).reduce((a,x)=>({m3:a.m3+(x.m3||0),isk:a.isk+(x.isk||0)}),{m3:0,isk:0});
-  if(cm.m3>0)per.push([c.name,cm.m3,cm.isk]);
+ // Wer komprimiert wie viel, aus dem BOOSTER-Log: fleet_compress nennt jeden
+ // Flottenpiloten namentlich (auch Fremde), c.compressed des Boosters ist seine
+ // eigene Kompression. So sieht man die ganze Flotte, nicht nur eigene Boxen.
+ const fc={};
+ const add=(n,m3,isk)=>{const c=fc[n]||{m3:0,isk:0};fc[n]={m3:c.m3+m3,isk:c.isk+isk};};
+ boosters.forEach(b=>{
+  (b.fleet_compress||[]).forEach(f=>add(f.name,f.m3||0,f.isk||0));
+  const own=(b.compressed||[]).reduce((a,x)=>({m3:a.m3+(x.m3||0),isk:a.isk+(x.isk||0)}),{m3:0,isk:0});
+  if(own.m3>0)add(b.name,own.m3,own.isk);
  });
- per.sort((a,b)=>b[1]-a[1]);
+ const per=Object.entries(fc).map(([n,v])=>[n,v.m3,v.isk]).sort((a,b)=>b[1]-a[1]);
  const list=per.length
    ?`<div class="mfpver">🗜 ${per.length} ${per.length===1?'Spieler komprimiert':'Spieler komprimieren'}:</div>`
     +`<table class="fleetcomp">`+per.map(([n,m3,isk])=>
