@@ -1,4 +1,7 @@
 [
+ {"v": "1.43", "d": "2026-07-25",
+  "de": ["'Aktuelle Flotte' überarbeitet: zeigt jetzt klar 'Command Ship erkannt', welches Schiff boostet (z. B. Porpoise), wie viele Spieler komprimieren, und eine nach Menge sortierte Liste, wer wie viel komprimiert hat (m³ und ISK)"],
+  "en": ["'Current fleet' reworked: now clearly shows 'command ship detected', which ship is boosting (e.g. Porpoise), how many pilots are compressing, and a list sorted by amount of who compressed how much (m³ and ISK)"]},
  {"v": "1.42", "d": "2026-07-25",
   "de": ["Neue Kachel 'Aktuelle Flotte': erscheint nur, wenn ein Command Ship (Orca, Porpoise oder Rorqual) am Steuer ist, und zeigt dann die Flottengröße (X Schiffe), die Mining Power in m³/min und wie viel die Flotte in dieser Session komprimiert hat (m³, ISK und wer). Ohne Booster bleibt sie ausgeblendet", "Fix: ein komprimierender Miner (z. B. an einer Struktur) wurde nicht mehr fälschlich als Command Ship erkannt, die Erkennung hängt jetzt allein am echten Schiffstyp"],
   "en": ["New 'Current fleet' panel: only shows when a command ship (Orca, Porpoise or Rorqual) is at the helm, then displays the fleet size (X ships), the mining power in m³/min, and how much the fleet compressed this session (m³, ISK and who). Hidden without a booster", "Fix: a compressing miner (e.g. at a structure) is no longer mistaken for a command ship, detection now relies solely on the real ship type"]},
