@@ -1,4 +1,7 @@
 [
+ {"v": "1.52.2", "d": "2026-07-25",
+  "de": ["Missionen: wird eine Mission nicht eindeutig erkannt, steht jetzt klar 'Keine Erkennungsdaten gefunden' statt einer verspielten Meldung. Ehrlich und eindeutig, viele Missionen haben nun mal keine eindeutige Signatur im Log"],
+  "en": ["Missions: when a mission cannot be clearly identified, it now says 'No recognition data found' instead of a playful message. Honest and clear, since many missions simply have no unique signature in the log"]},
  {"v": "1.52.1", "d": "2026-07-25",
   "de": ["Command Ships (Orca, Porpoise, Rorqual) zeigen jetzt gar keine Mining-Nörgel-Warnungen mehr, auch nicht die Drohnen-Meldung. Ein Booster ist kein Miner, die Meldung kam sonst schon, wenn er nur die Drohnen einzog. Die Karte bleibt dort sauber"],
   "en": ["Command ships (Orca, Porpoise, Rorqual) now show no mining nag warnings at all, including the drone message. A booster is not a miner, and the message used to pop up just from pulling in the drones. The card stays clean there"]},

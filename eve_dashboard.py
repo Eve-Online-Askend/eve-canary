@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.52.1"
+VERSION = "1.52.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -5593,7 +5593,7 @@ function combatCardHtml(c){
     ${c.mission
       ?`<div class="mtag" style="margin-top:8px">${missionHtml(c.mission)}</div>`
       :(((c.dmg_out||0)>0||(c.top_targets&&c.top_targets.length))
-        ?`<div class="mtag mtired" style="margin-top:8px" title="Keine Mission erkannt. Entweder Ratting ohne feste Mission oder eine Signatur, die Canary noch nicht kennt.">😴 Canary müde, heute keine Arbeit mehr</div>`
+        ?`<div class="mtag mtired" style="margin-top:8px" title="Keine Mission erkannt. Entweder Ratting ohne feste Mission oder eine Signatur, die Canary noch nicht kennt.">🔍 Keine Erkennungsdaten gefunden</div>`
         :'')}
     ${factionHtml(c.faction)}
     ${(c.npc&&c.npc.length)?`<div class="npc">${c.npc.map(l=>`<div>💬 ${esc(l)}</div>`).join('')}</div>`:''}
@@ -6035,7 +6035,7 @@ function renderMissionLive(chars){
     <div class="mlive-center">
      <div class="mlive-ring${c.portrait?'':' noimg'}">${c.portrait?`<img src="${c.portrait}" alt="">`:'👤'}</div>
      <div class="mlive-nm">${esc(c.name)}</div>
-     ${c.mission?`<div class="mtag">${missionHtml(c.mission)}</div>`:''}
+     ${c.mission?`<div class="mtag">${missionHtml(c.mission)}</div>`:`<div class="mtag mtired" title="Keine Mission erkannt. Entweder Ratting ohne feste Mission oder eine Signatur, die Canary noch nicht kennt.">🔍 Keine Erkennungsdaten gefunden</div>`}
     </div>
     <div class="mlive-side">
      <div class="l">${lang==='en'?'Damage in':'Schaden rein'}</div>
@@ -6436,7 +6436,7 @@ const EN = {
 'Schaden ausgeteilt':'Damage dealt','Schaden kassiert':'Damage taken',
 'Top-Ziele':'Top targets','Top-Angreifer':'Top attackers',
 'Gegner bekämpft':'Enemies fought','Typen · aus Log':'types · from log',
-'😴 Canary müde, heute keine Arbeit mehr':'😴 Canary is tired, no more work today',
+'🔍 Keine Erkennungsdaten gefunden':'🔍 No recognition data found',
 '🛰 Aktuelle Flotte':'🛰 Current fleet','m³ komprimiert':'m³ compressed',
 '💎 Erz-Schatzkammer':'💎 Ore treasury','m³ Erz':'m³ of ore','Kein Erz im Bestand.':'No ore in storage.',
 'Main-Charakter (für das Teilen-Bild)':'Main character (for the share image)','Automatisch':'Automatic',
