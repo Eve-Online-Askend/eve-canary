@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.44.0"
+VERSION = "1.45.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -68,7 +68,18 @@ def log_error(code, where, exc=None):
     """Fehler mit Code merken, damit er in der Diagnose auftaucht.
     Gleicher Code an gleicher Stelle wird gezaehlt statt 60x geloggt (sonst
     ueberschreibt ein Dauerfehler im 2s-Takt alles andere)."""
-    msg = f"{type(exc).__name__}: {exc}" if isinstance(exc, BaseException) else str(exc or "")
+    if isinstance(exc, BaseException):
+        loc = ""
+        try:
+            import traceback
+            fr = traceback.extract_tb(exc.__traceback__)
+            if fr:
+                loc = f" @ {fr[-1].name}:{fr[-1].lineno}"
+        except Exception:
+            pass
+        msg = f"{type(exc).__name__}: {exc}{loc}"
+    else:
+        msg = str(exc or "")
     key = (code, where, msg[:120])
     # Lock: log_error kommt aus vielen Threads; ohne Lock ist die Pruefung-dann-
     # Einfuegung nicht atomar (doppelte Eintraege / verlorene Zaehlung).
@@ -355,10 +366,13 @@ def parse_line(raw):
         # your compression services." -> Flotten-Kompression je Pilot.
         mfc = re.search(r"^(.+?) compressed ([\d.,  ]+?) (.+?) using your compression services",
                         text)
+        if not mfc:   # deutscher Client: "<Name> hat <N> <Erz> mithilfe Ihrer Kompressionsanlage komprimiert."
+            mfc = re.search(r"^(.+?) hat ([\d.,  ]+?) (.+?) mithilfe .+? komprimiert", text)
         if mfc:
+            raw = next((h for h in hints if not h.startswith("Compressed")), None) or mfc.group(3)
             return {**base, "kind": "fleet_compress",
                     "key": mfc.group(1).strip().rstrip("*").strip(),
-                    "raw": mfc.group(3).strip().rstrip("*").strip(),
+                    "raw": raw.strip().rstrip("*").strip(),
                     "value": num(mfc.group(2))}
         if any(t in text for t in TRADE_TEXTS):
             LOG_TEXT_HITS["trade"] += 1
@@ -557,7 +571,11 @@ for _key, _builtin in LOG_TEXT_KEYS.items():
             _builtin.append(_t.strip())
 
 # ---------------------------------------------------------------- Datenbank
-DB_LOCK = threading.Lock()
+# RLock (re-entrant): eine einzige SQLite-Verbindung fuer alle Threads. Jeder
+# DB-Zugriff MUSS unter DB_LOCK laufen, sonst kollidieren gleichzeitige Abfragen
+# (SQLITE_MISUSE "bad parameter or other API misuse"). Re-entrant, damit
+# verschachtelte Helfer (all_rows -> baseline_filter -> meta_get) nicht verklemmen.
+DB_LOCK = threading.RLock()
 DB = sqlite3.connect(DB_PATH, check_same_thread=False)
 # WAL + kurzer Busy-Timeout: Leser sehen stets den letzten committeten Stand,
 # statt halbe Schreibtransaktionen anderer Threads (Dirty Reads).
@@ -599,7 +617,8 @@ except sqlite3.OperationalError:
 
 
 def meta_get(key, default=None):
-    r = DB.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+    with DB_LOCK:
+        r = DB.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
     return r[0] if r else default
 
 
@@ -2381,7 +2400,8 @@ class ThreatIntel(threading.Thread):
         return results
 
     def cached(self, name):
-        row = DB.execute("SELECT data, ts FROM threat WHERE name=?", (name,)).fetchone()
+        with DB_LOCK:
+            row = DB.execute("SELECT data, ts FROM threat WHERE name=?", (name,)).fetchone()
         if row and time.time() - row[1] < THREAT_TTL:
             return json.loads(row[0])
         return None
@@ -2607,6 +2627,8 @@ def ore_value(ore, units, pm):
     komprimierten Variante (Komprimieren ist 1:1 in Stück), denn das ist der
     Wert, der beim Verkauf wirklich ankommt. Gibt es keine komprimierte
     Variante oder keinen Preis dafür, gilt der Rohpreis. Volumen immer vom Rohtyp."""
+    if not ore or not isinstance(ore, str):
+        return 0.0, 0.0
     t = ORE_TYPES.get(ore, {})
     comp = ORE_TYPES.get("Compressed " + ore)
     price = pm.get(comp["typeID"]) if comp else None
@@ -2619,8 +2641,9 @@ def baseline_filter(rows):
     b_day = meta_get("baseline_day")
     if not b_day:
         return list(rows)
-    offsets = {(d, c, k, key): v for d, c, k, key, v in DB.execute(
-        "SELECT day,char_id,kind,key,value FROM baseline_offsets")}
+    with DB_LOCK:
+        offsets = {(d, c, k, key): v for d, c, k, key, v in DB.execute(
+            "SELECT day,char_id,kind,key,value FROM baseline_offsets")}
     out = []
     for day, cid, cname, kind, key, value in rows:
         if day < b_day:
@@ -2642,7 +2665,9 @@ def all_rows(days=None, kinds=None):
     if kinds:
         q += f" AND kind IN ({','.join('?' * len(kinds))})"
         args += list(kinds)
-    return baseline_filter(DB.execute(q, args).fetchall())
+    with DB_LOCK:
+        rows = DB.execute(q, args).fetchall()
+    return baseline_filter(rows)
 
 
 _LOGDIR_CHECK = {"ts": 0, "path": None, "ok": False, "n": 0}
@@ -3320,9 +3345,11 @@ def query_analyse():
     # Spielzeit pro Tag (aus Session-Dateien)
     b_ts = float(meta_get("baseline_ts") or 0)
     play = {}
-    for name, cname, first_ts, last_ts in DB.execute(
+    with DB_LOCK:
+        play_rows = DB.execute(
             "SELECT name, char_name, first_ts, last_ts FROM files "
-            "WHERE first_ts IS NOT NULL AND skipped=0"):
+            "WHERE first_ts IS NOT NULL AND skipped=0").fetchall()
+    for name, cname, first_ts, last_ts in play_rows:
         if last_ts and last_ts > b_ts:
             day = datetime.fromtimestamp(max(first_ts, b_ts),
                                          timezone.utc).strftime("%Y-%m-%d")
@@ -3444,8 +3471,9 @@ def query_missions():
     Bounties aus bekannten Mining-Systemen bleiben draussen (Belt-Ratten)."""
     mine_sys = CONFIG.get("mine_systems") or {}
     mine_ids = {i for i in mine_sys.values() if i}
-    rows = DB.execute(
-        "SELECT char, ts, ref_type, amount, party, ctx FROM journal").fetchall()
+    with DB_LOCK:
+        rows = DB.execute(
+            "SELECT char, ts, ref_type, amount, party, ctx FROM journal").fetchall()
     days, agents, chars = {}, {}, {}
     for char, ts, ref, amount, party, ctx in rows:
         if ref in ("bounty_prizes", "bounty_prize") and ctx in mine_ids:
