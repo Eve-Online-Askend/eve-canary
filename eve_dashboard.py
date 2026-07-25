@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.45.0"
+VERSION = "1.45.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -4881,8 +4881,6 @@ function fleetCard(chars){
  const active=chars.filter(c=>c.active);
  const boosters=active.filter(c=>c.command_ship);
  if(!boosters.length)return '';                       // nur mit Command Ship
- const miners=active.filter(c=>autoRole(c)==='mining'||c.command_ship);
- const power=Math.round(miners.reduce((s,c)=>s+sustainedRate(c),0));
  // Welches Command Ship (Schiff · Pilot), bei mehreren alle.
  const ship=boosters.map(c=>esc(c.ship||'Command Ship')+' ('+esc(c.name)+')').join(', ');
  // Wer komprimiert wie viel, aus dem BOOSTER-Log: fleet_compress nennt jeden
@@ -4896,6 +4894,7 @@ function fleetCard(chars){
   if(own.m3>0)add(b.name,own.m3,own.isk);
  });
  const per=Object.entries(fc).map(([n,v])=>[n,v.m3,v.isk]).sort((a,b)=>b[1]-a[1]);
+ const totM3=per.reduce((s,p)=>s+p[1],0), totIsk=per.reduce((s,p)=>s+p[2],0);
  const list=per.length
    ?`<div class="mfpver">🗜 ${per.length} ${per.length===1?'Spieler komprimiert':'Spieler komprimieren'}:</div>`
     +`<table class="fleetcomp">`+per.map(([n,m3,isk])=>
@@ -4906,9 +4905,9 @@ function fleetCard(chars){
    <div class="mfphead"><span class="mfptitle">🛰 Aktuelle Flotte</span>
     <span class="mfprank cyan">✅ Command Ship erkannt</span></div>
    <div class="mfpmain">
-    <span class="mfpval cyan">${fmt(power)}</span>
-    <span class="mfpunit">m³/min</span>
-    <span class="mfpsub">Mining Power · Boost: ${ship}</span>
+    <span class="mfpval cyan">${fmtC(totM3)}</span>
+    <span class="mfpunit">m³ komprimiert</span>
+    <span class="mfpsub">≈ ${fmtM(totIsk)} ISK · Boost: ${ship}</span>
    </div>
    ${list}
   </div>`;
@@ -5800,7 +5799,7 @@ const EN = {
 'Top-Ziele':'Top targets','Top-Angreifer':'Top attackers',
 'Gegner bekämpft':'Enemies fought','Typen · aus Log':'types · from log',
 '😴 Canary müde, heute keine Arbeit mehr':'😴 Canary is tired, no more work today',
-'🛰 Aktuelle Flotte':'🛰 Current fleet',
+'🛰 Aktuelle Flotte':'🛰 Current fleet','m³ komprimiert':'m³ compressed',
 '✅ Command Ship erkannt':'✅ Command ship detected',
 '🗜 Noch keiner komprimiert diese Session':'🗜 No one has compressed this session yet',
 'ℹ️ Für diese Mission liegen keine Bounty-Daten im Log vor, daher werden Kills und Bounty hier nicht gezählt. In EVE die Bounty-Meldungen im Combat-Log aktivieren, dann zählt Canary sie live mit. Die echte Bounty-ISK kommt bei EVE-Login aus dem Wallet.':'ℹ️ No bounty data in the log for this session, so kills and bounty are not counted here. Enable the bounty messages in the EVE combat log and Canary will count them live. The actual bounty ISK comes from the wallet when you use the EVE login.',
