@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.46.1"
+VERSION = "1.47.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -2236,27 +2236,29 @@ class Esi(threading.Thread):
                 "as_of": int(asof), "next": int(nxt),
                 "n": len(cargo), "items": rows[:12]}
 
-    def loc_name(self, c, loc_id):
-        """Name eines Lagerorts. NPC-Stationen oeffentlich, Spieler-Strukturen ueber
-        den Char-Token (nur mit Zugang). Ohne Aufloesung bleibt eine lesbare ID."""
+    def loc_info(self, c, loc_id):
+        """Name + Typ-ID eines Lagerorts (Typ-ID fuer das Stations-Icon). NPC-Stationen
+        oeffentlich, Spieler-Strukturen ueber den Char-Token (nur mit Zugang). Gecacht."""
         if loc_id in self.loc_cache:
             return self.loc_cache[loc_id]
-        nm = None
+        nm = tid = None
         try:
             if 60000000 <= loc_id < 64000000:      # NPC-Station (oeffentlich, kein Token)
                 req = urllib.request.Request(f"{ESI_BASE}/universe/stations/{loc_id}/",
                                              headers={"User-Agent": ESI_UA})
                 with urllib.request.urlopen(req, timeout=15) as r:
-                    nm = json.loads(r.read()).get("name")
+                    d = json.loads(r.read())
+                nm, tid = d.get("name"), d.get("type_id")
             elif loc_id >= 100000000:              # Upwell-Struktur (Zugang noetig)
                 d, _ = self._get(c, f"/universe/structures/{loc_id}/")
-                nm = d.get("name")
+                nm, tid = d.get("name"), d.get("type_id")
         except Exception:
-            nm = None
+            nm = tid = None
         if not nm:
             nm = f"Struktur #{loc_id}" if loc_id >= 100000000 else f"Ort #{loc_id}"
-        self.loc_cache[loc_id] = nm
-        return nm
+        info = {"name": nm, "type_id": tid}
+        self.loc_cache[loc_id] = info
+        return info
 
     def build_vault(self, name, c, items, asof, nxt):
         """Erz-Schatzkammer: gesamter Erz-Bestand (roh + komprimiert) ueber ALLE
@@ -2290,7 +2292,7 @@ class Esi(threading.Thread):
                                 "m3": round(m3), "isk": round(isk)})
             orelist.sort(key=lambda x: -x["isk"])
             tot_m3 += lm3; tot_isk += lisk
-            out.append({"loc_id": loc_id, "name": self.loc_name(c, loc_id),
+            out.append({"loc_id": loc_id, "name": self.loc_info(c, loc_id)["name"],
                         "m3": round(lm3), "isk": round(lisk), "ores": orelist})
         out.sort(key=lambda x: -x["isk"])
         with CONFIG_LOCK:
@@ -3535,22 +3537,29 @@ def query_mission_history(limit=40):
 def query_vault():
     """Erz-Schatzkammer: Erz-Bestand aller ESI-verbundenen Chars (aus den Assets),
     Gesamtsumme (m³/ISK) plus Aufschluesselung je Char und Standort."""
-    chars, tot_m3, tot_isk, oldest = [], 0, 0, None
+    chars, tot_m3, tot_isk, oldest, soonest = [], 0, 0, None, None
     for nm, c in ((CONFIG.get("esi") or {}).get("chars", {})).items():
         v = c.get("vault")
         if not v:
             continue
         tot_m3 += v.get("total_m3", 0)
         tot_isk += v.get("total_isk", 0)
-        oldest = v["as_of"] if oldest is None else min(oldest, v["as_of"])
-        # Standortnamen beim Abfragen (neu) aufloesen, gecacht. So erscheinen Namen
-        # sofort, auch wenn der Vault mit noch unaufgeloesten IDs gebaut wurde.
-        locs = [{**l, "name": esi.loc_name(c, l["loc_id"])} for l in v.get("locs", [])]
+        oldest = v["as_of"] if oldest is None else min(oldest, v.get("as_of") or oldest)
+        if v.get("next"):
+            soonest = v["next"] if soonest is None else min(soonest, v["next"])
+        # Standort-Info beim Abfragen (neu) aufloesen, gecacht: Name + Typ-ID fuers
+        # Icon. So erscheinen Namen/Bilder sofort, auch wenn der Vault mit noch
+        # unaufgeloesten IDs gebaut wurde.
+        locs = []
+        for l in v.get("locs", []):
+            info = esi.loc_info(c, l["loc_id"])
+            locs.append({**l, "name": info["name"], "icon": info.get("type_id")})
         chars.append({"name": nm, "total_m3": v.get("total_m3", 0),
                       "total_isk": v.get("total_isk", 0), "locs": locs,
                       "as_of": v.get("as_of"), "next": v.get("next")})
     chars.sort(key=lambda x: -x["total_isk"])
-    return {"total_m3": tot_m3, "total_isk": tot_isk, "as_of": oldest, "chars": chars}
+    return {"total_m3": tot_m3, "total_isk": tot_isk, "as_of": oldest,
+            "next": soonest, "chars": chars}
 
 
 def query_missions():
@@ -5537,12 +5546,13 @@ function renderVault(v){
  }
  const now=Date.now()/1000;
  const stand=v.as_of?'Stand: vor '+Math.max(0,Math.round((now-v.as_of)/60))+' min':'';
+ const nxt=v.next?(()=>{const z=Math.round((v.next-now)/60);return z>0?'nächster Abgleich in '+z+' min':'Abgleich läuft gerade';})():'';
  let html=`<div class="card mfp" style="grid-column:1/-1">
    <div class="mfphead"><span class="mfptitle">💎 Erz-Schatzkammer</span></div>
    <div class="mfpmain">
     <span class="mfpval gold">${fmtC(v.total_m3||0)}</span>
     <span class="mfpunit">m³ Erz</span>
-    <span class="mfpsub">≈ ${fmtM(v.total_isk||0)} ISK · ${chars.length} ${chars.length===1?'Char':'Chars'}${stand?' · '+stand:''}</span>
+    <span class="mfpsub">≈ ${fmtM(v.total_isk||0)} ISK · ${chars.length} ${chars.length===1?'Char':'Chars'}${stand?' · '+stand:''}${nxt?' · '+nxt:''}</span>
    </div></div>`;
  chars.forEach(c=>{
   html+=`<div class="card" style="grid-column:1/-1">
@@ -5550,7 +5560,7 @@ function renderVault(v){
   if(!c.locs.length){html+='<div class="sub">Kein Erz im Bestand.</div></div>';return;}
   c.locs.forEach(l=>{
    html+=`<div style="border-top:1px solid var(--line);padding:8px 0">
-     <div style="display:flex;gap:6px;align-items:baseline;flex-wrap:wrap"><b>${esc(l.name)}</b>
+     <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">${l.icon?`<img src="https://images.evetech.net/types/${l.icon}/icon?size=32" alt="" width="24" height="24" style="border-radius:3px;flex:none" onerror="this.style.display='none'">`:''}<b>${esc(l.name)}</b>
       <span style="margin-left:auto" class="isk">${fmtC(l.m3)} m³ · <b>${fmtM(l.isk)} ISK</b></span></div>
      <table class="fleetcomp">`+l.ores.map(o=>
        `<tr><td>${esc(o.ore)}</td><td class="r">${fmt(o.units)} Stk</td><td class="r">${fmt(o.m3)} m³</td><td class="r isk">${fmtM(o.isk)} ISK</td></tr>`).join('')
