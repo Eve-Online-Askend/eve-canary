@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.45.1"
+VERSION = "1.45.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -4677,6 +4677,12 @@ let lastChars=null,lastSummary=null;
 $('#charFilter').value=localStorage.getItem('charFilter')||'';
 $('#charFilter').onchange=()=>{
  localStorage.setItem('charFilter',$('#charFilter').value);
+ // Konkreten Char waehlen hebt den Rollen-Filter auf, sonst koennen sich beide
+ // widersprechen (Char X + Rolle Mining -> leer). Pille "Alle" wieder aktiv setzen.
+ if($('#charFilter').value){
+  localStorage.setItem('roleFilter','');
+  document.querySelectorAll('.rolef').forEach(x=>x.classList.toggle('on',x.dataset.role===''));
+ }
  renderLiveView();};
 $('#collapseAll').onclick=()=>{
  const names=(lastChars||[]).map(c=>c.name);
@@ -4689,6 +4695,10 @@ $('#collapseAll').onclick=()=>{
  document.querySelectorAll('.rolef').forEach(p=>{
   p.classList.toggle('on',p.dataset.role===rf);
   p.onclick=()=>{localStorage.setItem('roleFilter',p.dataset.role);
+   // Rolle waehlen = ALLE Chars dieser Rolle, darum den Charakter-Filter zuruecksetzen
+   // (sonst blieb ein zuvor gewaehlter einzelner Char haengen und nur der zeigte sich).
+   localStorage.setItem('charFilter','');
+   const cf=document.getElementById('charFilter'); if(cf)cf.value='';
    document.querySelectorAll('.rolef').forEach(x=>x.classList.toggle('on',x===p));
    renderLiveView();};});})();
 // "Offline zeigen" umschalten (Live blendet Offline-Chars standardmäßig aus)
