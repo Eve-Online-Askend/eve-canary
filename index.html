@@ -284,6 +284,10 @@ directly. The report contains no character names and no credentials.</p>
   <li data-i18n="r4">Nothing else. Canary only uses the Python standard library.</li>
 </ul>
 
+<h2 data-i18n="h.journey">The journey</h2>
+<p class="tiny" data-i18n="journey.intro">It started as a small log reader that just told you "strip miner off". Today it's a full cockpit: mining, missions, threat intel, ore treasury, character sheets, planetary industry. Built in the open, one milestone at a time, always local and free.</p>
+<div id="journey"></div>
+
 <h2 data-i18n="h.changelog">What's new</h2>
 <div id="changelog"><p class="tiny" data-i18n="cl.loading">Loading version history …</p></div>
 
@@ -391,6 +395,8 @@ const LANGS = {
     'trouble.more': 'Die vollständige Liste steht in der <a href="https://github.com/Eve-Online-Askend/eve-canary/blob/main/README_INSTALL.md">Installationsanleitung</a>.',
     'h.req': 'Voraussetzungen',
     'h.downloads': 'Downloads', 'dl.loading': 'Download-Zahlen werden geladen …',
+    'h.journey': 'Der Weg',
+    'journey.intro': 'Angefangen als kleiner Log-Leser, der nur „Strip Miner aus" meldete. Heute ein komplettes Cockpit: Mining, Missionen, Bedrohungs-Intel, Erz-Schatzkammer, Steckbriefe, Planetary Industry. Offen entwickelt, ein Meilenstein nach dem anderen, immer lokal und kostenlos.',
     'h.changelog': 'Was ist neu', 'cl.loading': 'Versionsverlauf wird geladen …',
     r1: 'Windows oder Linux, EVE Online installiert (unter Linux über Steam/Proton oder Wine)',
     r2: 'Python 3, wird unter Windows vom Installer bei Bedarf mitinstalliert',
@@ -468,6 +474,8 @@ const LANGS = {
     'trouble.more': 'La liste complète se trouve dans le <a href="https://github.com/Eve-Online-Askend/eve-canary/blob/main/README_INSTALL.md">guide d\'installation</a>.',
     'h.req': 'Prérequis',
     'h.downloads': 'Téléchargements', 'dl.loading': 'Chargement des téléchargements …',
+    'h.journey': 'Le parcours',
+    'journey.intro': 'Au début un simple lecteur de logs qui disait juste « strip miner coupé ». Aujourd\'hui un vrai cockpit : minage, missions, renseignement sur les menaces, trésor de minerai, fiches perso, Planetary Industry. Développé au grand jour, un jalon après l\'autre, toujours local et gratuit.',
     'h.changelog': 'Nouveautés', 'cl.loading': 'Chargement de l\'historique …',
     r1: 'Windows ou Linux avec EVE Online installé (sous Linux via Steam/Proton ou Wine)',
     r2: 'Python 3, installé automatiquement par l\'installateur Windows s\'il manque',
@@ -545,6 +553,8 @@ const LANGS = {
     'trouble.more': 'Полный список есть в <a href="https://github.com/Eve-Online-Askend/eve-canary/blob/main/README_INSTALL.md">руководстве по установке</a>.',
     'h.req': 'Требования',
     'h.downloads': 'Загрузки', 'dl.loading': 'Загрузка чисел …',
+    'h.journey': 'Путь',
+    'journey.intro': 'Начиналось как небольшой читатель логов, который просто говорил «стрип-майнер выключен». Сегодня это полноценная панель: майнинг, миссии, разведка угроз, хранилище руды, профили, Planetary Industry. Разрабатывается открыто, веха за вехой, всегда локально и бесплатно.',
     'h.changelog': 'Что нового', 'cl.loading': 'Загрузка истории версий …',
     r1: 'Windows или Linux с установленной EVE Online (на Linux через Steam/Proton или Wine)',
     r2: 'Python 3, установщик для Windows ставит его сам, если он отсутствует',
@@ -636,6 +646,13 @@ function renderChangelog() {
       + items.map(t => `<li>${t}</li>`).join('') + `</ul></div>`;
   }).join('');
 }
+// "Der Weg": sichtbare Meilenstein-Zeitachse aus MILESTONES, in der aktuellen Sprache.
+function renderJourney() {
+  const box = document.getElementById('journey');
+  if (!box) return;
+  box.innerHTML = '<ol class="mstones">' + MILESTONES.map(m =>
+    `<li><span class="msv">v${m.v}</span><span class="msl">${m[curLang] || m.en}</span></li>`).join('') + '</ol>';
+}
 function applyLang(code) {
   curLang = code;
   const d = LANGS[code] || LANGS.en;
@@ -652,6 +669,7 @@ function applyLang(code) {
     b.setAttribute('aria-current', b.dataset.code === code));
   renderChangelog();   // Changelog in der neuen Sprache neu zeichnen
   renderDlChart();     // Download-Verlauf-Label in der neuen Sprache
+  renderJourney();     // Meilenstein-Zeitachse in der neuen Sprache
 }
 
 // Umschalter bauen
