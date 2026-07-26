@@ -579,7 +579,7 @@ const EN = { _title: document.title,
 document.querySelectorAll('[data-i18n]').forEach(el => EN[el.dataset.i18n] = el.innerHTML);
 LANGS.en = EN;
 
-let CL = null, DL = null, curLang = 'en';
+let CL = null, ST = null, curLang = 'en';
 // Kuratierte Meilensteine der Entwicklung: die grossen Feature-Spruenge, nicht
 // jeder Punkt-Release. Labels je Sprache; fehlt eine, faellt es auf Englisch zurueck.
 const MILESTONES = [
@@ -598,10 +598,8 @@ const MILESTONES = [
 // beim Einrichten geholt. Ihre Downloadzahl ist damit die Zahl der
 // Installationen, waehrend eve_dashboard.py Installationen UND Updates zaehlt.
 function installsHtml() {
-  if (!DL) return '';
-  const summe = datei => DL.reduce((s, r) => s + (r.assets || [])
-    .filter(a => a.name === datei).reduce((x, a) => x + a.download_count, 0), 0);
-  const win = summe('start_dashboard.bat'), lin = summe('start_dashboard.sh');
+  if (!ST || !ST.installs) return '';
+  const win = ST.installs.win || 0, lin = ST.installs.lin || 0;
   if (!win && !lin) return '';
   const L = ({
     de: { tot: 'Installationen insgesamt', win: 'Windows', lin: 'Linux',
@@ -623,21 +621,19 @@ function installsHtml() {
 // Release "stats-JAHR". Jede laufende Installation holt sie genau EINMAL, der
 // Download-Zaehler dieser Datei ist damit direkt die Zahl der Installationen,
 // die in dem Zeitraum liefen. Keine Schaetzung, keine Telemetrie.
-let USERS = null;
 function usersHtml() {
-  if (!USERS || !USERS.length) return '';
-  const cnt = n => (USERS.find(a => a.name === n) || {}).download_count || 0;
+  if (!ST || !ST.aktiv) return '';
   const p2 = n => String(n).padStart(2, '0');
   const ym = d => d.getUTCFullYear() + '-' + p2(d.getUTCMonth() + 1);
   const now = new Date();
-  const curN = cnt(`ping-${ym(now)}.json`);
+  const curN = ST.aktiv.monat[ym(now)] || 0;
   const prev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-  const prevN = cnt(`ping-${ym(prev)}.json`);
+  const prevN = ST.aktiv.monat[ym(prev)] || 0;
   if (!curN && !prevN) return '';   // noch nichts gemeldet: lieber nichts zeigen
   const days = [];
   for (let i = 13; i >= 0; i--) {
     const d = new Date(now.getTime() - i * 86400000);
-    days.push({ d, n: cnt(`ping-${ym(d)}-${p2(d.getUTCDate())}.json`) });
+    days.push({ d, n: ST.aktiv.tag[`${ym(d)}-${p2(d.getUTCDate())}`] || 0 });
   }
   const max = Math.max(1, ...days.map(x => x.n));
   const gab = days.filter(x => x.n > 0);
@@ -669,19 +665,11 @@ function usersHtml() {
 // Download-Verlauf: App-Downloads (eve_dashboard.py) je Version, chronologisch.
 // Nur Versionen mit >0, damit die vielen Null-Releases den Balken nicht zumuellen.
 function dlChartHtml() {
-  if (!DL) return '';
-  const dlOf = r => (r.assets || []).filter(a => a.name === 'eve_dashboard.py')
-      .reduce((x, a) => x + a.download_count, 0);
-  const rows = DL.map(r => ({ v: (r.tag_name || '').replace(/^v/, ''), d: dlOf(r) }))
-    .filter(r => r.d > 0);
-  if (!rows.length) return '';
-  const total = rows.reduce((s, r) => s + r.d, 0);
-  // Neueste Version nach Veroeffentlichungsdatum (auch wenn erst wenige Downloads).
-  const latest = DL.map(r => ({ v: (r.tag_name || '').replace(/^v/, ''), d: dlOf(r), t: r.published_at }))
-    .sort((a, b) => new Date(b.t) - new Date(a.t))[0];
-  const avg = total / rows.length;
-  const top = rows.slice().sort((a, b) => b.d - a.d).slice(0, 5);
-  const max = Math.max(...top.map(r => r.d));
+  if (!ST || !ST.downloads || !ST.downloads.total) return '';
+  const total = ST.downloads.total, latest = ST.downloads.latest || { v: '?', d: 0 };
+  const top = ST.downloads.top || [];
+  const avg = ST.downloads.versionen ? total / ST.downloads.versionen : 0;
+  const max = Math.max(1, ...top.map(r => r.d));
   const L = ({
     de: { total: 'Downloads gesamt', latest: 'Aktuell', ver: 'Versionen', avg: 'Ø / Version', top: 'Meistgeladen', mile: 'Meilensteine' },
     fr: { total: 'téléchargements au total', latest: 'Actuelle', ver: 'versions', avg: 'moy. / version', top: 'Les plus téléchargés', mile: 'Jalons' },
@@ -691,7 +679,7 @@ function dlChartHtml() {
   return `<div class="dltotal"><b>${total.toLocaleString()}</b> ${L.total}</div>`
     + `<div class="dlstats">`
     +   `<div class="dltile"><b>${latest.d}</b><span>${L.latest} · v${latest.v}</span></div>`
-    +   `<div class="dltile"><b>${rows.length}</b><span>${L.ver}</span></div>`
+    +   `<div class="dltile"><b>${ST.downloads.versionen}</b><span>${L.ver}</span></div>`
     +   `<div class="dltile"><b>${avg.toFixed(1)}</b><span>${L.avg}</span></div>`
     + `</div>`
     + `<div class="dltop">${L.top}</div>`
@@ -706,7 +694,14 @@ function dlChartHtml() {
 }
 // Installationszahl zuerst, Downloads darunter: die Installationen sind die
 // ehrlichere Zahl, Downloads verteilen sich ueber viele Versionen.
-function statsHtml() { return installsHtml() + usersHtml() + dlChartHtml(); }
+function statsHtml() {
+  const teile = installsHtml() + usersHtml() + dlChartHtml();
+  if (!teile || !ST || !ST.stand) return teile;
+  const wann = new Date(ST.stand).toLocaleString(curLang,
+    { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const L = { de: 'Stand', fr: 'Mis à jour', ru: 'Данные от', en: 'As of' };
+  return teile + `<p class="tiny">${L[curLang] || L.en}: ${wann}</p>`;
+}
 function renderDlChart() {
   const html = statsHtml();
   const box = document.getElementById('dlchart'); if (box) box.innerHTML = html;
@@ -821,42 +816,16 @@ applyLang(start);
     document.getElementById('ver').textContent = v.version;
   } catch (e) { document.getElementById('ver').textContent = '–'; }
   try {
-    // Blaettern: es gibt mehr als 100 Releases, und ohne die alten Seiten
-    // faellt die Downloadsumme still nach unten.
-    let rels = [];
-    for (let seite = 1; seite <= 4; seite++) {
-      const teil = await (await fetch(`https://api.github.com/repos/${repo}/releases?per_page=100&page=${seite}`)).json();
-      if (!Array.isArray(teil) || !teil.length) break;
-      rels = rels.concat(teil);
-      if (teil.length < 100) break;
-    }
-    // Nur Versions-Releases. Die Zaehlmarken (stats-…) sind keine Version und
-    // wuerden sonst als „aktuellste Version" in der Statistik auftauchen.
-    DL = rels.filter(r => /^v\d/.test(r.tag_name || ''));
-    const total = DL.reduce((s, r) => s + r.assets
-      .filter(a => a.name === 'eve_dashboard.py')
-      .reduce((x, a) => x + a.download_count, 0), 0);
-    if (total > 0) {
-      document.getElementById('dl').textContent = total.toLocaleString();
+    // BEWUSST kein Aufruf der GitHub-API: die erlaubt nur 60 Abfragen pro
+    // Stunde und IP, hinter einem geteilten Anschluss waere die Seite damit
+    // schnell tot. Die Zahlen rechnet release.py beim Veroeffentlichen aus und
+    // legt sie als stats.json ab, hier ist es ein einziger Abruf ohne Limit.
+    ST = await (await fetch(`https://raw.githubusercontent.com/${repo}/main/stats.json?_=${Date.now()}`)).json();
+    if (ST.downloads && ST.downloads.total > 0) {
+      document.getElementById('dl').textContent = ST.downloads.total.toLocaleString();
       document.getElementById('dlBadge').hidden = false;
     }
     renderDlChart();
-  } catch (e) {}
-  try {
-    // Zaehlmarken: Monate haengen am Jahres-Release, Tage am Monats-Release.
-    // Deshalb reicht je ein Aufruf, ohne Blaettern durch hunderte Anhaenge.
-    const n = new Date(), p2 = x => String(x).padStart(2, '0');
-    const vm = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth() - 1, 1));
-    const tags = [`stats-${n.getUTCFullYear()}`,
-                  `stats-${n.getUTCFullYear()}-${p2(n.getUTCMonth() + 1)}`,
-                  `stats-${vm.getUTCFullYear()}-${p2(vm.getUTCMonth() + 1)}`];
-    // Im Januar liegt der Vormonat im Vorjahres-Release
-    if (vm.getUTCFullYear() !== n.getUTCFullYear()) tags.push(`stats-${vm.getUTCFullYear()}`);
-    const teile = await Promise.all(tags.map(t =>
-      fetch(`https://api.github.com/repos/${repo}/releases/tags/${t}`)
-        .then(r => r.ok ? r.json() : null).catch(() => null)));
-    USERS = teile.filter(Boolean).flatMap(r => r.assets || []);
-    if (USERS.length) renderDlChart();
   } catch (e) {}
   try {
     // Cache-Buster: verhindert, dass ein kurz zwischengespeicherter 404 (direkt
