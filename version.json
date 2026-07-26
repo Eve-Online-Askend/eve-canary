@@ -13,7 +13,8 @@
   "install.ps1",
   "uninstall.ps1",
   "start_dashboard.sh",
-  "install.sh"
+  "install.sh",
+  "install-mac.sh"
  ],
  "repo": "Eve-Online-Askend/eve-canary",
  "tag": "v1.65.2"
