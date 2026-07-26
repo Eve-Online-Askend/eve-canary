@@ -1,8 +1,9 @@
 {
- "version": "1.59.1",
+ "version": "1.60.0",
  "files": [
   "eve_dashboard.py",
   "ore_types.json",
+  "ore_refine.json",
   "mining_tools.json",
   "mission_sigs.json",
   "market_types.json",
@@ -14,5 +15,5 @@
   "install.sh"
  ],
  "repo": "Eve-Online-Askend/eve-canary",
- "tag": "v1.59.1"
+ "tag": "v1.60.0"
 }

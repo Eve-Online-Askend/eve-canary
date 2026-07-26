@@ -23,8 +23,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.59.1"
-UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
+VERSION = "1.60.0"
+UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
 from collections import deque
@@ -113,6 +113,11 @@ ORE_TYPES = load_json("ore_types.json", {})
 # typeID -> (Name, Volumen je Einheit). Fuer das ESI Mining Ledger, das nur
 # type_id + Stueckzahl liefert; so rechnen wir Einheiten in m³ um.
 ORE_BY_TID = {v["typeID"]: (n, v.get("volume", 0.0)) for n, v in ORE_TYPES.items()}
+# Refine-Ausbeute je Erz (Mineral-Mengen pro Batch, aus der SDE generiert, web-verifiziert):
+# {"refine": {ore: {portion, out:[{tid,name,qty}]}}, "minerals": {name: tid}}
+ORE_REFINE = load_json("ore_refine.json", {"refine": {}, "minerals": {}})
+# Reprocessing-Skills: typeID -> Bonus je Stufe. Basis NPC-Station 50%.
+REPROCESS_SKILLS = {3385: 0.03, 3389: 0.02}  # Reprocessing, Reprocessing Efficiency
 MINING_TOOLS = sorted(load_json("mining_tools.json", []), key=len, reverse=True)
 # Missionserkennung über einzigartige Gegnernamen (nur geprüfte Signaturen).
 MISSION_SIGS = {k.lower(): v for k, v in load_json("mission_sigs.json", {}).items()
@@ -2398,6 +2403,13 @@ class Esi(threading.Thread):
         for sid, per in MINING_YIELD_SKILLS.items():
             mult *= (1 + per * lvl.get(sid, 0))
         c["skill_bonus"] = round((mult - 1) * 100)
+        # Reprocessing-Ausbeute (Basis NPC-Station 50%, mal Reprocessing + Reprocessing
+        # Efficiency). Ohne Struktur-Rigs/Standings/Implantate/erz-spezifische Skills,
+        # daher eine konservative Untergrenze fuer den Erz-Verwertungs-Berater.
+        rep = 0.50
+        for sid, per in REPROCESS_SKILLS.items():
+            rep *= (1 + per * lvl.get(sid, 0))
+        c["reprocess"] = round(rep, 4)
         c["skills_next"] = time.time() + 6 * 3600
 
     def sync_mining(self, name, c):
@@ -3206,6 +3218,76 @@ def ore_value(ore, units, pm):
     if price is None:
         price = pm.get(t.get("typeID"), 0.0)
     return units * price, units * t.get("volume", 0.0)
+
+
+def refine_value(ore, units, yield_frac, pm):
+    """ISK, wenn man 'units' des Erzes raffiniert: Mineral-Mengen aus der SDE-
+    Tabelle (pro Batch von 'portion' Einheiten) mal Ausbeute mal Jita-Buy-Preis.
+    Kompression aendert die Mineralien nicht, daher gilt dieselbe Tabelle."""
+    r = (ORE_REFINE.get("refine") or {}).get(ore)
+    if not r or not units:
+        return 0.0
+    portion = r.get("portion") or 100
+    batches = units / portion
+    tot = 0.0
+    for o in r.get("out", []):
+        tot += o["qty"] * batches * yield_frac * pm.get(o["tid"], (0, 0))[0]
+    return tot
+
+
+def query_ore_advisor(region):
+    """Verwertungs-Berater: fuer den gesamten GELAGERTEN Erz-Bestand (Stationen)
+    drei Wege gegenuebergestellt, je fuer den gewaehlten Hub: roh verkaufen,
+    komprimiert verkaufen (1:1 Stueck, nur Volumen kleiner), raffinieren+Mineralien
+    verkaufen. Ausbeute aus den echten Reprocessing-Skills (bester Char), NPC-50%-Basis."""
+    # Bestand je Roh-Erz aggregieren (komprimiert -> Roh, 1:1 in Stueck).
+    units = {}
+    for nm, c in ((CONFIG.get("esi") or {}).get("chars", {})).items():
+        v = c.get("vault") or {}
+        for l in v.get("locs", []):
+            if 30000000 <= (l.get("loc_id") or 0) < 32000000:   # im Schiff, kein Bestand
+                continue
+            for o in (l.get("ores") or []):
+                key = re.sub(r"^(Batch )?Compressed ", "", o["ore"])
+                units[key] = units.get(key, 0) + o["units"]
+    if not units:
+        return None
+    # Beste Reprocessing-Ausbeute ueber die verbundenen Chars.
+    yields = [(c.get("reprocess"), nm) for nm, c in
+              ((CONFIG.get("esi") or {}).get("chars", {})).items() if c.get("reprocess")]
+    yfrac, ychar = (max(yields) if yields else (0.50, None))
+    # Preise fuer Roh, Komprimiert und alle Mineralien in einem Abruf.
+    tids = set()
+    for ore in units:
+        t = ORE_TYPES.get(ore)
+        if t:
+            tids.add(t["typeID"])
+        comp = ORE_TYPES.get("Compressed " + ore)
+        if comp:
+            tids.add(comp["typeID"])
+    for o_ in ((ORE_REFINE.get("refine") or {}).values()):
+        for m in o_.get("out", []):
+            tids.add(m["tid"])
+    pm = hub_prices(str(region), tids, prefer_esi=True) if tids else {}
+    rows = []
+    t_raw = t_comp = t_ref = 0.0
+    for ore, u in units.items():
+        t = ORE_TYPES.get(ore, {})
+        comp = ORE_TYPES.get("Compressed " + ore)
+        raw = u * pm.get(t.get("typeID"), (0, 0))[0]
+        cmp_ = u * pm.get(comp["typeID"], (0, 0))[0] if comp else 0.0
+        ref = refine_value(ore, u, yfrac, pm)
+        best = max((("raw", raw), ("comp", cmp_), ("refine", ref)), key=lambda x: x[1])[0]
+        t_raw += raw
+        t_comp += cmp_
+        t_ref += ref
+        rows.append({"ore": ore, "units": u, "raw": round(raw), "comp": round(cmp_),
+                     "refine": round(ref), "best": best})
+    rows.sort(key=lambda r: -max(r["raw"], r["comp"], r["refine"]))
+    tot = {"raw": round(t_raw), "comp": round(t_comp), "refine": round(t_ref)}
+    overall = max(tot, key=tot.get)
+    return {"hub": REGIONS.get(str(region), str(region)), "yield": yfrac,
+            "yield_char": ychar, "totals": tot, "best": overall, "rows": rows}
 
 
 def baseline_filter(rows):
@@ -4518,6 +4600,7 @@ class Handler(BaseHTTPRequestHandler):
                 data["chars"] = snapshot_live()
             elif view == "vault":
                 data["vault"] = query_vault()
+                data["vault"]["advisor"] = query_ore_advisor(CONFIG["region"])
             elif view == "planeten":
                 data["planeten"] = query_planeten()
             elif view == "timeline":
@@ -5034,6 +5117,14 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .esichk{font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px;margin-left:6px;vertical-align:middle;border:1px solid currentColor;white-space:nowrap;cursor:help}
 .esichk.ok{color:var(--green)}
 .esichk.bad{color:var(--red)}
+.advrow{display:flex;gap:10px;flex-wrap:wrap;margin:8px 0 2px}
+.advopt{flex:1;min-width:130px;background:var(--inset);border:1px solid var(--line);border-radius:9px;padding:10px 12px}
+.advopt.best{border-color:var(--green)}
+.advopt .l{font-size:12px;color:var(--dim)}
+.advopt .v{font-size:20px;font-weight:600;margin-top:2px}
+.advrec{color:var(--green);font-weight:700;font-size:10px;border:1px solid var(--green);border-radius:4px;padding:1px 4px;margin-left:4px}
+.advtbl{margin-top:10px}
+.advtbl td.advb{color:var(--green);font-weight:700}
 @media(max-width:640px){.pirow{grid-template-columns:12px 1fr max-content}.pirow .pichar,.pirow .piprod{display:none}}
 /* Live-Missionskampf: EVE-HUD an den Design-Tokens. Verlauf ueber var(--card)/
    var(--inset) (theme-fest), Radius/Border wie die uebrigen Karten, Schaden
@@ -6811,6 +6902,25 @@ function renderVault(v){
     <span class="mfpunit">m³ Erz</span>
     <span class="mfpsub">≈ ${fmtM(v.total_isk||0)} ISK · ${chars.length} ${chars.length===1?'Char':'Chars'}${stand?' · '+stand:''}${nxt?' · '+nxt:''}</span>
    </div></div>`;
+ const a=v.advisor;
+ if(a&&a.rows&&a.rows.length){
+  const en=lang==='en';
+  const opt=(k,label)=>`<div class="advopt${a.best===k?' best':''}"><div class="l">${label}${a.best===k?` <span class="advrec">${en?'best':'empfohlen'}</span>`:''}</div><div class="v isk">${fmtM(a.totals[k]||0)}</div></div>`;
+  const yld=Math.round((a.yield||0.5)*100);
+  html+=`<div class="card" style="grid-column:1/-1">
+    <div class="chead"><span class="char">💡 ${en?'Best way to process':'Bester Verwertungsweg'}</span> <span class="sub">· ${en?'valued for':'bewertet für'} ${esc(a.hub)}</span></div>
+    <div class="advrow">
+      ${opt('raw',en?'Sell raw':'Roh verkaufen')}
+      ${opt('comp',en?'Sell compressed':'Komprimiert verkaufen')}
+      ${opt('refine',en?'Refine to minerals':'Zu Mineralien raffinieren')}
+    </div>
+    <div class="sub" style="margin-top:6px">${en?'Refine yield':'Refine-Ausbeute'} ${yld}%${a.yield_char?' ('+esc(a.yield_char)+')':''} · ${en?'NPC station 50% base from your reprocessing skills; excludes structure rigs, standings, implants and ore-specific skills that raise it, so refine is a conservative floor. Compressing changes only volume, not the minerals.':'NPC-Station 50% Basis aus deinen Reprocessing-Skills; ohne Struktur-Rigs, Standings, Implantate und erz-spezifische Skills, die es erhöhen, Refine ist also eine konservative Untergrenze. Komprimieren ändert nur das Volumen, nicht die Mineralien.'}</div>`;
+  const rws=a.rows.slice(0,12);
+  html+=`<table class="fleetcomp advtbl"><tr><th>${en?'Ore':'Erz'}</th><th class="r">${en?'Units':'Menge'}</th><th class="r">${en?'Raw':'Roh'}</th><th class="r">${en?'Compressed':'Kompr.'}</th><th class="r">${en?'Refine':'Raffiniert'}</th></tr>`
+   +rws.map(r=>`<tr><td>${esc(r.ore)}</td><td class="r">${fmt(r.units)}</td><td class="r${r.best==='raw'?' advb':''}">${fmtM(r.raw)}</td><td class="r${r.best==='comp'?' advb':''}">${fmtM(r.comp)}</td><td class="r${r.best==='refine'?' advb':''}">${fmtM(r.refine)}</td></tr>`).join('')
+   +(a.rows.length>rws.length?`<tr><td colspan="5" class="sub">… ${a.rows.length-rws.length} ${en?'more ore types':'weitere Erz-Typen'}</td></tr>`:'')
+   +`</table></div>`;
+ }
  chars.forEach(c=>{
   html+=`<div class="card" style="grid-column:1/-1">
    <div class="chead"><span class="char">${esc(c.name)} <span class="sys">· ${fmtC(c.total_m3)} m³ · ${fmtM(c.total_isk)} ISK</span></span>${esiBadge(c.name)}</div>`;

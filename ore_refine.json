@@ -1,0 +1,3353 @@
+{
+ "refine": {
+  "Arkonor": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 3200
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 1200
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 120
+    }
+   ]
+  },
+  "Arkonor II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 3360
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 1260
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 126
+    }
+   ]
+  },
+  "Arkonor III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 3520
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 1320
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 132
+    }
+   ]
+  },
+  "Arkonor IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 3680
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 1380
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 138
+    }
+   ]
+  },
+  "Bistot": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 3200
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 1200
+    },
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 160
+    }
+   ]
+  },
+  "Bistot II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 3360
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 1260
+    },
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 168
+    }
+   ]
+  },
+  "Bistot III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 3520
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 1320
+    },
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 176
+    }
+   ]
+  },
+  "Bistot IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 3680
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 1380
+    },
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 184
+    }
+   ]
+  },
+  "Crokite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 800
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 2000
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 800
+    }
+   ]
+  },
+  "Crokite II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 840
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 2100
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 840
+    }
+   ]
+  },
+  "Crokite III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 880
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 2200
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 880
+    }
+   ]
+  },
+  "Crokite IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 920
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 2300
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 920
+    }
+   ]
+  },
+  "Dark Ochre": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 1360
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 1200
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 320
+    }
+   ]
+  },
+  "Dark Ochre II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 1428
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 1260
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 336
+    }
+   ]
+  },
+  "Dark Ochre III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 1496
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 1320
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 352
+    }
+   ]
+  },
+  "Dark Ochre IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 1564
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 1380
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 368
+    }
+   ]
+  },
+  "Hedbergite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 450
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 120
+    }
+   ]
+  },
+  "Hedbergite II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 473
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 126
+    }
+   ]
+  },
+  "Hedbergite III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 495
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 132
+    }
+   ]
+  },
+  "Hedbergite IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 518
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 138
+    }
+   ]
+  },
+  "Hemorphite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 240
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 90
+    }
+   ]
+  },
+  "Hemorphite II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 252
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 95
+    }
+   ]
+  },
+  "Hemorphite III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 264
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 99
+    }
+   ]
+  },
+  "Hemorphite IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 276
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 104
+    }
+   ]
+  },
+  "Jaspet": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 150
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 50
+    }
+   ]
+  },
+  "Jaspet II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 158
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 53
+    }
+   ]
+  },
+  "Jaspet III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 165
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 55
+    }
+   ]
+  },
+  "Jaspet IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 173
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 58
+    }
+   ]
+  },
+  "Kernite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 60
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 120
+    }
+   ]
+  },
+  "Kernite II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 63
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 126
+    }
+   ]
+  },
+  "Kernite III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 66
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 132
+    }
+   ]
+  },
+  "Kernite IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 69
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 138
+    }
+   ]
+  },
+  "Plagioclase": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 175
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 70
+    }
+   ]
+  },
+  "Plagioclase II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 184
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 74
+    }
+   ]
+  },
+  "Plagioclase III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 193
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 77
+    }
+   ]
+  },
+  "Plagioclase IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 201
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 81
+    }
+   ]
+  },
+  "Pyroxeres": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 90
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 30
+    }
+   ]
+  },
+  "Pyroxeres II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 95
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 32
+    }
+   ]
+  },
+  "Pyroxeres III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 99
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 33
+    }
+   ]
+  },
+  "Pyroxeres IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 104
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 35
+    }
+   ]
+  },
+  "Pyroxeres 0-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 45
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 15
+    }
+   ]
+  },
+  "Scordite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 150
+    },
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 110
+    }
+   ]
+  },
+  "Scordite II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 158
+    },
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 114
+    }
+   ]
+  },
+  "Scordite III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 165
+    },
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 119
+    }
+   ]
+  },
+  "Scordite IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 173
+    },
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 125
+    }
+   ]
+  },
+  "Scordite 0-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 75
+    },
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 55
+    }
+   ]
+  },
+  "Spodumain": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 48000
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 1000
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 160
+    },
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 80
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 40
+    }
+   ]
+  },
+  "Spodumain II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 50400
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 1050
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 168
+    },
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 84
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 42
+    }
+   ]
+  },
+  "Spodumain III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 52800
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 1100
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 176
+    },
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 88
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 44
+    }
+   ]
+  },
+  "Spodumain IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 55200
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 1150
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 184
+    },
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 92
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 46
+    }
+   ]
+  },
+  "Veldspar": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 400
+    }
+   ]
+  },
+  "Veldspar II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 420
+    }
+   ]
+  },
+  "Veldspar III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 440
+    }
+   ]
+  },
+  "Veldspar IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 460
+    }
+   ]
+  },
+  "Veldspar 0-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 200
+    }
+   ]
+  },
+  "Clear Icicle": {
+   "portion": 1,
+   "out": [
+    {
+     "tid": 16272,
+     "name": "Heavy Water",
+     "qty": 69
+    },
+    {
+     "tid": 16273,
+     "name": "Liquid Ozone",
+     "qty": 35
+    },
+    {
+     "tid": 16274,
+     "name": "Helium Isotopes",
+     "qty": 414
+    },
+    {
+     "tid": 16275,
+     "name": "Strontium Clathrates",
+     "qty": 1
+    }
+   ]
+  },
+  "Glacial Mass": {
+   "portion": 1,
+   "out": [
+    {
+     "tid": 16272,
+     "name": "Heavy Water",
+     "qty": 69
+    },
+    {
+     "tid": 16273,
+     "name": "Liquid Ozone",
+     "qty": 35
+    },
+    {
+     "tid": 16275,
+     "name": "Strontium Clathrates",
+     "qty": 1
+    },
+    {
+     "tid": 17889,
+     "name": "Hydrogen Isotopes",
+     "qty": 414
+    }
+   ]
+  },
+  "Blue Ice": {
+   "portion": 1,
+   "out": [
+    {
+     "tid": 16272,
+     "name": "Heavy Water",
+     "qty": 69
+    },
+    {
+     "tid": 16273,
+     "name": "Liquid Ozone",
+     "qty": 35
+    },
+    {
+     "tid": 16275,
+     "name": "Strontium Clathrates",
+     "qty": 1
+    },
+    {
+     "tid": 17887,
+     "name": "Oxygen Isotopes",
+     "qty": 414
+    }
+   ]
+  },
+  "White Glaze": {
+   "portion": 1,
+   "out": [
+    {
+     "tid": 16272,
+     "name": "Heavy Water",
+     "qty": 69
+    },
+    {
+     "tid": 16273,
+     "name": "Liquid Ozone",
+     "qty": 35
+    },
+    {
+     "tid": 16275,
+     "name": "Strontium Clathrates",
+     "qty": 1
+    },
+    {
+     "tid": 17888,
+     "name": "Nitrogen Isotopes",
+     "qty": 414
+    }
+   ]
+  },
+  "Glare Crust": {
+   "portion": 1,
+   "out": [
+    {
+     "tid": 16272,
+     "name": "Heavy Water",
+     "qty": 1381
+    },
+    {
+     "tid": 16273,
+     "name": "Liquid Ozone",
+     "qty": 691
+    },
+    {
+     "tid": 16275,
+     "name": "Strontium Clathrates",
+     "qty": 35
+    }
+   ]
+  },
+  "Dark Glitter": {
+   "portion": 1,
+   "out": [
+    {
+     "tid": 16272,
+     "name": "Heavy Water",
+     "qty": 691
+    },
+    {
+     "tid": 16273,
+     "name": "Liquid Ozone",
+     "qty": 1381
+    },
+    {
+     "tid": 16275,
+     "name": "Strontium Clathrates",
+     "qty": 69
+    }
+   ]
+  },
+  "Gelidus": {
+   "portion": 1,
+   "out": [
+    {
+     "tid": 16272,
+     "name": "Heavy Water",
+     "qty": 345
+    },
+    {
+     "tid": 16273,
+     "name": "Liquid Ozone",
+     "qty": 691
+    },
+    {
+     "tid": 16275,
+     "name": "Strontium Clathrates",
+     "qty": 104
+    }
+   ]
+  },
+  "Krystallos": {
+   "portion": 1,
+   "out": [
+    {
+     "tid": 16272,
+     "name": "Heavy Water",
+     "qty": 173
+    },
+    {
+     "tid": 16273,
+     "name": "Liquid Ozone",
+     "qty": 691
+    },
+    {
+     "tid": 16275,
+     "name": "Strontium Clathrates",
+     "qty": 173
+    }
+   ]
+  },
+  "Blue Ice IV-Grade": {
+   "portion": 1,
+   "out": [
+    {
+     "tid": 16272,
+     "name": "Heavy Water",
+     "qty": 104
+    },
+    {
+     "tid": 16273,
+     "name": "Liquid Ozone",
+     "qty": 55
+    },
+    {
+     "tid": 16275,
+     "name": "Strontium Clathrates",
+     "qty": 1
+    },
+    {
+     "tid": 17887,
+     "name": "Oxygen Isotopes",
+     "qty": 483
+    }
+   ]
+  },
+  "White Glaze IV-Grade": {
+   "portion": 1,
+   "out": [
+    {
+     "tid": 16272,
+     "name": "Heavy Water",
+     "qty": 104
+    },
+    {
+     "tid": 16273,
+     "name": "Liquid Ozone",
+     "qty": 55
+    },
+    {
+     "tid": 16275,
+     "name": "Strontium Clathrates",
+     "qty": 1
+    },
+    {
+     "tid": 17888,
+     "name": "Nitrogen Isotopes",
+     "qty": 483
+    }
+   ]
+  },
+  "Glacial Mass IV-Grade": {
+   "portion": 1,
+   "out": [
+    {
+     "tid": 16272,
+     "name": "Heavy Water",
+     "qty": 104
+    },
+    {
+     "tid": 16273,
+     "name": "Liquid Ozone",
+     "qty": 55
+    },
+    {
+     "tid": 16275,
+     "name": "Strontium Clathrates",
+     "qty": 1
+    },
+    {
+     "tid": 17889,
+     "name": "Hydrogen Isotopes",
+     "qty": 483
+    }
+   ]
+  },
+  "Clear Icicle IV-Grade": {
+   "portion": 1,
+   "out": [
+    {
+     "tid": 16272,
+     "name": "Heavy Water",
+     "qty": 104
+    },
+    {
+     "tid": 16273,
+     "name": "Liquid Ozone",
+     "qty": 55
+    },
+    {
+     "tid": 16274,
+     "name": "Helium Isotopes",
+     "qty": 483
+    },
+    {
+     "tid": 16275,
+     "name": "Strontium Clathrates",
+     "qty": 1
+    }
+   ]
+  },
+  "Gneiss": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 2000
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 1500
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 800
+    }
+   ]
+  },
+  "Gneiss II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 2100
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 1575
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 840
+    }
+   ]
+  },
+  "Gneiss III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 2200
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 1650
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 880
+    }
+   ]
+  },
+  "Gneiss IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 2300
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 1725
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 920
+    }
+   ]
+  },
+  "Mercoxit": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 11399,
+     "name": "Morphite",
+     "qty": 140
+    }
+   ]
+  },
+  "Mercoxit II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 11399,
+     "name": "Morphite",
+     "qty": 147
+    }
+   ]
+  },
+  "Mercoxit III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 11399,
+     "name": "Morphite",
+     "qty": 154
+    }
+   ]
+  },
+  "Omber": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 90
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 75
+    }
+   ]
+  },
+  "Omber II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 95
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 79
+    }
+   ]
+  },
+  "Omber III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 99
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 83
+    }
+   ]
+  },
+  "Omber IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 104
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 86
+    }
+   ]
+  },
+  "Zeolites": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 8000
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 400
+    },
+    {
+     "tid": 16634,
+     "name": "Atmospheric Gases",
+     "qty": 65
+    }
+   ]
+  },
+  "Sylvite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 4000
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 400
+    },
+    {
+     "tid": 16635,
+     "name": "Evaporite Deposits",
+     "qty": 65
+    }
+   ]
+  },
+  "Bitumens": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 6000
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 400
+    },
+    {
+     "tid": 16633,
+     "name": "Hydrocarbons",
+     "qty": 65
+    }
+   ]
+  },
+  "Coesite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 2000
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 400
+    },
+    {
+     "tid": 16636,
+     "name": "Silicates",
+     "qty": 65
+    }
+   ]
+  },
+  "Brimful Zeolites": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 9200
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 460
+    },
+    {
+     "tid": 16634,
+     "name": "Atmospheric Gases",
+     "qty": 75
+    }
+   ]
+  },
+  "Glistening Zeolites": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 16000
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 800
+    },
+    {
+     "tid": 16634,
+     "name": "Atmospheric Gases",
+     "qty": 130
+    }
+   ]
+  },
+  "Brimful Sylvite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 4600
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 460
+    },
+    {
+     "tid": 16635,
+     "name": "Evaporite Deposits",
+     "qty": 75
+    }
+   ]
+  },
+  "Glistening Sylvite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 8000
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 800
+    },
+    {
+     "tid": 16635,
+     "name": "Evaporite Deposits",
+     "qty": 130
+    }
+   ]
+  },
+  "Brimful Bitumens": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 6900
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 460
+    },
+    {
+     "tid": 16633,
+     "name": "Hydrocarbons",
+     "qty": 75
+    }
+   ]
+  },
+  "Glistening Bitumens": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 12000
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 800
+    },
+    {
+     "tid": 16633,
+     "name": "Hydrocarbons",
+     "qty": 130
+    }
+   ]
+  },
+  "Brimful Coesite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 2300
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 460
+    },
+    {
+     "tid": 16636,
+     "name": "Silicates",
+     "qty": 75
+    }
+   ]
+  },
+  "Glistening Coesite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 4000
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 800
+    },
+    {
+     "tid": 16636,
+     "name": "Silicates",
+     "qty": 130
+    }
+   ]
+  },
+  "Cobaltite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16640,
+     "name": "Cobalt",
+     "qty": 40
+    }
+   ]
+  },
+  "Euxenite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16639,
+     "name": "Scandium",
+     "qty": 40
+    }
+   ]
+  },
+  "Titanite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16638,
+     "name": "Titanium",
+     "qty": 40
+    }
+   ]
+  },
+  "Scheelite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16637,
+     "name": "Tungsten",
+     "qty": 40
+    }
+   ]
+  },
+  "Copious Cobaltite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16640,
+     "name": "Cobalt",
+     "qty": 46
+    }
+   ]
+  },
+  "Twinkling Cobaltite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16640,
+     "name": "Cobalt",
+     "qty": 80
+    }
+   ]
+  },
+  "Copious Euxenite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16639,
+     "name": "Scandium",
+     "qty": 46
+    }
+   ]
+  },
+  "Twinkling Euxenite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16639,
+     "name": "Scandium",
+     "qty": 80
+    }
+   ]
+  },
+  "Copious Titanite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16638,
+     "name": "Titanium",
+     "qty": 46
+    }
+   ]
+  },
+  "Twinkling Titanite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16638,
+     "name": "Titanium",
+     "qty": 80
+    }
+   ]
+  },
+  "Copious Scheelite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16637,
+     "name": "Tungsten",
+     "qty": 46
+    }
+   ]
+  },
+  "Twinkling Scheelite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16637,
+     "name": "Tungsten",
+     "qty": 80
+    }
+   ]
+  },
+  "Otavite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16634,
+     "name": "Atmospheric Gases",
+     "qty": 10
+    },
+    {
+     "tid": 16643,
+     "name": "Cadmium",
+     "qty": 40
+    }
+   ]
+  },
+  "Sperrylite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16635,
+     "name": "Evaporite Deposits",
+     "qty": 10
+    },
+    {
+     "tid": 16644,
+     "name": "Platinum",
+     "qty": 40
+    }
+   ]
+  },
+  "Vanadinite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16636,
+     "name": "Silicates",
+     "qty": 10
+    },
+    {
+     "tid": 16642,
+     "name": "Vanadium",
+     "qty": 40
+    }
+   ]
+  },
+  "Chromite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16633,
+     "name": "Hydrocarbons",
+     "qty": 10
+    },
+    {
+     "tid": 16641,
+     "name": "Chromium",
+     "qty": 40
+    }
+   ]
+  },
+  "Lavish Otavite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16634,
+     "name": "Atmospheric Gases",
+     "qty": 12
+    },
+    {
+     "tid": 16643,
+     "name": "Cadmium",
+     "qty": 46
+    }
+   ]
+  },
+  "Shimmering Otavite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16634,
+     "name": "Atmospheric Gases",
+     "qty": 20
+    },
+    {
+     "tid": 16643,
+     "name": "Cadmium",
+     "qty": 80
+    }
+   ]
+  },
+  "Lavish Sperrylite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16635,
+     "name": "Evaporite Deposits",
+     "qty": 12
+    },
+    {
+     "tid": 16644,
+     "name": "Platinum",
+     "qty": 46
+    }
+   ]
+  },
+  "Shimmering Sperrylite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16635,
+     "name": "Evaporite Deposits",
+     "qty": 20
+    },
+    {
+     "tid": 16644,
+     "name": "Platinum",
+     "qty": 80
+    }
+   ]
+  },
+  "Lavish Vanadinite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16636,
+     "name": "Silicates",
+     "qty": 12
+    },
+    {
+     "tid": 16642,
+     "name": "Vanadium",
+     "qty": 46
+    }
+   ]
+  },
+  "Shimmering Vanadinite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16636,
+     "name": "Silicates",
+     "qty": 20
+    },
+    {
+     "tid": 16642,
+     "name": "Vanadium",
+     "qty": 80
+    }
+   ]
+  },
+  "Lavish Chromite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16633,
+     "name": "Hydrocarbons",
+     "qty": 12
+    },
+    {
+     "tid": 16641,
+     "name": "Chromium",
+     "qty": 46
+    }
+   ]
+  },
+  "Shimmering Chromite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16633,
+     "name": "Hydrocarbons",
+     "qty": 20
+    },
+    {
+     "tid": 16641,
+     "name": "Chromium",
+     "qty": 80
+    }
+   ]
+  },
+  "Carnotite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16634,
+     "name": "Atmospheric Gases",
+     "qty": 15
+    },
+    {
+     "tid": 16640,
+     "name": "Cobalt",
+     "qty": 10
+    },
+    {
+     "tid": 16649,
+     "name": "Technetium",
+     "qty": 50
+    }
+   ]
+  },
+  "Zircon": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16636,
+     "name": "Silicates",
+     "qty": 15
+    },
+    {
+     "tid": 16638,
+     "name": "Titanium",
+     "qty": 10
+    },
+    {
+     "tid": 16648,
+     "name": "Hafnium",
+     "qty": 50
+    }
+   ]
+  },
+  "Pollucite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16633,
+     "name": "Hydrocarbons",
+     "qty": 15
+    },
+    {
+     "tid": 16639,
+     "name": "Scandium",
+     "qty": 10
+    },
+    {
+     "tid": 16647,
+     "name": "Caesium",
+     "qty": 50
+    }
+   ]
+  },
+  "Cinnabar": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16635,
+     "name": "Evaporite Deposits",
+     "qty": 15
+    },
+    {
+     "tid": 16637,
+     "name": "Tungsten",
+     "qty": 10
+    },
+    {
+     "tid": 16646,
+     "name": "Mercury",
+     "qty": 50
+    }
+   ]
+  },
+  "Replete Carnotite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16634,
+     "name": "Atmospheric Gases",
+     "qty": 17
+    },
+    {
+     "tid": 16640,
+     "name": "Cobalt",
+     "qty": 12
+    },
+    {
+     "tid": 16649,
+     "name": "Technetium",
+     "qty": 58
+    }
+   ]
+  },
+  "Glowing Carnotite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16634,
+     "name": "Atmospheric Gases",
+     "qty": 30
+    },
+    {
+     "tid": 16640,
+     "name": "Cobalt",
+     "qty": 20
+    },
+    {
+     "tid": 16649,
+     "name": "Technetium",
+     "qty": 100
+    }
+   ]
+  },
+  "Replete Zircon": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16636,
+     "name": "Silicates",
+     "qty": 17
+    },
+    {
+     "tid": 16638,
+     "name": "Titanium",
+     "qty": 12
+    },
+    {
+     "tid": 16648,
+     "name": "Hafnium",
+     "qty": 58
+    }
+   ]
+  },
+  "Glowing Zircon": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16636,
+     "name": "Silicates",
+     "qty": 30
+    },
+    {
+     "tid": 16638,
+     "name": "Titanium",
+     "qty": 20
+    },
+    {
+     "tid": 16648,
+     "name": "Hafnium",
+     "qty": 100
+    }
+   ]
+  },
+  "Replete Pollucite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16633,
+     "name": "Hydrocarbons",
+     "qty": 17
+    },
+    {
+     "tid": 16639,
+     "name": "Scandium",
+     "qty": 12
+    },
+    {
+     "tid": 16647,
+     "name": "Caesium",
+     "qty": 58
+    }
+   ]
+  },
+  "Glowing Pollucite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16633,
+     "name": "Hydrocarbons",
+     "qty": 30
+    },
+    {
+     "tid": 16639,
+     "name": "Scandium",
+     "qty": 20
+    },
+    {
+     "tid": 16647,
+     "name": "Caesium",
+     "qty": 100
+    }
+   ]
+  },
+  "Replete Cinnabar": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16635,
+     "name": "Evaporite Deposits",
+     "qty": 17
+    },
+    {
+     "tid": 16637,
+     "name": "Tungsten",
+     "qty": 12
+    },
+    {
+     "tid": 16646,
+     "name": "Mercury",
+     "qty": 58
+    }
+   ]
+  },
+  "Glowing Cinnabar": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16635,
+     "name": "Evaporite Deposits",
+     "qty": 30
+    },
+    {
+     "tid": 16637,
+     "name": "Tungsten",
+     "qty": 20
+    },
+    {
+     "tid": 16646,
+     "name": "Mercury",
+     "qty": 100
+    }
+   ]
+  },
+  "Xenotime": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16634,
+     "name": "Atmospheric Gases",
+     "qty": 20
+    },
+    {
+     "tid": 16640,
+     "name": "Cobalt",
+     "qty": 20
+    },
+    {
+     "tid": 16642,
+     "name": "Vanadium",
+     "qty": 10
+    },
+    {
+     "tid": 16650,
+     "name": "Dysprosium",
+     "qty": 22
+    }
+   ]
+  },
+  "Monazite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16635,
+     "name": "Evaporite Deposits",
+     "qty": 20
+    },
+    {
+     "tid": 16637,
+     "name": "Tungsten",
+     "qty": 20
+    },
+    {
+     "tid": 16641,
+     "name": "Chromium",
+     "qty": 10
+    },
+    {
+     "tid": 16651,
+     "name": "Neodymium",
+     "qty": 22
+    }
+   ]
+  },
+  "Loparite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16633,
+     "name": "Hydrocarbons",
+     "qty": 20
+    },
+    {
+     "tid": 16639,
+     "name": "Scandium",
+     "qty": 20
+    },
+    {
+     "tid": 16644,
+     "name": "Platinum",
+     "qty": 10
+    },
+    {
+     "tid": 16652,
+     "name": "Promethium",
+     "qty": 22
+    }
+   ]
+  },
+  "Ytterbite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16636,
+     "name": "Silicates",
+     "qty": 20
+    },
+    {
+     "tid": 16638,
+     "name": "Titanium",
+     "qty": 20
+    },
+    {
+     "tid": 16643,
+     "name": "Cadmium",
+     "qty": 10
+    },
+    {
+     "tid": 16653,
+     "name": "Thulium",
+     "qty": 22
+    }
+   ]
+  },
+  "Bountiful Xenotime": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16634,
+     "name": "Atmospheric Gases",
+     "qty": 23
+    },
+    {
+     "tid": 16640,
+     "name": "Cobalt",
+     "qty": 23
+    },
+    {
+     "tid": 16642,
+     "name": "Vanadium",
+     "qty": 12
+    },
+    {
+     "tid": 16650,
+     "name": "Dysprosium",
+     "qty": 25
+    }
+   ]
+  },
+  "Shining Xenotime": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16634,
+     "name": "Atmospheric Gases",
+     "qty": 40
+    },
+    {
+     "tid": 16640,
+     "name": "Cobalt",
+     "qty": 40
+    },
+    {
+     "tid": 16642,
+     "name": "Vanadium",
+     "qty": 20
+    },
+    {
+     "tid": 16650,
+     "name": "Dysprosium",
+     "qty": 44
+    }
+   ]
+  },
+  "Bountiful Monazite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16635,
+     "name": "Evaporite Deposits",
+     "qty": 23
+    },
+    {
+     "tid": 16637,
+     "name": "Tungsten",
+     "qty": 23
+    },
+    {
+     "tid": 16641,
+     "name": "Chromium",
+     "qty": 12
+    },
+    {
+     "tid": 16651,
+     "name": "Neodymium",
+     "qty": 25
+    }
+   ]
+  },
+  "Shining Monazite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16635,
+     "name": "Evaporite Deposits",
+     "qty": 40
+    },
+    {
+     "tid": 16637,
+     "name": "Tungsten",
+     "qty": 40
+    },
+    {
+     "tid": 16641,
+     "name": "Chromium",
+     "qty": 20
+    },
+    {
+     "tid": 16651,
+     "name": "Neodymium",
+     "qty": 44
+    }
+   ]
+  },
+  "Bountiful Loparite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16633,
+     "name": "Hydrocarbons",
+     "qty": 23
+    },
+    {
+     "tid": 16639,
+     "name": "Scandium",
+     "qty": 23
+    },
+    {
+     "tid": 16644,
+     "name": "Platinum",
+     "qty": 12
+    },
+    {
+     "tid": 16652,
+     "name": "Promethium",
+     "qty": 25
+    }
+   ]
+  },
+  "Shining Loparite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16633,
+     "name": "Hydrocarbons",
+     "qty": 40
+    },
+    {
+     "tid": 16639,
+     "name": "Scandium",
+     "qty": 40
+    },
+    {
+     "tid": 16644,
+     "name": "Platinum",
+     "qty": 20
+    },
+    {
+     "tid": 16652,
+     "name": "Promethium",
+     "qty": 44
+    }
+   ]
+  },
+  "Bountiful Ytterbite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16636,
+     "name": "Silicates",
+     "qty": 23
+    },
+    {
+     "tid": 16638,
+     "name": "Titanium",
+     "qty": 23
+    },
+    {
+     "tid": 16643,
+     "name": "Cadmium",
+     "qty": 12
+    },
+    {
+     "tid": 16653,
+     "name": "Thulium",
+     "qty": 25
+    }
+   ]
+  },
+  "Shining Ytterbite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 16636,
+     "name": "Silicates",
+     "qty": 40
+    },
+    {
+     "tid": 16638,
+     "name": "Titanium",
+     "qty": 40
+    },
+    {
+     "tid": 16643,
+     "name": "Cadmium",
+     "qty": 20
+    },
+    {
+     "tid": 16653,
+     "name": "Thulium",
+     "qty": 44
+    }
+   ]
+  },
+  "Hiemal Tricarboxyl Condensate": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 48927,
+     "name": "Chromodynamic Tricarboxyls",
+     "qty": 2
+    }
+   ]
+  },
+  "Amethystic Crystallite": {
+   "portion": 1000,
+   "out": [
+    {
+     "tid": 48927,
+     "name": "Chromodynamic Tricarboxyls",
+     "qty": 2
+    }
+   ]
+  },
+  "Talassonite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 40000
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 960
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 32
+    }
+   ]
+  },
+  "Talassonite II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 42000
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 1008
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 34
+    }
+   ]
+  },
+  "Talassonite III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 44000
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 1056
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 35
+    }
+   ]
+  },
+  "Rakovene": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 40000
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 3200
+    },
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 200
+    }
+   ]
+  },
+  "Rakovene II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 42000
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 3360
+    },
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 210
+    }
+   ]
+  },
+  "Rakovene III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 44000
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 3520
+    },
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 220
+    }
+   ]
+  },
+  "Nesosilicate Rakovene": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 1500
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 120
+    },
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 7
+    },
+    {
+     "tid": 76374,
+     "name": "Neo-Jadarite",
+     "qty": 65
+    }
+   ]
+  },
+  "Bezdnacine": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 40000
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 4800
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 128
+    }
+   ]
+  },
+  "Bezdnacine II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 42000
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 5040
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 134
+    }
+   ]
+  },
+  "Bezdnacine III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 44000
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 5280
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 141
+    }
+   ]
+  },
+  "Mordunium": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 97
+    }
+   ]
+  },
+  "Mordunium II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 101
+    }
+   ]
+  },
+  "Mordunium III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 107
+    }
+   ]
+  },
+  "Mordunium IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 112
+    }
+   ]
+  },
+  "Ytirium": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 240
+    }
+   ]
+  },
+  "Ytirium II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 252
+    }
+   ]
+  },
+  "Ytirium III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 264
+    }
+   ]
+  },
+  "Ytirium IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 276
+    }
+   ]
+  },
+  "Eifyrium": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 266
+    }
+   ]
+  },
+  "Eifyrium II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 279
+    }
+   ]
+  },
+  "Eifyrium III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 293
+    }
+   ]
+  },
+  "Eifyrium IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 306
+    }
+   ]
+  },
+  "Ducinium": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 170
+    }
+   ]
+  },
+  "Ducinium II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 179
+    }
+   ]
+  },
+  "Ducinium III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 187
+    }
+   ]
+  },
+  "Ducinium IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 196
+    }
+   ]
+  },
+  "Kylixium": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 300
+    },
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 200
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 550
+    }
+   ]
+  },
+  "Kylixium II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 315
+    },
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 210
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 578
+    }
+   ]
+  },
+  "Kylixium III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 330
+    },
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 220
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 605
+    }
+   ]
+  },
+  "Kylixium IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 345
+    },
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 230
+    },
+    {
+     "tid": 36,
+     "name": "Mexallon",
+     "qty": 633
+    }
+   ]
+  },
+  "Nocxite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 900
+    },
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 150
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 105
+    }
+   ]
+  },
+  "Nocxite II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 945
+    },
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 158
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 111
+    }
+   ]
+  },
+  "Nocxite III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 990
+    },
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 165
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 116
+    }
+   ]
+  },
+  "Nocxite IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 1035
+    },
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 173
+    },
+    {
+     "tid": 38,
+     "name": "Nocxium",
+     "qty": 121
+    }
+   ]
+  },
+  "Ueganite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 800
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 40
+    }
+   ]
+  },
+  "Ueganite II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 840
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 42
+    }
+   ]
+  },
+  "Ueganite III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 880
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 44
+    }
+   ]
+  },
+  "Ueganite IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 920
+    },
+    {
+     "tid": 40,
+     "name": "Megacyte",
+     "qty": 46
+    }
+   ]
+  },
+  "Hezorime": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 2000
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 120
+    },
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 60
+    }
+   ]
+  },
+  "Hezorime II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 2100
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 126
+    },
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 63
+    }
+   ]
+  },
+  "Hezorime III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 2200
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 132
+    },
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 66
+    }
+   ]
+  },
+  "Hezorime IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 2300
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 138
+    },
+    {
+     "tid": 39,
+     "name": "Zydrine",
+     "qty": 69
+    }
+   ]
+  },
+  "Griemeer": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 250
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 80
+    }
+   ]
+  },
+  "Griemeer II-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 263
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 84
+    }
+   ]
+  },
+  "Griemeer III-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 275
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 88
+    }
+   ]
+  },
+  "Griemeer IV-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 288
+    },
+    {
+     "tid": 37,
+     "name": "Isogen",
+     "qty": 92
+    }
+   ]
+  },
+  "Tyranite": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 88087,
+     "name": "Eleutrium",
+     "qty": 1035
+    }
+   ]
+  },
+  "Raspite X-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 1000
+    },
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 750
+    },
+    {
+     "tid": 92569,
+     "name": "Crystalline Raspite",
+     "qty": 10
+    }
+   ]
+  },
+  "Polycrase X-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 1000
+    },
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 750
+    },
+    {
+     "tid": 92570,
+     "name": "Crystalline Polycrase",
+     "qty": 10
+    }
+   ]
+  },
+  "Moissanite X-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 1000
+    },
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 750
+    },
+    {
+     "tid": 92571,
+     "name": "Crystalline Moissanite",
+     "qty": 10
+    }
+   ]
+  },
+  "Kangite X-Grade": {
+   "portion": 100,
+   "out": [
+    {
+     "tid": 34,
+     "name": "Tritanium",
+     "qty": 1000
+    },
+    {
+     "tid": 35,
+     "name": "Pyerite",
+     "qty": 750
+    },
+    {
+     "tid": 92572,
+     "name": "Crystalline Kangite",
+     "qty": 10
+    }
+   ]
+  }
+ },
+ "minerals": {
+  "Tritanium": 34,
+  "Pyerite": 35,
+  "Mexallon": 36,
+  "Isogen": 37,
+  "Nocxium": 38,
+  "Zydrine": 39,
+  "Megacyte": 40,
+  "Morphite": 11399,
+  "Heavy Water": 16272,
+  "Liquid Ozone": 16273,
+  "Helium Isotopes": 16274,
+  "Strontium Clathrates": 16275,
+  "Hydrocarbons": 16633,
+  "Atmospheric Gases": 16634,
+  "Evaporite Deposits": 16635,
+  "Silicates": 16636,
+  "Tungsten": 16637,
+  "Titanium": 16638,
+  "Scandium": 16639,
+  "Cobalt": 16640,
+  "Chromium": 16641,
+  "Vanadium": 16642,
+  "Cadmium": 16643,
+  "Platinum": 16644,
+  "Mercury": 16646,
+  "Caesium": 16647,
+  "Hafnium": 16648,
+  "Technetium": 16649,
+  "Dysprosium": 16650,
+  "Neodymium": 16651,
+  "Promethium": 16652,
+  "Thulium": 16653,
+  "Oxygen Isotopes": 17887,
+  "Nitrogen Isotopes": 17888,
+  "Hydrogen Isotopes": 17889,
+  "Chromodynamic Tricarboxyls": 48927,
+  "Neo-Jadarite": 76374,
+  "Eleutrium": 88087,
+  "Crystalline Raspite": 92569,
+  "Crystalline Polycrase": 92570,
+  "Crystalline Moissanite": 92571,
+  "Crystalline Kangite": 92572
+ }
+}
