@@ -1,5 +1,15 @@
 [
  {
+  "v": "1.65.2",
+  "d": "2026-07-26",
+  "de": [
+   "Im Kill-Ticker der Blutspur ist der Schiffsname jetzt ein Link zur Killmail auf zKillboard. Ein Klick zeigt dir, wer da mit was zugeschlagen hat und wie das Opfer gefittet war."
+  ],
+  "en": [
+   "In the Blood Trail kill ticker the ship name is now a link to the killmail on zKillboard. One click shows you who struck, with what, and how the victim was fitted."
+  ]
+ },
+ {
   "v": "1.65.1",
   "d": "2026-07-26",
   "de": [

@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.65.1"
+VERSION = "1.65.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -3306,7 +3306,9 @@ class PackIntel(threading.Thread):
         self.mode = "aus"              # aus|laden|live|fallback|tot
         self.map_progress = (0, 0)
         self.last_kill_ts = 0
-        self.recent = deque(maxlen=40) # Kill-Ticker: (kt, sysid, vship, value)
+        # Kill-Ticker: (kt, sysid, vship, value, kill_id). Die ID kommt mit,
+        # damit die Zeile auf die Killmail bei zKillboard verlinken kann.
+        self.recent = deque(maxlen=40)
         self.dist = {}                 # system_id -> Spruenge vom Zentrum
         self.center_id = None
         self.alerted = {}              # (pack_id, sprecher) -> last_seen beim Alarm
@@ -3446,7 +3448,7 @@ class PackIntel(threading.Thread):
         self.heat.setdefault(sysid, []).append(kt)
         self.recent.append((kt, sysid,
                             (km.get("victim") or {}).get("ship_type_id"),
-                            zkb.get("totalValue")))
+                            zkb.get("totalValue"), kid))
         if persist:
             with DB_LOCK:
                 DB.execute("INSERT OR IGNORE INTO pack_kills VALUES(?,?,?,?,?,?,?,?,?)",
@@ -3807,7 +3809,7 @@ class PackIntel(threading.Thread):
             out["roster"].sort(key=lambda x: -x["kills"])
             out["roster"] = out["roster"][:30]
             # Kill-Ticker: jeder Spieler-Kill der Blase, klassifiziert.
-            for kt2, sid2, vship, val in list(self.recent)[::-1][:25]:
+            for kt2, sid2, vship, val, kid2 in list(self.recent)[::-1][:25]:
                 row = self.sysrow.get(sid2)
                 g = esi.type_group(vship) if vship else None
                 klass = ("pod" if g == 29 else
@@ -3818,7 +3820,7 @@ class PackIntel(threading.Thread):
                     "ts": int(kt2), "system": row[1] if row else "?",
                     "jumps": self.dist.get(sid2),
                     "ship": esi.type_name(vship) or "?", "klass": klass,
-                    "value": val})
+                    "value": val, "id": kid2})
             # EINE Ego-Karte: eigenes System in der Mitte, Blase drumherum.
             own_names = set()
             with ingest.lock:
@@ -7912,7 +7914,10 @@ function renderBlutspur(bs){
   const K={miner:['⛏','MINING','red'],booster:['🐋','BOOSTER','red'],hauler:['🚚','HAULER','gold'],pod:['💊','POD','dim'],kill:['⚔','KILL','dim']};
   inner+=`<div class="pistat2"><b>📡 ${en?'Latest kills in the bubble':'Letzte Kills in der Blase'}</b><table class="fleetcomp">`
    +bs.kills.slice(0,8).map(k=>{const c=K[k.klass]||K.kill;
-    return `<tr><td>${c[0]}</td><td>${new Date(k.ts*1000).toLocaleTimeString().slice(0,5)}</td><td>${esc(k.system)}</td><td class="r">${k.jumps!=null?k.jumps+(en?' j':' Spr.'):''}</td><td><span class="pitier" style="color:var(--${c[2]})">${c[1]}</span> ${esc(k.ship)}</td><td class="r isk">${k.value?fmtM(k.value):''}</td></tr>`;}).join('')
+    // Schiffsname verlinkt auf die Killmail. k.id fehlt nur bei Eintraegen,
+    // die noch aus einer aelteren Fassung im Ticker liegen -> dann Klartext.
+    const schiff=k.id?`<a href="https://zkillboard.com/kill/${encodeURIComponent(k.id)}/" target="_blank" rel="noopener" title="${en?'Open killmail on zKillboard':'Killmail auf zKillboard öffnen'}">${esc(k.ship)}</a>`:esc(k.ship);
+    return `<tr><td>${c[0]}</td><td>${new Date(k.ts*1000).toLocaleTimeString().slice(0,5)}</td><td>${esc(k.system)}</td><td class="r">${k.jumps!=null?k.jumps+(en?' j':' Spr.'):''}</td><td><span class="pitier" style="color:var(--${c[2]})">${c[1]}</span> ${schiff}</td><td class="r isk">${k.value?fmtM(k.value):''}</td></tr>`;}).join('')
    +`</table></div>`;
  }
  html+=`<div class="card">${inner}</div>`;
