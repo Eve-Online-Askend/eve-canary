@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.62.1"
+VERSION = "1.63.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -3901,6 +3901,31 @@ class PackIntel(threading.Thread):
         finally:
             self.sim_on = False
 
+    def recenter(self, name):
+        """Beobachtetes System manuell setzen: Blase + Cluster neu aufbauen.
+        Liefert False, wenn das System nicht in der Sternenkarte existiert."""
+        emap = load_json("eve_map.json", None) or {}
+        names = {v[0] for v in (emap.get("systems") or {}).values()}
+        if name not in names:
+            return False
+        with CONFIG_LOCK:
+            CONFIG["pack_center"] = name
+        save_config()
+        with self.lock:
+            self.packs.clear()
+            self.member_index.clear()
+            self.heat.clear()
+            self.alerted.clear()
+            self.near_alerted.clear()
+            self.info_alerted.clear()
+        self._seen.clear()
+        self.last_kill_ts = 0
+        self.recent.clear()
+        self.sysrow = {}          # run()-Schleife baut die Blase neu auf
+        self.dist = {}
+        self.mode = "laden"
+        return True
+
     def sim_reset(self):
         """Alle Sim-Spuren entfernen und die Cluster aus den echten Kills
         deterministisch neu aufbauen."""
@@ -5531,7 +5556,10 @@ class Handler(BaseHTTPRequestHandler):
                 if "corp" in body:
                     CONFIG["pack_corp_alert"] = bool(body.get("corp"))
             save_config()
-            self._send(json.dumps({"ok": True}))
+            ok = True
+            if body.get("center"):
+                ok = packintel.recenter(str(body.get("center")).strip())
+            self._send(json.dumps({"ok": ok}))
             return
         elif action == "pack_sim_run" and CONFIG.get("sim_mode"):
             # Anflug-Demo starten (nur lokal, wie der Missions-Simulator).
@@ -7665,8 +7693,11 @@ function renderBlutspur(bs){
   <div style="margin-top:9px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
    <label style="font-size:12px"><input type="checkbox" id="packCorp" ${bs.corp_alert?'checked':''}> ${en?'Corp escalation: hint when a local speaker is only in a pack corp':'Corp-Eskalation: Hinweis, wenn ein Local-Sprecher nur in einer Rudel-Corp ist'}</label>
    <button class="btn" id="packOff" style="font-size:11px">${en?'Disable':'Ausschalten'}</button>
-   ${state&&state.sim?`<button class="btn" id="packSimGo" style="font-size:11px">▶ ${en?'Simulate approach (local, ~20 systems)':'Anflug simulieren (lokal, ~20 Systeme)'}</button>
-   <button class="btn" id="packSimReset" style="font-size:11px">⏹ ${en?'Reset sim':'Sim zurücksetzen'}</button>`:''}</div></div>`;
+   <span style="font-size:12px;margin-left:6px">${en?'Watched system:':'Beobachtetes System:'}</span>
+   <input id="packCenter" placeholder="${esc(bs.center||'')}" style="width:120px;font-size:12px;padding:3px 7px;background:var(--inset);border:1px solid var(--line);border-radius:6px;color:var(--txt)">
+   <button class="btn" id="packCenterGo" style="font-size:11px">${en?'Set':'Setzen'}</button>
+   <span id="packCenterStat" class="sub"></span></div>
+  <div class="alphabanner" style="margin-top:10px">🧪 <b>${en?'Alpha phase, module in development':'Alpha-Phase, Modul in Entwicklung'}</b> · ${en?'pack detection, scores and warnings are still being tuned against real traffic. Feedback welcome.':'Rudel-Erkennung, Scores und Warnungen werden noch am echten Verkehr feinjustiert. Rückmeldungen willkommen.'}</div></div>`;
  if(bs.mode==='laden'){const mp=bs.map_progress||[0,0];
   html+=`<div class="card"><div class="sub">🗺 ${en?'Building region map':'Karte wird aufgebaut'} (${mp[0]}/${mp[1]} ${en?'systems':'Systeme'}) · ${en?'one-time, takes a few minutes, radar starts right after':'einmalig, dauert ein paar Minuten, danach startet das Radar von selbst'}</div></div>`;}
  // EINE kompakte Ansicht: Karte + Annaeherung + letzte Kills in einer Karte.
@@ -7698,8 +7729,14 @@ function renderBlutspur(bs){
  box.innerHTML=html;
  const pc=document.getElementById('packCorp'); if(pc)pc.onchange=()=>post({action:'pack_cfg',corp:pc.checked});
  const po=document.getElementById('packOff'); if(po)po.onclick=()=>post({action:'pack_cfg',on:false});
- const sg=document.getElementById('packSimGo'); if(sg)sg.onclick=()=>{sg.disabled=true;post({action:'pack_sim_run'});};
- const sr=document.getElementById('packSimReset'); if(sr)sr.onclick=()=>post({action:'pack_sim_reset'});
+ const cg=document.getElementById('packCenterGo');
+ if(cg)cg.onclick=async()=>{
+  const v=(document.getElementById('packCenter').value||'').trim();
+  if(!v)return;
+  const r=await post({action:'pack_cfg',center:v});
+  const st=document.getElementById('packCenterStat');
+  if(st)st.textContent=r&&r.ok?(lang==='en'?'rebuilding bubble …':'Blase wird neu aufgebaut …'):(lang==='en'?'system not found':'System nicht gefunden');
+ };
 }
 async function intelPoll(){
  if(!intelNames.length||intelBusy||view!=='intel'||intelSettled)return;
