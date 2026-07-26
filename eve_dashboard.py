@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.58.0"
+VERSION = "1.58.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -2124,8 +2124,7 @@ ESI_BASE = "https://esi.evetech.net/latest"
 ESI_SCOPES = ("esi-assets.read_assets.v1 esi-location.read_ship_type.v1 "
               "esi-wallet.read_character_wallet.v1 esi-location.read_online.v1 "
               "esi-ui.open_window.v1 esi-skills.read_skills.v1 "
-              "esi-industry.read_character_mining.v1 esi-planets.manage_planets.v1 "
-              "esi-ui.write_waypoint.v1")
+              "esi-industry.read_character_mining.v1 esi-planets.manage_planets.v1")
 # Mining-Skills, die den Erzertrag heben (typeID -> Ertrag je Stufe).
 # Mining und Astrogeology sind die beiden Kern-Ertragsskills (+5% je Stufe).
 MINING_YIELD_SKILLS = {3386: 0.05,   # Mining
@@ -2284,31 +2283,24 @@ class Esi(threading.Thread):
             return r.status
 
     def ui_open(self, name, kind, oid):
-        """Im laufenden Client des Charakters etwas ausloesen. kind:
-        'market' = Markt-Detail eines Item-Typs, 'info' = Info-Fenster einer ID,
-        'waypoint' = Autopilot-Ziel auf ein System/eine Struktur setzen.
+        """Im laufenden Client des Charakters ein Fenster oeffnen. kind:
+        'market' = Markt-Detail eines Item-Typs, 'info' = Info-Fenster einer ID.
         Setzt voraus, dass der Charakter online ist und der Scope erteilt wurde."""
         c = (self.cfg().get("chars") or {}).get(name)
         if not c:
             return "Charakter nicht verbunden."
-        need = ""
         try:
             if kind == "market":
                 self._post(c, "/ui/openwindow/marketdetails/", {"type_id": int(oid)})
             elif kind == "info":
                 self._post(c, "/ui/openwindow/information/", {"target_id": int(oid)})
-            elif kind == "waypoint":
-                need = " (neue Berechtigung 'Route setzen' noetig)"
-                self._post(c, "/ui/autopilot/waypoint/",
-                           {"destination_id": int(oid), "add_to_beginning": "false",
-                            "clear_other_waypoints": "true"})
             else:
                 return "Unbekannte Aktion."
             return None
         except urllib.error.HTTPError as e:
             if e.code == 403:
-                return (f"{name} muss einmal neu verbunden werden"
-                        + (need or " (neue Berechtigung 'Fenster oeffnen' noetig)") + ".")
+                return (f"{name} muss einmal neu verbunden werden "
+                        "(neue Berechtigung 'Fenster oeffnen' noetig).")
             if e.code in (401, 400):
                 return f"{name}: Login abgelaufen, bitte neu verbinden."
             return f"{name}: Client antwortet nicht (ist er offen und online?)."
@@ -2473,7 +2465,6 @@ class Esi(threading.Thread):
                 "planet": pinfo["name"],
                 "type_id": pinfo["type_id"],
                 "type": col.get("planet_type"),
-                "system_id": col.get("solar_system_id"),
                 "system": self.system_name(col.get("solar_system_id")),
                 "upgrade": col.get("upgrade_level"),
                 "pins": col.get("num_pins"),
@@ -4894,10 +4885,6 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .piplanet{display:flex;align-items:center;gap:6px;min-width:0}
 .piglobe{width:18px;height:18px;border-radius:50%;flex:none}
 .pinm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.picolact{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.pibtn{font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid var(--line);background:var(--inset);color:var(--txt);cursor:pointer;white-space:nowrap}
-.pibtn:hover{border-color:var(--cyan);color:var(--cyan)}
-.pistat{padding:2px 2px 8px;color:var(--cyan)}
 @media(max-width:640px){.pirow{grid-template-columns:12px 1fr max-content}.pirow .pichar,.pirow .piprod{display:none}}
 /* Live-Missionskampf: EVE-HUD an den Design-Tokens. Verlauf ueber var(--card)/
    var(--inset) (theme-fest), Radius/Border wie die uebrigen Karten, Schaden
@@ -6752,16 +6739,11 @@ function renderPlaneten(pl){
  const f=localStorage.getItem('charFilter')||'';
  const list=f?pl.chars.filter(c=>c.name===f):pl.chars;
  html+=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">${en?'By character':'Nach Charakter'}</span></div>`;
- if(piMsg&&(now-piMsg.ts)<6)html+=`<div class="sub pistat">${esc(piMsg.text)}</div>`;
  list.forEach(c=>{const isc=collapsed.has(c.name);
   html+=`<div class="picol"><div class="chead pihead" data-pi="${esc(c.name)}" style="cursor:pointer">
     <span class="char">${isc?'▸':'▾'} ${esc(c.name)} <span class="sub">· ${c.cols.length} ${c.cols.length===1?(en?'colony':'Kolonie'):(en?'colonies':'Kolonien')}</span></span>${c.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(c.isk)} ISK</span>`:''}</div>`;
   if(!isc)c.cols.forEach(col=>{
-   let body=`<div class="picolhead"><b>${esc(col.planet)}</b> <span class="sub">${piTypeName(col.type,en)} · ${esc(col.system||'')} · ${en?'level':'Stufe'} ${col.upgrade||0} · ${col.pins||0} Pins</span>
-     <span class="picolact">${col.isk?`<span class="isk">≈ ${fmtM(col.isk)} ISK ${en?'stored':'gelagert'}</span>`:''}
-      <button class="pibtn" data-char="${esc(c.name)}" data-kind="info" data-id="${col.planet_id}" title="${en?'Open the planet in the running client (Show Info)':'Planet im laufenden Client öffnen (Info-Fenster)'}">🔎 ${en?'Show':'Zeigen'}</button>
-      <button class="pibtn" data-char="${esc(c.name)}" data-kind="waypoint" data-id="${col.system_id||''}" title="${en?'Set autopilot destination to this system':'Autopilot-Ziel auf dieses System setzen'}">📍 ${en?'Route':'Route'}</button>
-     </span></div>`;
+   let body=`<div class="picolhead"><b>${esc(col.planet)}</b> <span class="sub">${piTypeName(col.type,en)} · ${esc(col.system||'')} · ${en?'level':'Stufe'} ${col.upgrade||0} · ${col.pins||0} Pins</span>${col.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(col.isk)} ISK ${en?'stored':'gelagert'}</span>`:''}</div>`;
    (col.extractors||[]).forEach(e=>{const L=piLeft(e.expiry,en);
     body+=`<div class="piexrow"><span class="pidot ${L.cls}"></span>${e.product_id?`<img class="piicon" src="https://images.evetech.net/types/${e.product_id}/icon?size=32" onerror="this.style.visibility='hidden'">`:`<span class="piicon"></span>`}<span class="piname">${esc(e.product||'?')} <span class="sub">· ${e.heads} ${en?'heads':'Köpfe'}</span></span><span class="piexp ${L.cls}">${L.txt}</span></div>`;});
    if(!(col.extractors||[]).length)body+=`<div class="sub">${en?'No active extractors':'Keine aktiven Extraktoren'}</div>`;
@@ -6775,18 +6757,6 @@ function renderPlaneten(pl){
   if(collapsed.has(n))collapsed.delete(n);else collapsed.add(n);
   try{localStorage.setItem('collapsed',JSON.stringify([...collapsed]));}catch(e){}
   renderPlaneten(lastPlaneten);});
- document.querySelectorAll('.pibtn').forEach(b=>b.onclick=()=>piOpen(b.dataset.char,b.dataset.kind,b.dataset.id));
-}
-// Im Client des jeweiligen Chars ausloesen (Planet-Info zeigen / Route setzen).
-// Ergebnis in piMsg, damit die Meldung die 2s-Ticks uebersteht.
-let piMsg=null;
-async function piOpen(char,kind,id){
- const en=lang==='en';
- if(!id){piMsg={ts:Date.now()/1000,text:en?'No target for this action.':'Kein Ziel für diese Aktion.'};renderPlaneten(lastPlaneten);return;}
- piMsg={ts:Date.now()/1000,text:(en?'Sending to client …':'Sende an Client …')};renderPlaneten(lastPlaneten);
- let r;try{r=await post({action:'ui_open',char,kind,id:Number(id)});}catch(e){r=null;}
- piMsg={ts:Date.now()/1000,text:char+': '+(r?(r.msg||''):(en?'client not reachable (open and online?)':'Client nicht erreichbar (offen und online?)'))};
- renderPlaneten(lastPlaneten);
 }
 // Live-Kampfkachel(n) fuer Chars, die gerade eine Mission fliegen: Portrait
 // mittig, Schaden raus links, Schaden rein rechts, darunter Gesamtschaden,
