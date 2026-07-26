@@ -1,5 +1,17 @@
 [
  {
+  "v": "1.65.0",
+  "d": "2026-07-26",
+  "de": [
+   "Jeder Bereich hat jetzt oben einen aufklappbaren Kasten „Was ist das?\". Darin steht in einfacher Sprache, was der Bereich macht und woher die Zahlen kommen: aus deinen Logdateien, aus dem EVE-Login oder aus öffentlichen Quellen. So siehst du für jeden Tab auf einen Blick, was den Rechner verlässt und was nicht.",
+   "Der Kasten merkt sich, ob du ihn auf- oder zugeklappt hast, und gilt dann für alle Bereiche."
+  ],
+  "en": [
+   "Every section now has a fold-out box „What is this?\" at the top. It explains in plain words what the section does and where its numbers come from: your log files, the EVE login or public sources. That way you can see per tab what leaves your machine and what does not.",
+   "The box remembers whether you folded it open or shut, and then applies to all sections."
+  ]
+ },
+ {
   "v": "1.64.0",
   "d": "2026-07-26",
   "de": [

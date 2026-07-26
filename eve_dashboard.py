@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.64.0"
+VERSION = "1.65.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -5923,6 +5923,12 @@ padding:4px 11px;border-radius:20px;cursor:pointer;user-select:none}
 .rolesel:hover{color:var(--txt);border-color:var(--cyan)}
 html[data-skin=photon] .rolesel{border-radius:1px}
 nav{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:14px}
+.vinfo{background:var(--inset);border:1px solid var(--line);border-radius:8px;
+ padding:8px 12px;margin:10px 0}
+.vitog{color:var(--cyan);font-size:12px;cursor:pointer;user-select:none}
+.vitxt p{margin:8px 0 0;font-size:13px;line-height:1.5}
+.vitxt .vidata{color:var(--dim);font-size:12px}
+html[data-skin=photon] .vinfo{border-radius:1px}
 nav span{color:var(--dim);font-size:12px;padding:7px 16px;cursor:pointer;user-select:none}
 nav span.on{color:var(--cyan);border-bottom:2px solid var(--cyan)}
 #alerts{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
@@ -6221,6 +6227,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="vault">💎 Erz-Schatzkammer</span>
  <span data-v="rechner">💰 ISKray</span>
 </nav>
+<div id="viewinfo"></div>
 <div id="updBanner" hidden></div>
 <div id="alerts"></div>
 <div id="hero"></div>
@@ -6352,6 +6359,7 @@ window.addEventListener('popstate',()=>{
  view=location.pathname.replace(/^\\//,'')||'live';
  if(!VIEWS.includes(view))view='live';
  document.querySelectorAll('nav span').forEach(x=>x.classList.toggle('on',x.dataset.v===view));
+ renderViewInfo();
  tick();
 });
 
@@ -6385,9 +6393,54 @@ function applyFs(){
 applyFs();
 $('#fontsize').onclick=()=>{fontsize=fontsize%3+1;localStorage.setItem('fontsize',fontsize);applyFs();};
 
+// Kurze Erklaerung je Bereich, in einfacher Sprache: was macht der Tab, und
+// woher kommen die Daten. Der Datenherkunfts-Satz ist Absicht, damit jeder
+// nachlesen kann, was den Rechner verlaesst.
+const VIEW_INFO={
+ live:{d:'Hier siehst du, was gerade passiert. Für jeden Charakter eine Karte mit Erz, ISK, Schaden und Warnungen. Die Zahlen werden alle zwei Sekunden frisch aus deinen Logdateien gelesen.',
+  q:'Daten: die Logdateien, die dein EVE-Client auf diesem Rechner schreibt. Marktpreise von Fuzzwork. Wenn du den EVE-Login benutzt, kommen Schiff, Kontostand und Frachtraum-Wert dazu, die sind bis zu eine Stunde alt.'},
+ month:{d:'Die letzten 30 Tage, ein Balken für jeden Tag. So siehst du auf einen Blick, an welchen Tagen du viel geschafft hast.',
+  q:'Daten: die Datenbank von Canary auf diesem Rechner, gefüllt aus deinen Logdateien.'},
+ total:{d:'Alles zusammengezählt, seit Canary mitschreibt: Erz, ISK, Schaden und Gegner, aufgeteilt nach Charakter.',
+  q:'Daten: die Datenbank von Canary auf diesem Rechner, gefüllt aus deinen Logdateien.'},
+ analyse:{d:'Auswertung über längere Zeit. Welche Waffen du benutzt, wer dich angegriffen hat, welches Erz am meisten einbringt und zu welchen Zeiten du spielst.',
+  q:'Daten: die Datenbank von Canary auf diesem Rechner, dazu Marktpreise von Fuzzwork.'},
+ intel:{d:'Zwei Werkzeuge gegen böse Überraschungen. Die Ampel bewertet Piloten, die im Local schreiben. Die Blutspur zeigt Rudel, die in deiner Nähe Schiffe abschießen, und warnt, wenn sie näher kommen.',
+  q:'Daten: deine Chatlogs auf diesem Rechner. Zu gefundenen Namen fragt Canary öffentliche Quellen: zKillboard und die EVE-Datenbank. Die Abschuss-Meldungen kommen von einem öffentlichen Killmail-Dienst. Über dich wird nichts gesendet.'},
+ missionen:{d:'Deine Missionen. Was du gerade bekämpfst, welche Mission es vermutlich ist, gegen welche Fraktion es geht und was am Ende dabei herauskam.',
+  q:'Daten: deine Logdateien für den Kampf. Mit EVE-Login zusätzlich das Wallet-Journal für die Belohnung, das ist bis zu eine Stunde alt. Wichtig: der Missionsname steht in keiner Datei. Canary erkennt ihn an den Gegnern und schreibt dazu, wie sicher es sich ist.'},
+ timeline:{d:'Dein Tag als Zeitstrahl. Jeder Mining-Trip, jeder Kampf und jede Belohnung ist ein Eintrag, von jetzt nach hinten.',
+  q:'Daten: deine Logdateien und, wenn du den EVE-Login benutzt, die Belohnungen aus dem Wallet-Journal.'},
+ profil:{d:'Ein Steckbrief je Charakter: Bild, Corp, Schiff und Vermögen. Das Netz daneben zeigt, worin dieser Charakter stark ist, im Vergleich zu deinen anderen.',
+  q:'Daten: die Datenbank von Canary für das Netz. Mit EVE-Login Bild, Kontostand und Schiff. Corp und Sicherheitsstatus über öffentliche Quellen.'},
+ planeten:{d:'Deine Planeten-Fabriken. Wann läuft ein Extraktor ab, was liegt im Lager, was wird produziert und was ist es wert.',
+  q:'Daten: nur über den EVE-Login. Achtung: die Lagerstände sind so aktuell, wie du die Kolonie zuletzt im Spiel geöffnet hast. Die Ablaufzeiten stimmen dagegen immer.'},
+ vault:{d:'Dein Erz in den Stationen, und der Rat, was sich mehr lohnt: roh verkaufen, komprimiert verkaufen oder einschmelzen.',
+  q:'Daten: EVE-Login für den Bestand, Marktpreise von Fuzzwork. Der Einschmelz-Wert ist vorsichtig gerechnet, dein echter Erlös liegt eher darüber.'},
+ rechner:{d:'Ein Preisrechner. Frachtraum im Spiel markieren, kopieren, hier einfügen, und du siehst sofort, was es an welchem Handelsplatz wert ist.',
+  q:'Daten: Marktpreise von Fuzzwork für die großen Handelsplätze. Der Text, den du einfügst, bleibt auf deinem Rechner.'}};
+function renderViewInfo(){
+ const box=$('#viewinfo');if(!box)return;
+ const inf=VIEW_INFO[view],offen=lsGet('viewinfo',true),schl=view+'|'+offen;
+ if(box.dataset.k===schl)return;   // sonst baut der 2s-Takt den Kasten dauernd neu
+ box.dataset.k=schl;
+ if(!inf){box.innerHTML='';return;}
+ // Pfeil in eigenem Element: sonst haengt er im uebersetzten Text mit drin
+ box.innerHTML='<div class="vinfo"><span class="vitog"><span class="viarr">'+(offen?'▾':'▸')+'</span> Was ist das?</span>'
+  +(offen?'<div class="vitxt"><p>'+inf.d+'</p><p class="vidata">'+inf.q+'</p></div>':'')+'</div>';
+ box.querySelector('.vitog').onclick=()=>{
+  localStorage.setItem('viewinfo',JSON.stringify(!offen));
+  renderViewInfo();
+  if(lang!=='de')tr(document.body);   // frisch gebaut -> sonst kurz deutsch
+ };
+ if(lang!=='de')tr(document.body);
+}
 document.querySelectorAll('nav span').forEach(el=>el.onclick=()=>{
  document.querySelectorAll('nav span').forEach(x=>x.classList.remove('on'));
  el.classList.add('on');view=el.dataset.v;
+ // Direkt umschalten: tick() faellt aus, solange noch eine Abfrage laeuft
+ // (tickBusy), der Kasten haette sonst bis zu zwei Sekunden den alten Text.
+ renderViewInfo();
  history.pushState(null,'','/'+(view==='live'?'':view));tick();});
 document.querySelectorAll('nav span').forEach(x=>x.classList.toggle('on',x.dataset.v===view));
 
@@ -8641,6 +8694,49 @@ const EN = {
  'The mini overlay needs Chrome or Edge (Document Picture-in-Picture).',
 'Canary beim Systemstart automatisch mitstarten (still im Hintergrund, ohne Konsolenfenster)':
  'Start Canary automatically with the system (quietly in the background, no console window)',
+'Was ist das?':'What is this?',
+'Hier siehst du, was gerade passiert. Für jeden Charakter eine Karte mit Erz, ISK, Schaden und Warnungen. Die Zahlen werden alle zwei Sekunden frisch aus deinen Logdateien gelesen.':
+ 'This shows what is happening right now. One card per character with ore, ISK, damage and warnings. The numbers are read fresh from your log files every two seconds.',
+'Daten: die Logdateien, die dein EVE-Client auf diesem Rechner schreibt. Marktpreise von Fuzzwork. Wenn du den EVE-Login benutzt, kommen Schiff, Kontostand und Frachtraum-Wert dazu, die sind bis zu eine Stunde alt.':
+ 'Data: the log files your EVE client writes on this machine. Market prices from Fuzzwork. If you use the EVE login, ship, wallet balance and cargo value are added, those can be up to an hour old.',
+'Die letzten 30 Tage, ein Balken für jeden Tag. So siehst du auf einen Blick, an welchen Tagen du viel geschafft hast.':
+ 'The last 30 days, one bar per day. That way you can see at a glance which days went well.',
+'Daten: die Datenbank von Canary auf diesem Rechner, gefüllt aus deinen Logdateien.':
+ 'Data: the Canary database on this machine, filled from your log files.',
+'Alles zusammengezählt, seit Canary mitschreibt: Erz, ISK, Schaden und Gegner, aufgeteilt nach Charakter.':
+ 'Everything added up since Canary started recording: ore, ISK, damage and enemies, split by character.',
+'Auswertung über längere Zeit. Welche Waffen du benutzt, wer dich angegriffen hat, welches Erz am meisten einbringt und zu welchen Zeiten du spielst.':
+ 'A look at the longer run. Which weapons you use, who attacked you, which ore pays best and what times you play.',
+'Daten: die Datenbank von Canary auf diesem Rechner, dazu Marktpreise von Fuzzwork.':
+ 'Data: the Canary database on this machine, plus market prices from Fuzzwork.',
+'Zwei Werkzeuge gegen böse Überraschungen. Die Ampel bewertet Piloten, die im Local schreiben. Die Blutspur zeigt Rudel, die in deiner Nähe Schiffe abschießen, und warnt, wenn sie näher kommen.':
+ 'Two tools against nasty surprises. The traffic light rates pilots who talk in local. The Blood Trail shows packs that are killing ships near you, and warns you when they come closer.',
+'Daten: deine Chatlogs auf diesem Rechner. Zu gefundenen Namen fragt Canary öffentliche Quellen: zKillboard und die EVE-Datenbank. Die Abschuss-Meldungen kommen von einem öffentlichen Killmail-Dienst. Über dich wird nichts gesendet.':
+ 'Data: your chat logs on this machine. For names it finds, Canary asks public sources: zKillboard and the EVE database. The kill reports come from a public killmail service. Nothing about you is sent anywhere.',
+'Deine Missionen. Was du gerade bekämpfst, welche Mission es vermutlich ist, gegen welche Fraktion es geht und was am Ende dabei herauskam.':
+ 'Your missions. What you are fighting right now, which mission it probably is, which faction you are up against and what it paid in the end.',
+'Daten: deine Logdateien für den Kampf. Mit EVE-Login zusätzlich das Wallet-Journal für die Belohnung, das ist bis zu eine Stunde alt. Wichtig: der Missionsname steht in keiner Datei. Canary erkennt ihn an den Gegnern und schreibt dazu, wie sicher es sich ist.':
+ 'Data: your log files for the combat part. With the EVE login also the wallet journal for the reward, which can be up to an hour old. Important: the mission name is in no file at all. Canary infers it from the enemies and tells you how sure it is.',
+'Dein Tag als Zeitstrahl. Jeder Mining-Trip, jeder Kampf und jede Belohnung ist ein Eintrag, von jetzt nach hinten.':
+ 'Your day as a timeline. Every mining trip, every fight and every reward is one entry, from now backwards.',
+'Daten: deine Logdateien und, wenn du den EVE-Login benutzt, die Belohnungen aus dem Wallet-Journal.':
+ 'Data: your log files and, if you use the EVE login, the rewards from the wallet journal.',
+'Ein Steckbrief je Charakter: Bild, Corp, Schiff und Vermögen. Das Netz daneben zeigt, worin dieser Charakter stark ist, im Vergleich zu deinen anderen.':
+ 'A character sheet for each pilot: portrait, corp, ship and wealth. The web next to it shows what this character is strong at, compared to your others.',
+'Daten: die Datenbank von Canary für das Netz. Mit EVE-Login Bild, Kontostand und Schiff. Corp und Sicherheitsstatus über öffentliche Quellen.':
+ 'Data: the Canary database for the web. With the EVE login portrait, wallet balance and ship. Corp and security status from public sources.',
+'Deine Planeten-Fabriken. Wann läuft ein Extraktor ab, was liegt im Lager, was wird produziert und was ist es wert.':
+ 'Your planetary factories. When does an extractor run out, what is in storage, what is being produced and what is it worth.',
+'Daten: nur über den EVE-Login. Achtung: die Lagerstände sind so aktuell, wie du die Kolonie zuletzt im Spiel geöffnet hast. Die Ablaufzeiten stimmen dagegen immer.':
+ 'Data: only through the EVE login. Careful: storage levels are only as fresh as the last time you opened the colony in game. The expiry times, however, are always correct.',
+'Dein Erz in den Stationen, und der Rat, was sich mehr lohnt: roh verkaufen, komprimiert verkaufen oder einschmelzen.':
+ 'Your ore sitting in stations, plus advice on what pays more: selling it raw, selling it compressed or reprocessing it.',
+'Daten: EVE-Login für den Bestand, Marktpreise von Fuzzwork. Der Einschmelz-Wert ist vorsichtig gerechnet, dein echter Erlös liegt eher darüber.':
+ 'Data: EVE login for the stock, market prices from Fuzzwork. The reprocessing value is calculated conservatively, your real return is likely higher.',
+'Ein Preisrechner. Frachtraum im Spiel markieren, kopieren, hier einfügen, und du siehst sofort, was es an welchem Handelsplatz wert ist.':
+ 'A price calculator. Select your cargo hold in game, copy it, paste it here, and you immediately see what it is worth at which trade hub.',
+'Daten: Marktpreise von Fuzzwork für die großen Handelsplätze. Der Text, den du einfügst, bleibt auf deinem Rechner.':
+ 'Data: market prices from Fuzzwork for the major trade hubs. The text you paste stays on your machine.',
 'Anonym mitzählen lassen':'Let this install be counted anonymously',
 'Einmal am Tag holt Canary eine leere Datei von GitHub, deren Name nur das Datum enthält. Gesendet wird dabei nichts: keine Kennung, keine Namen, keine Spieldaten. GitHub zählt nur, wie oft die Datei ausgeliefert wurde, und daraus wird sichtbar, wie viele Installationen es gibt. Ohne diese Zahl gibt es keinen Nachweis für die EVE-Partnerschaft.':
  'Once a day Canary fetches an empty file from GitHub whose name only contains the date. Nothing is sent: no identifier, no names, no game data. GitHub merely counts how often that file was served, which shows how many installations exist. Without that number there is no proof for the EVE partnership.',
@@ -8841,7 +8937,7 @@ async function tick(){
  try{
   const d=await (await fetch('/data?view='+reqView,{cache:'no-store'})).json();
   if(reqView!==view)return;  // Nutzer hat inzwischen gewechselt -> Antwort verwerfen
-  state=d.state;regionPills();handleAlerts();updateBadge();updateBanner();serverBadge();bootScreen();
+  state=d.state;regionPills();handleAlerts();updateBadge();updateBanner();serverBadge();bootScreen();renderViewInfo();
   if(state.log_ok===false){renderSetup();return;}
   if(!$('#setup').hidden){$('#setup').hidden=true;$('#setup').dataset.built='';}
   if(view!=='live'&&view!=='month'&&view!=='total'&&view!=='analyse')$('#empty').hidden=true;
