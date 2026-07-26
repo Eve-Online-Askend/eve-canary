@@ -9,6 +9,7 @@ Start:  python eve_dashboard.py   ->  http://localhost:8765
 """
 import base64
 import email.utils
+import gzip
 import hashlib
 import json
 import math
@@ -23,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.60.0"
+VERSION = "1.61.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -701,6 +702,20 @@ DB.execute("""
 CREATE TABLE IF NOT EXISTS events(char_id TEXT, ts REAL, kind TEXT, char TEXT,
     detail TEXT, UNIQUE(char_id, ts, kind));
 """)
+# v1.61: Blutspur-Radar. Roh-Kills der beobachteten Regionen (7 Tage Retention)
+# sind die einzige Wahrheit; Rudel-Cluster werden beim Start daraus deterministisch
+# neu gerechnet. pack_map = System-Stammdaten (Name, Sec, Position, Gate-Kanten,
+# einmalig aus ESI, resumefaehig). pack_archive = 14-Tage-Wiedererkennung.
+DB.execute("""CREATE TABLE IF NOT EXISTS pack_kills(
+    kill_id INTEGER PRIMARY KEY, ts REAL, system_id INTEGER, region TEXT,
+    score INTEGER, victim_ship INTEGER, value REAL, attackers TEXT,
+    sim INTEGER DEFAULT 0)""")
+DB.execute("""CREATE TABLE IF NOT EXISTS pack_map(
+    system_id INTEGER PRIMARY KEY, region TEXT, name TEXT, sec REAL,
+    x REAL, z REAL, gates TEXT)""")
+DB.execute("""CREATE TABLE IF NOT EXISTS pack_archive(
+    pack_id TEXT PRIMARY KEY, first_ts REAL, last_ts REAL, label TEXT,
+    members TEXT, corps TEXT, score REAL)""")
 DB.commit()
 
 
@@ -2938,6 +2953,11 @@ MINER_GROUPS = {463, 543,        # Mining Barge, Exhumer
                 28, 380, 1202,   # Hauler, Deep Space Transport, Blockade Runner
                 513, 902}        # Freighter, Jump Freighter
 THREAT_TTL = 12 * 3600           # Cache-Lebensdauer eines Profils
+# Blutspur-Radar: typische Gank-Huelle (ESI-verifizierte typeIDs) + CONCORD-Kennungen.
+GANK_HULLS = {16240, 16242, 16236, 16238,   # Catalyst, Thrasher, Coercer, Cormorant
+              4308, 4310, 4302, 4306}       # Talos, Tornado, Oracle, Naga
+CONCORD_CORP = 1000125
+CONCORD_FACTION = 500006
 
 
 class ThreatIntel(threading.Thread):
@@ -3194,6 +3214,615 @@ class ClipWatch(threading.Thread):
                 log_error("CN-CLIP-01", "ClipWatch.run", e)
 
 
+# ---------------------------------------------------------------- Blutspur-Radar
+KMSTREAM = "https://killmail.stream/poll/"
+
+
+class PackIntel(threading.Thread):
+    """Blutspur: erkennt aktive Gank-Rudel der beobachteten Regionen aus dem
+    oeffentlichen Killmail-Strom. Primaer killmail.stream-Longpoll (stdlib-
+    freundlich, volle Killmails inkl. Angreifer), Fallback + Warm-Start ueber
+    die zKill-Regional-API (max 1x/h, Cloudflare-Cache). Wer wiederholt
+    gemeinsam toetet, wird als Rudel gefuehrt, mit Jagdgebiet, Richtung und
+    ehrlichem 'zuletzt gesehen vor X min' (immer aus der Kill-Zeit, nie aus
+    der Empfangszeit). Opt-in, default aus; ein Rudel ist erst nach seinem
+    letzten Kill sichtbar (Echo-Prinzip, steht auch so im UI)."""
+    daemon = True
+
+    def __init__(self):
+        super().__init__()
+        self.lock = threading.Lock()   # schuetzt packs/member_index/heat/names
+        self.packs = {}                # pack_id -> {members,set corps Counter,...}
+        self.member_index = {}         # char_id -> pack_id
+        self.heat = {}                 # system_id -> [kill_ts,...] (2h)
+        self.names = {}                # id -> Name (Chars/Corps, /universe/names/)
+        self.sysrow = {}               # system_id -> (region, name, sec, x, z, gates)
+        self.region_ids = {}           # Regionsname -> region_id
+        self.mode = "aus"              # aus|laden|live|fallback|tot
+        self.map_progress = (0, 0)
+        self.last_kill_ts = 0
+        self.alerted = {}              # (pack_id, sprecher) -> last_seen beim Alarm
+        self.near_alerted = {}         # (pack_id, system) -> ts (Gold-Hinweis)
+        self.info_alerted = set()      # pack_id: Region-Hinweis schon gegeben
+        self._seen = set()             # kill_ids (Dedupe, Session)
+        self._pid = 0
+        self._fails = 0
+        self._last200 = time.time()
+        self._probe = (0, 0.0)         # (Erfolge, letzter Probezeitpunkt)
+        self._zkill_last = {}
+
+    # ---- Konfiguration -------------------------------------------------
+    def enabled(self):
+        return bool(CONFIG.get("pack_radar"))
+
+    def regions(self):
+        return list(CONFIG.get("pack_regions") or ["Essence", "The Citadel"])[:2]
+
+    def _queue(self):
+        q = CONFIG.get("pack_queue")
+        if not q:
+            q = "eve-canary-" + os.urandom(8).hex()
+            with CONFIG_LOCK:
+                CONFIG["pack_queue"] = q
+            save_config()
+        return q
+
+    def _get(self, url, timeout=30):
+        req = urllib.request.Request(url, headers={
+            "User-Agent": ESI_UA, "Accept-Encoding": "gzip"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read()
+            if (r.headers.get("Content-Encoding") or "") == "gzip":
+                raw = gzip.decompress(raw)
+            return json.loads(raw)
+
+    # ---- Karte / Stammdaten -------------------------------------------
+    def _load_map(self):
+        """System-Stammdaten der beobachteten Regionen aus der DB laden und
+        fehlende Teile aus ESI nachziehen (einmalig, gedrosselt, resumefaehig)."""
+        want = self.regions()
+        # Regions-IDs aufloesen (POST, aber nur einmal noetig)
+        need = [r for r in want if r not in self.region_ids]
+        if need:
+            req = urllib.request.Request(
+                ESI_BASE + "/universe/ids/", data=json.dumps(need).encode(),
+                headers={"Content-Type": "application/json", "User-Agent": ESI_UA})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                d = json.loads(r.read())
+            for x in d.get("regions", []):
+                self.region_ids[x["name"]] = x["id"]
+        with DB_LOCK:
+            rows = DB.execute("SELECT system_id,region,name,sec,x,z,gates "
+                              "FROM pack_map WHERE region IN (%s)" %
+                              ",".join("?" * len(want)), want).fetchall()
+        self.sysrow = {r[0]: (r[1], r[2], r[3], r[4], r[5],
+                              json.loads(r[6] or "[]")) for r in rows}
+        # Fehlen Regionen komplett? Systemliste anlegen (Region -> Konstellationen).
+        have_regions = {v[0] for v in self.sysrow.values()}
+        for rname in want:
+            if rname in have_regions:
+                continue
+            rid = self.region_ids.get(rname)
+            if not rid:
+                continue
+            reg = self._get(f"{ESI_BASE}/universe/regions/{rid}/")
+            for cid in reg.get("constellations", []):
+                con = self._get(f"{ESI_BASE}/universe/constellations/{cid}/")
+                with DB_LOCK:
+                    for sid in con.get("systems", []):
+                        DB.execute("INSERT OR IGNORE INTO pack_map(system_id,region) "
+                                   "VALUES(?,?)", (sid, rname))
+                    DB.commit()
+                time.sleep(0.15)
+            with DB_LOCK:
+                rows = DB.execute("SELECT system_id FROM pack_map WHERE region=?",
+                                  (rname,)).fetchall()
+            for (sid,) in rows:
+                self.sysrow.setdefault(sid, (rname, None, None, None, None, []))
+        # Details nachziehen (Name/Sec/Position/Gates), resumefaehig.
+        todo = [sid for sid, v in self.sysrow.items() if v[1] is None]
+        total = len(self.sysrow)
+        done = total - len(todo)
+        for sid in todo:
+            self.map_progress = (done, total)
+            try:
+                s = self._get(f"{ESI_BASE}/universe/systems/{sid}/")
+                gates = []
+                for gid in (s.get("stargates") or []):
+                    try:
+                        g = self._get(f"{ESI_BASE}/universe/stargates/{gid}/")
+                        dest = (g.get("destination") or {}).get("system_id")
+                        if dest:
+                            gates.append(dest)
+                    except Exception:
+                        pass
+                    time.sleep(0.1)
+                pos = s.get("position") or {}
+                row = (self.sysrow[sid][0], s.get("name"),
+                       round(s.get("security_status", 0), 2),
+                       pos.get("x"), pos.get("z"), gates)
+                self.sysrow[sid] = row
+                with DB_LOCK:
+                    DB.execute("UPDATE pack_map SET name=?,sec=?,x=?,z=?,gates=? "
+                               "WHERE system_id=?",
+                               (row[1], row[2], row[3], row[4],
+                                json.dumps(gates), sid))
+                    DB.commit()
+            except Exception as e:
+                log_error("CN-PACK-02", f"map {sid}", e)
+                time.sleep(1)
+            done += 1
+        self.map_progress = (total, total)
+
+    # ---- Kill-Verarbeitung ---------------------------------------------
+    def _kill_score(self, km, sysid):
+        """Gank-Relevanz 0..100 eines Kills (web-verifizierte Kennungen)."""
+        sc = 0
+        vship = (km.get("victim") or {}).get("ship_type_id")
+        vgrp = esi.type_group(vship) if vship else None
+        if vgrp in MINER_GROUPS:
+            sc += 40
+        atk = km.get("attackers") or []
+        if any(a.get("corporation_id") == CONCORD_CORP
+               or a.get("faction_id") == CONCORD_FACTION for a in atk):
+            sc += 25
+        row = self.sysrow.get(sysid)
+        if row and (row[2] or 0) >= 0.45:
+            sc += 15
+        if any(a.get("ship_type_id") in GANK_HULLS for a in atk):
+            sc += 15
+        if vgrp == 29:                      # Pod-Nachsetzer
+            sc += 5
+        return min(sc, 100)
+
+    def _ingest(self, km, src, persist=True):
+        kid = km.get("killmail_id")
+        sysid = km.get("solar_system_id")
+        if not kid or kid in self._seen or sysid not in self.sysrow:
+            return False
+        self._seen.add(kid)
+        kt = 0
+        try:
+            kt = datetime.fromisoformat(
+                (km.get("killmail_time") or "").replace("Z", "+00:00")).timestamp()
+        except Exception:
+            kt = time.time()
+        zkb = km.get("zkb") or {}
+        if zkb.get("npc"):                 # reine NPC-Kills sind kein Rudel-Signal
+            return False
+        atk = [a for a in (km.get("attackers") or []) if a.get("character_id")]
+        score = self._kill_score(km, sysid)
+        self.last_kill_ts = max(self.last_kill_ts, kt)
+        self.heat.setdefault(sysid, []).append(kt)
+        if persist:
+            with DB_LOCK:
+                DB.execute("INSERT OR IGNORE INTO pack_kills VALUES(?,?,?,?,?,?,?,?,?)",
+                           (kid, kt, sysid, self.sysrow[sysid][0], score,
+                            (km.get("victim") or {}).get("ship_type_id"),
+                            zkb.get("totalValue"),
+                            json.dumps([[a.get("character_id"), a.get("corporation_id"),
+                                         a.get("ship_type_id")] for a in atk]),
+                            1 if src == "sim" else 0))
+                DB.commit()
+        self._cluster(kid, kt, sysid, score,
+                      [[a.get("character_id"), a.get("corporation_id"),
+                        a.get("ship_type_id")] for a in atk])
+        return True
+
+    def _cluster(self, kid, kt, sysid, score, atk):
+        """Inkrementelle Rudel-Zuordnung (Spez: overlap>=2 ODER overlap>=1 mit
+        50% Anteil ODER overlap>=1 bei score>=60; Merge nur bei >=2 gemeinsamen)."""
+        chars = {a[0] for a in atk if a[0]}
+        if not chars or len(chars) > 30:    # Blob-Kappung: keine Rudel-Zuordnung
+            return
+        with self.lock:
+            matches = []
+            for pid, p in self.packs.items():
+                ov = len(chars & p["members"])
+                if ov >= 2 or (ov >= 1 and (ov / len(chars) >= 0.5 or score >= 60)):
+                    matches.append((ov, pid))
+            matches.sort(reverse=True)
+            strong = [pid for ov, pid in matches if ov >= 2]
+            if len(strong) > 1:             # Merge nur bei harter Ueberlappung
+                base = strong[0]
+                for pid in strong[1:]:
+                    q = self.packs.pop(pid)
+                    b = self.packs[base]
+                    b["members"] |= q["members"]
+                    b["kills"] += q["kills"]
+                    b["corps"].update(q["corps"])
+                    b["ships"].update(q["ships"])
+                    b["systems"] = (q["systems"] + b["systems"])[-12:]
+                    b["value"] += q["value"]
+                target = base
+            elif matches:
+                target = matches[0][1]
+            else:
+                if len(chars) < 2 and score < 65:
+                    return                   # Einzelgaenger nur bei hartem Gank
+                self._pid += 1
+                target = f"p{self._pid}"
+                self.packs[target] = {"members": set(), "kills": 0, "score": 0.0,
+                                      "first": kt, "last": 0, "systems": [],
+                                      "corps": {}, "ships": {}, "value": 0.0,
+                                      "kls": {}, "again": self._recognize(chars)}
+            p = self.packs[target]
+            dt = max(kt - p["last"], 0) if p["last"] else 0
+            p["score"] = score + p["score"] * (0.5 ** (dt / 2700.0)) if p["last"] else float(score)
+            p["members"] |= chars
+            p["kills"] += 1
+            p["last"] = max(p["last"], kt)
+            if not p["systems"] or p["systems"][-1][0] != sysid:
+                p["systems"].append((sysid, kt))
+                p["systems"] = p["systems"][-12:]
+            else:
+                p["systems"][-1] = (sysid, kt)
+            for a in atk:
+                if a[1]:
+                    p["corps"][a[1]] = p["corps"].get(a[1], 0) + 1
+                if a[2]:
+                    p["ships"][a[2]] = p["ships"].get(a[2], 0) + 1
+                if a[0]:
+                    p["kls"][a[0]] = p["kls"].get(a[0], 0) + 1
+            for c in chars:
+                self.member_index[c] = target
+
+    def _recognize(self, chars):
+        """14-Tage-Wiedererkennung: >=50% Mitglieder-Ueberlappung mit dem Archiv."""
+        try:
+            with DB_LOCK:
+                rows = DB.execute("SELECT label, members FROM pack_archive "
+                                  "WHERE last_ts>?", (time.time() - 14 * 86400,)).fetchall()
+            for label, mj in rows:
+                old = set(json.loads(mj or "[]"))
+                if old and len(chars & old) / max(len(chars), 1) >= 0.5:
+                    return label
+        except Exception:
+            pass
+        return None
+
+    def _status(self, p, now):
+        age = now - p["last"]
+        return "aktiv" if age <= 1200 else ("abklingend" if age <= 5400 else "inaktiv")
+
+    def _visible(self, p):
+        return (p["score"] >= 50 and
+                (len(p["members"]) >= 2 and p["kills"] >= 2 or p["score"] >= 65))
+
+    def _prune(self, now):
+        with self.lock:
+            for pid in [pid for pid, p in self.packs.items() if now - p["last"] > 86400]:
+                p = self.packs.pop(pid)
+                try:
+                    label = self._label(p)
+                    with DB_LOCK:
+                        DB.execute("INSERT OR REPLACE INTO pack_archive VALUES(?,?,?,?,?,?,?)",
+                                   (pid, p["first"], p["last"], label,
+                                    json.dumps(sorted(p["members"])),
+                                    json.dumps(sorted(p["corps"])), p["score"]))
+                        DB.commit()
+                except Exception:
+                    pass
+                for c in [c for c, x in self.member_index.items() if x == pid]:
+                    del self.member_index[c]
+            cut = now - 7200
+            for sid in list(self.heat):
+                self.heat[sid] = [t for t in self.heat[sid] if t > cut]
+                if not self.heat[sid]:
+                    del self.heat[sid]
+        with DB_LOCK:
+            DB.execute("DELETE FROM pack_kills WHERE ts<?", (now - 7 * 86400,))
+            DB.commit()
+
+    def _label(self, p):
+        top = max(p["corps"], key=p["corps"].get) if p["corps"] else None
+        nm = self.names.get(top) or (f"Corp #{top}" if top else "Unbekannt")
+        return nm
+
+    def _resolve_names(self):
+        ids = set()
+        with self.lock:
+            for p in self.packs.values():
+                ids |= set(list(p["members"])[:60])
+                ids |= set(p["corps"])
+        ids -= set(self.names)
+        ids = [i for i in ids if isinstance(i, int)][:900]
+        if not ids:
+            return
+        try:
+            req = urllib.request.Request(
+                ESI_BASE + "/universe/names/", data=json.dumps(ids).encode(),
+                headers={"Content-Type": "application/json", "User-Agent": ESI_UA})
+            with urllib.request.urlopen(req, timeout=25) as r:
+                for x in json.loads(r.read()):
+                    self.names[x["id"]] = x["name"]
+        except Exception:
+            pass
+
+    # ---- zKill (Warm-Start + Fallback) ----------------------------------
+    def _zkill(self, past=10800):
+        for rname in self.regions():
+            rid = self.region_ids.get(rname)
+            if not rid or time.time() - self._zkill_last.get(rname, 0) < 3600:
+                continue
+            self._zkill_last[rname] = time.time()
+            try:
+                rows = self._get(f"https://zkillboard.com/api/regionID/{rid}"
+                                 f"/pastSeconds/{past}/", timeout=45)
+                for km in sorted(rows, key=lambda k: k.get("killmail_time") or ""):
+                    self._ingest(km, "zkill")
+            except Exception as e:
+                log_error("CN-PACK-01", f"zkill {rname}", e)
+
+    # ---- Alarme ----------------------------------------------------------
+    def _alarms(self, now):
+        # ROT: bekanntes Rudel-Mitglied spricht in einem eigenen Local.
+        speakers = dict(chatwatch.speakers)
+        for low, sp in speakers.items():
+            if now - sp.get("ts", 0) > 900:
+                continue
+            prof = threat.cached(sp.get("name") or low) or {}
+            cid = prof.get("id")
+            pid = self.member_index.get(cid)
+            if not pid:
+                continue
+            with self.lock:
+                p = self.packs.get(pid)
+                if not p or self._status(p, now) == "inaktiv" or p["score"] < 50:
+                    continue
+                key = (pid, low)
+                if self.alerted.get(key) == p["last"]:
+                    continue
+                self.alerted[key] = p["last"]
+                label = self._label(p)
+                n = len(p["members"])
+                mins = max(0, int((now - p["last"]) // 60))
+                sysn = (self.sysrow.get(p["systems"][-1][0]) or (None, "?"))[1] \
+                    if p["systems"] else "?"
+            alerts.push("pack", sp.get("name") or low,
+                        f"🩸 Bekanntes Rudel im Local: {sp.get('name') or low} gehört zu "
+                        f"Rudel [{label}] ({n} Piloten, zuletzt aktiv vor {mins} min in {sysn})")
+        # GOLD (Options-Schalter): Sprecher ist nur in der CORP eines aktiven
+        # Rudels, stand selbst aber auf keiner Killmail (faengt Scouts).
+        if CONFIG.get("pack_corp_alert"):
+            corp_map = {}
+            with self.lock:
+                for pid, p in self.packs.items():
+                    if self._status(p, now) == "inaktiv" or not self._visible(p):
+                        continue
+                    for c in p["corps"]:
+                        nm = self.names.get(c)
+                        if nm:
+                            corp_map[nm.lower()] = (pid, self._label(p))
+            for low, sp in speakers.items():
+                if now - sp.get("ts", 0) > 900:
+                    continue
+                prof = threat.cached(sp.get("name") or low) or {}
+                if prof.get("id") and self.member_index.get(prof.get("id")):
+                    continue                      # echtes Mitglied -> ROT oben
+                hit = corp_map.get((prof.get("corp") or "").lower())
+                if not hit:
+                    continue
+                key = ("corp", hit[0], low)
+                if now - self.near_alerted.get(key, 0) < 900:
+                    continue
+                self.near_alerted[key] = now
+                alerts.push("packinfo", sp.get("name") or low,
+                            f"🩸 Rudel-Corp im Local: {sp.get('name') or low} "
+                            f"ist in der Corp von Rudel [{hit[1]}]")
+        # GOLD: Rudel-Kill nahe (<=2 Spruenge) an einem eigenen System.
+        own = set()
+        with ingest.lock:
+            for s in ingest.sessions.values():
+                if s.system and s.last_event_ts and now - s.last_event_ts < 900:
+                    own.add(s.system)
+        if own:
+            name2id = {v[1]: sid for sid, v in self.sysrow.items() if v[1]}
+            own_ids = {name2id[n] for n in own if n in name2id}
+            near = set()
+            for oid in own_ids:
+                near |= self._bfs(oid, 2)
+            with self.lock:
+                for pid, p in self.packs.items():
+                    if not p["systems"] or not self._visible(p):
+                        continue
+                    sid, kt = p["systems"][-1]
+                    if sid in near and now - kt < 3600 \
+                            and self._status(p, now) != "inaktiv":
+                        key = (pid, sid)
+                        if now - self.near_alerted.get(key, 0) < 900:
+                            continue
+                        self.near_alerted[key] = now
+                        sysn = (self.sysrow.get(sid) or (None, "?"))[1]
+                        alerts.push("packinfo", self._label(p),
+                                    f"🩸 Rudel [{self._label(p)}]: Kill in der Nähe ({sysn})")
+
+    def _start_info(self, now):
+        """Einmaliger Hinweis je Rudel: 'seit N min in deiner Region aktiv'."""
+        with self.lock:
+            for pid, p in self.packs.items():
+                if pid in self.info_alerted or not self._visible(p):
+                    continue
+                if self._status(p, now) != "aktiv":
+                    continue
+                self.info_alerted.add(pid)
+                mins = max(1, int((now - p["first"]) // 60))
+                region = (self.sysrow.get(p["systems"][-1][0]) or ("?",))[0] \
+                    if p["systems"] else "?"
+                alerts.push("packinfo", self._label(p),
+                            f"🩸 Rudel [{self._label(p)}] seit {mins} min in {region} aktiv "
+                            f"({len(p['members'])} Piloten)")
+
+    def _bfs(self, start, depth):
+        seen = {start}
+        frontier = {start}
+        for _ in range(depth):
+            nxt = set()
+            for sid in frontier:
+                row = self.sysrow.get(sid)
+                for g in (row[5] if row else []):
+                    if g not in seen:
+                        seen.add(g)
+                        nxt.add(g)
+            frontier = nxt
+        return seen
+
+    # ---- Snapshot fuer das Frontend --------------------------------------
+    def snapshot(self):
+        now = time.time()
+        out = {"on": self.enabled(), "mode": self.mode,
+               "regions": self.regions(),
+               "corp_alert": bool(CONFIG.get("pack_corp_alert")),
+               "map_progress": list(self.map_progress),
+               "last_kill_age": int(now - self.last_kill_ts) if self.last_kill_ts else None,
+               "packs": [], "roster": [], "maps": []}
+        if not self.enabled():
+            return out
+        with self.lock:
+            for pid, p in self.packs.items():
+                st = self._status(p, now)
+                if st == "inaktiv" or not self._visible(p):
+                    continue
+                syss = [( (self.sysrow.get(s) or (None, "?"))[1], int(t)) for s, t in p["systems"][-5:]]
+                ships = sorted(p["ships"], key=p["ships"].get, reverse=True)[:4]
+                mem = sorted(p["kls"].items(), key=lambda x: -x[1])[:8]
+                out["packs"].append({
+                    "id": pid, "label": self._label(p), "again": p.get("again"),
+                    "status": st, "score": round(p["score"]),
+                    "members": len(p["members"]), "kills": p["kills"],
+                    "last_seen": int(p["last"]),
+                    "last_system": syss[-1][0] if syss else "?",
+                    "systems": [s for s, _ in syss],
+                    "ships": [esi.type_name(t) or str(t) for t in ships],
+                    "top": [{"id": c, "name": self.names.get(c) or str(c), "kills": k}
+                            for c, k in mem]})
+                for c, k in mem:
+                    out["roster"].append({"id": c, "name": self.names.get(c) or str(c),
+                                          "pack": self._label(p), "kills": k,
+                                          "last_seen": int(p["last"]),
+                                          "status": st})
+            out["packs"].sort(key=lambda x: -x["score"])
+            out["roster"].sort(key=lambda x: -x["kills"])
+            out["roster"] = out["roster"][:30]
+            # Karten je Region: normalisierte Koordinaten (x/z -> 1000x700).
+            own_names = set()
+            with ingest.lock:
+                for s in ingest.sessions.values():
+                    if s.system:
+                        own_names.add(s.system)
+            pack_sys = {}
+            for pk in out["packs"]:
+                pack_sys.setdefault(pk["last_system"], []).append(pk["label"])
+            for rname in self.regions():
+                rows = [(sid, v) for sid, v in self.sysrow.items()
+                        if v[0] == rname and v[3] is not None]
+                if not rows:
+                    continue
+                xs = [v[3] for _, v in rows]
+                zs = [v[4] for _, v in rows]
+                x0, x1 = min(xs), max(xs)
+                z0, z1 = min(zs), max(zs)
+                dx = (x1 - x0) or 1.0
+                dz = (z1 - z0) or 1.0
+                idx = {}
+                systems = []
+                for i, (sid, v) in enumerate(rows):
+                    idx[sid] = i
+                    systems.append({
+                        "name": v[1], "sec": v[2],
+                        "x": round(40 + 920 * (v[3] - x0) / dx),
+                        "y": round(40 + 620 * (1 - (v[4] - z0) / dz)),
+                        "heat": len(self.heat.get(sid, [])),
+                        "own": v[1] in own_names,
+                        "packs": pack_sys.get(v[1], [])})
+                edges = set()
+                for sid, v in rows:
+                    for g in v[5]:
+                        if g in idx:
+                            edges.add((min(idx[sid], idx[g]), max(idx[sid], idx[g])))
+                # Richtungspfeil NUR bei echter Bewegung: >=2 verschiedene Systeme
+                # binnen 45 min und <=4 Spruenge, sonst gilt "stationaer".
+                arrows = []
+                for p in self.packs.values():
+                    if not self._visible(p) or self._status(p, now) == "inaktiv":
+                        continue
+                    seq = [(s, t) for s, t in p["systems"] if s in idx]
+                    if len(seq) >= 2:
+                        (s1, t1), (s2, t2) = seq[-2], seq[-1]
+                        if s1 != s2 and t2 - t1 <= 2700 and s2 in self._bfs(s1, 4):
+                            a, b = systems[idx[s1]], systems[idx[s2]]
+                            arrows.append({"x1": a["x"], "y1": a["y"],
+                                           "x2": b["x"], "y2": b["y"]})
+                out["maps"].append({"region": rname, "systems": systems,
+                                    "edges": sorted(edges), "arrows": arrows})
+        return out
+
+    # ---- Hauptschleife ----------------------------------------------------
+    def run(self):
+        time.sleep(8)
+        while True:
+            try:
+                if not self.enabled():
+                    self.mode = "aus"
+                    time.sleep(20)
+                    continue
+                if not self.sysrow or any(v[1] is None for v in self.sysrow.values()):
+                    self.mode = "laden"
+                    self._load_map()
+                    # Cluster deterministisch aus den Roh-Kills der letzten 24h
+                    with DB_LOCK:
+                        rows = DB.execute(
+                            "SELECT kill_id,ts,system_id,score,attackers FROM pack_kills "
+                            "WHERE ts>? AND sim=0 ORDER BY ts", (time.time() - 86400,)).fetchall()
+                    for kid, ts, sysid, score, aj in rows:
+                        self._seen.add(kid)
+                        self._cluster(kid, ts, sysid, score, json.loads(aj or "[]"))
+                        self.last_kill_ts = max(self.last_kill_ts, ts)
+                    self._zkill()
+                    self._resolve_names()
+                    self._start_info(time.time())
+                    self.mode = "live"
+                if self.mode in ("live", "tot"):
+                    try:
+                        data = self._get(KMSTREAM + self._queue(), timeout=70)
+                        self._last200 = time.time()
+                        self._fails = 0
+                        self.mode = "live"
+                        for km in (data if isinstance(data, list) else []):
+                            self._ingest(km, "poll")
+                    except Exception:
+                        self._fails += 1
+                        time.sleep(min(5 * 2 ** min(self._fails, 4), 60))
+                    if self._fails >= 5 or time.time() - self._last200 > 300:
+                        self.mode = "fallback"
+                        self._probe = (0, 0.0)
+                else:                       # fallback: zKill stuendlich + Proben
+                    self._zkill(3600)
+                    ok, last = self._probe
+                    if time.time() - last >= 600:
+                        try:
+                            data = self._get(KMSTREAM + self._queue(), timeout=70)
+                            ok += 1
+                            for km in (data if isinstance(data, list) else []):
+                                self._ingest(km, "poll")
+                            if ok >= 2:
+                                self.mode = "live"
+                                self._fails = 0
+                                self._last200 = time.time()
+                        except Exception:
+                            ok = 0
+                        self._probe = (ok, time.time())
+                    time.sleep(30)
+                now = time.time()
+                self._resolve_names()
+                self._alarms(now)
+                self._start_info(now)
+                self._prune(now)
+            except Exception as e:
+                log_error("CN-PACK-03", "PackIntel.run", e)
+                time.sleep(30)
+
+
 ingest = Ingest()
 chatwatch = ChatWatch()
 prices = Prices()
@@ -3202,6 +3831,7 @@ threat = ThreatIntel()
 clipwatch = ClipWatch()
 serverstatus = ServerStatus()
 danger = SystemDanger()
+packintel = PackIntel()
 
 
 # ---------------------------------------------------------------- Abfragen
@@ -4594,6 +5224,7 @@ class Handler(BaseHTTPRequestHandler):
             elif view == "intel":
                 data["intel_auto"] = {"ts": clipwatch.ts, "names": clipwatch.names,
                                       "fleets": chatwatch.fleet_groups()}
+                data["blutspur"] = packintel.snapshot()
             elif view == "missionen":
                 data["missions"] = query_missions()
                 data["mission_log"] = query_mission_history()
@@ -4714,6 +5345,26 @@ class Handler(BaseHTTPRequestHandler):
             return
         elif action == "autostart":
             set_autostart(bool(body.get("on")))
+        elif action == "pack_cfg":
+            # Blutspur-Radar konfigurieren (an/aus, Corp-Eskalation). Opt-in;
+            # der PackIntel-Thread greift die Aenderung binnen ~20s auf.
+            with CONFIG_LOCK:
+                if "on" in body:
+                    CONFIG["pack_radar"] = bool(body.get("on"))
+                if "corp" in body:
+                    CONFIG["pack_corp_alert"] = bool(body.get("corp"))
+            save_config()
+            self._send(json.dumps({"ok": True}))
+            return
+        elif action == "pack_sim" and CONFIG.get("sim_mode"):
+            # Nur lokal (sim_mode): synthetische Kills fuer die Gate-Drills.
+            n = 0
+            for km in (body.get("kills") or [])[:50]:
+                if packintel._ingest(km, "sim"):
+                    n += 1
+            packintel._resolve_names()
+            self._send(json.dumps({"ok": True, "ingested": n}))
+            return
         elif action == "clip_watch":
             CONFIG["clip_watch"] = bool(body.get("on"))
         elif action == "calc":
@@ -4959,6 +5610,8 @@ nav span.on{color:var(--cyan);border-bottom:2px solid var(--cyan)}
 .alert.drones{border-color:var(--red);color:var(--red);font-weight:600}
 .alert.cargo{border-color:var(--red);color:var(--red);font-weight:600}
 .alert.pi{border-color:var(--gold);color:var(--gold);font-weight:600}
+.alert.pack{border-color:var(--red);color:var(--red);font-weight:600}
+.alert.packinfo{border-color:var(--gold);color:var(--gold)}
 .cardwarn{border:1px solid var(--gold);color:var(--gold);border-radius:7px;
 padding:7px 10px;font-size:12px;font-weight:600;margin-bottom:8px;overflow:hidden}
 .cardwarn.drone{border-color:var(--red);color:var(--red)}
@@ -5571,9 +6224,9 @@ function speakAlert(a){
  if(localStorage.getItem('ttsAlerts')!=='1')return;
  const en=(lang==='en');
  const P=en?{pvp:'under attack',cargo:'cargo full',drones:'check drones',idle:'mining stopped',
-             rate:'mining rate dropped',hw:'heavy water low',watch:'watchlist hit',intel:'threat detected',pi:'extractor expiring'}
+             rate:'mining rate dropped',hw:'heavy water low',watch:'watchlist hit',intel:'threat detected',pi:'extractor expiring',pack:'known pack in local'}
            :{pvp:'unter Beschuss',cargo:'Frachtraum voll',drones:'Drohnen prüfen',idle:'Mining steht',
-             rate:'Abbaurate gefallen',hw:'Heavy Water fast leer',watch:'Watchlist-Treffer',intel:'Bedrohung erkannt',pi:'Extraktor läuft ab'};
+             rate:'Abbaurate gefallen',hw:'Heavy Water fast leer',watch:'Watchlist-Treffer',intel:'Bedrohung erkannt',pi:'Extraktor läuft ab',pack:'bekanntes Rudel im Local'};
  const phrase=P[a.kind]; if(!phrase)return;
  speak((a.char?a.char+': ':'')+phrase);
 }
@@ -6712,9 +7365,13 @@ function fleetWarnHtml(fleets){
      ${g.miner?`· ${g.miner} ${lang==='en'?'miner kills':'Miner-Kills'}`:''}</div>
     <div class="sub">${g.pilots.map(esc).join(', ')}</div></div>`).join('');
 }
-function renderIntel(auto){
+function renderIntel(auto,bs){
  if(!document.getElementById('intelBox')){
   $('#grid').innerHTML=`<div class="card" id="fleetWarn" style="grid-column:1/-1;display:none"></div>
+   <div style="grid-column:1/-1;display:flex;gap:8px" id="intelModeRow">
+    <span class="pill imode" data-im="scan">🚦 Local-Scan</span>
+    <span class="pill imode" data-im="pack">🩸 Blutspur</span></div>
+   <div id="packBox" style="grid-column:1/-1;display:none;flex-direction:column;gap:14px"></div>
    <div class="card" id="intelBox" style="grid-column:1/-1">
    <b>🚦 Bedrohungs-Ampel (Local-Scan)</b>
    <div style="font-size:12px;color:var(--dim);margin:6px 0">Im EVE-Local-Fenster in die Mitgliederliste klicken, dann <b>Strg+A</b> und <b>Strg+C</b>. Mit Auto-Scan reicht das schon, Canary erkennt die kopierte Liste von selbst.
@@ -6736,6 +7393,10 @@ function renderIntel(auto){
   if(state&&state.clip_ok===false){$('#clipRow').hidden=true;
    $('#intelIn').placeholder='Piloten-Namen einfügen … (Auto-Scan gibt es nur unter Windows)';}
   if(intelNames.length)$('#intelIn').value=intelNames.join('\\n');
+  document.querySelectorAll('.imode').forEach(p=>p.onclick=()=>{
+   localStorage.setItem('intelMode',p.dataset.im);syncIntelMode();
+   if(p.dataset.im==='pack'&&lastBs)renderBlutspur(lastBs);});
+  syncIntelMode();
  }
  if(auto&&auto.ts>intelAutoTs&&auto.names&&auto.names.length&&document.activeElement!==$('#intelIn')){
   // nicht überschreiben, während der Nutzer gerade im Feld tippt
@@ -6748,7 +7409,92 @@ function renderIntel(auto){
  }
  const fw=document.getElementById('fleetWarn');
  if(fw){const h=fleetWarnHtml(auto&&auto.fleets);fw.innerHTML=h;fw.style.display=h?'':'none';}
- intelPoll();
+ lastBs=bs||lastBs;
+ if((localStorage.getItem('intelMode')||'scan')==='pack')renderBlutspur(lastBs);
+ else intelPoll();
+}
+function syncIntelMode(){
+ const m=localStorage.getItem('intelMode')||'scan';
+ document.querySelectorAll('.imode').forEach(p=>p.classList.toggle('on',p.dataset.im===m));
+ const ib=document.getElementById('intelBox'),pb=document.getElementById('packBox');
+ if(ib)ib.style.display=m==='scan'?'':'none';
+ if(pb)pb.style.display=m==='pack'?'flex':'none';
+}
+// ---- Blutspur: Gank-Rudel aus dem oeffentlichen Killmail-Strom ----
+let lastBs=null;
+function packAge(sec,en){
+ const m=Math.max(0,Math.round(sec/60));
+ const t=m<90?m+' min':Math.round(m/60)+' h';
+ return en?(t+' ago'):('vor '+t);
+}
+function packMapSvg(mp,en){
+ const S=mp.systems||[];
+ const edges=(mp.edges||[]).map(e=>{const a=S[e[0]],b=S[e[1]];
+  return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" style="stroke:var(--line)" stroke-width="1"/>`;}).join('');
+ const arrows=(mp.arrows||[]).map(a=>
+  `<line x1="${a.x1}" y1="${a.y1}" x2="${a.x2}" y2="${a.y2}" style="stroke:var(--red)" stroke-width="2" stroke-dasharray="6 4"><title>${en?'estimated from kill order':'aus Kill-Reihenfolge geschätzt'}</title></line>`).join('');
+ const dots=S.map(s=>{
+  const sec=s.sec>=0.45?'var(--green)':(s.sec>0?'var(--gold)':'var(--red)');
+  const heat=s.heat?`<circle cx="${s.x}" cy="${s.y}" r="${Math.min(6+s.heat*2,16)}" style="fill:var(--red)" fill-opacity="0.16"/>`:'';
+  const own=s.own?`<circle cx="${s.x}" cy="${s.y}" r="9" fill="none" style="stroke:var(--cyan)" stroke-width="2"/>`:'';
+  const pk=(s.packs&&s.packs.length)?`<text x="${s.x}" y="${s.y-11}" text-anchor="middle" style="font-size:12px">🩸</text>`:'';
+  const label=(s.heat||s.own||(s.packs&&s.packs.length))?`<text x="${s.x}" y="${s.y+17}" text-anchor="middle" style="fill:var(--dim);font-size:9px">${esc(s.name||'')}</text>`:'';
+  return heat+own+`<circle cx="${s.x}" cy="${s.y}" r="3" style="fill:${sec}"><title>${esc(s.name||'')} · Sec ${s.sec!=null?s.sec:'?'}${s.heat?` · ${s.heat} Kills/2h`:''}</title></circle>`+pk+label;}).join('');
+ return `<div style="overflow-x:auto"><svg viewBox="0 0 1000 700" style="width:100%;height:auto">${edges}${arrows}${dots}</svg></div>`
+  +`<div class="sub">${en?'dot = system (colour = sec) · red halo = kills last 2h · cyan ring = you · 🩸 = pack last seen here · dashed = estimated direction':'Punkt = System (Farbe = Sec) · roter Halo = Kills der letzten 2h · Cyan-Ring = du · 🩸 = Rudel zuletzt hier · gestrichelt = geschätzte Richtung'}</div>`;
+}
+function renderBlutspur(bs){
+ const box=document.getElementById('packBox'); if(!box)return;
+ const en=lang==='en', now=Date.now()/1000;
+ if(!bs){box.innerHTML='';return;}
+ if(!bs.on){
+  box.innerHTML=`<div class="card"><b>🩸 Blutspur</b>
+   <div class="sub" style="margin:8px 0">${en?'Detects active gank packs in your regions almost live from the public killmail stream: who repeatedly kills together, where they hunt, with an honest "last seen X min ago". Public data only (killmail.stream and zKillboard), nothing leaves your machine.':'Erkennt aktive Gank-Rudel deiner Regionen fast live aus dem öffentlichen Killmail-Strom: wer wiederholt gemeinsam tötet, wo sie jagen, mit ehrlichem „zuletzt gesehen vor X min". Nur öffentliche Daten (killmail.stream und zKillboard), nichts verlässt deinen Rechner.'}</div>
+   <div class="sub" style="margin-bottom:10px">${en?'Regions':'Regionen'}: <b>${esc((bs.regions||[]).join(', '))}</b> · ${en?'changeable in config.json (pack_regions, max 2)':'änderbar in config.json (pack_regions, max 2)'}</div>
+   <button class="btn" id="packOn">${en?'Enable Blood Trail':'Blutspur einschalten'}</button></div>`;
+  const b=document.getElementById('packOn'); if(b)b.onclick=()=>post({action:'pack_cfg',on:true});
+  return;
+ }
+ const badge= bs.mode==='live'?`<span class="esichk ok">● ${en?'live feed':'Live-Feed'}</span>`
+  :bs.mode==='fallback'?`<span class="esichk" style="color:var(--gold)">● ${en?'fallback, hourly':'Fallback, stündlich'}</span>`
+  :bs.mode==='laden'?`<span class="esichk" style="color:var(--cyan)">● ${en?'loading …':'lädt …'}</span>`
+  :`<span class="esichk bad">● ${en?'feed down':'Feed tot'}</span>`;
+ const age=bs.last_kill_age!=null?`${en?'last kill in region':'letzter Kill der Region'}: ${packAge(bs.last_kill_age,en)}`:(en?'no region kills yet':'noch keine Kills der Region');
+ let html=`<div class="card"><div class="chead"><span class="char">🩸 Blutspur</span> ${badge}
+   <span class="sub" style="margin-left:auto">${esc((bs.regions||[]).join(' · '))} · ${age}</span></div>
+  <div class="sub" style="margin-top:5px">🕯 ${en?'Honest by design: a pack becomes visible only AFTER its latest kill (echo principle), and only pilots who appear on killmails count. Silent campers stay invisible. Every age is computed from kill time, never receive time.':'Ehrlich per Bauart: ein Rudel wird erst NACH seinem letzten Kill sichtbar (Echo-Prinzip), und nur Piloten, die auf Killmails stehen, zählen. Stille Camper bleiben unsichtbar. Jede Zeitangabe kommt aus der Kill-Zeit, nie aus der Empfangszeit.'}</div>
+  <div style="margin-top:9px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+   <label style="font-size:12px"><input type="checkbox" id="packCorp" ${bs.corp_alert?'checked':''}> ${en?'Corp escalation: hint when a local speaker is only in a pack corp':'Corp-Eskalation: Hinweis, wenn ein Local-Sprecher nur in einer Rudel-Corp ist'}</label>
+   <button class="btn" id="packOff" style="font-size:11px">${en?'Disable':'Ausschalten'}</button></div></div>`;
+ if(bs.mode==='laden'){const mp=bs.map_progress||[0,0];
+  html+=`<div class="card"><div class="sub">🗺 ${en?'Building region map':'Karte wird aufgebaut'} (${mp[0]}/${mp[1]} ${en?'systems':'Systeme'}) · ${en?'one-time, takes a few minutes, radar starts right after':'einmalig, dauert ein paar Minuten, danach startet das Radar von selbst'}</div></div>`;}
+ if(!(bs.packs||[]).length&&bs.mode!=='laden'){
+  html+=`<div class="card"><div class="sub">${en?'No pack currently visible in the observed regions. That is NOT a safety guarantee, packs only appear after their latest kill.':'Gerade kein Rudel in den beobachteten Regionen sichtbar. Das ist KEINE Sicherheits-Garantie, Rudel erscheinen erst nach ihrem letzten Kill.'}</div></div>`;
+ }
+ (bs.packs||[]).forEach(p=>{
+  const col=p.status==='aktiv'?'red':'gold';
+  const st=p.status==='aktiv'?(en?'ACTIVE':'AKTIV'):(en?'FADING':'ABKLINGEND');
+  html+=`<div class="card">
+   <div class="chead"><span class="pidot ${p.status==='aktiv'?'bad':'warn'}"></span>
+    <span class="char">🐺 [${esc(p.label)}] · ${p.members} ${en?'pilots':'Piloten'}</span>
+    <span class="pitier" style="color:var(--${col})">${st}</span>
+    ${p.again?`<span class="pitier" style="color:var(--red)">${en?'KNOWN PACK, BACK AGAIN':'BEKANNT, WIEDER AKTIV'}</span>`:''}
+    <span class="sub" style="margin-left:auto">Score ${p.score}</span></div>
+   <div style="font-size:15px;margin:6px 0"><b style="color:var(--${col})">${en?'last seen':'zuletzt gesehen'} ${packAge(now-p.last_seen,en)}</b> in <b>${esc(p.last_system)}</b></div>
+   <div class="sub">⚔ ${p.kills} Kills · ${en?'hunting grounds':'Jagdgebiet'}: ${p.systems.map(esc).join(' → ')}${p.ships.length?' · 🚀 '+p.ships.map(esc).join(', '):''}</div>
+   <div class="sub" style="margin-top:4px">${(p.top||[]).map(m=>`<a href="https://zkillboard.com/character/${m.id}/" target="_blank" rel="noopener">${esc(m.name)}</a> (${m.kills})`).join(' · ')}</div></div>`;
+ });
+ (bs.maps||[]).forEach(mp=>{
+  html+=`<div class="card"><div class="chead"><span class="char">🗺 ${esc(mp.region)}</span></div>${packMapSvg(mp,en)}</div>`;});
+ if((bs.roster||[]).length){
+  html+=`<div class="card"><div class="chead"><span class="char">${en?'Evidence roster':'Evidenz-Roster'}</span> <span class="sub">· ${en?'who stood on killmails last':'wer zuletzt auf Killmails stand'}</span></div>
+   <table class="fleetcomp"><tr><th>Pilot</th><th>${en?'Pack':'Rudel'}</th><th class="r">Kills</th><th class="r">${en?'last seen':'zuletzt'}</th></tr>`
+   +bs.roster.map(r=>`<tr><td><a href="https://zkillboard.com/character/${r.id}/" target="_blank" rel="noopener">${esc(r.name)}</a></td><td>[${esc(r.pack)}]</td><td class="r">${r.kills}</td><td class="r">${packAge(now-r.last_seen,en)}</td></tr>`).join('')
+   +`</table></div>`;
+ }
+ box.innerHTML=html;
+ const pc=document.getElementById('packCorp'); if(pc)pc.onchange=()=>post({action:'pack_cfg',corp:pc.checked});
+ const po=document.getElementById('packOff'); if(po)po.onclick=()=>post({action:'pack_cfg',on:false});
 }
 async function intelPoll(){
  if(!intelNames.length||intelBusy||view!=='intel'||intelSettled)return;
@@ -7570,6 +8316,15 @@ const EN_PATTERNS = [
  [/Vermutlich ist ein Modul oder eine Drohne aus/, 'A module or a drone is probably off'],
  [/Mögliche Gank-Flotte im Local: ([0-9]+) geflaggte Piloten von (.+?), ([0-9]+) Miner-Kills/,
   'Possible gank fleet in local: $1 flagged pilots from $2, $3 miner kills'],
+ // Blutspur-Alarme (Rudel-Radar). Klammern mit doppeltem Backslash escapen:
+ // PAGE ist ein normaler Python-String, einfache Escapes gehen dort kaputt.
+ [/Bekanntes Rudel im Local: (.+?) gehört zu Rudel \\[(.+?)\\] \\(([0-9]+) Piloten, zuletzt aktiv vor ([0-9]+) min in (.+?)\\)/,
+  'Known pack in local: $1 belongs to pack [$2] ($3 pilots, last active $4 min ago in $5)'],
+ [/Rudel \\[(.+?)\\] seit ([0-9]+) min in (.+?) aktiv \\(([0-9]+) Piloten\\)/,
+  'Pack [$1] active in $3 for $2 min ($4 pilots)'],
+ [/Rudel \\[(.+?)\\]: Kill in der Nähe \\((.+?)\\)/, 'Pack [$1]: kill nearby ($2)'],
+ [/Rudel-Corp im Local: (.+?) ist in der Corp von Rudel \\[(.+?)\\]/,
+  'Pack corp in local: $1 is in the corp of pack [$2]'],
  // Planetary-Industry-Ablauf-Alarm: distinkte Tokens, damit nichts anderes trifft.
  [/ · Extraktor abgelaufen/, ' · extractor expired'],
  [/ · Extraktor läuft in ([0-9]+) Std ab/, ' · extractor expires in $1 h'],
@@ -7726,7 +8481,7 @@ async function tick(){
    $('#hero').innerHTML='';
    if(view==='month')renderMonth(d.days);
    else if(view==='analyse')renderAnalyse(d.analyse);
-   else if(view==='intel')renderIntel(d.intel_auto);
+   else if(view==='intel')renderIntel(d.intel_auto,d.blutspur);
    else if(view==='vault')renderVault(d.vault);
    else if(view==='planeten')renderPlaneten(d.planeten);
    else if(view==='timeline')renderTimeline(d.timeline);
@@ -7799,6 +8554,7 @@ if __name__ == "__main__":
     clipwatch.start()
     serverstatus.start()
     danger.start()
+    packintel.start()
     print(f"EVE Canary läuft:  http://localhost:{port}")
     if "--no-browser" not in sys.argv:
         # Browser erst jetzt öffnen, wo der Port sicher gebunden ist
