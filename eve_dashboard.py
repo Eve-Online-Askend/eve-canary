@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.63.0"
+VERSION = "1.63.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -7672,6 +7672,9 @@ function packMapSvg(mp,en){
 }
 function renderBlutspur(bs){
  const box=document.getElementById('packBox'); if(!box)return;
+ // Nicht neu rendern, waehrend der Nutzer gerade das System-Feld tippt,
+ // sonst wirft der 2s-Tick die Eingabe raus (gleiche Falle wie beim Intel-Feld).
+ if(document.activeElement&&document.activeElement.id==='packCenter')return;
  const en=lang==='en', now=Date.now()/1000;
  if(!bs){box.innerHTML='';return;}
  if(!bs.on){
@@ -7730,6 +7733,8 @@ function renderBlutspur(bs){
  const pc=document.getElementById('packCorp'); if(pc)pc.onchange=()=>post({action:'pack_cfg',corp:pc.checked});
  const po=document.getElementById('packOff'); if(po)po.onclick=()=>post({action:'pack_cfg',on:false});
  const cg=document.getElementById('packCenterGo');
+ const ci=document.getElementById('packCenter');
+ if(ci)ci.onkeydown=e=>{if(e.key==='Enter'&&cg){e.preventDefault();cg.click();ci.blur();}};
  if(cg)cg.onclick=async()=>{
   const v=(document.getElementById('packCenter').value||'').trim();
   if(!v)return;

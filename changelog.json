@@ -1,4 +1,7 @@
 [
+ {"v": "1.63.1", "d": "2026-07-26",
+  "de": ["Fix: das Eingabefeld für das beobachtete System wirft die Eingabe nicht mehr raus, während man tippt (die Live-Aktualisierung pausiert jetzt, solange das Feld den Fokus hat). Enter bestätigt die Eingabe."],
+  "en": ["Fix: the watched-system input no longer loses what you type (the live refresh now pauses while the field has focus). Enter confirms the input."]},
  {"v": "1.63.0", "d": "2026-07-26",
   "de": ["Blutspur: das beobachtete System ist jetzt frei wählbar. Trag im Kopfbereich ein beliebiges System ein (z. B. dein Missions-Hub oder Uedama) und die Blase baut sich dort neu auf, unabhängig davon, wo du gerade fliegst.", "Klar als Alpha gekennzeichnet: Rudel-Erkennung, Scores und Warnungen werden noch am echten Verkehr feinjustiert, das steht jetzt als Hinweis direkt im Modul. Rückmeldungen willkommen."],
   "en": ["Blood Trail: the watched system is now freely selectable. Enter any system in the header (e.g. your mission hub or Uedama) and the bubble rebuilds there, independent of where you are flying.", "Clearly marked as alpha: pack detection, scores and warnings are still being tuned against real traffic, and that note now sits right inside the module. Feedback welcome."]},
