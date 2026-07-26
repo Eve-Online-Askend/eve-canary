@@ -100,9 +100,16 @@ footer a{margin:0 9px}
 .dltile{flex:1;background:var(--line);border-radius:9px;padding:11px 8px;text-align:center}
 .dltile b{display:block;font-size:21px;color:var(--gold);line-height:1.15}
 .dltile span{display:block;font-size:11px;color:var(--dim);margin-top:2px}
-.dltop{font-size:11px;color:var(--dim);margin:0 0 9px;text-transform:uppercase;letter-spacing:.05em}
+.dltop{font-size:11px;color:var(--dim);margin:18px 0 9px;text-transform:uppercase;letter-spacing:.05em}
+.dltop:first-child,.dltotal+.dlstats+.dltop{margin-top:0}
+.mstones{list-style:none;margin:0;padding:2px 0 0;position:relative}
+.mstones:before{content:'';position:absolute;left:7px;top:10px;bottom:12px;width:2px;background:var(--line)}
+.mstones li{position:relative;display:flex;align-items:baseline;gap:10px;padding:5px 0 5px 26px;font-size:12px}
+.mstones li:before{content:'';position:absolute;left:3px;top:6px;width:10px;height:10px;border-radius:50%;background:var(--gold);border:2px solid var(--card)}
+.msv{color:var(--dim);flex:none;width:42px;font-variant-numeric:tabular-nums}
+.msl{color:var(--txt)}
 #dlBadge{cursor:pointer}
-#dlModal{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--txt);max-width:520px;width:92%;padding:20px}
+#dlModal{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--txt);max-width:520px;width:92%;padding:20px;max-height:86vh;overflow:auto}
 #dlModal::backdrop{background:rgba(0,0,0,.55)}
 .dlmodhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
 .dlmodhead b{font-size:18px}
@@ -545,6 +552,18 @@ document.querySelectorAll('[data-i18n]').forEach(el => EN[el.dataset.i18n] = el.
 LANGS.en = EN;
 
 let CL = null, DL = null, curLang = 'en';
+// Kuratierte Meilensteine der Entwicklung: die grossen Feature-Spruenge, nicht
+// jeder Punkt-Release. Labels je Sprache; fehlt eine, faellt es auf Englisch zurueck.
+const MILESTONES = [
+  { v: '1.0',  de: 'Start: Mining live & Bedrohungs-Ampel', en: 'Launch: live mining & threat light',      fr: 'Lancement : minage en direct & alerte menace', ru: 'Старт: майнинг вживую и индикатор угроз' },
+  { v: '1.24', de: 'ISKray: Marktpreise & Frachtwert',      en: 'ISKray: market prices & cargo value',       fr: 'ISKray : prix du marché & valeur de cargaison', ru: 'ISKray: цены рынка и стоимость груза' },
+  { v: '1.36', de: 'Mining Fleet Power',                    en: 'Mining Fleet Power',                        fr: 'Mining Fleet Power',                            ru: 'Mining Fleet Power' },
+  { v: '1.40', de: 'Missions-Erkenner',                     en: 'Mission recognizer',                        fr: 'Détecteur de missions',                         ru: 'Определитель миссий' },
+  { v: '1.46', de: 'Erz-Schatzkammer',                      en: 'Ore treasury',                              fr: 'Trésor de minerai',                             ru: 'Хранилище руды' },
+  { v: '1.50', de: 'Missions-Modul: Fraktions-Tipp',        en: 'Missions module: faction tip',              fr: 'Module missions : conseil de faction',          ru: 'Модуль миссий: совет по фракции' },
+  { v: '1.53', de: 'Gank-Flotten-Warnung',                  en: 'Gank-fleet warning',                        fr: 'Alerte flotte de gank',                         ru: 'Предупреждение о флоте ганкеров' },
+  { v: '1.56', de: 'Steckbrief & Spielstil-Radar',          en: 'Character sheet & playstyle radar',         fr: 'Fiche perso & radar de style',                  ru: 'Профиль и радар стиля игры' }
+];
 // Download-Verlauf: App-Downloads (eve_dashboard.py) je Version, chronologisch.
 // Nur Versionen mit >0, damit die vielen Null-Releases den Balken nicht zumuellen.
 function dlChartHtml() {
@@ -562,11 +581,11 @@ function dlChartHtml() {
   const top = rows.slice().sort((a, b) => b.d - a.d).slice(0, 5);
   const max = Math.max(...top.map(r => r.d));
   const L = ({
-    de: { total: 'Downloads gesamt', latest: 'Aktuell', ver: 'Versionen', avg: 'Ø / Version', top: 'Meistgeladen' },
-    fr: { total: 'téléchargements au total', latest: 'Actuelle', ver: 'versions', avg: 'moy. / version', top: 'Les plus téléchargés' },
-    ru: { total: 'загрузок всего', latest: 'Текущая', ver: 'версий', avg: 'в среднем', top: 'Самые скачиваемые' },
-    en: { total: 'downloads total', latest: 'Latest', ver: 'versions', avg: 'avg / version', top: 'Most downloaded' }
-  })[curLang] || { total: 'downloads total', latest: 'Latest', ver: 'versions', avg: 'avg / version', top: 'Most downloaded' };
+    de: { total: 'Downloads gesamt', latest: 'Aktuell', ver: 'Versionen', avg: 'Ø / Version', top: 'Meistgeladen', mile: 'Meilensteine' },
+    fr: { total: 'téléchargements au total', latest: 'Actuelle', ver: 'versions', avg: 'moy. / version', top: 'Les plus téléchargés', mile: 'Jalons' },
+    ru: { total: 'загрузок всего', latest: 'Текущая', ver: 'версий', avg: 'в среднем', top: 'Самые скачиваемые', mile: 'Вехи' },
+    en: { total: 'downloads total', latest: 'Latest', ver: 'versions', avg: 'avg / version', top: 'Most downloaded', mile: 'Milestones' }
+  })[curLang] || { total: 'downloads total', latest: 'Latest', ver: 'versions', avg: 'avg / version', top: 'Most downloaded', mile: 'Milestones' };
   return `<div class="dltotal"><b>${total.toLocaleString()}</b> ${L.total}</div>`
     + `<div class="dlstats">`
     +   `<div class="dltile"><b>${latest.d}</b><span>${L.latest} · v${latest.v}</span></div>`
@@ -576,7 +595,12 @@ function dlChartHtml() {
     + `<div class="dltop">${L.top}</div>`
     + top.map(r => `<div class="dlrow"><span class="dlv">v${r.v}</span>`
       + `<span class="dlbarwrap"><span class="dlbar" style="width:${Math.max(6, Math.round(100 * r.d / max))}%"></span></span>`
-      + `<span class="dld">${r.d}</span></div>`).join('');
+      + `<span class="dld">${r.d}</span></div>`).join('')
+    + `<div class="dltop">${L.mile}</div>`
+    + `<ol class="mstones">`
+    + MILESTONES.map(m => `<li><span class="msv">v${m.v}</span>`
+      + `<span class="msl">${m[curLang] || m.en}</span></li>`).join('')
+    + `</ol>`;
 }
 function renderDlChart() {
   const html = dlChartHtml();
