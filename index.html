@@ -188,6 +188,11 @@ must be enabled in the EVE client, which is the default setting.</p>
     <p data-i18n="f11.p">Your entire ore stock, raw and compressed, across every station and structure
     of all your EVE-connected chars. Total volume and ISK value at a glance, then a breakdown of what
     is stored where, with station icons. Pulled from ESI assets with a clear as-of and next-sync time.</p></div>
+  <div class="card"><div class="ico">🪐</div>
+    <h3 data-i18n="f12.t">Planetary Industry</h3>
+    <p data-i18n="f12.p">Every colony across all your characters in one view, sorted by what needs
+    re-arming first, with an alert before an extractor expires. Shows what each planet produces,
+    tagged P0 to P4, the stored ISK per colony and each planet's image. Straight from ESI, no spreadsheets.</p></div>
   <div class="card"><div class="ico">🚨</div>
     <h3 data-i18n="f2.t">Alerts</h3>
     <p data-i18n="f2.p">Player attacking, cargo full, asteroid depleted, strip miner off,
@@ -355,6 +360,8 @@ const LANGS = {
     'f10.p': 'Boostest du in einer Orca, Porpoise oder Rorqual? Canary erkennt das Command Ship automatisch und zeigt die Flotten-Mining-Power sowie, wer wie viel über den Kompressionsdienst komprimiert hat, mit Name und Menge. Sogar Flottenmitglieder ohne eigenes Canary tauchen auf, direkt aus deinem Booster-Log. Setzt den optionalen EVE-Login voraus, damit das Schiff erkannt wird.',
     'f11.t': 'Erz-Schatzkammer',
     'f11.p': 'Dein gesamter Erz-Bestand, roh und komprimiert, über alle Stationen und Strukturen deiner EVE-verbundenen Chars. Gesamtmenge und ISK-Wert auf einen Blick, dann im Detail was wo liegt, mit Stations-Icon. Kommt aus den ESI-Assets, mit klarer Angabe von wann die Daten sind und wann der nächste Abgleich kommt.',
+    'f12.t': 'Planetary Industry',
+    'f12.p': 'Alle Kolonien über all deine Charaktere in einer Ansicht, sortiert nach dem, was zuerst nachgefüllt werden muss, mit Alarm bevor ein Extraktor ausläuft. Zeigt, was jeder Planet herstellt (Tier P0 bis P4), den gelagerten ISK-Wert je Kolonie und das Planetenbild. Direkt aus der ESI, ohne Tabellen.',
     'h.compare': 'Warum Canary',
     'compare.intro': 'Andere Tools decken jeweils nur ein Stück ab. Canary ist das einzige, das Live-Mining, deine ganze Kompressions-Flotte und Missions-Taktik in einem Fenster vereint, und das komplett lokal, ohne Cloud und ohne Konto. Deine Daten bleiben deine.',
     'cmp.canary': 'EVE Canary', 'cmp.cloud': 'Cloud-Dashboards', 'cmp.dps': 'DPS-Overlays',
@@ -430,6 +437,8 @@ const LANGS = {
     'f10.p': 'Vous boostez dans un Orca, un Porpoise ou un Rorqual ? Canary détecte le vaisseau de commandement automatiquement et affiche la puissance minière de la flotte ainsi que qui a compressé combien via son service de compression, par nom et quantité. Même les membres de flotte qui n\'utilisent pas Canary apparaissent, directement depuis votre propre journal de booster. Nécessite la connexion EVE optionnelle pour que le vaisseau soit détecté.',
     'f11.t': 'Trésor de minerai',
     'f11.p': 'Tout votre stock de minerai, brut et compressé, dans toutes les stations et structures de vos personnages connectés à EVE. Volume total et valeur en ISK d\'un coup d\'oeil, puis le détail de ce qui est stocké où, avec les icônes de station. Issu des assets ESI, avec l\'heure exacte des données et du prochain rafraîchissement.',
+    'f12.t': 'Planetary Industry',
+    'f12.p': 'Toutes vos colonies sur tous vos personnages dans une seule vue, triées par ce qu\'il faut réamorcer en premier, avec une alerte avant qu\'un extracteur n\'expire. Montre ce que chaque planète produit (niveau P0 à P4), la valeur en ISK stockée par colonie et l\'image de la planète. Directement depuis l\'ESI, sans tableur.',
     'h.compare': 'Pourquoi Canary',
     'compare.intro': 'Les autres outils ne couvrent chacun qu\'une partie. Canary est le seul à réunir le minage en direct, toute votre flotte de compression et la tactique de missions dans une seule fenêtre, et ce entièrement en local, sans cloud et sans compte. Vos données restent les vôtres.',
     'cmp.canary': 'EVE Canary', 'cmp.cloud': 'Tableaux de bord cloud', 'cmp.dps': 'Overlays DPS',
@@ -505,6 +514,8 @@ const LANGS = {
     'f10.p': 'Бустите на Orca, Porpoise или Rorqual? Canary сам распознаёт командный корабль и показывает добывающую мощь флота, а также кто сколько сжал через его сервис компрессии, по имени и количеству. Даже члены флота без своего Canary попадают в список, прямо из лога вашего бустера. Требует опционального входа EVE, чтобы корабль был распознан.',
     'f11.t': 'Хранилище руды',
     'f11.p': 'Весь ваш запас руды, сырой и сжатой, по всем станциям и структурам ваших подключённых к EVE персонажей. Общий объём и стоимость в ISK с первого взгляда, затем разбивка, что где хранится, со значками станций. Берётся из ассетов ESI, с точным временем данных и следующего обновления.',
+    'f12.t': 'Planetary Industry',
+    'f12.p': 'Все ваши колонии по всем персонажам в одном виде, отсортированные по тому, что нужно перезарядить первым, с оповещением до истечения экстрактора. Показывает, что производит каждая планета (уровень P0-P4), хранимую стоимость в ISK по колонии и изображение планеты. Прямо из ESI, без таблиц.',
     'h.compare': 'Почему Canary',
     'compare.intro': 'Другие инструменты покрывают лишь по одной части. Canary единственный объединяет добычу в реальном времени, весь ваш флот сжатия и тактику миссий в одном окне, и делает это полностью локально, без облака и без учётной записи. Ваши данные остаются вашими.',
     'cmp.canary': 'EVE Canary', 'cmp.cloud': 'Облачные панели', 'cmp.dps': 'DPS-оверлеи',
@@ -562,7 +573,8 @@ const MILESTONES = [
   { v: '1.46', de: 'Erz-Schatzkammer',                      en: 'Ore treasury',                              fr: 'Trésor de minerai',                             ru: 'Хранилище руды' },
   { v: '1.50', de: 'Missions-Modul: Fraktions-Tipp',        en: 'Missions module: faction tip',              fr: 'Module missions : conseil de faction',          ru: 'Модуль миссий: совет по фракции' },
   { v: '1.53', de: 'Gank-Flotten-Warnung',                  en: 'Gank-fleet warning',                        fr: 'Alerte flotte de gank',                         ru: 'Предупреждение о флоте ганкеров' },
-  { v: '1.56', de: 'Steckbrief & Spielstil-Radar',          en: 'Character sheet & playstyle radar',         fr: 'Fiche perso & radar de style',                  ru: 'Профиль и радар стиля игры' }
+  { v: '1.56', de: 'Steckbrief & Spielstil-Radar',          en: 'Character sheet & playstyle radar',         fr: 'Fiche perso & radar de style',                  ru: 'Профиль и радар стиля игры' },
+  { v: '1.57', de: 'Planetary Industry',                    en: 'Planetary Industry',                        fr: 'Planetary Industry',                            ru: 'Planetary Industry' }
 ];
 // Download-Verlauf: App-Downloads (eve_dashboard.py) je Version, chronologisch.
 // Nur Versionen mit >0, damit die vielen Null-Releases den Balken nicht zumuellen.
