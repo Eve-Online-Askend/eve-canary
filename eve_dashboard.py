@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.62.0"
+VERSION = "1.62.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -3461,6 +3461,7 @@ class PackIntel(threading.Thread):
             d = self.dist.get(sysid)
             if d is not None and self._visible(p):
                 prevd = p.get("dist")
+                p["dist_prev"] = prevd
                 p["dist"] = d
                 best = p.get("dist_alerted")
                 if (prevd is not None and d < prevd and d <= 15
@@ -3710,6 +3711,10 @@ class PackIntel(threading.Thread):
                 mem = sorted(p["kls"].items(), key=lambda x: -x[1])[:8]
                 out["packs"].append({
                     "id": pid, "label": self._label(p), "again": p.get("again"),
+                    "dist": p.get("dist") if p.get("dist") is not None
+                            else (self.dist.get(p["systems"][-1][0])
+                                  if p["systems"] else None),
+                    "dist_prev": p.get("dist_prev"),
                     "status": st, "score": round(p["score"]),
                     "members": len(p["members"]), "kills": p["kills"],
                     "last_seen": int(p["last"]),
@@ -3748,7 +3753,18 @@ class PackIntel(threading.Thread):
             pack_sys = {}
             for pk in out["packs"]:
                 pack_sys.setdefault(pk["last_system"], []).append(pk["label"])
-            rows = [(sid, v) for sid, v in self.sysrow.items() if v[3] is not None]
+            # Anzeige-Ausschnitt: NUR die Nachbarschaft (~20-35 Systeme) rund um
+            # das Zentrum, damit die Karte lesbar bleibt. Beobachtet und gewarnt
+            # wird weiter ueber die ganze pack_radius-Blase.
+            depth = 2
+            for cand in (2, 3, 4, 5, 6):
+                depth = cand
+                if sum(1 for d in self.dist.values() if d <= cand) >= 20:
+                    break
+            if sum(1 for d in self.dist.values() if d <= depth) > 40 and depth > 2:
+                depth -= 1
+            rows = [(sid, v) for sid, v in self.sysrow.items()
+                    if v[3] is not None and self.dist.get(sid, 99) <= depth]
             crow = self.sysrow.get(self.center_id)
             if rows and crow and crow[3] is not None:
                 cx, cz = crow[3], crow[4]
@@ -3785,9 +3801,22 @@ class PackIntel(threading.Thread):
                             a, b = systems[idx[s1]], systems[idx[s2]]
                             arrows.append({"x1": a["x"], "y1": a["y"],
                                            "x2": b["x"], "y2": b["y"]})
+                # Kill-Spuren: die Systemfolge jedes sichtbaren Rudels als Pfad
+                # (nur Punkte im Anzeige-Ausschnitt; die Spur "betritt" die Karte,
+                # sobald das Rudel in die Nachbarschaft kommt).
+                trails = []
+                for p in self.packs.values():
+                    if not self._visible(p) or self._status(p, now) == "inaktiv":
+                        continue
+                    pts = [{"x": systems[idx[s]]["x"], "y": systems[idx[s]]["y"],
+                            "age": int(now - t)}
+                           for s, t in p["systems"] if s in idx]
+                    if pts:
+                        trails.append({"label": self._label(p), "pts": pts})
                 out["maps"].append({"region": CONFIG.get("pack_center") or "?",
-                                    "systems": systems,
-                                    "edges": sorted(edges), "arrows": arrows})
+                                    "systems": systems, "edges": sorted(edges),
+                                    "arrows": arrows, "trails": trails,
+                                    "depth": depth})
         return out
 
     # ---- Lokale Anflug-Simulation (nur sim_mode, wie der Missions-Simulator) --
@@ -5919,6 +5948,10 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .piplanet{display:flex;align-items:center;gap:6px;min-width:0}
 .piglobe{width:18px;height:18px;border-radius:50%;flex:none}
 .pinm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pistat2{border-top:1px solid var(--line);margin-top:10px;padding-top:8px;font-size:12px}
+.pistat2>b{display:block;margin-bottom:5px}
+.pinear{display:flex;align-items:baseline;gap:10px;padding:4px 0;flex-wrap:wrap}
+.pinearmid{min-width:200px}
 .pitier{display:inline-block;font-size:9px;font-weight:700;line-height:1;padding:2px 4px;border-radius:4px;margin-left:4px;vertical-align:middle;border:1px solid currentColor;opacity:.9}
 .pitier.P0{color:var(--dim)}.pitier.P1{color:var(--green)}.pitier.P2{color:var(--cyan)}.pitier.P3{color:#b07de8}.pitier.P4{color:var(--gold)}
 .piprodline{font-size:12px;margin:3px 0 7px;display:flex;flex-wrap:wrap;gap:5px 12px;align-items:center}
@@ -7587,18 +7620,27 @@ function packAge(sec,en){
 function packMapSvg(mp,en){
  const S=mp.systems||[];
  const edges=(mp.edges||[]).map(e=>{const a=S[e[0]],b=S[e[1]];
-  return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" style="stroke:var(--line)" stroke-width="1"/>`;}).join('');
+  return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" style="stroke:var(--line)" stroke-width="1.2"/>`;}).join('');
+ // Kill-Spur je Rudel: verbundene Segmente, aeltere Abschnitte blasser.
+ const trails=(mp.trails||[]).map(t=>{
+  let seg='';
+  for(let i=1;i<t.pts.length;i++){const a=t.pts[i-1],b=t.pts[i];
+   const op=Math.max(0.25,1-(a.age/7200));
+   seg+=`<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" style="stroke:var(--red)" stroke-width="2.5" stroke-opacity="${op.toFixed(2)}"/>`;}
+  if(t.pts.length){const last=t.pts[t.pts.length-1];
+   seg+=`<circle cx="${last.x}" cy="${last.y}" r="7" fill="none" style="stroke:var(--red)" stroke-width="2.5"><title>${esc(t.label)}</title></circle>`;}
+  return seg;}).join('');
  const arrows=(mp.arrows||[]).map(a=>
   `<line x1="${a.x1}" y1="${a.y1}" x2="${a.x2}" y2="${a.y2}" style="stroke:var(--red)" stroke-width="2" stroke-dasharray="6 4"><title>${en?'estimated from kill order':'aus Kill-Reihenfolge geschätzt'}</title></line>`).join('');
  const dots=S.map(s=>{
   const sec=s.sec>=0.45?'var(--green)':(s.sec>0?'var(--gold)':'var(--red)');
-  const heat=s.heat?`<circle cx="${s.x}" cy="${s.y}" r="${Math.min(6+s.heat*2,16)}" style="fill:var(--red)" fill-opacity="0.16"/>`:'';
-  const own=s.own?`<circle cx="${s.x}" cy="${s.y}" r="9" fill="none" style="stroke:var(--cyan)" stroke-width="2"/>`:'';
-  const pk=(s.packs&&s.packs.length)?`<text x="${s.x}" y="${s.y-11}" text-anchor="middle" style="font-size:12px">🩸</text>`:'';
-  const label=(s.heat||s.own||(s.packs&&s.packs.length))?`<text x="${s.x}" y="${s.y+17}" text-anchor="middle" style="fill:var(--dim);font-size:9px">${esc(s.name||'')}</text>`:'';
-  return heat+own+`<circle cx="${s.x}" cy="${s.y}" r="3" style="fill:${sec}"><title>${esc(s.name||'')} · Sec ${s.sec!=null?s.sec:'?'}${s.jumps!=null?` · ${s.jumps} ${en?'jumps':'Sprünge'}`:''}${s.heat?` · ${s.heat} Kills/2h`:''}</title></circle>`+pk+label;}).join('');
- return `<div style="overflow-x:auto"><svg viewBox="0 0 1000 700" style="width:100%;height:auto">${edges}${arrows}${dots}</svg></div>`
-  +`<div class="sub">${en?'dot = system (colour = sec) · red halo = kills last 2h · cyan ring = you · 🩸 = pack last seen here · dashed = estimated direction':'Punkt = System (Farbe = Sec) · roter Halo = Kills der letzten 2h · Cyan-Ring = du · 🩸 = Rudel zuletzt hier · gestrichelt = geschätzte Richtung'}</div>`;
+  const heat=s.heat?`<circle cx="${s.x}" cy="${s.y}" r="${Math.min(9+s.heat*2,20)}" style="fill:var(--red)" fill-opacity="0.16"/>`:'';
+  const own=s.own?`<circle cx="${s.x}" cy="${s.y}" r="11" fill="none" style="stroke:var(--cyan)" stroke-width="2.5"/>`:'';
+  const pk=(s.packs&&s.packs.length)?`<text x="${s.x}" y="${s.y-13}" text-anchor="middle" style="font-size:13px">🩸</text>`:'';
+  return heat+own+`<circle cx="${s.x}" cy="${s.y}" r="4.5" style="fill:${sec}"><title>${esc(s.name||'')} · Sec ${s.sec!=null?s.sec:'?'}${s.jumps!=null?` · ${s.jumps} ${en?'jumps':'Sprünge'}`:''}${s.heat?` · ${s.heat} Kills/2h`:''}</title></circle>`+pk
+   +`<text x="${s.x}" y="${s.y+19}" text-anchor="middle" style="fill:var(--${s.own?'cyan':'dim'});font-size:10px">${esc(s.name||'')}</text>`;}).join('');
+ return `<div style="overflow-x:auto"><svg viewBox="0 0 1000 700" style="width:100%;height:auto">${edges}${trails}${arrows}${dots}</svg></div>`
+  +`<div class="sub">${en?'dot = system (colour = sec) · red halo = kills last 2h · cyan ring = you · red line = pack kill trail · 🩸 = pack last seen here':'Punkt = System (Farbe = Sec) · roter Halo = Kills der letzten 2h · Cyan-Ring = du · rote Linie = Kill-Spur des Rudels · 🩸 = Rudel zuletzt hier'}</div>`;
 }
 function renderBlutspur(bs){
  const box=document.getElementById('packBox'); if(!box)return;
@@ -7627,39 +7669,32 @@ function renderBlutspur(bs){
    <button class="btn" id="packSimReset" style="font-size:11px">⏹ ${en?'Reset sim':'Sim zurücksetzen'}</button>`:''}</div></div>`;
  if(bs.mode==='laden'){const mp=bs.map_progress||[0,0];
   html+=`<div class="card"><div class="sub">🗺 ${en?'Building region map':'Karte wird aufgebaut'} (${mp[0]}/${mp[1]} ${en?'systems':'Systeme'}) · ${en?'one-time, takes a few minutes, radar starts right after':'einmalig, dauert ein paar Minuten, danach startet das Radar von selbst'}</div></div>`;}
- if(!(bs.packs||[]).length&&bs.mode!=='laden'){
-  html+=`<div class="card"><div class="sub">${en?'No pack currently visible in the observed regions. That is NOT a safety guarantee, packs only appear after their latest kill.':'Gerade kein Rudel in den beobachteten Regionen sichtbar. Das ist KEINE Sicherheits-Garantie, Rudel erscheinen erst nach ihrem letzten Kill.'}</div></div>`;
+ // EINE kompakte Ansicht: Karte + Annaeherung + letzte Kills in einer Karte.
+ let inner='';
+ const mp0=(bs.maps||[])[0];
+ if(mp0)inner+=`<div class="sub" style="margin-bottom:4px">🗺 ${esc(bs.center||'')} ${en?'centered':'zentriert'} · ${en?'neighbourhood':'Nachbarschaft'} ${mp0.depth} ${en?'jumps':'Sprünge'} · ${en?'watching':'überwacht'} ${bs.radius||20} ${en?'jumps':'Sprünge'}</div>`+packMapSvg(mp0,en);
+ const near=(bs.packs||[]).filter(p=>p.dist!=null||p.last_system).sort((a,b)=>(a.dist??99)-(b.dist??99));
+ if(near.length){
+  inner+=`<div class="pistat2"><b>⚠ ${en?'Approach watch':'Annäherung'}</b>`+near.slice(0,6).map(p=>{
+   const d=p.dist,cls=d!=null&&d<=3?'bad':(d!=null&&d<=10?'warn':'dim');
+   const col=d!=null&&d<=3?'red':(d!=null&&d<=10?'gold':'dim');
+   const trend=(p.dist_prev!=null&&p.dist_prev!==d)?`${p.dist_prev} → ${d}`:(d!=null?`${d}`:'?');
+   return `<div class="pinear"><span class="pidot ${cls}"></span>
+     <b style="color:var(--${col});flex:none">${trend} ${en?'jumps':'Sprünge'}</b>
+     <span class="pinearmid">[${esc(p.label)}] · ${p.members} ${en?'pilots':'Piloten'} · ${en?'last seen':'zuletzt'} ${packAge(now-p.last_seen,en)} in ${esc(p.last_system)}</span>
+     <span class="sub">${(p.top||[]).slice(0,3).map(m=>`<a href="https://zkillboard.com/character/${m.id}/" target="_blank" rel="noopener">${esc(m.name)}</a>`).join(' · ')}</span></div>`;
+  }).join('')+`</div>`;
+ } else if(bs.mode!=='laden'){
+  inner+=`<div class="sub" style="margin-top:8px">${en?'No pack visible right now. Not a safety guarantee: packs appear only after their latest kill.':'Gerade kein Rudel sichtbar. Keine Sicherheits-Garantie: Rudel erscheinen erst nach ihrem letzten Kill.'}</div>`;
  }
- (bs.packs||[]).forEach(p=>{
-  const col=p.status==='aktiv'?'red':'gold';
-  const st=p.status==='aktiv'?(en?'ACTIVE':'AKTIV'):(en?'FADING':'ABKLINGEND');
-  html+=`<div class="card">
-   <div class="chead"><span class="pidot ${p.status==='aktiv'?'bad':'warn'}"></span>
-    <span class="char">🐺 [${esc(p.label)}] · ${p.members} ${en?'pilots':'Piloten'}</span>
-    <span class="pitier" style="color:var(--${col})">${st}</span>
-    ${p.again?`<span class="pitier" style="color:var(--red)">${en?'KNOWN PACK, BACK AGAIN':'BEKANNT, WIEDER AKTIV'}</span>`:''}
-    <span class="sub" style="margin-left:auto">Score ${p.score}</span></div>
-   <div style="font-size:15px;margin:6px 0"><b style="color:var(--${col})">${en?'last seen':'zuletzt gesehen'} ${packAge(now-p.last_seen,en)}</b> in <b>${esc(p.last_system)}</b></div>
-   <div class="sub">⚔ ${p.kills} Kills · ${en?'hunting grounds':'Jagdgebiet'}: ${p.systems.map(esc).join(' → ')}${p.ships.length?' · 🚀 '+p.ships.map(esc).join(', '):''}</div>
-   <div class="sub" style="margin-top:4px">${(p.top||[]).map(m=>`<a href="https://zkillboard.com/character/${m.id}/" target="_blank" rel="noopener">${esc(m.name)}</a> (${m.kills})`).join(' · ')}</div></div>`;
- });
  if((bs.kills||[]).length){
-  const K={miner:['⛏',en?'MINING SHIP':'MINING-SCHIFF','red'],booster:['🐋','BOOSTER','red'],
-           hauler:['🚚','HAULER','gold'],pod:['💊','POD','dim'],kill:['⚔','KILL','dim']};
-  html+=`<div class="card"><div class="chead"><span class="char">📡 ${en?'Kill ticker':'Kill-Ticker'}</span> <span class="sub">· ${en?'every player kill in your bubble, newest first':'jeder Spieler-Kill in deiner Blase, neueste zuerst'}</span></div>
-   <table class="fleetcomp"><tr><th></th><th>${en?'Time':'Zeit'}</th><th>System</th><th class="r">${en?'Jumps':'Sprünge'}</th><th>${en?'Victim':'Opfer'}</th><th class="r">ISK</th></tr>`
-   +bs.kills.map(k=>{const c=K[k.klass]||K.kill;
-     return `<tr><td>${c[0]}</td><td>${new Date(k.ts*1000).toLocaleTimeString().slice(0,5)}</td><td>${esc(k.system)}</td><td class="r">${k.jumps!=null?k.jumps:'?'}</td><td><span class="pitier" style="color:var(--${c[2]})">${c[1]}</span> ${esc(k.ship)}</td><td class="r isk">${k.value?fmtM(k.value):''}</td></tr>`;}).join('')
+  const K={miner:['⛏','MINING','red'],booster:['🐋','BOOSTER','red'],hauler:['🚚','HAULER','gold'],pod:['💊','POD','dim'],kill:['⚔','KILL','dim']};
+  inner+=`<div class="pistat2"><b>📡 ${en?'Latest kills in the bubble':'Letzte Kills in der Blase'}</b><table class="fleetcomp">`
+   +bs.kills.slice(0,8).map(k=>{const c=K[k.klass]||K.kill;
+    return `<tr><td>${c[0]}</td><td>${new Date(k.ts*1000).toLocaleTimeString().slice(0,5)}</td><td>${esc(k.system)}</td><td class="r">${k.jumps!=null?k.jumps+(en?' j':' Spr.'):''}</td><td><span class="pitier" style="color:var(--${c[2]})">${c[1]}</span> ${esc(k.ship)}</td><td class="r isk">${k.value?fmtM(k.value):''}</td></tr>`;}).join('')
    +`</table></div>`;
  }
- (bs.maps||[]).forEach(mp=>{
-  html+=`<div class="card"><div class="chead"><span class="char">🗺 ${en?'Situation map':'Lage-Karte'}</span> <span class="sub">· ${esc(mp.region)} ${en?'centered':'zentriert'} · ${bs.radius||20} ${en?'jumps':'Sprünge'}</span></div>${packMapSvg(mp,en)}</div>`;});
- if((bs.roster||[]).length){
-  html+=`<div class="card"><div class="chead"><span class="char">${en?'Evidence roster':'Evidenz-Roster'}</span> <span class="sub">· ${en?'who stood on killmails last':'wer zuletzt auf Killmails stand'}</span></div>
-   <table class="fleetcomp"><tr><th>Pilot</th><th>${en?'Pack':'Rudel'}</th><th class="r">Kills</th><th class="r">${en?'last seen':'zuletzt'}</th></tr>`
-   +bs.roster.map(r=>`<tr><td><a href="https://zkillboard.com/character/${r.id}/" target="_blank" rel="noopener">${esc(r.name)}</a></td><td>[${esc(r.pack)}]</td><td class="r">${r.kills}</td><td class="r">${packAge(now-r.last_seen,en)}</td></tr>`).join('')
-   +`</table></div>`;
- }
+ html+=`<div class="card">${inner}</div>`;
  box.innerHTML=html;
  const pc=document.getElementById('packCorp'); if(pc)pc.onchange=()=>post({action:'pack_cfg',corp:pc.checked});
  const po=document.getElementById('packOff'); if(po)po.onclick=()=>post({action:'pack_cfg',on:false});
