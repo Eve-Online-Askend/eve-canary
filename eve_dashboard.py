@@ -23,7 +23,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.59.0"
+VERSION = "1.59.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -2275,6 +2275,26 @@ class Esi(threading.Thread):
         except Exception as e:
             return f"Token-Tausch fehlgeschlagen: {e}"
 
+    def token_scopes(self, c):
+        """Erteilte Scopes aus dem Access-Token (JWT-scp-Claim) lesen. So sehen
+        wir, ob ein Char alle noetigen Berechtigungen hat oder neu verbunden
+        werden muss (z.B. weil ein Scope nach seiner Verbindung dazukam)."""
+        try:
+            seg = (c.get("access") or "").split(".")[1]
+            d = json.loads(base64.urlsafe_b64decode(seg + "==="))
+            scp = d.get("scp")
+            return set(scp) if isinstance(scp, list) else set((scp or "").split())
+        except Exception:
+            return set()
+
+    def char_health(self, name, c):
+        """ESI-Gesundheit eines Chars: verbunden UND alle Scopes erteilt -> ok.
+        'missing' listet fehlende Scopes (Kurzform) fuer den Tooltip."""
+        req = set(ESI_SCOPES.split())
+        gr = self.token_scopes(c)
+        return {"ok": self.status.get(name) == "verbunden" and req <= gr,
+                "missing": sorted(s.split(".")[0].replace("esi-", "") for s in (req - gr))}
+
     def _access(self, c):
         if time.time() < c.get("exp", 0) and c.get("access"):
             return c["access"]
@@ -3982,8 +4002,9 @@ def state_info():
             "watchlist": CONFIG.get("watchlist", []), "goal": CONFIG.get("goal"),
             "esi": {"client_id": (CONFIG.get("esi") or {}).get("client_id", ""),
                     "cb": esi.redirect_uri(),
-                    "chars": [{"name": n, "status": esi.status.get(n, "warte auf Abgleich …"),
-                               "ship": c.get("ship"), "wallet": c.get("wallet")}
+                    "chars": [dict({"name": n, "status": esi.status.get(n, "warte auf Abgleich …"),
+                                    "ship": c.get("ship"), "wallet": c.get("wallet")},
+                                   **esi.char_health(n, c))
                               for n, c in (CONFIG.get("esi") or {}).get("chars", {}).items()]},
             "server": serverstatus.state,
             "alerts": alerts.list()}
@@ -5010,6 +5031,9 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .piprodline{font-size:12px;margin:3px 0 7px;display:flex;flex-wrap:wrap;gap:5px 12px;align-items:center}
 .piprd{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
 .piicon2{width:16px;height:16px;border-radius:3px;flex:none}
+.esichk{font-size:10px;font-weight:700;padding:1px 6px;border-radius:5px;margin-left:6px;vertical-align:middle;border:1px solid currentColor;white-space:nowrap;cursor:help}
+.esichk.ok{color:var(--green)}
+.esichk.bad{color:var(--red)}
 @media(max-width:640px){.pirow{grid-template-columns:12px 1fr max-content}.pirow .pichar,.pirow .piprod{display:none}}
 /* Live-Missionskampf: EVE-HUD an den Design-Tokens. Verlauf ueber var(--card)/
    var(--inset) (theme-fest), Radius/Border wie die uebrigen Karten, Schaden
@@ -6759,7 +6783,7 @@ function renderProfiles(list){
   const fresh=p.poll_ts?`🛰 ${en?'ESI as of':'ESI-Stand vor'} ${Math.max(0,Math.round((now-p.poll_ts)/60))} min · ${en?'synced every ~2 min':'Abgleich alle ~2 min'}`:(en?'🛰 no EVE login':'🛰 kein EVE-Login');
   const info=`<div class="sbinfo">
     ${p.portrait?`<img class="sbpf" src="${p.portrait}" alt="">`:'<div class="sbpf sbpf-none">👤</div>'}
-    <div class="sbname">${esc(p.char)}</div>
+    <div class="sbname">${esc(p.char)} ${esiBadge(p.char)}</div>
     <div class="sbrow">💰 <b class="isk">${p.wallet!=null?fmtM(p.wallet)+' ISK':'—'}</b></div>
     <div class="sbrow">🏢 ${p.corp?esc(p.corp):`<span class="sub">${en?'syncing …':'wird abgeglichen …'}</span>`}${p.alliance?' · '+esc(p.alliance):''}</div>
     <div class="sbrow">🚀 ${p.ship?esc(p.ship):'—'}${p.sec!=null?' · Sec '+p.sec:''}</div>
@@ -6789,7 +6813,7 @@ function renderVault(v){
    </div></div>`;
  chars.forEach(c=>{
   html+=`<div class="card" style="grid-column:1/-1">
-   <div class="chead"><span class="char">${esc(c.name)} <span class="sys">· ${fmtC(c.total_m3)} m³ · ${fmtM(c.total_isk)} ISK</span></span></div>`;
+   <div class="chead"><span class="char">${esc(c.name)} <span class="sys">· ${fmtC(c.total_m3)} m³ · ${fmtM(c.total_isk)} ISK</span></span>${esiBadge(c.name)}</div>`;
   if(!c.locs.length){html+='<div class="sub">Kein Erz im Bestand.</div></div>';return;}
   c.locs.forEach(l=>{
    html+=`<div style="border-top:1px solid var(--line);padding:8px 0">
@@ -6820,6 +6844,16 @@ function piTierBadge(t){return t?`<span class="pitier ${t}">${t}</span>`:'';}
 // Produkt-Chips (Icon + Name + Tier + Anzahl) fuer "Produziert".
 function piProdList(products){return (products||[]).map(p=>
   `<span class="piprd">${p.type_id?`<img class="piicon2" src="https://images.evetech.net/types/${p.type_id}/icon?size=32" onerror="this.style.display='none'">`:''}${esc(p.name)}${piTierBadge(p.tier)}${p.count>1?' ×'+p.count:''}</span>`).join('');}
+// ESI-Statusabzeichen je Charakter: gruen = verbunden + alle Scopes, rot = neu
+// verbinden noetig. Nutzt state.esi.chars (kommt in jeder /data-Antwort mit).
+function esiBadge(name){
+ const c=((state.esi&&state.esi.chars)||[]).find(x=>x.name===name);
+ if(!c)return '';
+ const en=lang==='en';
+ if(c.ok)return `<span class="esichk ok" title="${en?'ESI connected, all scopes granted':'ESI verbunden, alle Berechtigungen erteilt'}">✅ ESI</span>`;
+ const miss=(c.missing&&c.missing.length)?' ('+(en?'missing: ':'fehlt: ')+c.missing.join(', ')+')':'';
+ return `<span class="esichk bad" title="${(en?'ESI needs checking, reconnect this character (⚙ Options)':'ESI prüfen, diesen Charakter neu verbinden (⚙ Optionen)')+miss}">🔴 ESI</span>`;
+}
 function piLeft(expiry,en){
  if(!expiry)return {cls:'dim',txt:en?'no extractor':'kein Extraktor'};
  const s=expiry-Date.now()/1000;
@@ -6874,7 +6908,7 @@ function renderPlaneten(pl){
  html+=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">${en?'By character':'Nach Charakter'}</span></div>`;
  list.forEach(c=>{const isc=collapsed.has(c.name);
   html+=`<div class="picol"><div class="chead pihead" data-pi="${esc(c.name)}" style="cursor:pointer">
-    <span class="char">${isc?'▸':'▾'} ${esc(c.name)} <span class="sub">· ${c.cols.length} ${c.cols.length===1?(en?'colony':'Kolonie'):(en?'colonies':'Kolonien')}</span></span>${c.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(c.isk)} ISK</span>`:''}</div>`;
+    <span class="char">${isc?'▸':'▾'} ${esc(c.name)} <span class="sub">· ${c.cols.length} ${c.cols.length===1?(en?'colony':'Kolonie'):(en?'colonies':'Kolonien')}</span></span>${esiBadge(c.name)}${c.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(c.isk)} ISK</span>`:''}</div>`;
   if(!isc)c.cols.forEach(col=>{
    let body=`<div class="picolhead"><b>${esc(col.planet)}</b> <span class="sub">${piTypeName(col.type,en)} · ${esc(col.system||'')} · ${en?'level':'Stufe'} ${col.upgrade||0} · ${col.pins||0} Pins</span>${col.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(col.isk)} ISK ${en?'stored':'gelagert'}</span>`:''}</div>`;
    if((col.products||[]).length)body+=`<div class="piprodline">🏭 <span class="sub">${en?'Produces':'Produziert'}:</span> ${piProdList(col.products)}</div>`;
