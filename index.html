@@ -96,6 +96,11 @@ footer a{margin:0 9px}
 .dlbarwrap{flex:1;background:var(--line);border-radius:3px;height:13px;overflow:hidden}
 .dlbar{display:block;height:100%;background:var(--gold);border-radius:3px;min-width:3px}
 .dld{width:34px;flex:none;color:var(--txt);font-weight:600}
+.dlstats{display:flex;gap:10px;margin:0 0 18px}
+.dltile{flex:1;background:var(--line);border-radius:9px;padding:11px 8px;text-align:center}
+.dltile b{display:block;font-size:21px;color:var(--gold);line-height:1.15}
+.dltile span{display:block;font-size:11px;color:var(--dim);margin-top:2px}
+.dltop{font-size:11px;color:var(--dim);margin:0 0 9px;text-transform:uppercase;letter-spacing:.05em}
 #dlBadge{cursor:pointer}
 #dlModal{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--txt);max-width:520px;width:92%;padding:20px}
 #dlModal::backdrop{background:rgba(0,0,0,.55)}
@@ -266,9 +271,6 @@ directly. The report contains no character names and no credentials.</p>
   <li data-i18n="r3">Game logging enabled in the EVE client, plus chat logging for the system display</li>
   <li data-i18n="r4">Nothing else. Canary only uses the Python standard library.</li>
 </ul>
-
-<h2 data-i18n="h.downloads">Downloads</h2>
-<div id="dlchart"><p class="tiny" data-i18n="dl.loading">Loading download numbers …</p></div>
 
 <h2 data-i18n="h.changelog">What's new</h2>
 <div id="changelog"><p class="tiny" data-i18n="cl.loading">Loading version history …</p></div>
@@ -547,21 +549,33 @@ let CL = null, DL = null, curLang = 'en';
 // Nur Versionen mit >0, damit die vielen Null-Releases den Balken nicht zumuellen.
 function dlChartHtml() {
   if (!DL) return '';
-  const rows = DL.map(r => ({
-      v: (r.tag_name || '').replace(/^v/, ''),
-      d: (r.assets || []).filter(a => a.name === 'eve_dashboard.py')
-          .reduce((x, a) => x + a.download_count, 0),
-      t: r.published_at }))
-    .filter(r => r.d > 0)
-    .sort((a, b) => new Date(a.t) - new Date(b.t));
+  const dlOf = r => (r.assets || []).filter(a => a.name === 'eve_dashboard.py')
+      .reduce((x, a) => x + a.download_count, 0);
+  const rows = DL.map(r => ({ v: (r.tag_name || '').replace(/^v/, ''), d: dlOf(r) }))
+    .filter(r => r.d > 0);
   if (!rows.length) return '';
-  const max = Math.max(...rows.map(r => r.d));
   const total = rows.reduce((s, r) => s + r.d, 0);
-  const lbl = { de: 'Downloads gesamt', fr: 'téléchargements au total',
-                ru: 'загрузок всего' }[curLang] || 'downloads total';
-  return `<div class="dltotal"><b>${total.toLocaleString()}</b> ${lbl}</div>` +
-    rows.map(r => `<div class="dlrow"><span class="dlv">v${r.v}</span>`
-      + `<span class="dlbarwrap"><span class="dlbar" style="width:${Math.max(4, Math.round(100 * r.d / max))}%"></span></span>`
+  // Neueste Version nach Veroeffentlichungsdatum (auch wenn erst wenige Downloads).
+  const latest = DL.map(r => ({ v: (r.tag_name || '').replace(/^v/, ''), d: dlOf(r), t: r.published_at }))
+    .sort((a, b) => new Date(b.t) - new Date(a.t))[0];
+  const avg = total / rows.length;
+  const top = rows.slice().sort((a, b) => b.d - a.d).slice(0, 5);
+  const max = Math.max(...top.map(r => r.d));
+  const L = ({
+    de: { total: 'Downloads gesamt', latest: 'Aktuell', ver: 'Versionen', avg: 'Ø / Version', top: 'Meistgeladen' },
+    fr: { total: 'téléchargements au total', latest: 'Actuelle', ver: 'versions', avg: 'moy. / version', top: 'Les plus téléchargés' },
+    ru: { total: 'загрузок всего', latest: 'Текущая', ver: 'версий', avg: 'в среднем', top: 'Самые скачиваемые' },
+    en: { total: 'downloads total', latest: 'Latest', ver: 'versions', avg: 'avg / version', top: 'Most downloaded' }
+  })[curLang] || { total: 'downloads total', latest: 'Latest', ver: 'versions', avg: 'avg / version', top: 'Most downloaded' };
+  return `<div class="dltotal"><b>${total.toLocaleString()}</b> ${L.total}</div>`
+    + `<div class="dlstats">`
+    +   `<div class="dltile"><b>${latest.d}</b><span>${L.latest} · v${latest.v}</span></div>`
+    +   `<div class="dltile"><b>${rows.length}</b><span>${L.ver}</span></div>`
+    +   `<div class="dltile"><b>${avg.toFixed(1)}</b><span>${L.avg}</span></div>`
+    + `</div>`
+    + `<div class="dltop">${L.top}</div>`
+    + top.map(r => `<div class="dlrow"><span class="dlv">v${r.v}</span>`
+      + `<span class="dlbarwrap"><span class="dlbar" style="width:${Math.max(6, Math.round(100 * r.d / max))}%"></span></span>`
       + `<span class="dld">${r.d}</span></div>`).join('');
 }
 function renderDlChart() {
