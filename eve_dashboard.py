@@ -24,8 +24,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.61.1"
+VERSION = "1.62.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
+                "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
 from collections import deque
@@ -3241,6 +3242,9 @@ class PackIntel(threading.Thread):
         self.mode = "aus"              # aus|laden|live|fallback|tot
         self.map_progress = (0, 0)
         self.last_kill_ts = 0
+        self.recent = deque(maxlen=40) # Kill-Ticker: (kt, sysid, vship, value)
+        self.dist = {}                 # system_id -> Spruenge vom Zentrum
+        self.center_id = None
         self.alerted = {}              # (pack_id, sprecher) -> last_seen beim Alarm
         self.near_alerted = {}         # (pack_id, system) -> ts (Gold-Hinweis)
         self.info_alerted = set()      # pack_id: Region-Hinweis schon gegeben
@@ -3254,41 +3258,6 @@ class PackIntel(threading.Thread):
     # ---- Konfiguration -------------------------------------------------
     def enabled(self):
         return bool(CONFIG.get("pack_radar"))
-
-    def regions(self):
-        return list(CONFIG.get("pack_regions") or ["The Citadel"])[:2]
-
-    def _auto_regions(self):
-        """Heimatregion einmalig aus dem aktuellen System ableiten (ESI) und
-        zusammen mit The Citadel (Uedama-Route) als Default speichern."""
-        sysname = None
-        with ingest.lock:
-            for s in ingest.sessions.values():
-                if s.system:
-                    sysname = s.system
-        if not sysname:
-            return
-        try:
-            req = urllib.request.Request(
-                ESI_BASE + "/universe/ids/", data=json.dumps([sysname]).encode(),
-                headers={"Content-Type": "application/json", "User-Agent": ESI_UA})
-            with urllib.request.urlopen(req, timeout=20) as r:
-                systems = json.loads(r.read()).get("systems") or []
-            if not systems:
-                return
-            sysd = self._get(f"{ESI_BASE}/universe/systems/{systems[0]['id']}/")
-            con = self._get(f"{ESI_BASE}/universe/constellations/"
-                            f"{sysd['constellation_id']}/")
-            reg = self._get(f"{ESI_BASE}/universe/regions/{con['region_id']}/")
-            home = reg.get("name")
-            if not home:
-                return
-            out = [home] + (["The Citadel"] if home != "The Citadel" else [])
-            with CONFIG_LOCK:
-                CONFIG["pack_regions"] = out
-            save_config()
-        except Exception as e:
-            log_error("CN-PACK-02", "auto_regions", e)
 
     def _queue(self):
         q = CONFIG.get("pack_queue")
@@ -3309,82 +3278,67 @@ class PackIntel(threading.Thread):
             return json.loads(raw)
 
     # ---- Karte / Stammdaten -------------------------------------------
+    def _own_name(self):
+        with ingest.lock:
+            for s in ingest.sessions.values():
+                if s.system:
+                    return s.system
+        return CONFIG.get("pack_center")
+
     def _load_map(self):
-        """System-Stammdaten der beobachteten Regionen aus der DB laden und
-        fehlende Teile aus ESI nachziehen (einmalig, gedrosselt, resumefaehig)."""
-        want = self.regions()
-        # Regions-IDs aufloesen (POST, aber nur einmal noetig)
-        need = [r for r in want if r not in self.region_ids]
-        if need:
-            req = urllib.request.Request(
-                ESI_BASE + "/universe/ids/", data=json.dumps(need).encode(),
-                headers={"Content-Type": "application/json", "User-Agent": ESI_UA})
-            with urllib.request.urlopen(req, timeout=20) as r:
-                d = json.loads(r.read())
-            for x in d.get("regions", []):
-                self.region_ids[x["name"]] = x["id"]
-        with DB_LOCK:
-            rows = DB.execute("SELECT system_id,region,name,sec,x,z,gates "
-                              "FROM pack_map WHERE region IN (%s)" %
-                              ",".join("?" * len(want)), want).fetchall()
-        self.sysrow = {r[0]: (r[1], r[2], r[3], r[4], r[5],
-                              json.loads(r[6] or "[]")) for r in rows}
-        # Fehlen Regionen komplett? Systemliste anlegen (Region -> Konstellationen).
-        have_regions = {v[0] for v in self.sysrow.values()}
-        for rname in want:
-            if rname in have_regions:
-                continue
-            rid = self.region_ids.get(rname)
-            if not rid:
-                continue
-            reg = self._get(f"{ESI_BASE}/universe/regions/{rid}/")
-            for cid in reg.get("constellations", []):
-                con = self._get(f"{ESI_BASE}/universe/constellations/{cid}/")
-                with DB_LOCK:
-                    for sid in con.get("systems", []):
-                        DB.execute("INSERT OR IGNORE INTO pack_map(system_id,region) "
-                                   "VALUES(?,?)", (sid, rname))
-                    DB.commit()
-                time.sleep(0.15)
-            with DB_LOCK:
-                rows = DB.execute("SELECT system_id FROM pack_map WHERE region=?",
-                                  (rname,)).fetchall()
-            for (sid,) in rows:
-                self.sysrow.setdefault(sid, (rname, None, None, None, None, []))
-        # Details nachziehen (Name/Sec/Position/Gates), resumefaehig.
-        todo = [sid for sid, v in self.sysrow.items() if v[1] is None]
-        total = len(self.sysrow)
-        done = total - len(todo)
-        for sid in todo:
-            self.map_progress = (done, total)
-            try:
-                s = self._get(f"{ESI_BASE}/universe/systems/{sid}/")
-                gates = []
-                for gid in (s.get("stargates") or []):
-                    try:
-                        g = self._get(f"{ESI_BASE}/universe/stargates/{gid}/")
-                        dest = (g.get("destination") or {}).get("system_id")
-                        if dest:
-                            gates.append(dest)
-                    except Exception:
-                        pass
-                    time.sleep(0.1)
-                pos = s.get("position") or {}
-                row = (self.sysrow[sid][0], s.get("name"),
-                       round(s.get("security_status", 0), 2),
-                       pos.get("x"), pos.get("z"), gates)
-                self.sysrow[sid] = row
-                with DB_LOCK:
-                    DB.execute("UPDATE pack_map SET name=?,sec=?,x=?,z=?,gates=? "
-                               "WHERE system_id=?",
-                               (row[1], row[2], row[3], row[4],
-                                json.dumps(gates), sid))
-                    DB.commit()
-            except Exception as e:
-                log_error("CN-PACK-02", f"map {sid}", e)
-                time.sleep(1)
-            done += 1
-        self.map_progress = (total, total)
+        """Ego-Blase aus der MITGELIEFERTEN Universums-Karte (eve_map.json, aus
+        der SDE generiert): alle Systeme im Umkreis von pack_radius Spruengen
+        (Default 20) um das eigene System, per Gate-BFS. Kein ESI-Crawl, kein
+        lokaler Aufbau, die Blase steht in Millisekunden."""
+        radius = int(CONFIG.get("pack_radius", 20) or 20)
+        center = CONFIG.get("pack_center") or self._own_name()
+        if not center:
+            time.sleep(10)
+            return
+        emap = load_json("eve_map.json", None)
+        if not emap or not emap.get("systems"):
+            log_error("CN-PACK-02", "load_map",
+                      "eve_map.json fehlt oder ist leer (Update unvollstaendig?)")
+            time.sleep(60)
+            return
+        systems = {int(k): v for k, v in emap["systems"].items()}
+        self.region_ids = {n: i for n, i in (emap.get("regions") or {}).items()}
+        name2id = {v[0]: sid for sid, v in systems.items()}
+        cid = name2id.get(center)
+        if not cid:
+            log_error("CN-PACK-02", "load_map", f"System {center} nicht in der Karte")
+            time.sleep(30)
+            return
+        with CONFIG_LOCK:
+            CONFIG["pack_center"] = center
+        save_config()
+        bubble = {cid: 0}
+        frontier = [cid]
+        depth = 0
+        while frontier and depth < radius:
+            depth += 1
+            nxt = []
+            for sid in frontier:
+                for g in systems.get(sid, (None,) * 6)[5]:
+                    if g in systems and g not in bubble:
+                        bubble[g] = depth
+                        nxt.append(g)
+            frontier = nxt
+        # sysrow-Format wie gehabt: (Region, Name, Sec, x, z, Gates)
+        self.sysrow = {sid: (systems[sid][4], systems[sid][0], systems[sid][1],
+                             systems[sid][2], systems[sid][3], systems[sid][5])
+                       for sid in bubble}
+        self.center_id = cid
+        self.dist = dict(bubble)
+        self.map_progress = (len(bubble), len(bubble))
+
+    def _backfill_regions(self):
+        """Die (max 3) Regionen mit den meisten Blasen-Systemen, fuer zKill."""
+        cnt = {}
+        for v in self.sysrow.values():
+            if v[0]:
+                cnt[v[0]] = cnt.get(v[0], 0) + 1
+        return [r for r, _ in sorted(cnt.items(), key=lambda x: -x[1])[:3]]
 
     # ---- Kill-Verarbeitung ---------------------------------------------
     def _kill_score(self, km, sysid):
@@ -3426,6 +3380,9 @@ class PackIntel(threading.Thread):
         score = self._kill_score(km, sysid)
         self.last_kill_ts = max(self.last_kill_ts, kt)
         self.heat.setdefault(sysid, []).append(kt)
+        self.recent.append((kt, sysid,
+                            (km.get("victim") or {}).get("ship_type_id"),
+                            zkb.get("totalValue")))
         if persist:
             with DB_LOCK:
                 DB.execute("INSERT OR IGNORE INTO pack_kills VALUES(?,?,?,?,?,?,?,?,?)",
@@ -3498,6 +3455,26 @@ class PackIntel(threading.Thread):
                     p["kls"][a[0]] = p["kls"].get(a[0], 0) + 1
             for c in chars:
                 self.member_index[c] = target
+            # Annaeherungs-Warnung: die Kill-Distanz zum Zentrum sinkt. Gold ab
+            # 15 Spruengen, ROT (mit TTS) ab 3. Feuert je Rudel nur, wenn es
+            # NAEHER kommt als je zuvor gemeldet (kein Dauergeplapper).
+            d = self.dist.get(sysid)
+            if d is not None and self._visible(p):
+                prevd = p.get("dist")
+                p["dist"] = d
+                best = p.get("dist_alerted")
+                if (prevd is not None and d < prevd and d <= 15
+                        and (best is None or d < best)):
+                    p["dist_alerted"] = d
+                    sysn = (self.sysrow.get(sysid) or (None, "?"))[1]
+                    if d <= 3:
+                        alerts.push("pack", self._label(p),
+                                    f"🩸 Rudel [{self._label(p)}] nähert sich deinem "
+                                    f"System: noch {d} Sprünge ({sysn})")
+                    else:
+                        alerts.push("packinfo", self._label(p),
+                                    f"🩸 Rudel [{self._label(p)}] nähert sich: "
+                                    f"{prevd} → {d} Sprünge ({sysn})")
 
     def _recognize(self, chars):
         """14-Tage-Wiedererkennung: >=50% Mitglieder-Ueberlappung mit dem Archiv."""
@@ -3573,7 +3550,19 @@ class PackIntel(threading.Thread):
 
     # ---- zKill (Warm-Start + Fallback) ----------------------------------
     def _zkill(self, past=10800):
-        for rname in self.regions():
+        regions = self._backfill_regions()
+        need = [r for r in regions if r not in self.region_ids]
+        if need:
+            try:
+                req = urllib.request.Request(
+                    ESI_BASE + "/universe/ids/", data=json.dumps(need).encode(),
+                    headers={"Content-Type": "application/json", "User-Agent": ESI_UA})
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    for x in json.loads(r.read()).get("regions", []):
+                        self.region_ids[x["name"]] = x["id"]
+            except Exception:
+                pass
+        for rname in regions:
             rid = self.region_ids.get(rname)
             if not rid or time.time() - self._zkill_last.get(rname, 0) < 3600:
                 continue
@@ -3703,11 +3692,12 @@ class PackIntel(threading.Thread):
     def snapshot(self):
         now = time.time()
         out = {"on": self.enabled(), "mode": self.mode,
-               "regions": self.regions(),
+               "center": CONFIG.get("pack_center"),
+               "radius": int(CONFIG.get("pack_radius", 20) or 20),
                "corp_alert": bool(CONFIG.get("pack_corp_alert")),
                "map_progress": list(self.map_progress),
                "last_kill_age": int(now - self.last_kill_ts) if self.last_kill_ts else None,
-               "packs": [], "roster": [], "maps": []}
+               "packs": [], "roster": [], "maps": [], "kills": []}
         if not self.enabled():
             return out
         with self.lock:
@@ -3736,7 +3726,20 @@ class PackIntel(threading.Thread):
             out["packs"].sort(key=lambda x: -x["score"])
             out["roster"].sort(key=lambda x: -x["kills"])
             out["roster"] = out["roster"][:30]
-            # Karten je Region: normalisierte Koordinaten (x/z -> 1000x700).
+            # Kill-Ticker: jeder Spieler-Kill der Blase, klassifiziert.
+            for kt2, sid2, vship, val in list(self.recent)[::-1][:25]:
+                row = self.sysrow.get(sid2)
+                g = esi.type_group(vship) if vship else None
+                klass = ("pod" if g == 29 else
+                         "miner" if g in (463, 543) else
+                         "booster" if g in (941, 883) else
+                         "hauler" if g in (28, 380, 1202, 513, 902) else "kill")
+                out["kills"].append({
+                    "ts": int(kt2), "system": row[1] if row else "?",
+                    "jumps": self.dist.get(sid2),
+                    "ship": esi.type_name(vship) or "?", "klass": klass,
+                    "value": val})
+            # EINE Ego-Karte: eigenes System in der Mitte, Blase drumherum.
             own_names = set()
             with ingest.lock:
                 for s in ingest.sessions.values():
@@ -3745,33 +3748,30 @@ class PackIntel(threading.Thread):
             pack_sys = {}
             for pk in out["packs"]:
                 pack_sys.setdefault(pk["last_system"], []).append(pk["label"])
-            for rname in self.regions():
-                rows = [(sid, v) for sid, v in self.sysrow.items()
-                        if v[0] == rname and v[3] is not None]
-                if not rows:
-                    continue
-                xs = [v[3] for _, v in rows]
-                zs = [v[4] for _, v in rows]
-                x0, x1 = min(xs), max(xs)
-                z0, z1 = min(zs), max(zs)
-                dx = (x1 - x0) or 1.0
-                dz = (z1 - z0) or 1.0
+            rows = [(sid, v) for sid, v in self.sysrow.items() if v[3] is not None]
+            crow = self.sysrow.get(self.center_id)
+            if rows and crow and crow[3] is not None:
+                cx, cz = crow[3], crow[4]
+                mx = max(max(abs(v[3] - cx) for _, v in rows), 1.0)
+                mz = max(max(abs(v[4] - cz) for _, v in rows), 1.0)
                 idx = {}
                 systems = []
                 for i, (sid, v) in enumerate(rows):
                     idx[sid] = i
                     systems.append({
                         "name": v[1], "sec": v[2],
-                        "x": round(40 + 920 * (v[3] - x0) / dx),
-                        "y": round(40 + 620 * (1 - (v[4] - z0) / dz)),
+                        "x": round(500 + 460 * (v[3] - cx) / mx),
+                        "y": round(350 - 310 * (v[4] - cz) / mz),
                         "heat": len(self.heat.get(sid, [])),
-                        "own": v[1] in own_names,
+                        "own": v[1] in own_names or sid == self.center_id,
+                        "jumps": self.dist.get(sid),
                         "packs": pack_sys.get(v[1], [])})
                 edges = set()
                 for sid, v in rows:
-                    for g in v[5]:
-                        if g in idx:
-                            edges.add((min(idx[sid], idx[g]), max(idx[sid], idx[g])))
+                    for g2 in v[5]:
+                        if g2 in idx:
+                            edges.add((min(idx[sid], idx[g2]),
+                                       max(idx[sid], idx[g2])))
                 # Richtungspfeil NUR bei echter Bewegung: >=2 verschiedene Systeme
                 # binnen 45 min und <=4 Spruenge, sonst gilt "stationaer".
                 arrows = []
@@ -3785,7 +3785,8 @@ class PackIntel(threading.Thread):
                             a, b = systems[idx[s1]], systems[idx[s2]]
                             arrows.append({"x1": a["x"], "y1": a["y"],
                                            "x2": b["x"], "y2": b["y"]})
-                out["maps"].append({"region": rname, "systems": systems,
+                out["maps"].append({"region": CONFIG.get("pack_center") or "?",
+                                    "systems": systems,
                                     "edges": sorted(edges), "arrows": arrows})
         return out
 
@@ -3910,9 +3911,10 @@ class PackIntel(threading.Thread):
                     continue
                 if not self.sysrow or any(v[1] is None for v in self.sysrow.values()):
                     self.mode = "laden"
-                    if not CONFIG.get("pack_regions"):
-                        self._auto_regions()   # Heimatregion einmalig ableiten
                     self._load_map()
+                    if not self.sysrow:
+                        time.sleep(20)     # noch kein eigenes System bekannt
+                        continue
                     # Cluster deterministisch aus den Roh-Kills der letzten 24h
                     with DB_LOCK:
                         rows = DB.execute(
@@ -7594,7 +7596,7 @@ function packMapSvg(mp,en){
   const own=s.own?`<circle cx="${s.x}" cy="${s.y}" r="9" fill="none" style="stroke:var(--cyan)" stroke-width="2"/>`:'';
   const pk=(s.packs&&s.packs.length)?`<text x="${s.x}" y="${s.y-11}" text-anchor="middle" style="font-size:12px">🩸</text>`:'';
   const label=(s.heat||s.own||(s.packs&&s.packs.length))?`<text x="${s.x}" y="${s.y+17}" text-anchor="middle" style="fill:var(--dim);font-size:9px">${esc(s.name||'')}</text>`:'';
-  return heat+own+`<circle cx="${s.x}" cy="${s.y}" r="3" style="fill:${sec}"><title>${esc(s.name||'')} · Sec ${s.sec!=null?s.sec:'?'}${s.heat?` · ${s.heat} Kills/2h`:''}</title></circle>`+pk+label;}).join('');
+  return heat+own+`<circle cx="${s.x}" cy="${s.y}" r="3" style="fill:${sec}"><title>${esc(s.name||'')} · Sec ${s.sec!=null?s.sec:'?'}${s.jumps!=null?` · ${s.jumps} ${en?'jumps':'Sprünge'}`:''}${s.heat?` · ${s.heat} Kills/2h`:''}</title></circle>`+pk+label;}).join('');
  return `<div style="overflow-x:auto"><svg viewBox="0 0 1000 700" style="width:100%;height:auto">${edges}${arrows}${dots}</svg></div>`
   +`<div class="sub">${en?'dot = system (colour = sec) · red halo = kills last 2h · cyan ring = you · 🩸 = pack last seen here · dashed = estimated direction':'Punkt = System (Farbe = Sec) · roter Halo = Kills der letzten 2h · Cyan-Ring = du · 🩸 = Rudel zuletzt hier · gestrichelt = geschätzte Richtung'}</div>`;
 }
@@ -7605,7 +7607,7 @@ function renderBlutspur(bs){
  if(!bs.on){
   box.innerHTML=`<div class="card"><b>🩸 Blutspur</b>
    <div class="sub" style="margin:8px 0">${en?'Detects active gank packs in your regions almost live from the public killmail stream: who repeatedly kills together, where they hunt, with an honest "last seen X min ago". Public data only (killmail.stream and zKillboard), nothing leaves your machine.':'Erkennt aktive Gank-Rudel deiner Regionen fast live aus dem öffentlichen Killmail-Strom: wer wiederholt gemeinsam tötet, wo sie jagen, mit ehrlichem „zuletzt gesehen vor X min". Nur öffentliche Daten (killmail.stream und zKillboard), nichts verlässt deinen Rechner.'}</div>
-   <div class="sub" style="margin-bottom:10px">${en?'Regions':'Regionen'}: <b>${esc((bs.regions||[]).join(', '))}</b> · ${en?'changeable in config.json (pack_regions, max 2)':'änderbar in config.json (pack_regions, max 2)'}</div>
+   <div class="sub" style="margin-bottom:10px">${en?'Watches everything within':'Beobachtet alles im Umkreis von'} <b>${bs.radius||20} ${en?'jumps around your system':'Sprüngen um dein System'}</b>${bs.center?' ('+esc(bs.center)+')':''} · ${en?'radius via pack_radius in config.json':'Radius über pack_radius in der config.json'}</div>
    <button class="btn" id="packOn">${en?'Enable Blood Trail':'Blutspur einschalten'}</button></div>`;
   const b=document.getElementById('packOn'); if(b)b.onclick=()=>post({action:'pack_cfg',on:true});
   return;
@@ -7616,7 +7618,7 @@ function renderBlutspur(bs){
   :`<span class="esichk bad">● ${en?'feed down':'Feed tot'}</span>`;
  const age=bs.last_kill_age!=null?`${en?'last kill in region':'letzter Kill der Region'}: ${packAge(bs.last_kill_age,en)}`:(en?'no region kills yet':'noch keine Kills der Region');
  let html=`<div class="card"><div class="chead"><span class="char">🩸 Blutspur</span> ${badge}
-   <span class="sub" style="margin-left:auto">${esc((bs.regions||[]).join(' · '))} · ${age}</span></div>
+   <span class="sub" style="margin-left:auto">${bs.center?esc(bs.center)+' · '+(bs.radius||20)+(en?' jumps':' Sprünge')+' · ':''}${age}</span></div>
   <div class="sub" style="margin-top:5px">🕯 ${en?'Honest by design: a pack becomes visible only AFTER its latest kill (echo principle), and only pilots who appear on killmails count. Silent campers stay invisible. Every age is computed from kill time, never receive time.':'Ehrlich per Bauart: ein Rudel wird erst NACH seinem letzten Kill sichtbar (Echo-Prinzip), und nur Piloten, die auf Killmails stehen, zählen. Stille Camper bleiben unsichtbar. Jede Zeitangabe kommt aus der Kill-Zeit, nie aus der Empfangszeit.'}</div>
   <div style="margin-top:9px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
    <label style="font-size:12px"><input type="checkbox" id="packCorp" ${bs.corp_alert?'checked':''}> ${en?'Corp escalation: hint when a local speaker is only in a pack corp':'Corp-Eskalation: Hinweis, wenn ein Local-Sprecher nur in einer Rudel-Corp ist'}</label>
@@ -7641,8 +7643,17 @@ function renderBlutspur(bs){
    <div class="sub">⚔ ${p.kills} Kills · ${en?'hunting grounds':'Jagdgebiet'}: ${p.systems.map(esc).join(' → ')}${p.ships.length?' · 🚀 '+p.ships.map(esc).join(', '):''}</div>
    <div class="sub" style="margin-top:4px">${(p.top||[]).map(m=>`<a href="https://zkillboard.com/character/${m.id}/" target="_blank" rel="noopener">${esc(m.name)}</a> (${m.kills})`).join(' · ')}</div></div>`;
  });
+ if((bs.kills||[]).length){
+  const K={miner:['⛏',en?'MINING SHIP':'MINING-SCHIFF','red'],booster:['🐋','BOOSTER','red'],
+           hauler:['🚚','HAULER','gold'],pod:['💊','POD','dim'],kill:['⚔','KILL','dim']};
+  html+=`<div class="card"><div class="chead"><span class="char">📡 ${en?'Kill ticker':'Kill-Ticker'}</span> <span class="sub">· ${en?'every player kill in your bubble, newest first':'jeder Spieler-Kill in deiner Blase, neueste zuerst'}</span></div>
+   <table class="fleetcomp"><tr><th></th><th>${en?'Time':'Zeit'}</th><th>System</th><th class="r">${en?'Jumps':'Sprünge'}</th><th>${en?'Victim':'Opfer'}</th><th class="r">ISK</th></tr>`
+   +bs.kills.map(k=>{const c=K[k.klass]||K.kill;
+     return `<tr><td>${c[0]}</td><td>${new Date(k.ts*1000).toLocaleTimeString().slice(0,5)}</td><td>${esc(k.system)}</td><td class="r">${k.jumps!=null?k.jumps:'?'}</td><td><span class="pitier" style="color:var(--${c[2]})">${c[1]}</span> ${esc(k.ship)}</td><td class="r isk">${k.value?fmtM(k.value):''}</td></tr>`;}).join('')
+   +`</table></div>`;
+ }
  (bs.maps||[]).forEach(mp=>{
-  html+=`<div class="card"><div class="chead"><span class="char">🗺 ${esc(mp.region)}</span></div>${packMapSvg(mp,en)}</div>`;});
+  html+=`<div class="card"><div class="chead"><span class="char">🗺 ${en?'Situation map':'Lage-Karte'}</span> <span class="sub">· ${esc(mp.region)} ${en?'centered':'zentriert'} · ${bs.radius||20} ${en?'jumps':'Sprünge'}</span></div>${packMapSvg(mp,en)}</div>`;});
  if((bs.roster||[]).length){
   html+=`<div class="card"><div class="chead"><span class="char">${en?'Evidence roster':'Evidenz-Roster'}</span> <span class="sub">· ${en?'who stood on killmails last':'wer zuletzt auf Killmails stand'}</span></div>
    <table class="fleetcomp"><tr><th>Pilot</th><th>${en?'Pack':'Rudel'}</th><th class="r">Kills</th><th class="r">${en?'last seen':'zuletzt'}</th></tr>`
@@ -8484,6 +8495,10 @@ const EN_PATTERNS = [
  [/Rudel \\[(.+?)\\]: Kill in der Nähe \\((.+?)\\)/, 'Pack [$1]: kill nearby ($2)'],
  [/Rudel-Corp im Local: (.+?) ist in der Corp von Rudel \\[(.+?)\\]/,
   'Pack corp in local: $1 is in the corp of pack [$2]'],
+ [/Rudel \\[(.+?)\\] nähert sich deinem System: noch ([0-9]+) Sprünge \\((.+?)\\)/,
+  'Pack [$1] closing on your system: $2 jumps out ($3)'],
+ [/Rudel \\[(.+?)\\] nähert sich: ([0-9]+) → ([0-9]+) Sprünge \\((.+?)\\)/,
+  'Pack [$1] approaching: $2 to $3 jumps ($4)'],
  // Planetary-Industry-Ablauf-Alarm: distinkte Tokens, damit nichts anderes trifft.
  [/ · Extraktor abgelaufen/, ' · extractor expired'],
  [/ · Extraktor läuft in ([0-9]+) Std ab/, ' · extractor expires in $1 h'],
