@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.65.0"
+VERSION = "1.65.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -3274,6 +3274,14 @@ class ClipWatch(threading.Thread):
 # ---------------------------------------------------------------- Blutspur-Radar
 KMSTREAM = "https://killmail.stream/poll/"
 
+# Wie nah muss ein Rudel am eigenen Standort sein, damit es ueberhaupt gemeldet
+# wird. Beobachtet wird weiter die ganze Blase (pack_radius, Standard 20), die
+# Karte zeigt auch alles. Gemeldet wird aber nur, was den eigenen Standort
+# etwas angeht: ein Rudel 18 Spruenge weiter in einer anderen Region ist fuer
+# den naechsten Undock ohne Bedeutung.
+PACK_NEAR_JUMPS = 10   # Annaeherung (Distanz sinkt) wird ab hier gemeldet
+PACK_INFO_JUMPS = 5    # "sitzt schon da"-Hinweis nur direkt in der Nachbarschaft
+
 
 class PackIntel(threading.Thread):
     """Blutspur: erkennt aktive Gank-Rudel der beobachteten Regionen aus dem
@@ -3520,7 +3528,7 @@ class PackIntel(threading.Thread):
                 p["dist_prev"] = prevd
                 p["dist"] = d
                 best = p.get("dist_alerted")
-                if (prevd is not None and d < prevd and d <= 15
+                if (prevd is not None and d < prevd and d <= PACK_NEAR_JUMPS
                         and (best is None or d < best)):
                     p["dist_alerted"] = d
                     sysn = (self.sysrow.get(sysid) or (None, "?"))[1]
@@ -3716,20 +3724,30 @@ class PackIntel(threading.Thread):
                                     f"🩸 Rudel [{self._label(p)}]: Kill in der Nähe ({sysn})")
 
     def _start_info(self, now):
-        """Einmaliger Hinweis je Rudel: 'seit N min in deiner Region aktiv'."""
+        """Einmaliger Hinweis je Rudel, aber NUR wenn es wirklich in der Naehe
+        sitzt (<= PACK_INFO_JUMPS Spruenge vom eigenen Standort).
+
+        Vorher meldete das jedes Rudel der ganzen Blase, also auch welche, die
+        20 Spruenge weit weg in einer anderen Region wueten. Das ist fuer den
+        eigenen Standort ohne Belang und war reines Rauschen (Userwunsch
+        2026-07-26: nur melden, wenn sich etwas dem Standort naehert oder
+        direkt daneben sitzt)."""
         with self.lock:
             for pid, p in self.packs.items():
                 if pid in self.info_alerted or not self._visible(p):
                     continue
                 if self._status(p, now) != "aktiv":
                     continue
+                d = p.get("dist")
+                if d is None or d > PACK_INFO_JUMPS:
+                    continue
                 self.info_alerted.add(pid)
                 mins = max(1, int((now - p["first"]) // 60))
-                region = (self.sysrow.get(p["systems"][-1][0]) or ("?",))[0] \
+                sysn = (self.sysrow.get(p["systems"][-1][0]) or (None, "?"))[1] \
                     if p["systems"] else "?"
                 alerts.push("packinfo", self._label(p),
-                            f"🩸 Rudel [{self._label(p)}] seit {mins} min in {region} aktiv "
-                            f"({len(p['members'])} Piloten)")
+                            f"🩸 Rudel [{self._label(p)}] ist {d} Sprünge entfernt aktiv "
+                            f"({sysn}, seit {mins} min, {len(p['members'])} Piloten)")
 
     def _bfs(self, start, depth):
         seen = {start}
@@ -8784,8 +8802,8 @@ const EN_PATTERNS = [
  // PAGE ist ein normaler Python-String, einfache Escapes gehen dort kaputt.
  [/Bekanntes Rudel im Local: (.+?) gehört zu Rudel \\[(.+?)\\] \\(([0-9]+) Piloten, zuletzt aktiv vor ([0-9]+) min in (.+?)\\)/,
   'Known pack in local: $1 belongs to pack [$2] ($3 pilots, last active $4 min ago in $5)'],
- [/Rudel \\[(.+?)\\] seit ([0-9]+) min in (.+?) aktiv \\(([0-9]+) Piloten\\)/,
-  'Pack [$1] active in $3 for $2 min ($4 pilots)'],
+ [/Rudel \\[(.+?)\\] ist ([0-9]+) Sprünge entfernt aktiv \\((.+?), seit ([0-9]+) min, ([0-9]+) Piloten\\)/,
+  'Pack [$1] active $2 jumps out ($3, for $4 min, $5 pilots)'],
  [/Rudel \\[(.+?)\\]: Kill in der Nähe \\((.+?)\\)/, 'Pack [$1]: kill nearby ($2)'],
  [/Rudel-Corp im Local: (.+?) ist in der Corp von Rudel \\[(.+?)\\]/,
   'Pack corp in local: $1 is in the corp of pack [$2]'],

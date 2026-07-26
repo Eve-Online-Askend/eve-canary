@@ -1,5 +1,17 @@
 [
  {
+  "v": "1.65.1",
+  "d": "2026-07-26",
+  "de": [
+   "Blutspur meldet sich nur noch, wenn es dich wirklich betrifft. Vorher kam beim Start für jedes Rudel in der ganzen Blase ein Hinweis, auch für welche, die 14 Sprünge weit weg in einer anderen Region wüteten. Jetzt gilt: ein Rudel, das schon da sitzt, wird nur bis 5 Sprünge Entfernung gemeldet, und eine Annäherung nur bis 10 Sprünge.",
+   "Der Hinweis sagt jetzt auch, wie weit weg es ist, statt nur die Region zu nennen. Beobachtet und auf der Karte gezeigt wird weiterhin die ganze Umgebung, es wird nur nicht mehr alles gemeldet."
+  ],
+  "en": [
+   "Blood Trail now only speaks up when it actually concerns you. Before, every pack anywhere in the bubble produced a notice on startup, even ones raging 14 jumps away in another region. Now a pack already sitting somewhere is only reported within 5 jumps, and an approach only within 10.",
+   "The notice now also tells you how far away it is instead of just naming the region. The whole surroundings are still watched and drawn on the map, they are just no longer all announced."
+  ]
+ },
+ {
   "v": "1.65.0",
   "d": "2026-07-26",
   "de": [
