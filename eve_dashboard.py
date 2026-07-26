@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.57.0"
+VERSION = "1.57.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -2437,7 +2437,7 @@ class Esi(threading.Thread):
                 layout, _ = self._get(c, f"/characters/{c['char_id']}/planets/{pid}/")
             except Exception:
                 continue
-            extractors, factories = [], 0
+            extractors, factories, contents = [], 0, {}
             for pin in layout.get("pins", []):
                 ed = pin.get("extractor_details") or {}
                 if pin.get("factory_details") or pin.get("schematic_id"):
@@ -2451,6 +2451,12 @@ class Esi(threading.Thread):
                         "cycle": ed.get("cycle_time"),
                         "install": _ts(pin.get("install_time")),
                         "expiry": _ts(pin.get("expiry_time"))})
+                # Gelagerte Materialien (Speicher/Startrampe/Fabrik): Menge je Typ,
+                # spaeter mit Jita-Buy bewertet -> "wieviel ISK liegt auf dem Planeten".
+                for it in (pin.get("contents") or []):
+                    tid, amt = it.get("type_id"), it.get("amount") or 0
+                    if tid:
+                        contents[tid] = contents.get(tid, 0) + amt
             extractors.sort(key=lambda e: e.get("expiry") or 9e18)
             out.append({
                 "planet_id": pid,
@@ -2460,7 +2466,16 @@ class Esi(threading.Thread):
                 "upgrade": col.get("upgrade_level"),
                 "pins": col.get("num_pins"),
                 "factories": factories,
-                "extractors": extractors})
+                "extractors": extractors,
+                "_contents": contents})
+        # Gelagerten Wert je Kolonie bewerten (Jita-Buy, ein Preis-Abruf fuer alle Typen).
+        all_tids = set()
+        for col in out:
+            all_tids |= set(col["_contents"])
+        pm = hub_prices("10000002", all_tids, prefer_esi=True) if all_tids else {}
+        for col in out:
+            col["isk"] = round(sum(a * pm.get(t, (0, 0))[0]
+                                   for t, a in col.pop("_contents").items()))
         with CONFIG_LOCK:
             c["planets"] = {"as_of": int(asof), "next": int(exp) + 10, "cols": out}
         c["planets_next"] = exp + 10
@@ -4146,6 +4161,7 @@ def query_planeten():
     now = time.time()
     chars, extractors, reconnect = [], [], []
     n_col = n_ex = n_soon = n_exp = 0
+    total_isk = 0
     oldest = soonest = None
     for nm, c in ((CONFIG.get("esi") or {}).get("chars", {})).items():
         if c.get("planets_scope") is False:
@@ -4173,13 +4189,16 @@ def query_planeten():
                                    "type": col.get("type"), "product": e.get("product"),
                                    "product_id": e.get("product_id"),
                                    "heads": e.get("heads"), "expiry": exp})
-        chars.append({"name": nm, "cols": cols,
+        cisk = sum(col.get("isk", 0) for col in cols)
+        total_isk += cisk
+        chars.append({"name": nm, "cols": cols, "isk": cisk,
                       "as_of": p.get("as_of"), "next": p.get("next")})
     extractors.sort(key=lambda x: x.get("expiry") or 9e18)
     chars.sort(key=lambda x: x["name"])
     return {"chars": chars, "extractors": extractors, "reconnect": reconnect,
             "as_of": oldest, "next": soonest, "n_char": len(chars),
-            "n_col": n_col, "n_ex": n_ex, "n_soon": n_soon, "n_exp": n_exp}
+            "n_col": n_col, "n_ex": n_ex, "n_soon": n_soon, "n_exp": n_exp,
+            "total_isk": total_isk}
 
 
 def query_missions():
@@ -4837,13 +4856,13 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .sbrow{font-size:13px;margin:3px 0;color:var(--txt)}
 .sbfresh{margin-top:8px}
 /* Planetary Industry: Dringlichkeitszeilen + einklappbare Char-Bloecke. */
-.pirow{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
+.pirow{display:grid;grid-template-columns:12px 130px 1fr 150px 140px;align-items:center;gap:10px;padding:6px 2px;border-top:1px solid var(--line);font-size:13px}
 .pirow:first-of-type{border-top:none}
-.pichar{flex:0 0 130px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.piplanet{flex:1;min-width:120px}
-.piprod{flex:0 0 150px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.piexp{flex:0 0 auto;margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600}
-.pidot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--dim)}
+.pichar{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.piplanet{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.piprod{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.piexp{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.pidot{width:9px;height:9px;border-radius:50%;background:var(--dim)}
 .pidot.ok,.piexp.ok{color:var(--green)}.pidot.ok{background:var(--green)}
 .pidot.warn,.piexp.warn{color:var(--gold)}.pidot.warn{background:var(--gold)}
 .pidot.bad,.piexp.bad{color:var(--red)}.pidot.bad{background:var(--red)}
@@ -4851,9 +4870,11 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .picol{border-top:1px solid var(--line)}
 .picol:first-of-type{border-top:none}
 .pihead{padding:8px 0}
-.picolrow{padding:6px 0 6px 14px}
-.piexrow{display:flex;align-items:center;gap:7px;padding:3px 0 3px 4px;font-size:12px}
-@media(max-width:640px){.pichar{flex-basis:90px}.piprod{display:none}}
+.picolrow{padding:6px 0 8px 14px}
+.piexrow{display:grid;grid-template-columns:12px 20px 1fr max-content;align-items:center;gap:8px;padding:3px 2px 3px 4px;font-size:12px}
+.piicon{width:18px;height:18px;border-radius:3px}
+.piname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:640px){.pirow{grid-template-columns:12px 1fr max-content}.pirow .pichar,.pirow .piprod{display:none}}
 /* Live-Missionskampf: EVE-HUD an den Design-Tokens. Verlauf ueber var(--card)/
    var(--inset) (theme-fest), Radius/Border wie die uebrigen Karten, Schaden
    raus=Cyan / rein=Rot / ISK=Gold wie in der ganzen App. */
@@ -6677,13 +6698,17 @@ function renderPlaneten(pl){
   $('#grid').innerHTML=`<div class="card" style="grid-column:1/-1"><b>🪐 Planetary Industry</b><div class="sub" style="margin-top:6px">${msg}</div></div>`;
   return;
  }
- const stand=pl.as_of?((en?'as of ':'Stand vor ')+Math.max(0,Math.round((now-pl.as_of)/60))+' min'):'';
+ const asof=pl.as_of?((en?'as of ':'Stand vor ')+Math.max(0,Math.round((now-pl.as_of)/60))+(en?' min ago':' min')):'';
+ const nxt=pl.next?(()=>{const z=Math.round((pl.next-now)/60);return z>0?(en?'next sync in '+z+' min':'nächster Abgleich in '+z+' min'):(en?'syncing now':'Abgleich läuft gerade');})():'';
+ const fresh=`🛰 ${[asof,nxt].filter(Boolean).join(' · ')}${asof||nxt?' · ':''}${en?'only as fresh as last opened in client':'so aktuell wie zuletzt im Client geöffnet'}`;
+ const stored=pl.total_isk?` · <span class="isk">≈ ${fmtM(pl.total_isk)} ISK ${en?'stored':'gelagert'}</span>`:'';
  const urg=(pl.n_exp||pl.n_soon)
   ?`<span style="color:var(--${pl.n_exp?'red':'gold'})">⚠ ${pl.n_exp?pl.n_exp+(en?' expired · ':' abgelaufen · '):''}${pl.n_soon}${en?' expiring < 6h':' laufen in < 6h ab'}</span>`
   :`<span style="color:var(--green)">${en?'all running':'alles läuft'}</span>`;
  let html=`<div class="card mfp" style="grid-column:1/-1"><div class="mfphead"><span class="mfptitle">🪐 Planetary Industry</span></div>
    <div class="mfpmain"><span class="mfpval gold">${pl.n_col}</span><span class="mfpunit">${en?'colonies':'Kolonien'}</span>
-    <span class="mfpsub">${pl.n_char} ${pl.n_char===1?'Char':'Chars'} · ${pl.n_ex}${en?' extractors · ':' Extraktoren · '}${urg}${stand?' · '+stand:''} · ${en?'only as fresh as last opened in client':'so aktuell wie zuletzt im Client geöffnet'}</span></div></div>`;
+    <span class="mfpsub">${pl.n_char} ${pl.n_char===1?'Char':'Chars'} · ${pl.n_ex}${en?' extractors':' Extraktoren'} · ${urg}${stored}</span></div>
+   <div class="sub" style="margin-top:8px">${fresh}</div></div>`;
  // Was zuerst nachfüllen (char-übergreifend, nach Ablauf sortiert)
  html+=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">${en?'What to reload first':'Was zuerst nachfüllen'}</span> <span class="sub">· ${en?'sorted by expiry':'nach Ablauf sortiert'}</span></div>`;
  const board=(pl.extractors||[]).slice(0,12);
@@ -6702,11 +6727,11 @@ function renderPlaneten(pl){
  html+=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">${en?'By character':'Nach Charakter'}</span></div>`;
  list.forEach(c=>{const isc=collapsed.has(c.name);
   html+=`<div class="picol"><div class="chead pihead" data-pi="${esc(c.name)}" style="cursor:pointer">
-    <span class="char">${isc?'▸':'▾'} ${esc(c.name)} <span class="sub">· ${c.cols.length} ${c.cols.length===1?(en?'colony':'Kolonie'):(en?'colonies':'Kolonien')}</span></span></div>`;
+    <span class="char">${isc?'▸':'▾'} ${esc(c.name)} <span class="sub">· ${c.cols.length} ${c.cols.length===1?(en?'colony':'Kolonie'):(en?'colonies':'Kolonien')}</span></span>${c.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(c.isk)} ISK</span>`:''}</div>`;
   if(!isc)c.cols.forEach(col=>{
-   html+=`<div class="picolrow"><div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"><b>${esc(col.planet)}</b> <span class="sub">${piType(col.type,en)} · ${esc(col.system||'')} · ${en?'level':'Stufe'} ${col.upgrade||0} · ${col.pins||0} Pins</span></div>`;
+   html+=`<div class="picolrow"><div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"><b>${esc(col.planet)}</b> <span class="sub">${piType(col.type,en)} · ${esc(col.system||'')} · ${en?'level':'Stufe'} ${col.upgrade||0} · ${col.pins||0} Pins</span>${col.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(col.isk)} ISK ${en?'stored':'gelagert'}</span>`:''}</div>`;
    (col.extractors||[]).forEach(e=>{const L=piLeft(e.expiry,en);
-    html+=`<div class="piexrow"><span class="pidot ${L.cls}"></span>${e.product_id?`<img src="https://images.evetech.net/types/${e.product_id}/icon?size=32" width="18" height="18" style="border-radius:3px;flex:none" onerror="this.style.display='none'">`:''}<span>${esc(e.product||'?')}</span> <span class="sub">· ${e.heads} ${en?'heads':'Köpfe'}</span><span class="piexp ${L.cls}" style="margin-left:auto">${L.txt}</span></div>`;});
+    html+=`<div class="piexrow"><span class="pidot ${L.cls}"></span>${e.product_id?`<img class="piicon" src="https://images.evetech.net/types/${e.product_id}/icon?size=32" onerror="this.style.visibility='hidden'">`:`<span class="piicon"></span>`}<span class="piname">${esc(e.product||'?')} <span class="sub">· ${e.heads} ${en?'heads':'Köpfe'}</span></span><span class="piexp ${L.cls}">${L.txt}</span></div>`;});
    if(!(col.extractors||[]).length)html+=`<div class="sub">${en?'No active extractors':'Keine aktiven Extraktoren'}</div>`;
    html+=`</div>`;});
   html+=`</div>`;});
