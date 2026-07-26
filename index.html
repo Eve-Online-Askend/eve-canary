@@ -259,6 +259,10 @@ must be enabled in the EVE client, which is the default setting.</p>
       threat traffic light the pilot names you look up yourself.</li>
   <li data-i18n="pv5">With the optional EVE login your credentials stay local. Canary never
       sees your password, the login runs on the official EVE login page.</li>
+  <li data-i18n="pv6">Once a day Canary fetches an empty file from GitHub whose name is just
+      the date. Nothing is sent along: no identifier, no name, no game data. GitHub only
+      counts how often that file was served, which is how the installation count on this
+      page comes about. You can switch it off in the options.</li>
 </ul>
 
 <h2 data-i18n="h.trouble">If something goes wrong</h2>
@@ -385,6 +389,7 @@ const LANGS = {
     pv3: 'Statistiken liegen in einer lokalen Datenbank neben dem Programm. Deinstallieren heißt Ordner löschen.',
     pv4: 'Nach außen gehen nur öffentliche Abfragen: Marktpreise, und bei der Bedrohungs-Ampel die Pilotennamen, die du selbst nachschlägst.',
     pv5: 'Beim optionalen EVE-Login bleiben die Zugangsdaten lokal. Canary sieht dein Passwort nie, der Login läuft über die offizielle EVE-Login-Seite.',
+    pv6: 'Einmal am Tag holt Canary eine leere Datei von GitHub, deren Name nur das Datum ist. Mitgesendet wird nichts: keine Kennung, kein Name, keine Spieldaten. GitHub zählt nur, wie oft die Datei ausgeliefert wurde, daraus entsteht die Installationszahl auf dieser Seite. In den Optionen abschaltbar.',
     'h.trouble': 'Wenn etwas klemmt',
     'trouble.p': 'Canary meldet Probleme mit einem kurzen Code. Der steht im Konsolenfenster und in den Optionen unter „System &amp; Daten". Dort gibt es den Knopf <b>🩺 Diagnose kopieren</b>, der einen Bericht in die Zwischenablage legt, den du direkt weiterschicken kannst. Der Bericht enthält keine Charakternamen und keine Zugangsdaten.',
     'th.code': 'Code', 'th.meaning': 'Bedeutung',
@@ -464,6 +469,7 @@ const LANGS = {
     pv3: 'Les statistiques vivent dans une base locale à côté du programme. Désinstaller revient à supprimer un dossier.',
     pv4: 'Les seules requêtes sortantes sont publiques : les prix du marché et, pour le feu tricolore, les noms de pilotes que vous consultez vous-même.',
     pv5: 'Avec la connexion EVE facultative, vos identifiants restent en local. Canary ne voit jamais votre mot de passe, la connexion se fait sur la page de connexion officielle d\'EVE.',
+    pv6: 'Une fois par jour, Canary récupère sur GitHub un fichier vide dont le nom est simplement la date. Rien n\'est envoyé : aucun identifiant, aucun nom, aucune donnée de jeu. GitHub compte seulement le nombre de fois où ce fichier a été servi, et c\'est de là que vient le nombre d\'installations affiché ici. Désactivable dans les options.',
     'h.trouble': 'En cas de problème',
     'trouble.p': 'Canary signale les problèmes avec un code court. Il apparaît dans la fenêtre de console et dans les options sous « System &amp; Data ». Vous y trouverez le bouton <b>🩺 Copy diagnostics</b>, qui place un rapport dans le presse-papiers que vous pouvez transmettre directement. Le rapport ne contient aucun nom de personnage ni identifiant.',
     'th.code': 'Code', 'th.meaning': 'Signification',
@@ -543,6 +549,7 @@ const LANGS = {
     pv3: 'Статистика хранится в локальной базе рядом с программой. Удаление сводится к удалению папки.',
     pv4: 'Наружу уходят только открытые запросы: рыночные цены и, для светофора угроз, имена пилотов, которые вы проверяете сами.',
     pv5: 'При необязательном входе EVE ваши данные остаются локальными. Canary никогда не видит ваш пароль, вход проходит на официальной странице входа EVE.',
+    pv6: 'Раз в день Canary скачивает с GitHub пустой файл, в имени которого стоит только дата. Ничего не отправляется: ни идентификатора, ни имени, ни игровых данных. GitHub считает лишь, сколько раз этот файл был выдан, отсюда и берётся число установок на этой странице. Отключается в настройках.',
     'h.trouble': 'Если что-то пошло не так',
     'trouble.p': 'Canary сообщает о проблемах коротким кодом. Он появляется в окне консоли и в настройках в разделе «System &amp; Data». Там есть кнопка <b>🩺 Copy diagnostics</b>, которая копирует отчёт в буфер обмена, и его можно сразу переслать. В отчёте нет ни имён персонажей, ни учётных данных.',
     'th.code': 'Код', 'th.meaning': 'Значение',
@@ -586,6 +593,53 @@ const MILESTONES = [
   { v: '1.56', de: 'Steckbrief & Spielstil-Radar',          en: 'Character sheet & playstyle radar',         fr: 'Fiche perso & radar de style',                  ru: 'Профиль и радар стиля игры' },
   { v: '1.57', de: 'Planetary Industry',                    en: 'Planetary Industry',                        fr: 'Planetary Industry',                            ru: 'Planetary Industry' }
 ];
+// Installationen. Fuer jeden Zeitraum liegt eine leere Zaehldatei als Anhang am
+// Release "stats-JAHR". Jede laufende Installation holt sie genau EINMAL, der
+// Download-Zaehler dieser Datei ist damit direkt die Zahl der Installationen,
+// die in dem Zeitraum liefen. Keine Schaetzung, keine Telemetrie.
+let USERS = null;
+function usersHtml() {
+  if (!USERS || !USERS.length) return '';
+  const cnt = n => (USERS.find(a => a.name === n) || {}).download_count || 0;
+  const p2 = n => String(n).padStart(2, '0');
+  const ym = d => d.getUTCFullYear() + '-' + p2(d.getUTCMonth() + 1);
+  const now = new Date();
+  const curN = cnt(`ping-${ym(now)}.json`);
+  const prev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const prevN = cnt(`ping-${ym(prev)}.json`);
+  if (!curN && !prevN) return '';   // noch nichts gemeldet: lieber nichts zeigen
+  const days = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 86400000);
+    days.push({ d, n: cnt(`ping-${ym(d)}-${p2(d.getUTCDate())}.json`) });
+  }
+  const max = Math.max(1, ...days.map(x => x.n));
+  const gab = days.filter(x => x.n > 0);
+  const schnitt = gab.length ? gab.reduce((s, x) => s + x.n, 0) / gab.length : 0;
+  const L = ({
+    de: { now: 'Installationen im', prev: 'Vormonat', today: 'heute', avg: 'Ø / Tag', last: 'Letzte 14 Tage',
+          note: 'Gezählt werden Installationen, nicht Personen: jede laufende Installation meldet sich einmal pro Tag mit einem leeren Abruf, ohne Kennung und ohne Daten.' },
+    fr: { now: 'installations en', prev: 'mois précédent', today: "aujourd'hui", avg: 'moy. / jour', last: '14 derniers jours',
+          note: 'Ce sont des installations, pas des personnes : chaque installation active se signale une fois par jour par une requête vide, sans identifiant ni données.' },
+    ru: { now: 'установок за', prev: 'прошлый месяц', today: 'сегодня', avg: 'в среднем в день', last: 'последние 14 дней',
+          note: 'Считаются установки, а не люди: каждая работающая установка раз в день делает пустой запрос, без идентификатора и без данных.' },
+    en: { now: 'installations in', prev: 'previous month', today: 'today', avg: 'avg / day', last: 'last 14 days',
+          note: 'These are installations, not people: every running installation reports in once a day with an empty request, no identifier and no data.' }
+  })[curLang] || {};
+  const mon = now.toLocaleDateString(curLang, { month: 'long', year: 'numeric' });
+  return `<div class="dltotal"><b>${curN.toLocaleString()}</b> ${L.now} ${mon}</div>`
+    + `<div class="dlstats">`
+    +   `<div class="dltile"><b>${prevN}</b><span>${L.prev}</span></div>`
+    +   `<div class="dltile"><b>${days[days.length - 1].n}</b><span>${L.today}</span></div>`
+    +   `<div class="dltile"><b>${schnitt.toFixed(1)}</b><span>${L.avg}</span></div>`
+    + `</div>`
+    + `<div class="dltop">${L.last}</div>`
+    + days.map(x => `<div class="dlrow"><span class="dlv">`
+      + `${x.d.toLocaleDateString(curLang, { day: '2-digit', month: '2-digit' })}</span>`
+      + `<span class="dlbarwrap"><span class="dlbar" style="width:${Math.max(3, Math.round(100 * x.n / max))}%"></span></span>`
+      + `<span class="dld">${x.n}</span></div>`).join('')
+    + `<p class="tiny">${L.note}</p>`;
+}
 // Download-Verlauf: App-Downloads (eve_dashboard.py) je Version, chronologisch.
 // Nur Versionen mit >0, damit die vielen Null-Releases den Balken nicht zumuellen.
 function dlChartHtml() {
@@ -624,15 +678,18 @@ function dlChartHtml() {
       + `<span class="msl">${m[curLang] || m.en}</span></li>`).join('')
     + `</ol>`;
 }
+// Installationszahl zuerst, Downloads darunter: die Installationen sind die
+// ehrlichere Zahl, Downloads verteilen sich ueber viele Versionen.
+function statsHtml() { return usersHtml() + dlChartHtml(); }
 function renderDlChart() {
-  const html = dlChartHtml();
+  const html = statsHtml();
   const box = document.getElementById('dlchart'); if (box) box.innerHTML = html;
   const m = document.getElementById('dlModal');
   if (m && m.open) document.getElementById('dlchartModal').innerHTML = html;
 }
 function openDlModal() {
   const m = document.getElementById('dlchartModal');
-  if (m) m.innerHTML = dlChartHtml() || '<p class="tiny">–</p>';
+  if (m) m.innerHTML = statsHtml() || '<p class="tiny">–</p>';
   const d = document.getElementById('dlModal');
   if (d && d.showModal) d.showModal();
 }
@@ -747,6 +804,22 @@ applyLang(start);
       document.getElementById('dlBadge').hidden = false;
     }
     DL = rels; renderDlChart();
+  } catch (e) {}
+  try {
+    // Zaehlmarken: Monate haengen am Jahres-Release, Tage am Monats-Release.
+    // Deshalb reicht je ein Aufruf, ohne Blaettern durch hunderte Anhaenge.
+    const n = new Date(), p2 = x => String(x).padStart(2, '0');
+    const vm = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth() - 1, 1));
+    const tags = [`stats-${n.getUTCFullYear()}`,
+                  `stats-${n.getUTCFullYear()}-${p2(n.getUTCMonth() + 1)}`,
+                  `stats-${vm.getUTCFullYear()}-${p2(vm.getUTCMonth() + 1)}`];
+    // Im Januar liegt der Vormonat im Vorjahres-Release
+    if (vm.getUTCFullYear() !== n.getUTCFullYear()) tags.push(`stats-${vm.getUTCFullYear()}`);
+    const teile = await Promise.all(tags.map(t =>
+      fetch(`https://api.github.com/repos/${repo}/releases/tags/${t}`)
+        .then(r => r.ok ? r.json() : null).catch(() => null)));
+    USERS = teile.filter(Boolean).flatMap(r => r.assets || []);
+    if (USERS.length) renderDlChart();
   } catch (e) {}
   try {
     // Cache-Buster: verhindert, dass ein kurz zwischengespeicherter 404 (direkt

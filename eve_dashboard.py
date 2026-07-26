@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.63.2"
+VERSION = "1.64.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -592,6 +592,7 @@ def load_config():
            "mode": "all", "install_ts": time.time(),
            "goal": None, "watchlist": [], "idle_warn": 240, "heavy_water": {},
            "clip_watch": False, "roles": {}, "log_texts": {},
+           "count_me": True, "ping": {},
            "update_url": "https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main"}
     if CONFIG_PATH.exists():
         try:
@@ -890,6 +891,60 @@ def refresh_update_info():
     if chk.get("ok"):
         UPDATE_INFO["available"] = bool(chk.get("available"))
         UPDATE_INFO["latest"] = chk.get("latest")
+
+
+# --------------------------------------------- Installations-Zaehlung
+PING_REPO = "Eve-Online-Askend/eve-canary"
+PING_STATE = {"ts": 0.0}
+
+
+def count_ping():
+    """Zaehlt Installationen, ohne irgendetwas zu senden.
+
+    Einmal pro UTC-Tag und einmal pro Monat wird eine winzige Datei vom
+    GitHub-Release geholt, deren NAME den Zeitraum traegt (ping-2026-07.json).
+    Uebertragen wird dabei nichts: keine Kennung, keine Version, keine
+    Spieldaten. Es ist derselbe Vorgang wie der Update-Check. Gezaehlt wird
+    allein bei GitHub, naemlich wie oft die Datei ausgeliefert wurde.
+
+    Der Trick: weil jede Installation eine bestimmte Zeitraum-Datei hoechstens
+    EINMAL holt, ist deren Download-Zaehler exakt die Zahl der Installationen,
+    die in dem Zeitraum liefen. Keine Schaetzung, kein Hochrechnen, und der
+    Wert steht ohne Zwischenspeicher direkt in der GitHub-API.
+
+    Abschaltbar in den Optionen (count_me).
+    """
+    if not CONFIG.get("count_me", True):
+        return
+    if time.time() - PING_STATE["ts"] < 600:
+        return
+    PING_STATE["ts"] = time.time()
+    now = time.gmtime()
+    for kind, stamp in (("month", time.strftime("%Y-%m", now)),
+                        ("day", time.strftime("%Y-%m-%d", now))):
+        if (CONFIG.get("ping") or {}).get(kind) == stamp:
+            continue
+        try:
+            # Monatsmarken haengen am Jahres-Release (stats-2026), Tagesmarken am
+            # Monats-Release (stats-2026-07). So bleibt jedes Release klein genug,
+            # dass die Homepage die Zaehler mit EINEM Aufruf lesen kann.
+            tag = "stats-" + (stamp[:4] if len(stamp) == 7 else stamp[:7])
+            fetch_url(f"https://github.com/{PING_REPO}/releases/download/"
+                      f"{tag}/ping-{stamp}.json", timeout=20)
+        except urllib.error.HTTPError as e:
+            if e.code != 404:
+                log_error("CN-UPD-01", f"count_ping({kind})", e)
+                continue
+            # Fuer diesen Zeitraum wurde keine Zaehldatei angelegt. Dann gilt er
+            # als erledigt, sonst klopft die Installation den ganzen Tag dagegen.
+        except Exception as e:
+            log_error("CN-UPD-01", f"count_ping({kind})", e)
+            continue
+        with CONFIG_LOCK:
+            p = dict(CONFIG.get("ping") or {})
+            p[kind] = stamp
+            CONFIG["ping"] = p
+            save_config()
 
 
 def _ver(v):
@@ -1420,6 +1475,7 @@ class Ingest(threading.Thread):
                 self.check_idle()
                 self.hw_tick()
                 refresh_update_info()
+                count_ping()
             except Exception as e:
                 log_error("CN-LOG-05", "Ingest.run", e)
             time.sleep(2)
@@ -4939,6 +4995,7 @@ def state_info():
             "baseline_day": meta_get("baseline_day"), "log_dir": CONFIG["log_dir"],
             "idle_warn": int(CONFIG.get("idle_warn", 240) or 0),
             "clip_watch": bool(CONFIG.get("clip_watch")),
+            "count_me": bool(CONFIG.get("count_me", True)),
             "autostart": AUTOSTART_OK and autostart_path().exists(),
             # Was diese Plattform kann — die Oberflaeche blendet den Rest aus,
             # damit auf Linux keine toten Schalter stehen.
@@ -5631,6 +5688,8 @@ class Handler(BaseHTTPRequestHandler):
             packintel._resolve_names()
             self._send(json.dumps({"ok": True, "ingested": n}))
             return
+        elif action == "count_me":
+            CONFIG["count_me"] = bool(body.get("on"))
         elif action == "clip_watch":
             CONFIG["clip_watch"] = bool(body.get("on"))
         elif action == "calc":
@@ -6230,6 +6289,8 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <div class="optgroup">
   <div class="sect">🖥 System &amp; Daten</div>
   <label id="autostartRow"><input type="checkbox" id="autostart"> Canary beim Systemstart automatisch mitstarten (still im Hintergrund, ohne Konsolenfenster)</label>
+  <label><input type="checkbox" id="countMe"> Anonym mitzählen lassen</label>
+  <div class="hint">Einmal am Tag holt Canary eine leere Datei von GitHub, deren Name nur das Datum enthält. Gesendet wird dabei nichts: keine Kennung, keine Namen, keine Spieldaten. GitHub zählt nur, wie oft die Datei ausgeliefert wurde, und daraus wird sichtbar, wie viele Installationen es gibt. Ohne diese Zahl gibt es keinen Nachweis für die EVE-Partnerschaft.</div>
   <div style="margin-top:10px"><b>Main-Charakter (für das Teilen-Bild)</b>
    <div class="hint">Welcher Name auf dem geteilten Mining-Fleet-Power-Bild steht. Automatisch = Command Ship, sonst der aktivste Miner.</div>
    <select id="mainCharSel" class="pill" style="margin-top:4px"><option value="">Automatisch</option></select></div>
@@ -6300,6 +6361,7 @@ else if(matchMedia('(prefers-color-scheme: light)').matches)document.documentEle
 const savedSkin=localStorage.getItem('skin');
 if(savedSkin)document.documentElement.dataset.skin=savedSkin;
 $('#autostart').onchange=async()=>{const r=await post({action:'autostart',on:$('#autostart').checked});if(r.state)state=r.state;syncOpts();};
+$('#countMe').onchange=()=>post({action:'count_me',on:$('#countMe').checked});
 $('#saveLogDir').onclick=async()=>{
  const st=$('#logDirStat');st.textContent='Prüfe …';st.style.color='';
  const r=await post({action:'log_dir',path:$('#logDir').value});
@@ -6426,6 +6488,7 @@ function syncOpts(){
  $('#autostart').checked=!!state.autostart;
  // Autostart gibt es nur auf Windows und Linux — sonst Zeile ausblenden
  $('#autostartRow').hidden=state.autostart_ok===false;
+ $('#countMe').checked=state.count_me!==false;
  // Log-Ordner nur befüllen, solange niemand darin tippt
  if(document.activeElement!==$('#logDir'))$('#logDir').value=state.log_dir||'';
  // Aufgetretene Fehlercodes auflisten, damit man sie schicken kann
@@ -8578,6 +8641,9 @@ const EN = {
  'The mini overlay needs Chrome or Edge (Document Picture-in-Picture).',
 'Canary beim Systemstart automatisch mitstarten (still im Hintergrund, ohne Konsolenfenster)':
  'Start Canary automatically with the system (quietly in the background, no console window)',
+'Anonym mitzählen lassen':'Let this install be counted anonymously',
+'Einmal am Tag holt Canary eine leere Datei von GitHub, deren Name nur das Datum enthält. Gesendet wird dabei nichts: keine Kennung, keine Namen, keine Spieldaten. GitHub zählt nur, wie oft die Datei ausgeliefert wurde, und daraus wird sichtbar, wie viele Installationen es gibt. Ohne diese Zahl gibt es keinen Nachweis für die EVE-Partnerschaft.':
+ 'Once a day Canary fetches an empty file from GitHub whose name only contains the date. Nothing is sent: no identifier, no names, no game data. GitHub merely counts how often that file was served, which shows how many installations exist. Without that number there is no proof for the EVE partnership.',
 'Rolle zuweisen (für die Filter oben)':'Assign role (for the filters above)',
 'Schriftgröße (3 Stufen)':'Font size (3 steps)',
 'Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern" aktivieren.)':

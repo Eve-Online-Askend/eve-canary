@@ -1,275 +1,862 @@
 [
- {"v": "1.63.2", "d": "2026-07-26",
-  "de": ["Blutspur-Karte deutlich lesbarer: Systeme, die in der Projektion aufeinanderkleben (z. B. Jita, Ikuchi, New Caldari), werden jetzt sanft auseinandergezogen, das Zentrum bleibt dabei fest in der Mitte.", "Neue Wahl oben im Modul: '📍 Aktuellen Standort nutzen' (die Blase folgt dir beim Fliegen automatisch, sanft gedrosselt) oder ein selbst eingetragenes festes System. Der aktive Modus steht daneben."],
-  "en": ["Blood Trail map is much more readable: systems that stick together in the projection (e.g. Jita, Ikuchi, New Caldari) are now gently pushed apart, with the centre staying pinned in the middle.", "New choice at the top of the module: '📍 Use current location' (the bubble follows you while flying, gently throttled) or a fixed system you enter yourself. The active mode is shown next to it."]},
- {"v": "1.63.1", "d": "2026-07-26",
-  "de": ["Fix: das Eingabefeld für das beobachtete System wirft die Eingabe nicht mehr raus, während man tippt (die Live-Aktualisierung pausiert jetzt, solange das Feld den Fokus hat). Enter bestätigt die Eingabe."],
-  "en": ["Fix: the watched-system input no longer loses what you type (the live refresh now pauses while the field has focus). Enter confirms the input."]},
- {"v": "1.63.0", "d": "2026-07-26",
-  "de": ["Blutspur: das beobachtete System ist jetzt frei wählbar. Trag im Kopfbereich ein beliebiges System ein (z. B. dein Missions-Hub oder Uedama) und die Blase baut sich dort neu auf, unabhängig davon, wo du gerade fliegst.", "Klar als Alpha gekennzeichnet: Rudel-Erkennung, Scores und Warnungen werden noch am echten Verkehr feinjustiert, das steht jetzt als Hinweis direkt im Modul. Rückmeldungen willkommen."],
-  "en": ["Blood Trail: the watched system is now freely selectable. Enter any system in the header (e.g. your mission hub or Uedama) and the bubble rebuilds there, independent of where you are flying.", "Clearly marked as alpha: pack detection, scores and warnings are still being tuned against real traffic, and that note now sits right inside the module. Feedback welcome."]},
- {"v": "1.62.1", "d": "2026-07-26",
-  "de": ["Blutspur aufgeräumt: statt vieler Einzelfenster jetzt EINE kompakte Ansicht. Oben die Nachbarschafts-Karte (dein System in der Mitte, rund 20 Systeme mit Sprunglinien, jedes beschriftet), darunter die Annäherungs-Übersicht (welches Rudel ist wie viele Sprünge entfernt, Tendenz '12 → 7', mit direkten zKillboard-Links zu den Piloten) und die letzten Kills der Blase, alles in einer Karte.", "Die Kill-Spur der Rudel wird jetzt auf der Karte gezeichnet: eine rote Linie durch die Systeme ihrer Kills, ältere Abschnitte blasser. Kommt ein Rudel in deine Nachbarschaft, siehst du seine Spur hereinlaufen. Beobachtet und gewarnt wird weiterhin über den ganzen 20-Sprünge-Umkreis, die Karte zeigt bewusst nur die lesbare Nachbarschaft."],
-  "en": ["Blood Trail decluttered: instead of many separate cards there is now ONE compact view. On top the neighbourhood map (your system in the centre, around 20 systems with jump lines, each labelled), below it the approach watch (which pack is how many jumps away, trend '12 to 7', with direct zKillboard links to the pilots) and the latest kills in the bubble, all in a single card.", "Pack kill trails are now drawn on the map: a red line through the systems of their kills, older segments fading. When a pack enters your neighbourhood you see its trail run in. Watching and warnings still cover the full 20-jump bubble, the map deliberately shows only the readable neighbourhood."]},
- {"v": "1.62.0", "d": "2026-07-26",
-  "de": ["Blutspur komplett umgebaut auf eine Ego-Lagekarte: dein System sitzt jetzt in der MITTE, angezeigt wird alles im Umkreis von 20 Sprüngen (einstellbar über pack_radius), über Regionsgrenzen hinweg. Statt zwei Regionskarten gibt es eine Karte um dich herum, jeder Punkt zeigt beim Draufzeigen auch die Sprung-Distanz.", "Die Sternenkarte wird jetzt MITGELIEFERT (eve_map.json, aus den offiziellen EVE-Daten generiert): kein lokaler Kartenaufbau mehr, kein minutenlanges Crawlen beim ersten Einschalten, die Blase steht sofort. Vorher musste jede Installation die Karte selbst aus ESI zusammensetzen.", "Neu: 📡 Kill-Ticker. Jeder Spieler-Kill in deiner Blase erscheint als Zeile, klassifiziert als ⛏ Mining-Schiff, 🐋 Booster, 🚚 Hauler, Pod oder normaler Kill, mit System, Sprung-Distanz zu dir, Schiff und ISK-Wert.", "Neu: Annäherungs-Warnung. Rückt ein Rudel mit seinen Kills näher an dein System, warnt Canary direkt: gelb ab 15 Sprüngen ('nähert sich: 12 → 7 Sprünge'), rot mit Sprachansage ab 3 Sprüngen. Gewarnt wird nur, wenn es näher kommt als je zuvor gemeldet, kein Dauergeplapper."],
-  "en": ["Blood Trail rebuilt around an ego map: your system now sits in the CENTRE, showing everything within 20 jumps (configurable via pack_radius), across region borders. Instead of two region maps there is one map around you, and hovering any dot also shows its jump distance.", "The star map now SHIPS with Canary (eve_map.json, generated from official EVE data): no more local map building, no minutes-long crawl on first enable, the bubble is ready instantly. Previously every install had to assemble the map from ESI itself.", "New: 📡 kill ticker. Every player kill in your bubble appears as a row, classified as ⛏ mining ship, 🐋 booster, 🚚 hauler, pod or ordinary kill, with system, jump distance to you, ship and ISK value.", "New: approach warning. If a pack's kills move closer to your system, Canary warns you directly: yellow from 15 jumps out ('approaching: 12 to 7 jumps'), red with a spoken alert from 3 jumps. It only warns when the pack gets closer than ever reported before, no constant chatter."]},
- {"v": "1.61.1", "d": "2026-07-26",
-  "de": ["Blutspur findet dein Zuhause jetzt selbst: beim ersten Einschalten leitet Canary die Heimatregion aus deinem aktuellen System ab und beobachtet sie zusammen mit The Citadel (Uedama-Route), statt mit einer festen Vorgabe zu starten. Eigene Regionen bleiben über pack_regions in der config.json einstellbar (max 2).", "Robuster: Kills aus einer früheren Regions-Wahl verfälschen die Rudel-Erkennung nicht mehr, und die Karten-Ansicht verkraftet einen Regionswechsel sauber."],
-  "en": ["Blood Trail now finds your home on its own: when first enabled, Canary derives your home region from your current system and watches it together with The Citadel (Uedama route), instead of starting with a fixed default. Custom regions stay configurable via pack_regions in config.json (max 2).", "More robust: kills from a previous region selection no longer distort pack detection, and the map view handles a region change cleanly."]},
- {"v": "1.61.0", "d": "2026-07-26",
-  "de": ["Neu: 🩸 Blutspur, ein Gank-Rudel-Radar im Intel-Tab (zweiter Modus neben dem Local-Scan, Opt-in, standardmäßig aus). Canary liest den öffentlichen Killmail-Strom (killmail.stream, zKillboard als Fallback) und erkennt, wer in deinen Regionen wiederholt gemeinsam tötet: jedes Rudel mit Jagdgebiet, Schiffen, Mitgliedern und ehrlichem 'zuletzt gesehen vor X min'. Ein Gank-Score trennt Miner-/Hauler-Jäger von normalem PvP-Rauschen.", "Die eigentliche Frühwarnung: taucht ein bekanntes Rudel-Mitglied in deinem Local auf, gibt es sofort einen roten Alarm mit Sprachansage. Dazu ein einmaliger Hinweis, wenn ein Rudel in deiner Region aktiv ist, ein optionaler Corp-Hinweis für Scouts, und eine Lage-Karte der Region (Systeme, Kills der letzten 2 Stunden, dein Standort, geschätzte Bewegungsrichtung).", "Ehrlich per Bauart: ein Rudel wird erst NACH seinem letzten Kill sichtbar (Echo-Prinzip), nur Piloten auf Killmails zählen, stille Camper bleiben unsichtbar, jede Zeitangabe kommt aus der Kill-Zeit. Nur öffentliche Daten, nichts verlässt deinen Rechner. Fällt der Live-Feed aus, schaltet Canary automatisch auf stündliches zKillboard-Polling um und sagt es dazu."],
-  "en": ["New: 🩸 Blood Trail, a gank-pack radar in the Intel tab (second mode next to the local scan, opt-in, off by default). Canary reads the public killmail stream (killmail.stream, zKillboard as fallback) and detects who repeatedly kills together in your regions: each pack with hunting grounds, ships, members and an honest 'last seen X min ago'. A gank score separates miner/hauler hunters from ordinary PvP noise.", "The actual early warning: if a known pack member shows up in your local, you get an immediate red alert with a spoken warning. Plus a one-time hint when a pack is active in your region, an optional corp hint for scouts, and a region map (systems, kills of the last 2 hours, your location, estimated direction of travel).", "Honest by design: a pack becomes visible only AFTER its latest kill (echo principle), only pilots on killmails count, silent campers stay invisible, every age is computed from kill time. Public data only, nothing leaves your machine. If the live feed goes down, Canary automatically falls back to hourly zKillboard polling and says so."]},
- {"v": "1.60.0", "d": "2026-07-26",
-  "de": ["Neu in der Erz-Schatzkammer: der Verwertungs-Berater. Für deinen gesamten gelagerten Erz-Bestand stellt Canary drei Wege gegenüber, bewertet für den gewählten Handelsplatz: roh verkaufen, komprimiert verkaufen und zu Mineralien raffinieren, und markiert den besten. Je Erz-Typ eine Zeile, damit du siehst, wo sich Komprimieren lohnt und wo roh (oder illiquide Kompression) besser ist.", "Die Refine-Ausbeute kommt aus deinen echten Reprocessing-Skills (Basis NPC-Station 50%). Struktur-Rigs, Standings, Implantate und erz-spezifische Skills erhöhen sie und sind nicht enthalten, der Refine-Wert ist also eine ehrliche Untergrenze. Kompression ändert nur das Volumen, nicht die Mineralien. Die Mineral-Mengen je Erz stammen aus der EVE-SDE, nicht geraten."],
-  "en": ["New in the Ore treasury: the processing advisor. For your entire stored ore stock, Canary compares three routes, valued for the selected trade hub: sell raw, sell compressed, or refine to minerals, and marks the best. One row per ore type so you see where compressing pays off and where raw (or illiquid compressed) wins.", "The refine yield comes from your real reprocessing skills (NPC station 50% base). Structure rigs, standings, implants and ore-specific skills raise it and are not included, so the refine value is an honest floor. Compression changes only volume, not the minerals. The per-ore mineral amounts come from the EVE SDE, not guessed."]},
- {"v": "1.59.1", "d": "2026-07-26",
-  "de": ["ESI-Status je Charakter: überall dort, wo Canary ESI-Daten zeigt (Planeten, Steckbrief, Erz-Schatzkammer), steht jetzt ein Abzeichen am Charakter. Grün '✅ ESI' bedeutet verbunden und alle Berechtigungen erteilt, rot '🔴 ESI' bedeutet neu verbinden nötig (der Tooltip nennt die fehlenden Berechtigungen). So siehst du sofort, ob ein Charakter frische Daten liefert oder erst neu verbunden werden muss."],
-  "en": ["Per-character ESI status: everywhere Canary shows ESI data (Planets, Character sheet, Ore treasury) there is now a badge on the character. Green '✅ ESI' means connected with all scopes granted, red '🔴 ESI' means a reconnect is needed (the tooltip lists the missing scopes). So you can tell at a glance whether a character is delivering fresh data or needs reconnecting."]},
- {"v": "1.59.0", "d": "2026-07-26",
-  "de": ["Planeten zeigen jetzt, WAS sie herstellen: Canary löst die Fabrik-Schematics auf und listet je Kolonie das/die End-Produkt(e) mit Icon (z. B. Mechanical Parts, Coolant), nicht mehr nur den geförderten Rohstoff.", "Produkt-Tier P0-P4: jedes Produkt bekommt ein farbiges Tier-Kürzel (Rohstoff P0 bis fortgeschritten P4), damit die Wertigkeit sofort klar ist.", "Ertragsprognose: je Extraktor die erwartete Gesamt-Fördermenge über die Programmlaufzeit (exakte EVE-Formel), plus grob der Rohstoffwert je Kolonie. Roh-P0-Wert ist klein, der Wert steckt in der Weiterverarbeitung, darum getrennt vom gelagerten Wert ausgewiesen.", "PI-Gesamtausstoß: oben eine flottenweite Zusammenfassung, welche Produkte deine PI insgesamt macht (mit Anzahl) und der Extraktions-Rohwert."],
-  "en": ["Planets now show WHAT they make: Canary resolves the factory schematics and lists each colony's end product(s) with an icon (e.g. Mechanical Parts, Coolant), not just the extracted raw material.", "Product tier P0-P4: every product gets a coloured tier tag (raw P0 up to advanced P4) so its value tier is clear at a glance.", "Yield estimate: per extractor the expected total output over the program's run (exact EVE formula), plus a rough raw value per colony. Raw P0 value is small, the value is in the processing, so it is shown separately from the stored value.", "PI total output: a fleet-wide summary at the top of which products your PI makes overall (with counts) and the raw extraction value."]},
- {"v": "1.58.3", "d": "2026-07-26",
-  "de": ["Am Planeten-Tab war kurz ein Versuch mit zwei Knöpfen (Planet im Client zeigen, hinfliegen). Wieder entfernt, weil EVE es nicht zulässt: ein Planet kann kein Wegpunkt sein ('You can't set that as a waypoint'), und das eigentliche PI-Verwaltungsfenster kann die ESI ohnehin nicht öffnen. Knöpfe, die nichts Verlässliches tun, sind schlechter als keine. Der Planeten-Tab bleibt eine klare Anzeige: Kolonien, Ablauf-Alarm, gelagerter Wert und Planeten-Bilder.", "Robuster: klemmt der Abruf eines einzelnen Kolonie-Layouts kurz, verschwindet die Kolonie nicht mehr, sie bleibt mit ihren Grunddaten stehen."],
-  "en": ["The Planets tab briefly had two buttons (show the planet in the client, fly there). Removed again, because EVE does not allow it: a planet cannot be a waypoint ('You can't set that as a waypoint'), and ESI cannot open the actual PI management window anyway. Buttons that do nothing reliable are worse than none. The Planets tab stays a clean readout: colonies, expiry alert, stored value and planet images.", "More robust: if a single colony's layout fetch hiccups, the colony no longer disappears, it stays with its basic data."]},
- {"v": "1.57.2", "d": "2026-07-26",
-  "de": ["Planeten übersichtlicher: jede Kolonie zeigt jetzt ihr echtes Planeten-Bild (Öde, Gas, Lava, …), links im Charakter-Block groß und in der Nachfüll-Liste klein vor dem Planetennamen. Man erkennt eine Kolonie damit auf einen Blick, statt nur am Text."],
-  "en": ["Planets are clearer to scan: every colony now shows its real planet image (barren, gas, lava, …), large on the left in the character block and small in front of the planet name in the reload list. You recognise a colony at a glance now, not just by its text."]},
- {"v": "1.57.1", "d": "2026-07-26",
-  "de": ["Planeten verfeinert: jede Kolonie zeigt jetzt den gelagerten Wert in ISK (Materialien in Speichern, Startrampen und Fabriken, zu Jita-Buy bewertet), plus eine Summe je Charakter und ganz oben über alle Kolonien.", "Klarere Frische-Zeile: von wann die Daten sind und wann der nächste Abgleich kommt ('Stand vor X min · nächster Abgleich in Y min'). Weiterhin ehrlich: so aktuell wie zuletzt im Client geöffnet.", "Darstellung aufgeräumt: die Spalten in der Nachfüll-Liste und den Extraktor-Zeilen sind jetzt sauber ausgerichtet, nichts verrutscht mehr."],
-  "en": ["Planets refined: each colony now shows its stored value in ISK (materials in storage, launchpads and factories, valued at Jita buy), plus a per-character total and an overall total at the top.", "Clearer freshness line: how old the data is and when the next sync comes ('as of X min ago · next sync in Y min'). Still honest: only as fresh as last opened in the client.", "Tidier layout: the columns in the reload list and the extractor rows now line up cleanly, no more drift."]},
- {"v": "1.57", "d": "2026-07-26",
-  "de": ["Neuer Tab 'Planeten': Planetary Industry über alle deine Charaktere. Oben ein Überblick (Kolonien, Extraktoren, was gerade abgelaufen ist oder bald abläuft), darunter char-übergreifend 'Was zuerst nachfüllen' streng nach Ablauf sortiert, und einklappbare Blöcke je Charakter mit Planet, Typ, System, Ausbaustufe und den Extraktoren samt tickendem Ablauf-Countdown (grün, amber, rot). So bleibt es auch bei vielen Chars übersichtlich, weil man immer nur oben in die Liste schaut.", "Ablauf-Alarm: Canary warnt im Banner (und optional per Sprachansage), wenn ein Extraktor abgelaufen ist oder bald ausläuft, mit Charakter und Planet. Die Schwelle passt sich der Programmlänge an, damit ein langes Programm nicht zu spät und ein kurzes nicht zu früh meldet.", "Ehrlich: die Daten kommen aus der ESI und sind so aktuell wie zuletzt im Client geöffnet; die Ablauf-Zeiten selbst sind exakt. Braucht die neue Nur-Lese-Berechtigung 'Planeten', Charaktere von vor diesem Update einmal neu verbinden (⚙ Optionen). Canary liest nur, es ändert nie deine PI."],
-  "en": ["New 'Planets' tab: Planetary Industry across all your characters. At the top an overview (colonies, extractors, what just expired or expires soon), below it a cross-character 'What to reload first' sorted strictly by expiry, and collapsible blocks per character with planet, type, system, upgrade level and the extractors with a ticking expiry countdown (green, amber, red). It stays readable even with many characters, since you only ever look at the top of the list.", "Expiry alert: Canary warns in the banner (and optionally by voice) when an extractor has expired or expires soon, with character and planet. The threshold adapts to the program length so a long program does not warn too late and a short one not too early.", "Honest: the data comes from ESI and is only as fresh as the colony was last opened in the client; the expiry times themselves are exact. Needs the new read-only permission 'planets', so reconnect characters from before this update once (⚙ Options). Canary only reads, it never changes your PI."]},
- {"v": "1.56", "d": "2026-07-25",
-  "de": ["Der Profil-Bereich heißt jetzt 'Steckbrief' und ist eine richtige Charakter-Karte: links Portrait, Name, Wallet-ISK, Corporation und Allianz, aktuelles Schiff mit Sicherheitsstatus, aktuelles System und Erz-Vermögen aus der Schatzkammer, rechts daneben das Spielstil-Radar. Mit Frische-Zeile, von wann die ESI-Daten sind und wann der nächste Abgleich kommt. Am Radar zeigt Hovern weiterhin die echten Werte"],
-  "en": ["The Profile area is now called 'Character sheet' and is a proper character card: on the left portrait, name, wallet ISK, corporation and alliance, current ship with security status, current system and ore worth from the treasury; on the right the playstyle radar. With a freshness line showing how old the ESI data is and when the next sync happens. Hovering the radar still shows the real values"]},
- {"v": "1.55.2", "d": "2026-07-25",
-  "de": ["Spielstil-Radar: fahr mit der Maus über einen Punkt oder eine Achsen-Beschriftung, dann zeigt Canary den echten Wert in der passenden Einheit (Ertrag in ISK, Mining/Industrie in m³, Kampfkraft/PvP als Schaden, Missionen als Anzahl). So ist jeder Ausschlag jetzt auch beziffert"],
-  "en": ["Playstyle radar: hover a point or an axis label and Canary shows the real value in the right unit (earnings in ISK, mining/industry in m³, combat/PvP as damage, missions as a count). Every spike is now quantified"]},
- {"v": "1.55.1", "d": "2026-07-25",
-  "de": ["Spielstil-Radar: die Achse 'Aktivität' durch 'Ertrag' ersetzt, die erwirtschaftete ISK der letzten 30 Tage (Mining-Wert + Bounty + Missions-Belohnungen). Das sagt mehr über den Char aus als bloße aktive Tage"],
-  "en": ["Playstyle radar: replaced the 'activity' axis with 'earnings', the ISK made in the last 30 days (mining value + bounties + mission rewards). That says more about a character than just active days"]},
- {"v": "1.55", "d": "2026-07-25",
-  "de": ["Neuer Tab 'Profil': ein Spielstil-Radar pro Charakter mit 6 Achsen (Mining, Missionen, PvP, Kampfkraft, Industrie, Aktivität) über die letzten 30 Tage. Der Blob zeigt auf einen Blick, was ein Char ist, ein Miner spitzt auf Mining/Industrie, ein Missionsläufer auf Missionen/Kampfkraft. Jede Achse ist relativ zu deinem stärksten Char skaliert, damit die Form den Mix zeigt. Alles aus Logs und ESI, lokal gezeichnet"],
-  "en": ["New 'Profile' tab: a playstyle radar per character with 6 axes (mining, missions, PvP, combat, industry, activity) over the last 30 days. The blob shows at a glance what a character is: a miner spikes on mining/industry, a mission runner on missions/combat. Each axis is scaled relative to your strongest character so the shape shows the mix. All from logs and ESI, drawn locally"]},
- {"v": "1.54.1", "d": "2026-07-25",
-  "de": ["Verlauf verbessert: Fenster jetzt auf die letzten 48 Stunden (umschaltbar auf Heute / aktueller Trip). Die Mining-Trips des Tages werden beim Start rückwirkend aus den Logs rekonstruiert, sodass auch frühere Abdocker erscheinen, nicht erst ab jetzt. Und ganz oben steht die laufende Aktivität ('am Minen …' / Kampf), damit der Verlauf nicht leer wirkt, während du gerade aktiv bist"],
-  "en": ["Timeline improved: window is now the last 48 hours (switchable to today / current trip). The day's mining trips are reconstructed from the logs on startup, so earlier undocks show up too, not only from now on. And the current activity ('mining now …' / combat) sits at the very top so the timeline is not empty while you are active"]},
- {"v": "1.54", "d": "2026-07-25",
-  "de": ["Neuer Tab 'Verlauf': eine Zeitachse pro Charakter, die zeigt was heute passiert ist, chronologisch und lesbar. Mining-Trips (m³, ISK, Dauer), abgeschlossene Missionen und die verifizierten ISK-Ereignisse aus dem Wallet-Journal in einem Strom. Umschaltbar zwischen Heute, letzte 8 Stunden und aktueller Trip. Log-Ereignisse erscheinen sofort, ESI-Ereignisse sind markiert. Der Firehose aus dem Log wird bewusst zu Episoden zusammengefasst, nicht Zeile für Zeile"],
-  "en": ["New 'Timeline' tab: one timeline per character showing what happened today, in a readable chronological stream. Mining trips (m³, ISK, duration), completed missions and the verified ISK events from the wallet journal, all in one flow. Switch between today, last 8 hours and current trip. Log events appear instantly, ESI events are marked. The log firehose is deliberately grouped into episodes, not shown line by line"]},
- {"v": "1.53", "d": "2026-07-25",
-  "de": ["Neu: passive Gank-Flotten-Warnung. Wenn Piloten im Local schreiben, prüft Canary wie bisher jeden über zKillboard und ESI, aber gruppiert die geflaggten jetzt nach Corporation. Tauchen mehrere verdächtige Piloten derselben Corp in deinem Local auf, warnt Canary vor einer möglichen Gank-Flotte (mit Corp, Anzahl, System und Miner-Kills), im Intel-Tab und als Alarm. Komplett passiv, nur aus den Chat-Nachrichten, kein Kopieren nötig. Fängt keine schweigenden Camper, dafür kein Aufwand"],
-  "en": ["New: passive gank-fleet warning. When pilots talk in local, Canary checks each one via zKillboard and ESI as before, but now groups the flagged ones by corporation. If several suspicious pilots from the same corp show up in your local, Canary warns of a possible gank fleet (with corp, count, system and miner kills), in the Intel tab and as an alert. Fully passive, from chat messages only, no copying needed. It will not catch silent campers, but it costs you nothing"]},
- {"v": "1.52.4", "d": "2026-07-25",
-  "de": ["Command Ships jetzt auch im Alarm-Banner sauber: Orca, Porpoise und Rorqual lösen keinen 'Kein Erz seit X min'- oder 'Abbaurate'-Alarm mehr aus. Das war der letzte Ort, an dem die Meldung für Booster noch durchkam, sie erscheint jetzt weder auf der Karte noch als Alarm noch als Sprachansage"],
-  "en": ["Command ships are now clean in the alert banner too: Orca, Porpoise and Rorqual no longer trigger a 'no ore for X min' or 'mining rate' alert. That was the last place the message still slipped through for boosters, it now shows neither on the card, nor as an alert, nor as a spoken alert"]},
- {"v": "1.52.3", "d": "2026-07-25",
-  "de": ["Mining-Verlaufsbalken (m³/min) sind jetzt ablesbar: die Beschriftung zeigt Zeitfenster, Spitzenwert und Durchschnitt (z.B. 'letzte 60 min · Spitze 409 · Ø 365'), und beim Draufzeigen auf einen Balken erscheint der genaue Minutenwert. Vorher war es nur eine Balkenreihe ohne Zahlen"],
-  "en": ["The mining history bars (m³/min) are now readable: the caption shows the time window, peak and average (e.g. 'last 60 min · peak 409 · avg 365'), and hovering a bar reveals that minute's exact value. Before it was just bars with no numbers"]},
- {"v": "1.52.2", "d": "2026-07-25",
-  "de": ["Missionen: wird eine Mission nicht eindeutig erkannt, steht jetzt klar 'Keine Erkennungsdaten gefunden' statt einer verspielten Meldung. Ehrlich und eindeutig, viele Missionen haben nun mal keine eindeutige Signatur im Log"],
-  "en": ["Missions: when a mission cannot be clearly identified, it now says 'No recognition data found' instead of a playful message. Honest and clear, since many missions simply have no unique signature in the log"]},
- {"v": "1.52.1", "d": "2026-07-25",
-  "de": ["Command Ships (Orca, Porpoise, Rorqual) zeigen jetzt gar keine Mining-Nörgel-Warnungen mehr, auch nicht die Drohnen-Meldung. Ein Booster ist kein Miner, die Meldung kam sonst schon, wenn er nur die Drohnen einzog. Die Karte bleibt dort sauber"],
-  "en": ["Command ships (Orca, Porpoise, Rorqual) now show no mining nag warnings at all, including the drone message. A booster is not a miner, and the message used to pop up just from pulling in the drones. The card stays clean there"]},
- {"v": "1.52", "d": "2026-07-25",
-  "de": ["Command Ships (Orca, Porpoise, Rorqual): keine falschen Mining-Warnungen mehr. Ein Booster mint nicht selbst, darum erscheinen 'Abbaurate runter', 'Kein Erz seit X min' und der Stillstand-Verlust dort nicht mehr. Es bleibt nur die Drohnen-Warnung, wenn die Mining-Drohnen wirklich nichts liefern", "Erz-Schatzkammer: zeigt jetzt nur noch gelagertes Erz in Stationen und Strukturen. Erz, das gerade im Mining-Schiff liegt, wird nicht mehr als Bestand gezählt. Ausserdem werden Standorte, die vorher nur als Nummer erschienen, jetzt sauber mit Namen aufgelöst", "Fraktions-Tipp genauer: die Gegner-Erkennung wurde entschlackt, damit keine falschen Fraktionen mehr auftauchen", "Heavy-Water-Reichweite wird jetzt auch auf Englisch korrekt angezeigt", "Anzeige aktualisiert sich zuverlässiger: der Browser zeigt keine veralteten Werte mehr nach einem Update"],
-  "en": ["Command ships (Orca, Porpoise, Rorqual): no more false mining warnings. A booster does not mine itself, so 'mining rate down', 'no ore for X min' and the downtime loss no longer show there. Only the drone warning remains, and only when the mining drones truly deliver nothing", "Ore treasury: now shows only stored ore in stations and structures. Ore currently sitting in the mining ship is no longer counted as stock. Locations that previously showed only as a number are now resolved to proper names", "More accurate faction tip: the enemy detection was cleaned up so no wrong factions appear anymore", "Heavy water range now displays correctly in English too", "The display refreshes more reliably: the browser no longer shows stale values after an update"]},
- {"v": "1.51", "d": "2026-07-25",
-  "de": ["Live-Missionskampf im Missionen-Tab: der Charakter, der gerade eine Mission fliegt, wird jetzt oben in einem EVE-artigen HUD angezeigt. Portrait in der Mitte, Schaden raus links, Schaden rein rechts, darunter Gesamtschaden, eliminierte Gegner (Kills, sonst bekämpfte Typen) und eingesammelte Bounty. Missionsname, Fraktions-Tipp und EWAR sind gleich mit dabei"],
-  "en": ["Live mission combat in the Missions tab: the character currently running a mission is now shown at the top in an EVE-style HUD. Portrait in the center, damage out on the left, damage in on the right, and below it total damage, enemies eliminated (kills, otherwise types engaged) and bounty collected. Mission name, faction tip and EWAR are shown alongside"]},
- {"v": "1.50", "d": "2026-07-25",
-  "de": ["Missionsläufer-Update (Alpha, klar als 'in Entwicklung' gekennzeichnet). Neu: Fraktions-Tipp. Aus den Gegnernamen im Kampflog erkennt Canary die Piraten-Fraktion (Guristas, Serpentis, Blood Raiders, Sansha, Angel, Mordus, Rogue Drones, Fraktions-Marinen) und sagt dir direkt, welchen Schaden du tanken und welchen du am besten schießen solltest, samt typischer EWAR. Das funktioniert auch, wenn der Missionsname unbekannt ist. Datentabelle web-verifiziert (EVE University) und an echten Logs geprüft", "Verifizierte Belohnung: jede erkannte Mission bekommt die echte Belohnung und den Zeitbonus aus dem Wallet-Journal (ESI, unfälschbar) direkt angeheftet, samt echter ISK pro Stunde", "EWAR-Profil je Mission: Canary zeigt jetzt, wie oft du gescrambled, gewebbt, gejammt oder geneutet wurdest, als Schwierigkeits- und Gefahren-Anzeige"],
-  "en": ["Mission-runner update (Alpha, clearly marked 'in development'). New: faction tip. From the enemy names in the combat log, Canary identifies the pirate faction (Guristas, Serpentis, Blood Raiders, Sansha, Angel, Mordu's, Rogue Drones, faction navies) and tells you straight away which damage to tank and which to shoot, plus their typical EWAR. This works even when the mission name is unknown. Data table web-verified (EVE University) and checked against real logs", "Verified reward: every recognized mission gets its real reward and time bonus from the wallet journal (ESI, tamper-proof) attached directly, including real ISK per hour", "Per-mission EWAR profile: Canary now shows how often you were scrambled, webbed, jammed or neuted, as a difficulty and danger readout"]},
- {"v": "1.49", "d": "2026-07-25",
-  "de": ["Overlay jetzt auch in Firefox (und Safari): das schwebende Always-on-top-Fenster läuft dort über Video-Picture-in-Picture, mit Status, Werten und Alarmen. In Chrome und Edge bleibt es das klickbare HTML-Overlay, in Firefox ein live gezeichnetes Bild. Damit hat man in jedem Browser ein Overlay über EVE", "Stillstand-Verlust: zeigt jetzt '(pausiert, angedockt/Warp)', wenn gerade nicht am Gürtel gemint wird. Die Zahl läuft dann nicht weiter, sie ist der aufgelaufene Verlust des Trips und bleibt eingefroren stehen"],
-  "en": ["Overlay now works in Firefox (and Safari) too: the floating always-on-top window runs there via video Picture-in-Picture, with status, values and alerts. In Chrome and Edge it stays the clickable HTML overlay, in Firefox a live-drawn image. So every browser gets an overlay above EVE", "Downtime loss: now shows '(paused, docked/warp)' when you are not actively mining at the belt. The number does not keep counting then, it is the trip's accumulated loss and stays frozen"]},
- {"v": "1.48", "d": "2026-07-25",
-  "de": ["Teilen-Bild: der angezeigte Name ist jetzt sinnvoll wählbar. Standard ist der Command-Ship-Pilot (Flottenchef), sonst der aktivste Miner. In den Optionen lässt sich zusätzlich ein fester Main-Charakter einstellen, der dann auf dem geteilten Bild steht"],
-  "en": ["Share image: the shown name is now chosen sensibly. Default is the command ship pilot (fleet lead), otherwise the most active miner. In the options you can also set a fixed main character that then appears on the shared image"]},
- {"v": "1.47", "d": "2026-07-25",
-  "de": ["Erz-Schatzkammer: zeigt jetzt genau, von wann die Daten sind und wann der nächste Abgleich kommt ('Stand vor X min · nächster Abgleich in Y min')", "Jeder Standort bekommt ein Stations-Icon passend zum Stationstyp", "Robuster: wenn die Anzeige eines einzelnen Chars mal klemmt, verschwindet nicht mehr die ganze Char-Liste. Nur der betroffene Char zeigt einen kurzen Hinweis, der Rest bleibt sichtbar", "Fix: die Karte eines Command-Ship-Piloten (Orca/Porpoise/Rorqual) mit Flotten-Kompression wurde nicht mehr angezeigt. Ursache war ein interner Namenskonflikt, behoben", "Sprachansagen: Stimmenliste lädt zuverlässiger, und wenn der Browser keine Stimmen liefert (Firefox unter Windows oft), steht ein klarer Hinweis statt nur 'Standard'"],
-  "en": ["Ore treasury: now shows exactly how old the data is and when the next fetch happens ('as of X min ago · next sync in Y min')", "Each location now has a station icon matching the station type", "More robust: if a single character's card ever fails to render, the whole character list no longer disappears. Only that one char shows a short note, the rest stays visible", "Fix: a command ship pilot's card (Orca/Porpoise/Rorqual) with fleet compression was not showing, due to an internal naming clash, now fixed", "Spoken alerts: the voice list loads more reliably, and if the browser provides no voices (Firefox on Windows often does not), a clear hint now shows instead of just 'Default'"]},
- {"v": "1.46", "d": "2026-07-25",
-  "de": ["Neuer Reiter 'Erz-Schatzkammer': zeigt deinen gesamten Erz-Bestand (roh und komprimiert) über ALLE Lagerorte aller EVE-verbundenen Chars. Oben Gesamtmenge in m³ und Gesamtwert in ISK, darunter im Detail je Char und Standort, was und wie viel dort liegt (Menge, m³, ISK). Kommt aus den ESI-Assets, Stand bis zu 1 Stunde alt (ESI-Cache). NPC-Stationsnamen werden aufgelöst; Spieler-Strukturen mit Namen, wenn der Char Zugang hat"],
-  "en": ["New 'Ore treasury' tab: shows your entire ore stock (raw and compressed) across ALL storage locations of every EVE-connected char. Total volume in m³ and total value in ISK at the top, then a per-char and per-location breakdown of what is stored where (quantity, m³, ISK). Comes from ESI assets, up to one hour old (ESI cache). NPC station names are resolved; player structures show a name if the char has access"]},
- {"v": "1.45", "d": "2026-07-25",
-  "de": ["Flotten-Kompression jetzt auch für deutsche Clients: Canary erkennt den Wortlaut 'X hat N Erz mithilfe Ihrer Kompressionsanlage komprimiert' und listet damit die ganze Flotte, auch Fremdspieler", "Die zwei oberen Kacheln zeigen jetzt Verschiedenes: 'Mining Fleet Power' die Förderrate deiner eigenen Chars (m³/min), 'Aktuelle Flotte' die gesamt komprimierte Menge der ganzen Flotte (m³/ISK, inkl. Fremdspieler)", "Fix Filter: Rollen-Pille und Charakter-Dropdown blockieren sich nicht mehr. Eine Rolle wählen zeigt alle Chars dieser Rolle, ein einzelner Char hebt den Rollen-Filter auf, kein Hängenbleiben auf einem Char mehr", "Fix: seltene Serverfehler beim Laden (InterfaceError/TypeError) behoben. Ursache waren gleichzeitige Datenbank-Zugriffe ohne Sperre und ein Sonderfall bei der Erz-Bewertung"],
-  "en": ["Fleet compression now works for German clients too: Canary reads the wording 'X compressed N ore using your compression services' in its German form and lists the whole fleet, including outside pilots", "The two top panels now show different things: 'Mining Fleet Power' is your own chars' mining rate (m³/min), 'Current fleet' is the whole fleet's total compressed volume (m³/ISK, including outside pilots)", "Filter fix: the role pill and the character dropdown no longer fight each other. Picking a role shows all chars of that role, picking a single char clears the role filter, no more getting stuck on one char", "Fix: rare server errors on load (InterfaceError/TypeError) resolved. They were caused by concurrent database access without a lock and an edge case in ore valuation"]},
- {"v": "1.44", "d": "2026-07-25",
-  "de": ["Flotten-Kompression jetzt echt flottenweit: das Log des Command Ships (Orca/Porpoise/Rorqual) nennt jeden Piloten namentlich, der über den Kompressionsdienst komprimiert, auch fremde Flottenmitglieder, die selbst kein Canary nutzen. Die 'Aktuelle Flotte'-Kachel listet damit alle Kompressoren mit Name und Menge, nicht mehr nur die eigenen Accounts"],
-  "en": ["Fleet compression is now truly fleet-wide: the command ship's log (Orca/Porpoise/Rorqual) names every pilot who compresses via its compression service, including fleet members who do not run Canary themselves. The 'Current fleet' panel now lists all of them by name and amount, not just your own accounts"]},
- {"v": "1.43", "d": "2026-07-25",
-  "de": ["'Aktuelle Flotte' überarbeitet: zeigt jetzt klar 'Command Ship erkannt', welches Schiff boostet (z. B. Porpoise), wie viele Spieler komprimieren, und eine nach Menge sortierte Liste, wer wie viel komprimiert hat (m³ und ISK)"],
-  "en": ["'Current fleet' reworked: now clearly shows 'command ship detected', which ship is boosting (e.g. Porpoise), how many pilots are compressing, and a list sorted by amount of who compressed how much (m³ and ISK)"]},
- {"v": "1.42", "d": "2026-07-25",
-  "de": ["Neue Kachel 'Aktuelle Flotte': erscheint nur, wenn ein Command Ship (Orca, Porpoise oder Rorqual) am Steuer ist, und zeigt dann die Flottengröße (X Schiffe), die Mining Power in m³/min und wie viel die Flotte in dieser Session komprimiert hat (m³, ISK und wer). Ohne Booster bleibt sie ausgeblendet", "Fix: ein komprimierender Miner (z. B. an einer Struktur) wurde nicht mehr fälschlich als Command Ship erkannt, die Erkennung hängt jetzt allein am echten Schiffstyp"],
-  "en": ["New 'Current fleet' panel: only shows when a command ship (Orca, Porpoise or Rorqual) is at the helm, then displays the fleet size (X ships), the mining power in m³/min, and how much the fleet compressed this session (m³, ISK and who). Hidden without a booster", "Fix: a compressing miner (e.g. at a structure) is no longer mistaken for a command ship, detection now relies solely on the real ship type"]},
- {"v": "1.41", "d": "2026-07-25",
-  "de": ["Neu: Flotten-Kompression. Sitzt eine Orca, Porpoise oder Rorqual in der Flotte, zeigt Canary jetzt oben, wie viel Erz die ganze Flotte in dieser Session komprimiert hat, in m³ und ISK-Wert, samt Aufschlüsselung wer komprimiert hat. Erscheint nur, wenn wirklich komprimiert wird"],
-  "en": ["New: fleet compression. With an Orca, Porpoise or Rorqual in the fleet, Canary now shows at the top how much ore the whole fleet compressed this session, in m³ and ISK value, including who did the compressing. Only appears when something is actually compressed"]},
- {"v": "1.40", "d": "2026-07-25",
-  "de": ["Missions-Erkenner: Canary erkennt jetzt viele Level-4-Missionen und zeigt den Namen mit einer Genauigkeit in Prozent (z. B. 'Angel Extravaganza ~95% sicher'). Die Signaturen sind web-verifiziert (eve-survival), nichts geraten", "Wird keine Mission erkannt, sagt Canary es ehrlich mit einem Augenzwinkern: '😴 Canary müde, heute keine Arbeit mehr'", "Belt-Ratten (Flotten-Bounty beim Mining) tauchen nicht mehr fälschlich in der Missionsliste auf, es zählt nur noch echter Kampf oder eine erkannte Mission", "Grundlage für weitere Missionen: die Datenbank ist leicht erweiterbar, Level 1 bis 3 folgen"],
-  "en": ["Mission recognizer: Canary now identifies many Level 4 missions and shows the name with an accuracy percentage (e.g. 'Angel Extravaganza ~95% sure'). The signatures are web-verified (eve-survival), nothing guessed", "When no mission is recognized, Canary says so with a wink: '😴 Canary is tired, no more work today'", "Belt rats (fleet bounty while mining) no longer show up as fake missions in the list, only real combat or a recognized mission counts", "Foundation for more: the database is easy to extend, levels 1 to 3 to follow"]},
- {"v": "1.39", "d": "2026-07-24",
-  "de": ["Kampf-Karte: wenn ein Char kämpft, aber der Client keine Bounty-Zeilen ins Log schreibt, erscheint jetzt ein dezenter Hinweis, warum Kills und Bounty auf 0 stehen, plus der Tipp, die Bounty-Meldungen im EVE-Combat-Log zu aktivieren. Die echte Bounty-ISK kommt bei EVE-Login weiterhin aus dem Wallet"],
-  "en": ["Combat card: when a character is fighting but the client writes no bounty lines to the log, a subtle note now explains why kills and bounty read 0, plus a tip to enable the bounty messages in the EVE combat log. The actual bounty ISK still comes from the wallet with the EVE login"]},
- {"v": "1.38", "d": "2026-07-24",
-  "de": ["Mining Fleet Power Stufe 3: teilbares Bild. Ein Klick auf 📤 Teilen rendert ein sauberes PNG deiner Flotten-Power (Zahl, Rang, ✅ ESI-verifiziert-Siegel, Canary-Logo, Homepage-Link), lädt es herunter und legt es zugleich in die Zwischenablage. Ideal für Discord, Twitch oder Reddit", "Der Ø-Wert des Mining Ledgers wird jetzt kompakt abgekürzt (z. B. 233 K/Tag statt 232.729)"],
-  "en": ["Mining Fleet Power stage 3: shareable image. One click on 📤 Share renders a clean PNG of your fleet power (number, rank, ✅ ESI-verified seal, Canary logo, homepage link), downloads it and copies it to the clipboard at the same time. Great for Discord, Twitch or Reddit", "The mining ledger average is now shown compact (e.g. 233 K/day instead of 232,729)"]},
- {"v": "1.37", "d": "2026-07-24",
-  "de": ["Mining Fleet Power Stufe 2: ESI-Verifizierung. Wer seine Chars mit dem EVE-Login neu verbindet, bekommt jetzt das ✅ ESI-verifiziert-Siegel plus die tatsächlich geförderten m³ der letzten 30 Tage direkt aus dem EVE-Mining-Ledger (unfälschbar) und den Skill-Bonus aus den echten Mining-Skills", "Wichtig: dafür müssen die Charaktere einmal neu verbunden werden, weil zwei neue Berechtigungen (Skills lesen, Mining-Ledger lesen) dazugekommen sind"],
-  "en": ["Mining Fleet Power stage 2: ESI verification. Reconnect your chars with the EVE login and you now get the ✅ ESI-verified seal plus the actual m³ mined in the last 30 days straight from the EVE mining ledger (tamper-proof) and the skill bonus from your real mining skills", "Note: characters must be reconnected once, because two new permissions (read skills, read mining ledger) were added"]},
- {"v": "1.36", "d": "2026-07-24",
-  "de": ["Neu: Mining Fleet Power. Eine Hashrate-artige Zahl für die Förderleistung deiner ganzen Flotte in m³/min, mit Rang von Prospektor bis Rorqual-Overlord. Stufe 1 rechnet aus der echten geloggten Minutenrate (als 'geschätzt' gekennzeichnet); die ESI-verifizierte Version mit Siegel folgt als Nächstes"],
-  "en": ["New: Mining Fleet Power. A hashrate-style number for your whole fleet's mining output in m³/min, with a rank from Prospector to Rorqual Overlord. Stage 1 computes from the real logged per-minute rate (marked 'estimated'); the ESI-verified version with a seal is coming next"]},
- {"v": "1.35", "d": "2026-07-24",
-  "de": ["Abyss und anderer Kampf ohne Bounty: statt 'Kills: 0' zeigt Canary jetzt ehrlich 'Gegner bekämpft: N Typen' und die vollständige Gegnerliste mit Schaden je Typ (vorher nur Top 6). EVE protokolliert keine NPC-Tode, darum ist die Zahl der bekämpften Gegnertypen der einzige gesicherte Wert, keine geratene Kill-Zahl", "Bei echtem Ratting/Missionen mit Bounty bleibt der Kill-Zähler wie gehabt"],
-  "en": ["Abyss and other combat without bounty: instead of 'Kills: 0', Canary now honestly shows 'Enemies fought: N types' and the full enemy list with damage per type (was top 6 only). EVE does not log NPC deaths, so the number of enemy types fought is the only verifiable figure, not a guessed kill count", "For real ratting/missions with bounty the kill counter stays as before"]},
- {"v": "1.34", "d": "2026-07-24",
-  "de": ["Ohne gesetzte Rolle erkennt Canary jetzt selbst, ob ein Char kämpft oder mint: Chars mit Schaden aber ohne Erz bekommen automatisch die Kampf-Karte, reine Miner die Mining-Karte. Eine manuell gesetzte Rolle hat weiter Vorrang"],
-  "en": ["Without an assigned role, Canary now detects on its own whether a char is fighting or mining: chars with damage but no ore get the combat card automatically, pure miners the mining card. A manually set role still takes precedence"]},
- {"v": "1.33", "d": "2026-07-24",
-  "de": ["Stillstand-Verlust pausiert jetzt präzise beim Andocken und im Warp (aus dem Log erkannt), nicht nur über die Faustregel"],
-  "en": ["Downtime loss now pauses precisely when docking and in warp (detected from the log), not just via the rule of thumb"]},
- {"v": "1.32", "d": "2026-07-24",
-  "de": ["ISK-Verlust zeigt jetzt den tatsächlich angefallenen Verlust der Session (kumuliert), nicht mehr pro Stunde",
-         "Auch bei komplettem Stillstand (kein Erz) wird der Verlust erfasst, nicht nur bei Laser-aus oder gedrosselter Rate",
-         "Verlust zählt nicht mehr, während du angedockt, im Warp oder AFK bist (nur solange plausibel am Gürtel)",
-         "Neu in der Analyse: Gesamt-Stillstand-Verlust als Statistik",
-         "Drohnen-Sprachansage kommt schneller (Mindestschwelle von 90 auf 60 Sekunden gesenkt)"],
-  "en": ["ISK loss now shows the actual accumulated loss of the session, no longer per hour",
-         "Full standstill (no ore) is now counted too, not only a stopped laser or reduced rate",
-         "Loss no longer counts while docked, in warp or AFK (only while plausibly at the belt)",
-         "New in Analysis: total downtime loss as a statistic",
-         "Drone spoken alert comes faster (minimum threshold lowered from 90 to 60 seconds)"]},
- {"v": "1.31", "d": "2026-07-24",
-  "de": ["Sprachansagen: Stimme frei wählbar aus den auf dem System verfügbaren Stimmen, mit sofortiger Hörprobe",
-         "Sprachansagen sagen jetzt auch Strip-Miner-Stopp und Drohnen im Leerlauf an, sobald sie auftreten (nur einmal, kein Dauergeplapper)",
-         "ISK-Verlust zuverlässiger: zeigt auch bei gedrosselter Abbaurate, wie viel ISK pro Stunde dir gerade entgeht"],
-  "en": ["Spoken alerts: pick any voice available on your system, with an instant preview",
-         "Spoken alerts now also announce a strip miner stopping and idle drones as they happen (once, no chatter)",
-         "ISK loss more reliable: also shows, at a reduced mining rate, how much ISK per hour you are currently missing"]},
- {"v": "1.30", "d": "2026-07-24",
-  "de": ["Neue Zusatzoptionen (standardmäßig aus, in den Optionen aktivierbar):",
-         "Sprachansagen bei Alarmen, sagt Charakter und Warnung an, ideal fürs Multiboxing",
-         "ISK-Verlust live: zeigt geschätzt, wie viel ISK dir entgeht, während ein Strip Miner steht",
-         "Test-Knopf in den Optionen: löst einen Beispielalarm aus, um Ton und Sprache zu prüfen"],
-  "en": ["New optional extras (off by default, enable in the options):",
-         "Spoken alerts, announces the character and the warning, great for multiboxing",
-         "Live ISK loss: shows the estimated ISK you are missing while a strip miner is idle",
-         "Test button in the options: triggers a sample alert to check sound and speech"]},
- {"v": "1.29", "d": "2026-07-24",
-  "de": ["Item-Suche (ISKray) zeigt jetzt das Icon des gefundenen Items"],
-  "en": ["Item lookup (ISKray) now shows the icon of the found item"]},
- {"v": "1.28", "d": "2026-07-24",
-  "de": ["Rechtliche Hinweise aktualisiert: die EVE-Marken gehören jetzt Fenris Creations (früher CCP)",
-         "Copyright-Notiz in den Optionen und auf der Homepage, ohne unzutreffende Erlaubnis-Angabe, klar als Drittanbieter-Tool"],
-  "en": ["Legal notices updated: the EVE trademarks now belong to Fenris Creations (formerly CCP)",
-         "Copyright notice in the options and on the homepage, without any inaccurate permission claim, clearly stated as a third-party tool"]},
- {"v": "1.27", "d": "2026-07-24",
-  "de": ["Gemischte Flotten: jede Karte richtet sich jetzt nach der Rolle des Charakters",
-         "Mining-Charaktere zeigen die Mining-Ansicht, Missions- und PvP-Charaktere die Kampf-Ansicht, egal welcher Modus oben gewählt ist",
-         "Keine leeren Kampf-Kacheln mehr bei Minern in der PvP-Ansicht"],
-  "en": ["Mixed fleets: each card now follows the character's role",
-         "Mining characters show the mining view, mission and PvP characters the combat view, regardless of the mode selected at the top",
-         "No more empty combat tiles for miners in the PvP view"]},
- {"v": "1.26", "d": "2026-07-24",
-  "de": ["Großer Stabilitäts- und Korrektheits-Durchgang (voller Code-Audit)",
-         "Zahlen mit Leerzeichen-Tausendertrennung (z.B. russischer Client) werden jetzt korrekt gelesen, keine unterzählten Werte mehr",
-         "Marktpreise: fehlt eine Orderseite, wird sie sauber ergänzt statt als 0 angezeigt; Item-Namen sind jetzt schreibungsunabhängig",
-         "Robuster gegen Aussetzer: keine Doppelzählung der Live-Werte, keine hängenden Hintergrunddienste, sauberere Datensicherung",
-         "Rollen-Auswahl und Oberfläche laufen auch in Randfällen stabil"],
-  "en": ["Large stability and correctness pass (full code audit)",
-         "Numbers with a space thousands separator (e.g. Russian client) are now read correctly, no more undercounted values",
-         "Market prices: a missing order side is now filled in cleanly instead of shown as 0; item names are now case-insensitive",
-         "More robust against hiccups: no double-counting of live values, no stalled background services, cleaner backups",
-         "Role picker and interface stay stable in edge cases too"]},
- {"v": "1.25", "d": "2026-07-24",
-  "de": ["Besserer Update-Hinweis: Canary prüft jetzt alle 15 Minuten auf neue Versionen",
-         "Deutliche Meldung als Banner, sobald ein Update online ist, mit einem Klick aktualisieren",
-         "Nach dem Update lädt die Seite erst neu, wenn der Server wirklich wieder bereit ist",
-         "Rollen-Auswahl bleibt jetzt offen, auch wenn im Hintergrund neue Log-Einträge kommen"],
-  "en": ["Better update notice: Canary now checks for new versions every 15 minutes",
-         "Clear banner as soon as an update is online, update with one click",
-         "After updating, the page reloads only once the server is truly back up",
-         "The role picker now stays open even when new log entries arrive in the background"]},
- {"v": "1.24", "d": "2026-07-24",
-  "de": ["Neuer Bereich ISKray: Marktpreise über alle Handelsplätze",
-         "Einzel-Item mit Autovervollständigung, einfach tippen und Vorschlag wählen",
-         "Frachtraum bewerten (das bisherige Ore Calculator)",
-         "Marktpreise kommen jetzt aus dem frischen CCP-Orderbuch (ESI), Fuzzwork nur noch als Fallback",
-         "Item direkt im laufenden Client öffnen, wählbar bei welchem Charakter",
-         "System-Lagebild in der Mining-Karte: Sicherheit, Schiffsverluste und Verkehr der letzten Stunde aus offenen Daten"],
-  "en": ["New ISKray section: market prices across all trade hubs",
-         "Single item with autocomplete, just type and pick a suggestion",
-         "Cargo valuation (the former Ore Calculator)",
-         "Market prices now come from the fresh CCP order book (ESI), Fuzzwork only as a fallback",
-         "Open an item directly in the running client, pick which character",
-         "System overview in the mining card: security, ship losses and traffic of the last hour from open data"]},
- {"v": "1.22", "d": "2026-07-24",
-  "de": ["EVE-Serverstatus im Kopf: Spielerzahl auf Tranquility, live und ohne Login",
-         "Zeigt Downtime und VIP-Modus (Wartung) an"],
-  "en": ["EVE server status in the header: player count on Tranquility, live and without login",
-         "Shows downtime and VIP mode (maintenance)"]},
- {"v": "1.21", "d": "2026-07-24",
-  "de": ["Missionen werden jetzt auch am Funk der Gegner im Local erkannt, nicht nur an den Gegnernamen",
-         "Der Missions-Funk erscheint live und in der Historie, so lässt sich die Mission auch nachträglich zuordnen",
-         "Neu erkannt: Striking Down Two Flies In One Swing"],
-  "en": ["Missions are now identified from the enemies' local radio chatter, not just enemy names",
-         "The mission chatter shows live and in the history, so a mission can be identified after the fact too",
-         "Newly recognised: Striking Down Two Flies In One Swing"]},
- {"v": "1.20", "d": "2026-07-24",
-  "de": ["Missionserkennung an einzigartigen Gegnernamen, mit Namen und Link zum Guide"],
-  "en": ["Mission recognition from unique enemy names, with the name and a link to the guide"]},
- {"v": "1.19", "d": "2026-07-24",
-  "de": ["Aktueller Ort (System) direkt aus den Logs, für Mining und Missionen"],
-  "en": ["Current location (system) straight from the logs, for mining and missions"]},
- {"v": "1.18", "d": "2026-07-24",
-  "de": ["Grafische Fitting-Anzeige testweise eingebaut und nach Prüfung wieder entfernt: ESI liefert das aktive Fitting nicht live genug, um verlässlich zu sein"],
-  "en": ["Graphical fitting display added on a trial basis and removed again after review: ESI does not provide the active fit live enough to be reliable"]},
- {"v": "1.17", "d": "2026-07-24",
-  "de": ["Neue Ansicht PvP & Missionen: Schaden, DPS, Trefferquote, Gegner und Kampfverlauf live",
-         "Loot-Wert des Frachtraums über den EVE-Login, mit Zeitstempel",
-         "Missions-Historie: jede Mission einzeln mit eigenem Loot-Feld"],
-  "en": ["New PvP & missions view: damage, DPS, hit rate, enemies and combat over time, live",
-         "Cargo loot value via the EVE login, with a timestamp",
-         "Mission history: every mission listed separately with its own loot field"]},
- {"v": "1.16", "d": "2026-07-24",
-  "de": ["Kampf-Auswertung erweitert: EWAR gegen dich, Fehlschüsse und Trefferquote sowie Salvage werden erkannt",
-         "Loot-Wert des Frachtraums über den EVE-Login (Grundlage der PvP- und Missionen-Ansicht)"],
-  "en": ["Extended combat analysis: EWAR against you, misses and hit rate, and salvage are now detected",
-         "Cargo loot value via the EVE login (basis for the PvP and missions view)"]},
- {"v": "1.15", "d": "2026-07-23",
-  "de": ["Oberfläche auf Deutsch und Englisch umschaltbar"],
-  "en": ["Interface switchable between German and English"]},
- {"v": "1.14", "d": "2026-07-23",
-  "de": ["Vorbereitung für weitere Client-Sprachen: unerkannte Log-Meldungen werden gesammelt und lassen sich ohne neue Version nachtragen"],
-  "en": ["Groundwork for more client languages: unrecognised log messages are collected and can be added without a new version"]},
- {"v": "1.13", "d": "2026-07-23",
-  "de": ["Updates und Installation laufen jetzt zuverlässig über das offizielle GitHub-Release"],
-  "en": ["Updates and installation now run reliably via the official GitHub release"]},
- {"v": "1.12", "d": "2026-07-24",
-  "de": ["Fehlercodes und ein Diagnose-Bericht zum Kopieren, für einfacheren Support"],
-  "en": ["Error codes and a copyable diagnostics report for easier support"]},
- {"v": "1.11", "d": "2026-07-23",
-  "de": ["Log-Ordner beim ersten Start einrichten, falls er nicht automatisch gefunden wird"],
-  "en": ["Set up the log folder on first start if it is not found automatically"]},
- {"v": "1.10", "d": "2026-07-23",
-  "de": ["Läuft jetzt auch unter Linux (EVE über Steam/Proton oder Wine)"],
-  "en": ["Now runs on Linux too (EVE via Steam/Proton or Wine)"]},
- {"v": "1.9", "d": "2026-07-22",
-  "de": ["Missionen-Tab: Auswertung der Gegner"],
-  "en": ["Missions tab: enemy breakdown"]},
- {"v": "1.8", "d": "2026-07-22",
-  "de": ["Englischer EVE-Client: Mining und Kampf werden jetzt korrekt erkannt"],
-  "en": ["English EVE client: mining and combat are now recognised correctly"]},
- {"v": "1.5", "d": "2026-07-22",
-  "de": ["Missionen-Tab mit Belohnungen, Zeitboni und Bounties aus dem Wallet-Journal"],
-  "en": ["Missions tab with rewards, time bonuses and bounties from the wallet journal"]},
- {"v": "1.0", "d": "2026-07-21",
-  "de": ["Erste Version: Mining live, Alarme, Bedrohungs-Ampel, Ore Calculator, Heavy-Water-Timer, EVE-Login"],
-  "en": ["First release: mining live, alerts, threat traffic light, ore calculator, Heavy Water timer, EVE login"]}
+ {
+  "v": "1.64.0",
+  "d": "2026-07-26",
+  "de": [
+   "Canary kann jetzt anonym mitzählen, wie viele Installationen es gibt. Einmal am Tag holt es dafür eine leere Datei von GitHub, deren Name nur das Datum ist. Mitgesendet wird nichts: keine Kennung, kein Name, keine Spieldaten. In den Optionen unter „System & Daten\" abschaltbar.",
+   "Die Zahl steht auf der Homepage im Downloads-Fenster, zusammen mit den letzten 14 Tagen. Damit gibt es endlich einen ehrlichen Beleg dafür, wie viele Leute Canary wirklich benutzen."
+  ],
+  "en": [
+   "Canary can now anonymously count how many installations exist. Once a day it fetches an empty file from GitHub whose name is just the date. Nothing is sent along: no identifier, no name, no game data. Can be switched off in the options under „System & Data\".",
+   "The number shows up on the homepage in the downloads window, together with the last 14 days. That finally gives an honest figure for how many people actually use Canary."
+  ]
+ },
+ {
+  "v": "1.63.2",
+  "d": "2026-07-26",
+  "de": [
+   "Blutspur-Karte deutlich lesbarer: Systeme, die in der Projektion aufeinanderkleben (z. B. Jita, Ikuchi, New Caldari), werden jetzt sanft auseinandergezogen, das Zentrum bleibt dabei fest in der Mitte.",
+   "Neue Wahl oben im Modul: '📍 Aktuellen Standort nutzen' (die Blase folgt dir beim Fliegen automatisch, sanft gedrosselt) oder ein selbst eingetragenes festes System. Der aktive Modus steht daneben."
+  ],
+  "en": [
+   "Blood Trail map is much more readable: systems that stick together in the projection (e.g. Jita, Ikuchi, New Caldari) are now gently pushed apart, with the centre staying pinned in the middle.",
+   "New choice at the top of the module: '📍 Use current location' (the bubble follows you while flying, gently throttled) or a fixed system you enter yourself. The active mode is shown next to it."
+  ]
+ },
+ {
+  "v": "1.63.1",
+  "d": "2026-07-26",
+  "de": [
+   "Fix: das Eingabefeld für das beobachtete System wirft die Eingabe nicht mehr raus, während man tippt (die Live-Aktualisierung pausiert jetzt, solange das Feld den Fokus hat). Enter bestätigt die Eingabe."
+  ],
+  "en": [
+   "Fix: the watched-system input no longer loses what you type (the live refresh now pauses while the field has focus). Enter confirms the input."
+  ]
+ },
+ {
+  "v": "1.63.0",
+  "d": "2026-07-26",
+  "de": [
+   "Blutspur: das beobachtete System ist jetzt frei wählbar. Trag im Kopfbereich ein beliebiges System ein (z. B. dein Missions-Hub oder Uedama) und die Blase baut sich dort neu auf, unabhängig davon, wo du gerade fliegst.",
+   "Klar als Alpha gekennzeichnet: Rudel-Erkennung, Scores und Warnungen werden noch am echten Verkehr feinjustiert, das steht jetzt als Hinweis direkt im Modul. Rückmeldungen willkommen."
+  ],
+  "en": [
+   "Blood Trail: the watched system is now freely selectable. Enter any system in the header (e.g. your mission hub or Uedama) and the bubble rebuilds there, independent of where you are flying.",
+   "Clearly marked as alpha: pack detection, scores and warnings are still being tuned against real traffic, and that note now sits right inside the module. Feedback welcome."
+  ]
+ },
+ {
+  "v": "1.62.1",
+  "d": "2026-07-26",
+  "de": [
+   "Blutspur aufgeräumt: statt vieler Einzelfenster jetzt EINE kompakte Ansicht. Oben die Nachbarschafts-Karte (dein System in der Mitte, rund 20 Systeme mit Sprunglinien, jedes beschriftet), darunter die Annäherungs-Übersicht (welches Rudel ist wie viele Sprünge entfernt, Tendenz '12 → 7', mit direkten zKillboard-Links zu den Piloten) und die letzten Kills der Blase, alles in einer Karte.",
+   "Die Kill-Spur der Rudel wird jetzt auf der Karte gezeichnet: eine rote Linie durch die Systeme ihrer Kills, ältere Abschnitte blasser. Kommt ein Rudel in deine Nachbarschaft, siehst du seine Spur hereinlaufen. Beobachtet und gewarnt wird weiterhin über den ganzen 20-Sprünge-Umkreis, die Karte zeigt bewusst nur die lesbare Nachbarschaft."
+  ],
+  "en": [
+   "Blood Trail decluttered: instead of many separate cards there is now ONE compact view. On top the neighbourhood map (your system in the centre, around 20 systems with jump lines, each labelled), below it the approach watch (which pack is how many jumps away, trend '12 to 7', with direct zKillboard links to the pilots) and the latest kills in the bubble, all in a single card.",
+   "Pack kill trails are now drawn on the map: a red line through the systems of their kills, older segments fading. When a pack enters your neighbourhood you see its trail run in. Watching and warnings still cover the full 20-jump bubble, the map deliberately shows only the readable neighbourhood."
+  ]
+ },
+ {
+  "v": "1.62.0",
+  "d": "2026-07-26",
+  "de": [
+   "Blutspur komplett umgebaut auf eine Ego-Lagekarte: dein System sitzt jetzt in der MITTE, angezeigt wird alles im Umkreis von 20 Sprüngen (einstellbar über pack_radius), über Regionsgrenzen hinweg. Statt zwei Regionskarten gibt es eine Karte um dich herum, jeder Punkt zeigt beim Draufzeigen auch die Sprung-Distanz.",
+   "Die Sternenkarte wird jetzt MITGELIEFERT (eve_map.json, aus den offiziellen EVE-Daten generiert): kein lokaler Kartenaufbau mehr, kein minutenlanges Crawlen beim ersten Einschalten, die Blase steht sofort. Vorher musste jede Installation die Karte selbst aus ESI zusammensetzen.",
+   "Neu: 📡 Kill-Ticker. Jeder Spieler-Kill in deiner Blase erscheint als Zeile, klassifiziert als ⛏ Mining-Schiff, 🐋 Booster, 🚚 Hauler, Pod oder normaler Kill, mit System, Sprung-Distanz zu dir, Schiff und ISK-Wert.",
+   "Neu: Annäherungs-Warnung. Rückt ein Rudel mit seinen Kills näher an dein System, warnt Canary direkt: gelb ab 15 Sprüngen ('nähert sich: 12 → 7 Sprünge'), rot mit Sprachansage ab 3 Sprüngen. Gewarnt wird nur, wenn es näher kommt als je zuvor gemeldet, kein Dauergeplapper."
+  ],
+  "en": [
+   "Blood Trail rebuilt around an ego map: your system now sits in the CENTRE, showing everything within 20 jumps (configurable via pack_radius), across region borders. Instead of two region maps there is one map around you, and hovering any dot also shows its jump distance.",
+   "The star map now SHIPS with Canary (eve_map.json, generated from official EVE data): no more local map building, no minutes-long crawl on first enable, the bubble is ready instantly. Previously every install had to assemble the map from ESI itself.",
+   "New: 📡 kill ticker. Every player kill in your bubble appears as a row, classified as ⛏ mining ship, 🐋 booster, 🚚 hauler, pod or ordinary kill, with system, jump distance to you, ship and ISK value.",
+   "New: approach warning. If a pack's kills move closer to your system, Canary warns you directly: yellow from 15 jumps out ('approaching: 12 to 7 jumps'), red with a spoken alert from 3 jumps. It only warns when the pack gets closer than ever reported before, no constant chatter."
+  ]
+ },
+ {
+  "v": "1.61.1",
+  "d": "2026-07-26",
+  "de": [
+   "Blutspur findet dein Zuhause jetzt selbst: beim ersten Einschalten leitet Canary die Heimatregion aus deinem aktuellen System ab und beobachtet sie zusammen mit The Citadel (Uedama-Route), statt mit einer festen Vorgabe zu starten. Eigene Regionen bleiben über pack_regions in der config.json einstellbar (max 2).",
+   "Robuster: Kills aus einer früheren Regions-Wahl verfälschen die Rudel-Erkennung nicht mehr, und die Karten-Ansicht verkraftet einen Regionswechsel sauber."
+  ],
+  "en": [
+   "Blood Trail now finds your home on its own: when first enabled, Canary derives your home region from your current system and watches it together with The Citadel (Uedama route), instead of starting with a fixed default. Custom regions stay configurable via pack_regions in config.json (max 2).",
+   "More robust: kills from a previous region selection no longer distort pack detection, and the map view handles a region change cleanly."
+  ]
+ },
+ {
+  "v": "1.61.0",
+  "d": "2026-07-26",
+  "de": [
+   "Neu: 🩸 Blutspur, ein Gank-Rudel-Radar im Intel-Tab (zweiter Modus neben dem Local-Scan, Opt-in, standardmäßig aus). Canary liest den öffentlichen Killmail-Strom (killmail.stream, zKillboard als Fallback) und erkennt, wer in deinen Regionen wiederholt gemeinsam tötet: jedes Rudel mit Jagdgebiet, Schiffen, Mitgliedern und ehrlichem 'zuletzt gesehen vor X min'. Ein Gank-Score trennt Miner-/Hauler-Jäger von normalem PvP-Rauschen.",
+   "Die eigentliche Frühwarnung: taucht ein bekanntes Rudel-Mitglied in deinem Local auf, gibt es sofort einen roten Alarm mit Sprachansage. Dazu ein einmaliger Hinweis, wenn ein Rudel in deiner Region aktiv ist, ein optionaler Corp-Hinweis für Scouts, und eine Lage-Karte der Region (Systeme, Kills der letzten 2 Stunden, dein Standort, geschätzte Bewegungsrichtung).",
+   "Ehrlich per Bauart: ein Rudel wird erst NACH seinem letzten Kill sichtbar (Echo-Prinzip), nur Piloten auf Killmails zählen, stille Camper bleiben unsichtbar, jede Zeitangabe kommt aus der Kill-Zeit. Nur öffentliche Daten, nichts verlässt deinen Rechner. Fällt der Live-Feed aus, schaltet Canary automatisch auf stündliches zKillboard-Polling um und sagt es dazu."
+  ],
+  "en": [
+   "New: 🩸 Blood Trail, a gank-pack radar in the Intel tab (second mode next to the local scan, opt-in, off by default). Canary reads the public killmail stream (killmail.stream, zKillboard as fallback) and detects who repeatedly kills together in your regions: each pack with hunting grounds, ships, members and an honest 'last seen X min ago'. A gank score separates miner/hauler hunters from ordinary PvP noise.",
+   "The actual early warning: if a known pack member shows up in your local, you get an immediate red alert with a spoken warning. Plus a one-time hint when a pack is active in your region, an optional corp hint for scouts, and a region map (systems, kills of the last 2 hours, your location, estimated direction of travel).",
+   "Honest by design: a pack becomes visible only AFTER its latest kill (echo principle), only pilots on killmails count, silent campers stay invisible, every age is computed from kill time. Public data only, nothing leaves your machine. If the live feed goes down, Canary automatically falls back to hourly zKillboard polling and says so."
+  ]
+ },
+ {
+  "v": "1.60.0",
+  "d": "2026-07-26",
+  "de": [
+   "Neu in der Erz-Schatzkammer: der Verwertungs-Berater. Für deinen gesamten gelagerten Erz-Bestand stellt Canary drei Wege gegenüber, bewertet für den gewählten Handelsplatz: roh verkaufen, komprimiert verkaufen und zu Mineralien raffinieren, und markiert den besten. Je Erz-Typ eine Zeile, damit du siehst, wo sich Komprimieren lohnt und wo roh (oder illiquide Kompression) besser ist.",
+   "Die Refine-Ausbeute kommt aus deinen echten Reprocessing-Skills (Basis NPC-Station 50%). Struktur-Rigs, Standings, Implantate und erz-spezifische Skills erhöhen sie und sind nicht enthalten, der Refine-Wert ist also eine ehrliche Untergrenze. Kompression ändert nur das Volumen, nicht die Mineralien. Die Mineral-Mengen je Erz stammen aus der EVE-SDE, nicht geraten."
+  ],
+  "en": [
+   "New in the Ore treasury: the processing advisor. For your entire stored ore stock, Canary compares three routes, valued for the selected trade hub: sell raw, sell compressed, or refine to minerals, and marks the best. One row per ore type so you see where compressing pays off and where raw (or illiquid compressed) wins.",
+   "The refine yield comes from your real reprocessing skills (NPC station 50% base). Structure rigs, standings, implants and ore-specific skills raise it and are not included, so the refine value is an honest floor. Compression changes only volume, not the minerals. The per-ore mineral amounts come from the EVE SDE, not guessed."
+  ]
+ },
+ {
+  "v": "1.59.1",
+  "d": "2026-07-26",
+  "de": [
+   "ESI-Status je Charakter: überall dort, wo Canary ESI-Daten zeigt (Planeten, Steckbrief, Erz-Schatzkammer), steht jetzt ein Abzeichen am Charakter. Grün '✅ ESI' bedeutet verbunden und alle Berechtigungen erteilt, rot '🔴 ESI' bedeutet neu verbinden nötig (der Tooltip nennt die fehlenden Berechtigungen). So siehst du sofort, ob ein Charakter frische Daten liefert oder erst neu verbunden werden muss."
+  ],
+  "en": [
+   "Per-character ESI status: everywhere Canary shows ESI data (Planets, Character sheet, Ore treasury) there is now a badge on the character. Green '✅ ESI' means connected with all scopes granted, red '🔴 ESI' means a reconnect is needed (the tooltip lists the missing scopes). So you can tell at a glance whether a character is delivering fresh data or needs reconnecting."
+  ]
+ },
+ {
+  "v": "1.59.0",
+  "d": "2026-07-26",
+  "de": [
+   "Planeten zeigen jetzt, WAS sie herstellen: Canary löst die Fabrik-Schematics auf und listet je Kolonie das/die End-Produkt(e) mit Icon (z. B. Mechanical Parts, Coolant), nicht mehr nur den geförderten Rohstoff.",
+   "Produkt-Tier P0-P4: jedes Produkt bekommt ein farbiges Tier-Kürzel (Rohstoff P0 bis fortgeschritten P4), damit die Wertigkeit sofort klar ist.",
+   "Ertragsprognose: je Extraktor die erwartete Gesamt-Fördermenge über die Programmlaufzeit (exakte EVE-Formel), plus grob der Rohstoffwert je Kolonie. Roh-P0-Wert ist klein, der Wert steckt in der Weiterverarbeitung, darum getrennt vom gelagerten Wert ausgewiesen.",
+   "PI-Gesamtausstoß: oben eine flottenweite Zusammenfassung, welche Produkte deine PI insgesamt macht (mit Anzahl) und der Extraktions-Rohwert."
+  ],
+  "en": [
+   "Planets now show WHAT they make: Canary resolves the factory schematics and lists each colony's end product(s) with an icon (e.g. Mechanical Parts, Coolant), not just the extracted raw material.",
+   "Product tier P0-P4: every product gets a coloured tier tag (raw P0 up to advanced P4) so its value tier is clear at a glance.",
+   "Yield estimate: per extractor the expected total output over the program's run (exact EVE formula), plus a rough raw value per colony. Raw P0 value is small, the value is in the processing, so it is shown separately from the stored value.",
+   "PI total output: a fleet-wide summary at the top of which products your PI makes overall (with counts) and the raw extraction value."
+  ]
+ },
+ {
+  "v": "1.58.3",
+  "d": "2026-07-26",
+  "de": [
+   "Am Planeten-Tab war kurz ein Versuch mit zwei Knöpfen (Planet im Client zeigen, hinfliegen). Wieder entfernt, weil EVE es nicht zulässt: ein Planet kann kein Wegpunkt sein ('You can't set that as a waypoint'), und das eigentliche PI-Verwaltungsfenster kann die ESI ohnehin nicht öffnen. Knöpfe, die nichts Verlässliches tun, sind schlechter als keine. Der Planeten-Tab bleibt eine klare Anzeige: Kolonien, Ablauf-Alarm, gelagerter Wert und Planeten-Bilder.",
+   "Robuster: klemmt der Abruf eines einzelnen Kolonie-Layouts kurz, verschwindet die Kolonie nicht mehr, sie bleibt mit ihren Grunddaten stehen."
+  ],
+  "en": [
+   "The Planets tab briefly had two buttons (show the planet in the client, fly there). Removed again, because EVE does not allow it: a planet cannot be a waypoint ('You can't set that as a waypoint'), and ESI cannot open the actual PI management window anyway. Buttons that do nothing reliable are worse than none. The Planets tab stays a clean readout: colonies, expiry alert, stored value and planet images.",
+   "More robust: if a single colony's layout fetch hiccups, the colony no longer disappears, it stays with its basic data."
+  ]
+ },
+ {
+  "v": "1.57.2",
+  "d": "2026-07-26",
+  "de": [
+   "Planeten übersichtlicher: jede Kolonie zeigt jetzt ihr echtes Planeten-Bild (Öde, Gas, Lava, …), links im Charakter-Block groß und in der Nachfüll-Liste klein vor dem Planetennamen. Man erkennt eine Kolonie damit auf einen Blick, statt nur am Text."
+  ],
+  "en": [
+   "Planets are clearer to scan: every colony now shows its real planet image (barren, gas, lava, …), large on the left in the character block and small in front of the planet name in the reload list. You recognise a colony at a glance now, not just by its text."
+  ]
+ },
+ {
+  "v": "1.57.1",
+  "d": "2026-07-26",
+  "de": [
+   "Planeten verfeinert: jede Kolonie zeigt jetzt den gelagerten Wert in ISK (Materialien in Speichern, Startrampen und Fabriken, zu Jita-Buy bewertet), plus eine Summe je Charakter und ganz oben über alle Kolonien.",
+   "Klarere Frische-Zeile: von wann die Daten sind und wann der nächste Abgleich kommt ('Stand vor X min · nächster Abgleich in Y min'). Weiterhin ehrlich: so aktuell wie zuletzt im Client geöffnet.",
+   "Darstellung aufgeräumt: die Spalten in der Nachfüll-Liste und den Extraktor-Zeilen sind jetzt sauber ausgerichtet, nichts verrutscht mehr."
+  ],
+  "en": [
+   "Planets refined: each colony now shows its stored value in ISK (materials in storage, launchpads and factories, valued at Jita buy), plus a per-character total and an overall total at the top.",
+   "Clearer freshness line: how old the data is and when the next sync comes ('as of X min ago · next sync in Y min'). Still honest: only as fresh as last opened in the client.",
+   "Tidier layout: the columns in the reload list and the extractor rows now line up cleanly, no more drift."
+  ]
+ },
+ {
+  "v": "1.57",
+  "d": "2026-07-26",
+  "de": [
+   "Neuer Tab 'Planeten': Planetary Industry über alle deine Charaktere. Oben ein Überblick (Kolonien, Extraktoren, was gerade abgelaufen ist oder bald abläuft), darunter char-übergreifend 'Was zuerst nachfüllen' streng nach Ablauf sortiert, und einklappbare Blöcke je Charakter mit Planet, Typ, System, Ausbaustufe und den Extraktoren samt tickendem Ablauf-Countdown (grün, amber, rot). So bleibt es auch bei vielen Chars übersichtlich, weil man immer nur oben in die Liste schaut.",
+   "Ablauf-Alarm: Canary warnt im Banner (und optional per Sprachansage), wenn ein Extraktor abgelaufen ist oder bald ausläuft, mit Charakter und Planet. Die Schwelle passt sich der Programmlänge an, damit ein langes Programm nicht zu spät und ein kurzes nicht zu früh meldet.",
+   "Ehrlich: die Daten kommen aus der ESI und sind so aktuell wie zuletzt im Client geöffnet; die Ablauf-Zeiten selbst sind exakt. Braucht die neue Nur-Lese-Berechtigung 'Planeten', Charaktere von vor diesem Update einmal neu verbinden (⚙ Optionen). Canary liest nur, es ändert nie deine PI."
+  ],
+  "en": [
+   "New 'Planets' tab: Planetary Industry across all your characters. At the top an overview (colonies, extractors, what just expired or expires soon), below it a cross-character 'What to reload first' sorted strictly by expiry, and collapsible blocks per character with planet, type, system, upgrade level and the extractors with a ticking expiry countdown (green, amber, red). It stays readable even with many characters, since you only ever look at the top of the list.",
+   "Expiry alert: Canary warns in the banner (and optionally by voice) when an extractor has expired or expires soon, with character and planet. The threshold adapts to the program length so a long program does not warn too late and a short one not too early.",
+   "Honest: the data comes from ESI and is only as fresh as the colony was last opened in the client; the expiry times themselves are exact. Needs the new read-only permission 'planets', so reconnect characters from before this update once (⚙ Options). Canary only reads, it never changes your PI."
+  ]
+ },
+ {
+  "v": "1.56",
+  "d": "2026-07-25",
+  "de": [
+   "Der Profil-Bereich heißt jetzt 'Steckbrief' und ist eine richtige Charakter-Karte: links Portrait, Name, Wallet-ISK, Corporation und Allianz, aktuelles Schiff mit Sicherheitsstatus, aktuelles System und Erz-Vermögen aus der Schatzkammer, rechts daneben das Spielstil-Radar. Mit Frische-Zeile, von wann die ESI-Daten sind und wann der nächste Abgleich kommt. Am Radar zeigt Hovern weiterhin die echten Werte"
+  ],
+  "en": [
+   "The Profile area is now called 'Character sheet' and is a proper character card: on the left portrait, name, wallet ISK, corporation and alliance, current ship with security status, current system and ore worth from the treasury; on the right the playstyle radar. With a freshness line showing how old the ESI data is and when the next sync happens. Hovering the radar still shows the real values"
+  ]
+ },
+ {
+  "v": "1.55.2",
+  "d": "2026-07-25",
+  "de": [
+   "Spielstil-Radar: fahr mit der Maus über einen Punkt oder eine Achsen-Beschriftung, dann zeigt Canary den echten Wert in der passenden Einheit (Ertrag in ISK, Mining/Industrie in m³, Kampfkraft/PvP als Schaden, Missionen als Anzahl). So ist jeder Ausschlag jetzt auch beziffert"
+  ],
+  "en": [
+   "Playstyle radar: hover a point or an axis label and Canary shows the real value in the right unit (earnings in ISK, mining/industry in m³, combat/PvP as damage, missions as a count). Every spike is now quantified"
+  ]
+ },
+ {
+  "v": "1.55.1",
+  "d": "2026-07-25",
+  "de": [
+   "Spielstil-Radar: die Achse 'Aktivität' durch 'Ertrag' ersetzt, die erwirtschaftete ISK der letzten 30 Tage (Mining-Wert + Bounty + Missions-Belohnungen). Das sagt mehr über den Char aus als bloße aktive Tage"
+  ],
+  "en": [
+   "Playstyle radar: replaced the 'activity' axis with 'earnings', the ISK made in the last 30 days (mining value + bounties + mission rewards). That says more about a character than just active days"
+  ]
+ },
+ {
+  "v": "1.55",
+  "d": "2026-07-25",
+  "de": [
+   "Neuer Tab 'Profil': ein Spielstil-Radar pro Charakter mit 6 Achsen (Mining, Missionen, PvP, Kampfkraft, Industrie, Aktivität) über die letzten 30 Tage. Der Blob zeigt auf einen Blick, was ein Char ist, ein Miner spitzt auf Mining/Industrie, ein Missionsläufer auf Missionen/Kampfkraft. Jede Achse ist relativ zu deinem stärksten Char skaliert, damit die Form den Mix zeigt. Alles aus Logs und ESI, lokal gezeichnet"
+  ],
+  "en": [
+   "New 'Profile' tab: a playstyle radar per character with 6 axes (mining, missions, PvP, combat, industry, activity) over the last 30 days. The blob shows at a glance what a character is: a miner spikes on mining/industry, a mission runner on missions/combat. Each axis is scaled relative to your strongest character so the shape shows the mix. All from logs and ESI, drawn locally"
+  ]
+ },
+ {
+  "v": "1.54.1",
+  "d": "2026-07-25",
+  "de": [
+   "Verlauf verbessert: Fenster jetzt auf die letzten 48 Stunden (umschaltbar auf Heute / aktueller Trip). Die Mining-Trips des Tages werden beim Start rückwirkend aus den Logs rekonstruiert, sodass auch frühere Abdocker erscheinen, nicht erst ab jetzt. Und ganz oben steht die laufende Aktivität ('am Minen …' / Kampf), damit der Verlauf nicht leer wirkt, während du gerade aktiv bist"
+  ],
+  "en": [
+   "Timeline improved: window is now the last 48 hours (switchable to today / current trip). The day's mining trips are reconstructed from the logs on startup, so earlier undocks show up too, not only from now on. And the current activity ('mining now …' / combat) sits at the very top so the timeline is not empty while you are active"
+  ]
+ },
+ {
+  "v": "1.54",
+  "d": "2026-07-25",
+  "de": [
+   "Neuer Tab 'Verlauf': eine Zeitachse pro Charakter, die zeigt was heute passiert ist, chronologisch und lesbar. Mining-Trips (m³, ISK, Dauer), abgeschlossene Missionen und die verifizierten ISK-Ereignisse aus dem Wallet-Journal in einem Strom. Umschaltbar zwischen Heute, letzte 8 Stunden und aktueller Trip. Log-Ereignisse erscheinen sofort, ESI-Ereignisse sind markiert. Der Firehose aus dem Log wird bewusst zu Episoden zusammengefasst, nicht Zeile für Zeile"
+  ],
+  "en": [
+   "New 'Timeline' tab: one timeline per character showing what happened today, in a readable chronological stream. Mining trips (m³, ISK, duration), completed missions and the verified ISK events from the wallet journal, all in one flow. Switch between today, last 8 hours and current trip. Log events appear instantly, ESI events are marked. The log firehose is deliberately grouped into episodes, not shown line by line"
+  ]
+ },
+ {
+  "v": "1.53",
+  "d": "2026-07-25",
+  "de": [
+   "Neu: passive Gank-Flotten-Warnung. Wenn Piloten im Local schreiben, prüft Canary wie bisher jeden über zKillboard und ESI, aber gruppiert die geflaggten jetzt nach Corporation. Tauchen mehrere verdächtige Piloten derselben Corp in deinem Local auf, warnt Canary vor einer möglichen Gank-Flotte (mit Corp, Anzahl, System und Miner-Kills), im Intel-Tab und als Alarm. Komplett passiv, nur aus den Chat-Nachrichten, kein Kopieren nötig. Fängt keine schweigenden Camper, dafür kein Aufwand"
+  ],
+  "en": [
+   "New: passive gank-fleet warning. When pilots talk in local, Canary checks each one via zKillboard and ESI as before, but now groups the flagged ones by corporation. If several suspicious pilots from the same corp show up in your local, Canary warns of a possible gank fleet (with corp, count, system and miner kills), in the Intel tab and as an alert. Fully passive, from chat messages only, no copying needed. It will not catch silent campers, but it costs you nothing"
+  ]
+ },
+ {
+  "v": "1.52.4",
+  "d": "2026-07-25",
+  "de": [
+   "Command Ships jetzt auch im Alarm-Banner sauber: Orca, Porpoise und Rorqual lösen keinen 'Kein Erz seit X min'- oder 'Abbaurate'-Alarm mehr aus. Das war der letzte Ort, an dem die Meldung für Booster noch durchkam, sie erscheint jetzt weder auf der Karte noch als Alarm noch als Sprachansage"
+  ],
+  "en": [
+   "Command ships are now clean in the alert banner too: Orca, Porpoise and Rorqual no longer trigger a 'no ore for X min' or 'mining rate' alert. That was the last place the message still slipped through for boosters, it now shows neither on the card, nor as an alert, nor as a spoken alert"
+  ]
+ },
+ {
+  "v": "1.52.3",
+  "d": "2026-07-25",
+  "de": [
+   "Mining-Verlaufsbalken (m³/min) sind jetzt ablesbar: die Beschriftung zeigt Zeitfenster, Spitzenwert und Durchschnitt (z.B. 'letzte 60 min · Spitze 409 · Ø 365'), und beim Draufzeigen auf einen Balken erscheint der genaue Minutenwert. Vorher war es nur eine Balkenreihe ohne Zahlen"
+  ],
+  "en": [
+   "The mining history bars (m³/min) are now readable: the caption shows the time window, peak and average (e.g. 'last 60 min · peak 409 · avg 365'), and hovering a bar reveals that minute's exact value. Before it was just bars with no numbers"
+  ]
+ },
+ {
+  "v": "1.52.2",
+  "d": "2026-07-25",
+  "de": [
+   "Missionen: wird eine Mission nicht eindeutig erkannt, steht jetzt klar 'Keine Erkennungsdaten gefunden' statt einer verspielten Meldung. Ehrlich und eindeutig, viele Missionen haben nun mal keine eindeutige Signatur im Log"
+  ],
+  "en": [
+   "Missions: when a mission cannot be clearly identified, it now says 'No recognition data found' instead of a playful message. Honest and clear, since many missions simply have no unique signature in the log"
+  ]
+ },
+ {
+  "v": "1.52.1",
+  "d": "2026-07-25",
+  "de": [
+   "Command Ships (Orca, Porpoise, Rorqual) zeigen jetzt gar keine Mining-Nörgel-Warnungen mehr, auch nicht die Drohnen-Meldung. Ein Booster ist kein Miner, die Meldung kam sonst schon, wenn er nur die Drohnen einzog. Die Karte bleibt dort sauber"
+  ],
+  "en": [
+   "Command ships (Orca, Porpoise, Rorqual) now show no mining nag warnings at all, including the drone message. A booster is not a miner, and the message used to pop up just from pulling in the drones. The card stays clean there"
+  ]
+ },
+ {
+  "v": "1.52",
+  "d": "2026-07-25",
+  "de": [
+   "Command Ships (Orca, Porpoise, Rorqual): keine falschen Mining-Warnungen mehr. Ein Booster mint nicht selbst, darum erscheinen 'Abbaurate runter', 'Kein Erz seit X min' und der Stillstand-Verlust dort nicht mehr. Es bleibt nur die Drohnen-Warnung, wenn die Mining-Drohnen wirklich nichts liefern",
+   "Erz-Schatzkammer: zeigt jetzt nur noch gelagertes Erz in Stationen und Strukturen. Erz, das gerade im Mining-Schiff liegt, wird nicht mehr als Bestand gezählt. Ausserdem werden Standorte, die vorher nur als Nummer erschienen, jetzt sauber mit Namen aufgelöst",
+   "Fraktions-Tipp genauer: die Gegner-Erkennung wurde entschlackt, damit keine falschen Fraktionen mehr auftauchen",
+   "Heavy-Water-Reichweite wird jetzt auch auf Englisch korrekt angezeigt",
+   "Anzeige aktualisiert sich zuverlässiger: der Browser zeigt keine veralteten Werte mehr nach einem Update"
+  ],
+  "en": [
+   "Command ships (Orca, Porpoise, Rorqual): no more false mining warnings. A booster does not mine itself, so 'mining rate down', 'no ore for X min' and the downtime loss no longer show there. Only the drone warning remains, and only when the mining drones truly deliver nothing",
+   "Ore treasury: now shows only stored ore in stations and structures. Ore currently sitting in the mining ship is no longer counted as stock. Locations that previously showed only as a number are now resolved to proper names",
+   "More accurate faction tip: the enemy detection was cleaned up so no wrong factions appear anymore",
+   "Heavy water range now displays correctly in English too",
+   "The display refreshes more reliably: the browser no longer shows stale values after an update"
+  ]
+ },
+ {
+  "v": "1.51",
+  "d": "2026-07-25",
+  "de": [
+   "Live-Missionskampf im Missionen-Tab: der Charakter, der gerade eine Mission fliegt, wird jetzt oben in einem EVE-artigen HUD angezeigt. Portrait in der Mitte, Schaden raus links, Schaden rein rechts, darunter Gesamtschaden, eliminierte Gegner (Kills, sonst bekämpfte Typen) und eingesammelte Bounty. Missionsname, Fraktions-Tipp und EWAR sind gleich mit dabei"
+  ],
+  "en": [
+   "Live mission combat in the Missions tab: the character currently running a mission is now shown at the top in an EVE-style HUD. Portrait in the center, damage out on the left, damage in on the right, and below it total damage, enemies eliminated (kills, otherwise types engaged) and bounty collected. Mission name, faction tip and EWAR are shown alongside"
+  ]
+ },
+ {
+  "v": "1.50",
+  "d": "2026-07-25",
+  "de": [
+   "Missionsläufer-Update (Alpha, klar als 'in Entwicklung' gekennzeichnet). Neu: Fraktions-Tipp. Aus den Gegnernamen im Kampflog erkennt Canary die Piraten-Fraktion (Guristas, Serpentis, Blood Raiders, Sansha, Angel, Mordus, Rogue Drones, Fraktions-Marinen) und sagt dir direkt, welchen Schaden du tanken und welchen du am besten schießen solltest, samt typischer EWAR. Das funktioniert auch, wenn der Missionsname unbekannt ist. Datentabelle web-verifiziert (EVE University) und an echten Logs geprüft",
+   "Verifizierte Belohnung: jede erkannte Mission bekommt die echte Belohnung und den Zeitbonus aus dem Wallet-Journal (ESI, unfälschbar) direkt angeheftet, samt echter ISK pro Stunde",
+   "EWAR-Profil je Mission: Canary zeigt jetzt, wie oft du gescrambled, gewebbt, gejammt oder geneutet wurdest, als Schwierigkeits- und Gefahren-Anzeige"
+  ],
+  "en": [
+   "Mission-runner update (Alpha, clearly marked 'in development'). New: faction tip. From the enemy names in the combat log, Canary identifies the pirate faction (Guristas, Serpentis, Blood Raiders, Sansha, Angel, Mordu's, Rogue Drones, faction navies) and tells you straight away which damage to tank and which to shoot, plus their typical EWAR. This works even when the mission name is unknown. Data table web-verified (EVE University) and checked against real logs",
+   "Verified reward: every recognized mission gets its real reward and time bonus from the wallet journal (ESI, tamper-proof) attached directly, including real ISK per hour",
+   "Per-mission EWAR profile: Canary now shows how often you were scrambled, webbed, jammed or neuted, as a difficulty and danger readout"
+  ]
+ },
+ {
+  "v": "1.49",
+  "d": "2026-07-25",
+  "de": [
+   "Overlay jetzt auch in Firefox (und Safari): das schwebende Always-on-top-Fenster läuft dort über Video-Picture-in-Picture, mit Status, Werten und Alarmen. In Chrome und Edge bleibt es das klickbare HTML-Overlay, in Firefox ein live gezeichnetes Bild. Damit hat man in jedem Browser ein Overlay über EVE",
+   "Stillstand-Verlust: zeigt jetzt '(pausiert, angedockt/Warp)', wenn gerade nicht am Gürtel gemint wird. Die Zahl läuft dann nicht weiter, sie ist der aufgelaufene Verlust des Trips und bleibt eingefroren stehen"
+  ],
+  "en": [
+   "Overlay now works in Firefox (and Safari) too: the floating always-on-top window runs there via video Picture-in-Picture, with status, values and alerts. In Chrome and Edge it stays the clickable HTML overlay, in Firefox a live-drawn image. So every browser gets an overlay above EVE",
+   "Downtime loss: now shows '(paused, docked/warp)' when you are not actively mining at the belt. The number does not keep counting then, it is the trip's accumulated loss and stays frozen"
+  ]
+ },
+ {
+  "v": "1.48",
+  "d": "2026-07-25",
+  "de": [
+   "Teilen-Bild: der angezeigte Name ist jetzt sinnvoll wählbar. Standard ist der Command-Ship-Pilot (Flottenchef), sonst der aktivste Miner. In den Optionen lässt sich zusätzlich ein fester Main-Charakter einstellen, der dann auf dem geteilten Bild steht"
+  ],
+  "en": [
+   "Share image: the shown name is now chosen sensibly. Default is the command ship pilot (fleet lead), otherwise the most active miner. In the options you can also set a fixed main character that then appears on the shared image"
+  ]
+ },
+ {
+  "v": "1.47",
+  "d": "2026-07-25",
+  "de": [
+   "Erz-Schatzkammer: zeigt jetzt genau, von wann die Daten sind und wann der nächste Abgleich kommt ('Stand vor X min · nächster Abgleich in Y min')",
+   "Jeder Standort bekommt ein Stations-Icon passend zum Stationstyp",
+   "Robuster: wenn die Anzeige eines einzelnen Chars mal klemmt, verschwindet nicht mehr die ganze Char-Liste. Nur der betroffene Char zeigt einen kurzen Hinweis, der Rest bleibt sichtbar",
+   "Fix: die Karte eines Command-Ship-Piloten (Orca/Porpoise/Rorqual) mit Flotten-Kompression wurde nicht mehr angezeigt. Ursache war ein interner Namenskonflikt, behoben",
+   "Sprachansagen: Stimmenliste lädt zuverlässiger, und wenn der Browser keine Stimmen liefert (Firefox unter Windows oft), steht ein klarer Hinweis statt nur 'Standard'"
+  ],
+  "en": [
+   "Ore treasury: now shows exactly how old the data is and when the next fetch happens ('as of X min ago · next sync in Y min')",
+   "Each location now has a station icon matching the station type",
+   "More robust: if a single character's card ever fails to render, the whole character list no longer disappears. Only that one char shows a short note, the rest stays visible",
+   "Fix: a command ship pilot's card (Orca/Porpoise/Rorqual) with fleet compression was not showing, due to an internal naming clash, now fixed",
+   "Spoken alerts: the voice list loads more reliably, and if the browser provides no voices (Firefox on Windows often does not), a clear hint now shows instead of just 'Default'"
+  ]
+ },
+ {
+  "v": "1.46",
+  "d": "2026-07-25",
+  "de": [
+   "Neuer Reiter 'Erz-Schatzkammer': zeigt deinen gesamten Erz-Bestand (roh und komprimiert) über ALLE Lagerorte aller EVE-verbundenen Chars. Oben Gesamtmenge in m³ und Gesamtwert in ISK, darunter im Detail je Char und Standort, was und wie viel dort liegt (Menge, m³, ISK). Kommt aus den ESI-Assets, Stand bis zu 1 Stunde alt (ESI-Cache). NPC-Stationsnamen werden aufgelöst; Spieler-Strukturen mit Namen, wenn der Char Zugang hat"
+  ],
+  "en": [
+   "New 'Ore treasury' tab: shows your entire ore stock (raw and compressed) across ALL storage locations of every EVE-connected char. Total volume in m³ and total value in ISK at the top, then a per-char and per-location breakdown of what is stored where (quantity, m³, ISK). Comes from ESI assets, up to one hour old (ESI cache). NPC station names are resolved; player structures show a name if the char has access"
+  ]
+ },
+ {
+  "v": "1.45",
+  "d": "2026-07-25",
+  "de": [
+   "Flotten-Kompression jetzt auch für deutsche Clients: Canary erkennt den Wortlaut 'X hat N Erz mithilfe Ihrer Kompressionsanlage komprimiert' und listet damit die ganze Flotte, auch Fremdspieler",
+   "Die zwei oberen Kacheln zeigen jetzt Verschiedenes: 'Mining Fleet Power' die Förderrate deiner eigenen Chars (m³/min), 'Aktuelle Flotte' die gesamt komprimierte Menge der ganzen Flotte (m³/ISK, inkl. Fremdspieler)",
+   "Fix Filter: Rollen-Pille und Charakter-Dropdown blockieren sich nicht mehr. Eine Rolle wählen zeigt alle Chars dieser Rolle, ein einzelner Char hebt den Rollen-Filter auf, kein Hängenbleiben auf einem Char mehr",
+   "Fix: seltene Serverfehler beim Laden (InterfaceError/TypeError) behoben. Ursache waren gleichzeitige Datenbank-Zugriffe ohne Sperre und ein Sonderfall bei der Erz-Bewertung"
+  ],
+  "en": [
+   "Fleet compression now works for German clients too: Canary reads the wording 'X compressed N ore using your compression services' in its German form and lists the whole fleet, including outside pilots",
+   "The two top panels now show different things: 'Mining Fleet Power' is your own chars' mining rate (m³/min), 'Current fleet' is the whole fleet's total compressed volume (m³/ISK, including outside pilots)",
+   "Filter fix: the role pill and the character dropdown no longer fight each other. Picking a role shows all chars of that role, picking a single char clears the role filter, no more getting stuck on one char",
+   "Fix: rare server errors on load (InterfaceError/TypeError) resolved. They were caused by concurrent database access without a lock and an edge case in ore valuation"
+  ]
+ },
+ {
+  "v": "1.44",
+  "d": "2026-07-25",
+  "de": [
+   "Flotten-Kompression jetzt echt flottenweit: das Log des Command Ships (Orca/Porpoise/Rorqual) nennt jeden Piloten namentlich, der über den Kompressionsdienst komprimiert, auch fremde Flottenmitglieder, die selbst kein Canary nutzen. Die 'Aktuelle Flotte'-Kachel listet damit alle Kompressoren mit Name und Menge, nicht mehr nur die eigenen Accounts"
+  ],
+  "en": [
+   "Fleet compression is now truly fleet-wide: the command ship's log (Orca/Porpoise/Rorqual) names every pilot who compresses via its compression service, including fleet members who do not run Canary themselves. The 'Current fleet' panel now lists all of them by name and amount, not just your own accounts"
+  ]
+ },
+ {
+  "v": "1.43",
+  "d": "2026-07-25",
+  "de": [
+   "'Aktuelle Flotte' überarbeitet: zeigt jetzt klar 'Command Ship erkannt', welches Schiff boostet (z. B. Porpoise), wie viele Spieler komprimieren, und eine nach Menge sortierte Liste, wer wie viel komprimiert hat (m³ und ISK)"
+  ],
+  "en": [
+   "'Current fleet' reworked: now clearly shows 'command ship detected', which ship is boosting (e.g. Porpoise), how many pilots are compressing, and a list sorted by amount of who compressed how much (m³ and ISK)"
+  ]
+ },
+ {
+  "v": "1.42",
+  "d": "2026-07-25",
+  "de": [
+   "Neue Kachel 'Aktuelle Flotte': erscheint nur, wenn ein Command Ship (Orca, Porpoise oder Rorqual) am Steuer ist, und zeigt dann die Flottengröße (X Schiffe), die Mining Power in m³/min und wie viel die Flotte in dieser Session komprimiert hat (m³, ISK und wer). Ohne Booster bleibt sie ausgeblendet",
+   "Fix: ein komprimierender Miner (z. B. an einer Struktur) wurde nicht mehr fälschlich als Command Ship erkannt, die Erkennung hängt jetzt allein am echten Schiffstyp"
+  ],
+  "en": [
+   "New 'Current fleet' panel: only shows when a command ship (Orca, Porpoise or Rorqual) is at the helm, then displays the fleet size (X ships), the mining power in m³/min, and how much the fleet compressed this session (m³, ISK and who). Hidden without a booster",
+   "Fix: a compressing miner (e.g. at a structure) is no longer mistaken for a command ship, detection now relies solely on the real ship type"
+  ]
+ },
+ {
+  "v": "1.41",
+  "d": "2026-07-25",
+  "de": [
+   "Neu: Flotten-Kompression. Sitzt eine Orca, Porpoise oder Rorqual in der Flotte, zeigt Canary jetzt oben, wie viel Erz die ganze Flotte in dieser Session komprimiert hat, in m³ und ISK-Wert, samt Aufschlüsselung wer komprimiert hat. Erscheint nur, wenn wirklich komprimiert wird"
+  ],
+  "en": [
+   "New: fleet compression. With an Orca, Porpoise or Rorqual in the fleet, Canary now shows at the top how much ore the whole fleet compressed this session, in m³ and ISK value, including who did the compressing. Only appears when something is actually compressed"
+  ]
+ },
+ {
+  "v": "1.40",
+  "d": "2026-07-25",
+  "de": [
+   "Missions-Erkenner: Canary erkennt jetzt viele Level-4-Missionen und zeigt den Namen mit einer Genauigkeit in Prozent (z. B. 'Angel Extravaganza ~95% sicher'). Die Signaturen sind web-verifiziert (eve-survival), nichts geraten",
+   "Wird keine Mission erkannt, sagt Canary es ehrlich mit einem Augenzwinkern: '😴 Canary müde, heute keine Arbeit mehr'",
+   "Belt-Ratten (Flotten-Bounty beim Mining) tauchen nicht mehr fälschlich in der Missionsliste auf, es zählt nur noch echter Kampf oder eine erkannte Mission",
+   "Grundlage für weitere Missionen: die Datenbank ist leicht erweiterbar, Level 1 bis 3 folgen"
+  ],
+  "en": [
+   "Mission recognizer: Canary now identifies many Level 4 missions and shows the name with an accuracy percentage (e.g. 'Angel Extravaganza ~95% sure'). The signatures are web-verified (eve-survival), nothing guessed",
+   "When no mission is recognized, Canary says so with a wink: '😴 Canary is tired, no more work today'",
+   "Belt rats (fleet bounty while mining) no longer show up as fake missions in the list, only real combat or a recognized mission counts",
+   "Foundation for more: the database is easy to extend, levels 1 to 3 to follow"
+  ]
+ },
+ {
+  "v": "1.39",
+  "d": "2026-07-24",
+  "de": [
+   "Kampf-Karte: wenn ein Char kämpft, aber der Client keine Bounty-Zeilen ins Log schreibt, erscheint jetzt ein dezenter Hinweis, warum Kills und Bounty auf 0 stehen, plus der Tipp, die Bounty-Meldungen im EVE-Combat-Log zu aktivieren. Die echte Bounty-ISK kommt bei EVE-Login weiterhin aus dem Wallet"
+  ],
+  "en": [
+   "Combat card: when a character is fighting but the client writes no bounty lines to the log, a subtle note now explains why kills and bounty read 0, plus a tip to enable the bounty messages in the EVE combat log. The actual bounty ISK still comes from the wallet with the EVE login"
+  ]
+ },
+ {
+  "v": "1.38",
+  "d": "2026-07-24",
+  "de": [
+   "Mining Fleet Power Stufe 3: teilbares Bild. Ein Klick auf 📤 Teilen rendert ein sauberes PNG deiner Flotten-Power (Zahl, Rang, ✅ ESI-verifiziert-Siegel, Canary-Logo, Homepage-Link), lädt es herunter und legt es zugleich in die Zwischenablage. Ideal für Discord, Twitch oder Reddit",
+   "Der Ø-Wert des Mining Ledgers wird jetzt kompakt abgekürzt (z. B. 233 K/Tag statt 232.729)"
+  ],
+  "en": [
+   "Mining Fleet Power stage 3: shareable image. One click on 📤 Share renders a clean PNG of your fleet power (number, rank, ✅ ESI-verified seal, Canary logo, homepage link), downloads it and copies it to the clipboard at the same time. Great for Discord, Twitch or Reddit",
+   "The mining ledger average is now shown compact (e.g. 233 K/day instead of 232,729)"
+  ]
+ },
+ {
+  "v": "1.37",
+  "d": "2026-07-24",
+  "de": [
+   "Mining Fleet Power Stufe 2: ESI-Verifizierung. Wer seine Chars mit dem EVE-Login neu verbindet, bekommt jetzt das ✅ ESI-verifiziert-Siegel plus die tatsächlich geförderten m³ der letzten 30 Tage direkt aus dem EVE-Mining-Ledger (unfälschbar) und den Skill-Bonus aus den echten Mining-Skills",
+   "Wichtig: dafür müssen die Charaktere einmal neu verbunden werden, weil zwei neue Berechtigungen (Skills lesen, Mining-Ledger lesen) dazugekommen sind"
+  ],
+  "en": [
+   "Mining Fleet Power stage 2: ESI verification. Reconnect your chars with the EVE login and you now get the ✅ ESI-verified seal plus the actual m³ mined in the last 30 days straight from the EVE mining ledger (tamper-proof) and the skill bonus from your real mining skills",
+   "Note: characters must be reconnected once, because two new permissions (read skills, read mining ledger) were added"
+  ]
+ },
+ {
+  "v": "1.36",
+  "d": "2026-07-24",
+  "de": [
+   "Neu: Mining Fleet Power. Eine Hashrate-artige Zahl für die Förderleistung deiner ganzen Flotte in m³/min, mit Rang von Prospektor bis Rorqual-Overlord. Stufe 1 rechnet aus der echten geloggten Minutenrate (als 'geschätzt' gekennzeichnet); die ESI-verifizierte Version mit Siegel folgt als Nächstes"
+  ],
+  "en": [
+   "New: Mining Fleet Power. A hashrate-style number for your whole fleet's mining output in m³/min, with a rank from Prospector to Rorqual Overlord. Stage 1 computes from the real logged per-minute rate (marked 'estimated'); the ESI-verified version with a seal is coming next"
+  ]
+ },
+ {
+  "v": "1.35",
+  "d": "2026-07-24",
+  "de": [
+   "Abyss und anderer Kampf ohne Bounty: statt 'Kills: 0' zeigt Canary jetzt ehrlich 'Gegner bekämpft: N Typen' und die vollständige Gegnerliste mit Schaden je Typ (vorher nur Top 6). EVE protokolliert keine NPC-Tode, darum ist die Zahl der bekämpften Gegnertypen der einzige gesicherte Wert, keine geratene Kill-Zahl",
+   "Bei echtem Ratting/Missionen mit Bounty bleibt der Kill-Zähler wie gehabt"
+  ],
+  "en": [
+   "Abyss and other combat without bounty: instead of 'Kills: 0', Canary now honestly shows 'Enemies fought: N types' and the full enemy list with damage per type (was top 6 only). EVE does not log NPC deaths, so the number of enemy types fought is the only verifiable figure, not a guessed kill count",
+   "For real ratting/missions with bounty the kill counter stays as before"
+  ]
+ },
+ {
+  "v": "1.34",
+  "d": "2026-07-24",
+  "de": [
+   "Ohne gesetzte Rolle erkennt Canary jetzt selbst, ob ein Char kämpft oder mint: Chars mit Schaden aber ohne Erz bekommen automatisch die Kampf-Karte, reine Miner die Mining-Karte. Eine manuell gesetzte Rolle hat weiter Vorrang"
+  ],
+  "en": [
+   "Without an assigned role, Canary now detects on its own whether a char is fighting or mining: chars with damage but no ore get the combat card automatically, pure miners the mining card. A manually set role still takes precedence"
+  ]
+ },
+ {
+  "v": "1.33",
+  "d": "2026-07-24",
+  "de": [
+   "Stillstand-Verlust pausiert jetzt präzise beim Andocken und im Warp (aus dem Log erkannt), nicht nur über die Faustregel"
+  ],
+  "en": [
+   "Downtime loss now pauses precisely when docking and in warp (detected from the log), not just via the rule of thumb"
+  ]
+ },
+ {
+  "v": "1.32",
+  "d": "2026-07-24",
+  "de": [
+   "ISK-Verlust zeigt jetzt den tatsächlich angefallenen Verlust der Session (kumuliert), nicht mehr pro Stunde",
+   "Auch bei komplettem Stillstand (kein Erz) wird der Verlust erfasst, nicht nur bei Laser-aus oder gedrosselter Rate",
+   "Verlust zählt nicht mehr, während du angedockt, im Warp oder AFK bist (nur solange plausibel am Gürtel)",
+   "Neu in der Analyse: Gesamt-Stillstand-Verlust als Statistik",
+   "Drohnen-Sprachansage kommt schneller (Mindestschwelle von 90 auf 60 Sekunden gesenkt)"
+  ],
+  "en": [
+   "ISK loss now shows the actual accumulated loss of the session, no longer per hour",
+   "Full standstill (no ore) is now counted too, not only a stopped laser or reduced rate",
+   "Loss no longer counts while docked, in warp or AFK (only while plausibly at the belt)",
+   "New in Analysis: total downtime loss as a statistic",
+   "Drone spoken alert comes faster (minimum threshold lowered from 90 to 60 seconds)"
+  ]
+ },
+ {
+  "v": "1.31",
+  "d": "2026-07-24",
+  "de": [
+   "Sprachansagen: Stimme frei wählbar aus den auf dem System verfügbaren Stimmen, mit sofortiger Hörprobe",
+   "Sprachansagen sagen jetzt auch Strip-Miner-Stopp und Drohnen im Leerlauf an, sobald sie auftreten (nur einmal, kein Dauergeplapper)",
+   "ISK-Verlust zuverlässiger: zeigt auch bei gedrosselter Abbaurate, wie viel ISK pro Stunde dir gerade entgeht"
+  ],
+  "en": [
+   "Spoken alerts: pick any voice available on your system, with an instant preview",
+   "Spoken alerts now also announce a strip miner stopping and idle drones as they happen (once, no chatter)",
+   "ISK loss more reliable: also shows, at a reduced mining rate, how much ISK per hour you are currently missing"
+  ]
+ },
+ {
+  "v": "1.30",
+  "d": "2026-07-24",
+  "de": [
+   "Neue Zusatzoptionen (standardmäßig aus, in den Optionen aktivierbar):",
+   "Sprachansagen bei Alarmen, sagt Charakter und Warnung an, ideal fürs Multiboxing",
+   "ISK-Verlust live: zeigt geschätzt, wie viel ISK dir entgeht, während ein Strip Miner steht",
+   "Test-Knopf in den Optionen: löst einen Beispielalarm aus, um Ton und Sprache zu prüfen"
+  ],
+  "en": [
+   "New optional extras (off by default, enable in the options):",
+   "Spoken alerts, announces the character and the warning, great for multiboxing",
+   "Live ISK loss: shows the estimated ISK you are missing while a strip miner is idle",
+   "Test button in the options: triggers a sample alert to check sound and speech"
+  ]
+ },
+ {
+  "v": "1.29",
+  "d": "2026-07-24",
+  "de": [
+   "Item-Suche (ISKray) zeigt jetzt das Icon des gefundenen Items"
+  ],
+  "en": [
+   "Item lookup (ISKray) now shows the icon of the found item"
+  ]
+ },
+ {
+  "v": "1.28",
+  "d": "2026-07-24",
+  "de": [
+   "Rechtliche Hinweise aktualisiert: die EVE-Marken gehören jetzt Fenris Creations (früher CCP)",
+   "Copyright-Notiz in den Optionen und auf der Homepage, ohne unzutreffende Erlaubnis-Angabe, klar als Drittanbieter-Tool"
+  ],
+  "en": [
+   "Legal notices updated: the EVE trademarks now belong to Fenris Creations (formerly CCP)",
+   "Copyright notice in the options and on the homepage, without any inaccurate permission claim, clearly stated as a third-party tool"
+  ]
+ },
+ {
+  "v": "1.27",
+  "d": "2026-07-24",
+  "de": [
+   "Gemischte Flotten: jede Karte richtet sich jetzt nach der Rolle des Charakters",
+   "Mining-Charaktere zeigen die Mining-Ansicht, Missions- und PvP-Charaktere die Kampf-Ansicht, egal welcher Modus oben gewählt ist",
+   "Keine leeren Kampf-Kacheln mehr bei Minern in der PvP-Ansicht"
+  ],
+  "en": [
+   "Mixed fleets: each card now follows the character's role",
+   "Mining characters show the mining view, mission and PvP characters the combat view, regardless of the mode selected at the top",
+   "No more empty combat tiles for miners in the PvP view"
+  ]
+ },
+ {
+  "v": "1.26",
+  "d": "2026-07-24",
+  "de": [
+   "Großer Stabilitäts- und Korrektheits-Durchgang (voller Code-Audit)",
+   "Zahlen mit Leerzeichen-Tausendertrennung (z.B. russischer Client) werden jetzt korrekt gelesen, keine unterzählten Werte mehr",
+   "Marktpreise: fehlt eine Orderseite, wird sie sauber ergänzt statt als 0 angezeigt; Item-Namen sind jetzt schreibungsunabhängig",
+   "Robuster gegen Aussetzer: keine Doppelzählung der Live-Werte, keine hängenden Hintergrunddienste, sauberere Datensicherung",
+   "Rollen-Auswahl und Oberfläche laufen auch in Randfällen stabil"
+  ],
+  "en": [
+   "Large stability and correctness pass (full code audit)",
+   "Numbers with a space thousands separator (e.g. Russian client) are now read correctly, no more undercounted values",
+   "Market prices: a missing order side is now filled in cleanly instead of shown as 0; item names are now case-insensitive",
+   "More robust against hiccups: no double-counting of live values, no stalled background services, cleaner backups",
+   "Role picker and interface stay stable in edge cases too"
+  ]
+ },
+ {
+  "v": "1.25",
+  "d": "2026-07-24",
+  "de": [
+   "Besserer Update-Hinweis: Canary prüft jetzt alle 15 Minuten auf neue Versionen",
+   "Deutliche Meldung als Banner, sobald ein Update online ist, mit einem Klick aktualisieren",
+   "Nach dem Update lädt die Seite erst neu, wenn der Server wirklich wieder bereit ist",
+   "Rollen-Auswahl bleibt jetzt offen, auch wenn im Hintergrund neue Log-Einträge kommen"
+  ],
+  "en": [
+   "Better update notice: Canary now checks for new versions every 15 minutes",
+   "Clear banner as soon as an update is online, update with one click",
+   "After updating, the page reloads only once the server is truly back up",
+   "The role picker now stays open even when new log entries arrive in the background"
+  ]
+ },
+ {
+  "v": "1.24",
+  "d": "2026-07-24",
+  "de": [
+   "Neuer Bereich ISKray: Marktpreise über alle Handelsplätze",
+   "Einzel-Item mit Autovervollständigung, einfach tippen und Vorschlag wählen",
+   "Frachtraum bewerten (das bisherige Ore Calculator)",
+   "Marktpreise kommen jetzt aus dem frischen CCP-Orderbuch (ESI), Fuzzwork nur noch als Fallback",
+   "Item direkt im laufenden Client öffnen, wählbar bei welchem Charakter",
+   "System-Lagebild in der Mining-Karte: Sicherheit, Schiffsverluste und Verkehr der letzten Stunde aus offenen Daten"
+  ],
+  "en": [
+   "New ISKray section: market prices across all trade hubs",
+   "Single item with autocomplete, just type and pick a suggestion",
+   "Cargo valuation (the former Ore Calculator)",
+   "Market prices now come from the fresh CCP order book (ESI), Fuzzwork only as a fallback",
+   "Open an item directly in the running client, pick which character",
+   "System overview in the mining card: security, ship losses and traffic of the last hour from open data"
+  ]
+ },
+ {
+  "v": "1.22",
+  "d": "2026-07-24",
+  "de": [
+   "EVE-Serverstatus im Kopf: Spielerzahl auf Tranquility, live und ohne Login",
+   "Zeigt Downtime und VIP-Modus (Wartung) an"
+  ],
+  "en": [
+   "EVE server status in the header: player count on Tranquility, live and without login",
+   "Shows downtime and VIP mode (maintenance)"
+  ]
+ },
+ {
+  "v": "1.21",
+  "d": "2026-07-24",
+  "de": [
+   "Missionen werden jetzt auch am Funk der Gegner im Local erkannt, nicht nur an den Gegnernamen",
+   "Der Missions-Funk erscheint live und in der Historie, so lässt sich die Mission auch nachträglich zuordnen",
+   "Neu erkannt: Striking Down Two Flies In One Swing"
+  ],
+  "en": [
+   "Missions are now identified from the enemies' local radio chatter, not just enemy names",
+   "The mission chatter shows live and in the history, so a mission can be identified after the fact too",
+   "Newly recognised: Striking Down Two Flies In One Swing"
+  ]
+ },
+ {
+  "v": "1.20",
+  "d": "2026-07-24",
+  "de": [
+   "Missionserkennung an einzigartigen Gegnernamen, mit Namen und Link zum Guide"
+  ],
+  "en": [
+   "Mission recognition from unique enemy names, with the name and a link to the guide"
+  ]
+ },
+ {
+  "v": "1.19",
+  "d": "2026-07-24",
+  "de": [
+   "Aktueller Ort (System) direkt aus den Logs, für Mining und Missionen"
+  ],
+  "en": [
+   "Current location (system) straight from the logs, for mining and missions"
+  ]
+ },
+ {
+  "v": "1.18",
+  "d": "2026-07-24",
+  "de": [
+   "Grafische Fitting-Anzeige testweise eingebaut und nach Prüfung wieder entfernt: ESI liefert das aktive Fitting nicht live genug, um verlässlich zu sein"
+  ],
+  "en": [
+   "Graphical fitting display added on a trial basis and removed again after review: ESI does not provide the active fit live enough to be reliable"
+  ]
+ },
+ {
+  "v": "1.17",
+  "d": "2026-07-24",
+  "de": [
+   "Neue Ansicht PvP & Missionen: Schaden, DPS, Trefferquote, Gegner und Kampfverlauf live",
+   "Loot-Wert des Frachtraums über den EVE-Login, mit Zeitstempel",
+   "Missions-Historie: jede Mission einzeln mit eigenem Loot-Feld"
+  ],
+  "en": [
+   "New PvP & missions view: damage, DPS, hit rate, enemies and combat over time, live",
+   "Cargo loot value via the EVE login, with a timestamp",
+   "Mission history: every mission listed separately with its own loot field"
+  ]
+ },
+ {
+  "v": "1.16",
+  "d": "2026-07-24",
+  "de": [
+   "Kampf-Auswertung erweitert: EWAR gegen dich, Fehlschüsse und Trefferquote sowie Salvage werden erkannt",
+   "Loot-Wert des Frachtraums über den EVE-Login (Grundlage der PvP- und Missionen-Ansicht)"
+  ],
+  "en": [
+   "Extended combat analysis: EWAR against you, misses and hit rate, and salvage are now detected",
+   "Cargo loot value via the EVE login (basis for the PvP and missions view)"
+  ]
+ },
+ {
+  "v": "1.15",
+  "d": "2026-07-23",
+  "de": [
+   "Oberfläche auf Deutsch und Englisch umschaltbar"
+  ],
+  "en": [
+   "Interface switchable between German and English"
+  ]
+ },
+ {
+  "v": "1.14",
+  "d": "2026-07-23",
+  "de": [
+   "Vorbereitung für weitere Client-Sprachen: unerkannte Log-Meldungen werden gesammelt und lassen sich ohne neue Version nachtragen"
+  ],
+  "en": [
+   "Groundwork for more client languages: unrecognised log messages are collected and can be added without a new version"
+  ]
+ },
+ {
+  "v": "1.13",
+  "d": "2026-07-23",
+  "de": [
+   "Updates und Installation laufen jetzt zuverlässig über das offizielle GitHub-Release"
+  ],
+  "en": [
+   "Updates and installation now run reliably via the official GitHub release"
+  ]
+ },
+ {
+  "v": "1.12",
+  "d": "2026-07-24",
+  "de": [
+   "Fehlercodes und ein Diagnose-Bericht zum Kopieren, für einfacheren Support"
+  ],
+  "en": [
+   "Error codes and a copyable diagnostics report for easier support"
+  ]
+ },
+ {
+  "v": "1.11",
+  "d": "2026-07-23",
+  "de": [
+   "Log-Ordner beim ersten Start einrichten, falls er nicht automatisch gefunden wird"
+  ],
+  "en": [
+   "Set up the log folder on first start if it is not found automatically"
+  ]
+ },
+ {
+  "v": "1.10",
+  "d": "2026-07-23",
+  "de": [
+   "Läuft jetzt auch unter Linux (EVE über Steam/Proton oder Wine)"
+  ],
+  "en": [
+   "Now runs on Linux too (EVE via Steam/Proton or Wine)"
+  ]
+ },
+ {
+  "v": "1.9",
+  "d": "2026-07-22",
+  "de": [
+   "Missionen-Tab: Auswertung der Gegner"
+  ],
+  "en": [
+   "Missions tab: enemy breakdown"
+  ]
+ },
+ {
+  "v": "1.8",
+  "d": "2026-07-22",
+  "de": [
+   "Englischer EVE-Client: Mining und Kampf werden jetzt korrekt erkannt"
+  ],
+  "en": [
+   "English EVE client: mining and combat are now recognised correctly"
+  ]
+ },
+ {
+  "v": "1.5",
+  "d": "2026-07-22",
+  "de": [
+   "Missionen-Tab mit Belohnungen, Zeitboni und Bounties aus dem Wallet-Journal"
+  ],
+  "en": [
+   "Missions tab with rewards, time bonuses and bounties from the wallet journal"
+  ]
+ },
+ {
+  "v": "1.0",
+  "d": "2026-07-21",
+  "de": [
+   "Erste Version: Mining live, Alarme, Bedrohungs-Ampel, Ore Calculator, Heavy-Water-Timer, EVE-Login"
+  ],
+  "en": [
+   "First release: mining live, alerts, threat traffic light, ore calculator, Heavy Water timer, EVE login"
+  ]
+ }
 ]
