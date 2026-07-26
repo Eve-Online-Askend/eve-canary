@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.57.1"
+VERSION = "1.57.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -2372,21 +2372,22 @@ class Esi(threading.Thread):
         c["esi_mining"] = True
         c["mining_next"] = time.time() + 45 * 60
 
-    def planet_name(self, pid):
-        """Planetenname (z.B. 'Ii VI') aus dem oeffentlichen Universe-Endpunkt. Gecacht."""
+    def planet_info(self, pid):
+        """Name + type_id eines Planeten aus dem oeffentlichen Universe-Endpunkt.
+        type_id -> Planeten-Render (images.evetech.net). Gecacht."""
         if pid in self.planet_cache:
             return self.planet_cache[pid]
-        nm = None
+        info = {"name": f"#{pid}", "type_id": None}
         try:
             req = urllib.request.Request(f"{ESI_BASE}/universe/planets/{pid}/",
                                          headers={"User-Agent": ESI_UA})
             with urllib.request.urlopen(req, timeout=15) as r:
-                nm = json.loads(r.read()).get("name")
+                d = json.loads(r.read())
+            info = {"name": d.get("name") or f"#{pid}", "type_id": d.get("type_id")}
         except Exception:
-            nm = None
-        if nm:
-            self.planet_cache[pid] = nm
-        return nm or f"#{pid}"
+            pass
+        self.planet_cache[pid] = info
+        return info
 
     def system_name(self, sid):
         """Systemname aus der System-ID (oeffentlich, gecacht)."""
@@ -2458,9 +2459,11 @@ class Esi(threading.Thread):
                     if tid:
                         contents[tid] = contents.get(tid, 0) + amt
             extractors.sort(key=lambda e: e.get("expiry") or 9e18)
+            pinfo = self.planet_info(pid)
             out.append({
                 "planet_id": pid,
-                "planet": self.planet_name(pid),
+                "planet": pinfo["name"],
+                "type_id": pinfo["type_id"],
                 "type": col.get("planet_type"),
                 "system": self.system_name(col.get("solar_system_id")),
                 "upgrade": col.get("upgrade_level"),
@@ -4186,7 +4189,8 @@ def query_planeten():
                 elif exp - now <= 6 * 3600:
                     n_soon += 1
                 extractors.append({"char": nm, "planet": col["planet"],
-                                   "type": col.get("type"), "product": e.get("product"),
+                                   "type": col.get("type"), "type_id": col.get("type_id"),
+                                   "product": e.get("product"),
                                    "product_id": e.get("product_id"),
                                    "heads": e.get("heads"), "expiry": exp})
         cisk = sum(col.get("isk", 0) for col in cols)
@@ -4870,10 +4874,17 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .picol{border-top:1px solid var(--line)}
 .picol:first-of-type{border-top:none}
 .pihead{padding:8px 0}
-.picolrow{padding:6px 0 8px 14px}
-.piexrow{display:grid;grid-template-columns:12px 20px 1fr max-content;align-items:center;gap:8px;padding:3px 2px 3px 4px;font-size:12px}
+.picolrow{display:flex;gap:12px;align-items:flex-start;padding:9px 2px 10px;border-top:1px solid var(--line)}
+.picol .picolrow:first-of-type{border-top:none}
+.piplanetimg{width:46px;height:46px;border-radius:50%;flex:none;background:var(--inset)}
+.picolbody{flex:1;min-width:0}
+.picolhead{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:4px}
+.piexrow{display:grid;grid-template-columns:12px 20px 1fr max-content;align-items:center;gap:8px;padding:3px 2px;font-size:12px}
 .piicon{width:18px;height:18px;border-radius:3px}
 .piname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.piplanet{display:flex;align-items:center;gap:6px;min-width:0}
+.piglobe{width:18px;height:18px;border-radius:50%;flex:none}
+.pinm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:640px){.pirow{grid-template-columns:12px 1fr max-content}.pirow .pichar,.pirow .piprod{display:none}}
 /* Live-Missionskampf: EVE-HUD an den Design-Tokens. Verlauf ueber var(--card)/
    var(--inset) (theme-fest), Radius/Border wie die uebrigen Karten, Schaden
@@ -6676,6 +6687,9 @@ function piType(t,en){
   oceanic:['🔵','Oceanic','Ozean'],plasma:['🟣','Plasma','Plasma'],storm:['⚪','Storm','Sturm']};
  const m=M[t]; return m?m[0]+' '+(en?m[1]:m[2]):(t||'');
 }
+// Reiner Typ-Name ohne Emoji (das Planeten-Render steht jetzt daneben).
+function piTypeName(t,en){const p=piType(t,en);const i=p.indexOf(' ');return i>0?p.slice(i+1):p;}
+function piGlobe(tid,cls){return tid?`<img class="${cls}" src="https://images.evetech.net/types/${tid}/icon?size=128" onerror="this.style.visibility='hidden'">`:'';}
 function piLeft(expiry,en){
  if(!expiry)return {cls:'dim',txt:en?'no extractor':'kein Extraktor'};
  const s=expiry-Date.now()/1000;
@@ -6716,7 +6730,7 @@ function renderPlaneten(pl){
  board.forEach(e=>{const L=piLeft(e.expiry,en);
   html+=`<div class="pirow"><span class="pidot ${L.cls}"></span>
     <span class="pichar">${esc(e.char)}</span>
-    <span class="piplanet">${esc(e.planet)} <span class="sub">${piType(e.type,en)}</span></span>
+    <span class="piplanet">${piGlobe(e.type_id,'piglobe')}<span class="pinm">${esc(e.planet)}</span> <span class="sub">${piTypeName(e.type,en)}</span></span>
     <span class="piprod">${esc(e.product||'?')}</span>
     <span class="piexp ${L.cls}">${L.txt}</span></div>`;});
  if((pl.extractors||[]).length>board.length)html+=`<div class="sub" style="padding-top:6px">… ${pl.extractors.length-board.length} ${en?'more':'weitere'}</div>`;
@@ -6729,11 +6743,11 @@ function renderPlaneten(pl){
   html+=`<div class="picol"><div class="chead pihead" data-pi="${esc(c.name)}" style="cursor:pointer">
     <span class="char">${isc?'▸':'▾'} ${esc(c.name)} <span class="sub">· ${c.cols.length} ${c.cols.length===1?(en?'colony':'Kolonie'):(en?'colonies':'Kolonien')}</span></span>${c.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(c.isk)} ISK</span>`:''}</div>`;
   if(!isc)c.cols.forEach(col=>{
-   html+=`<div class="picolrow"><div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"><b>${esc(col.planet)}</b> <span class="sub">${piType(col.type,en)} · ${esc(col.system||'')} · ${en?'level':'Stufe'} ${col.upgrade||0} · ${col.pins||0} Pins</span>${col.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(col.isk)} ISK ${en?'stored':'gelagert'}</span>`:''}</div>`;
+   let body=`<div class="picolhead"><b>${esc(col.planet)}</b> <span class="sub">${piTypeName(col.type,en)} · ${esc(col.system||'')} · ${en?'level':'Stufe'} ${col.upgrade||0} · ${col.pins||0} Pins</span>${col.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(col.isk)} ISK ${en?'stored':'gelagert'}</span>`:''}</div>`;
    (col.extractors||[]).forEach(e=>{const L=piLeft(e.expiry,en);
-    html+=`<div class="piexrow"><span class="pidot ${L.cls}"></span>${e.product_id?`<img class="piicon" src="https://images.evetech.net/types/${e.product_id}/icon?size=32" onerror="this.style.visibility='hidden'">`:`<span class="piicon"></span>`}<span class="piname">${esc(e.product||'?')} <span class="sub">· ${e.heads} ${en?'heads':'Köpfe'}</span></span><span class="piexp ${L.cls}">${L.txt}</span></div>`;});
-   if(!(col.extractors||[]).length)html+=`<div class="sub">${en?'No active extractors':'Keine aktiven Extraktoren'}</div>`;
-   html+=`</div>`;});
+    body+=`<div class="piexrow"><span class="pidot ${L.cls}"></span>${e.product_id?`<img class="piicon" src="https://images.evetech.net/types/${e.product_id}/icon?size=32" onerror="this.style.visibility='hidden'">`:`<span class="piicon"></span>`}<span class="piname">${esc(e.product||'?')} <span class="sub">· ${e.heads} ${en?'heads':'Köpfe'}</span></span><span class="piexp ${L.cls}">${L.txt}</span></div>`;});
+   if(!(col.extractors||[]).length)body+=`<div class="sub">${en?'No active extractors':'Keine aktiven Extraktoren'}</div>`;
+   html+=`<div class="picolrow">${col.type_id?`<img class="piplanetimg" src="https://images.evetech.net/types/${col.type_id}/icon?size=128" onerror="this.style.visibility='hidden'">`:`<span class="piplanetimg"></span>`}<div class="picolbody">${body}</div></div>`;});
   html+=`</div>`;});
  if((pl.reconnect||[]).length)html+=`<div class="sub" style="padding:8px 0 0">· ${pl.reconnect.length} ${en?'char(s) not connected for planets yet':'Chars noch nicht für Planeten verbunden'}</div>`;
  html+=`</div>`;
