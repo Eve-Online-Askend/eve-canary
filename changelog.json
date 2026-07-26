@@ -1,4 +1,7 @@
 [
+ {"v": "1.63.2", "d": "2026-07-26",
+  "de": ["Blutspur-Karte deutlich lesbarer: Systeme, die in der Projektion aufeinanderkleben (z. B. Jita, Ikuchi, New Caldari), werden jetzt sanft auseinandergezogen, das Zentrum bleibt dabei fest in der Mitte.", "Neue Wahl oben im Modul: '📍 Aktuellen Standort nutzen' (die Blase folgt dir beim Fliegen automatisch, sanft gedrosselt) oder ein selbst eingetragenes festes System. Der aktive Modus steht daneben."],
+  "en": ["Blood Trail map is much more readable: systems that stick together in the projection (e.g. Jita, Ikuchi, New Caldari) are now gently pushed apart, with the centre staying pinned in the middle.", "New choice at the top of the module: '📍 Use current location' (the bubble follows you while flying, gently throttled) or a fixed system you enter yourself. The active mode is shown next to it."]},
  {"v": "1.63.1", "d": "2026-07-26",
   "de": ["Fix: das Eingabefeld für das beobachtete System wirft die Eingabe nicht mehr raus, während man tippt (die Live-Aktualisierung pausiert jetzt, solange das Feld den Fokus hat). Enter bestätigt die Eingabe."],
   "en": ["Fix: the watched-system input no longer loses what you type (the live refresh now pauses while the field has focus). Enter confirms the input."]},

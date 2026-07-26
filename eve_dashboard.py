@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.63.1"
+VERSION = "1.63.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -3696,6 +3696,7 @@ class PackIntel(threading.Thread):
                "center": CONFIG.get("pack_center"),
                "radius": int(CONFIG.get("pack_radius", 20) or 20),
                "corp_alert": bool(CONFIG.get("pack_corp_alert")),
+               "follow": bool(CONFIG.get("pack_follow")),
                "map_progress": list(self.map_progress),
                "last_kill_age": int(now - self.last_kill_ts) if self.last_kill_ts else None,
                "packs": [], "roster": [], "maps": [], "kills": []}
@@ -3782,6 +3783,39 @@ class PackIntel(threading.Thread):
                         "own": v[1] in own_names or sid == self.center_id,
                         "jumps": self.dist.get(sid),
                         "packs": pack_sys.get(v[1], [])})
+                # Entzerrung: zu nah beieinander projizierte Systeme sanft
+                # auseinanderdruecken (Zentrum bleibt fest), sonst kleben
+                # z.B. Jita/Ikuchi/New Caldari unlesbar aufeinander.
+                pin = idx.get(self.center_id)
+                for _ in range(40):
+                    moved = False
+                    for i in range(len(systems)):
+                        for j in range(i + 1, len(systems)):
+                            a, b = systems[i], systems[j]
+                            dx = b["x"] - a["x"]
+                            dy = b["y"] - a["y"]
+                            d2 = dx * dx + dy * dy
+                            if d2 < 40 * 40:
+                                d = (d2 ** 0.5) or 1.0
+                                ux, uy = (dx / d, dy / d) if d > 1 else (1.0, 0.3)
+                                push = (40 - d)
+                                if i == pin:
+                                    b["x"] += ux * push
+                                    b["y"] += uy * push
+                                elif j == pin:
+                                    a["x"] -= ux * push
+                                    a["y"] -= uy * push
+                                else:
+                                    a["x"] -= ux * push / 2
+                                    a["y"] -= uy * push / 2
+                                    b["x"] += ux * push / 2
+                                    b["y"] += uy * push / 2
+                                moved = True
+                    if not moved:
+                        break
+                for s2 in systems:
+                    s2["x"] = round(min(max(s2["x"], 30), 970))
+                    s2["y"] = round(min(max(s2["y"], 30), 645))
                 edges = set()
                 for sid, v in rows:
                     for g2 in v[5]:
@@ -4016,6 +4050,14 @@ class PackIntel(threading.Thread):
                         self._probe = (ok, time.time())
                     time.sleep(30)
                 now = time.time()
+                # Folge-Modus: Blase wandert (gedrosselt) mit dem eigenen Standort.
+                if CONFIG.get("pack_follow"):
+                    own = self._own_name()
+                    if (own and own != CONFIG.get("pack_center")
+                            and now - getattr(self, "_recenter_ts", 0) > 120):
+                        self._recenter_ts = now
+                        self.recenter(own)
+                        continue
                 self._resolve_names()
                 self._alarms(now)
                 self._start_info(now)
@@ -5557,7 +5599,17 @@ class Handler(BaseHTTPRequestHandler):
                     CONFIG["pack_corp_alert"] = bool(body.get("corp"))
             save_config()
             ok = True
+            if "follow" in body:
+                with CONFIG_LOCK:
+                    CONFIG["pack_follow"] = bool(body.get("follow"))
+                save_config()
+                if body.get("follow"):
+                    own = packintel._own_name()
+                    if own and own != CONFIG.get("pack_center"):
+                        ok = packintel.recenter(own)
             if body.get("center"):
+                with CONFIG_LOCK:
+                    CONFIG["pack_follow"] = False
                 ok = packintel.recenter(str(body.get("center")).strip())
             self._send(json.dumps({"ok": ok}))
             return
@@ -7697,9 +7749,10 @@ function renderBlutspur(bs){
    <label style="font-size:12px"><input type="checkbox" id="packCorp" ${bs.corp_alert?'checked':''}> ${en?'Corp escalation: hint when a local speaker is only in a pack corp':'Corp-Eskalation: Hinweis, wenn ein Local-Sprecher nur in einer Rudel-Corp ist'}</label>
    <button class="btn" id="packOff" style="font-size:11px">${en?'Disable':'Ausschalten'}</button>
    <span style="font-size:12px;margin-left:6px">${en?'Watched system:':'Beobachtetes System:'}</span>
+   <button class="btn" id="packFollow" style="font-size:11px${bs.follow?';border-color:var(--cyan);color:var(--cyan)':''}">📍 ${en?'Use current location':'Aktuellen Standort nutzen'}${bs.follow?' ✓':''}</button>
    <input id="packCenter" placeholder="${esc(bs.center||'')}" style="width:120px;font-size:12px;padding:3px 7px;background:var(--inset);border:1px solid var(--line);border-radius:6px;color:var(--txt)">
    <button class="btn" id="packCenterGo" style="font-size:11px">${en?'Set':'Setzen'}</button>
-   <span id="packCenterStat" class="sub"></span></div>
+   <span id="packCenterStat" class="sub">${bs.follow?(en?'follows your location':'folgt deinem Standort'):(en?'fixed':'fest gewählt')}</span></div>
   <div class="alphabanner" style="margin-top:10px">🧪 <b>${en?'Alpha phase, module in development':'Alpha-Phase, Modul in Entwicklung'}</b> · ${en?'pack detection, scores and warnings are still being tuned against real traffic. Feedback welcome.':'Rudel-Erkennung, Scores und Warnungen werden noch am echten Verkehr feinjustiert. Rückmeldungen willkommen.'}</div></div>`;
  if(bs.mode==='laden'){const mp=bs.map_progress||[0,0];
   html+=`<div class="card"><div class="sub">🗺 ${en?'Building region map':'Karte wird aufgebaut'} (${mp[0]}/${mp[1]} ${en?'systems':'Systeme'}) · ${en?'one-time, takes a few minutes, radar starts right after':'einmalig, dauert ein paar Minuten, danach startet das Radar von selbst'}</div></div>`;}
@@ -7732,6 +7785,8 @@ function renderBlutspur(bs){
  box.innerHTML=html;
  const pc=document.getElementById('packCorp'); if(pc)pc.onchange=()=>post({action:'pack_cfg',corp:pc.checked});
  const po=document.getElementById('packOff'); if(po)po.onclick=()=>post({action:'pack_cfg',on:false});
+ const pf=document.getElementById('packFollow');
+ if(pf)pf.onclick=()=>post({action:'pack_cfg',follow:true});
  const cg=document.getElementById('packCenterGo');
  const ci=document.getElementById('packCenter');
  if(ci)ci.onkeydown=e=>{if(e.key==='Enter'&&cg){e.preventDefault();cg.click();ci.blur();}};
