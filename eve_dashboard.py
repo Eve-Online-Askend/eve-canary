@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.61.0"
+VERSION = "1.61.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -3256,7 +3256,39 @@ class PackIntel(threading.Thread):
         return bool(CONFIG.get("pack_radar"))
 
     def regions(self):
-        return list(CONFIG.get("pack_regions") or ["Essence", "The Citadel"])[:2]
+        return list(CONFIG.get("pack_regions") or ["The Citadel"])[:2]
+
+    def _auto_regions(self):
+        """Heimatregion einmalig aus dem aktuellen System ableiten (ESI) und
+        zusammen mit The Citadel (Uedama-Route) als Default speichern."""
+        sysname = None
+        with ingest.lock:
+            for s in ingest.sessions.values():
+                if s.system:
+                    sysname = s.system
+        if not sysname:
+            return
+        try:
+            req = urllib.request.Request(
+                ESI_BASE + "/universe/ids/", data=json.dumps([sysname]).encode(),
+                headers={"Content-Type": "application/json", "User-Agent": ESI_UA})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                systems = json.loads(r.read()).get("systems") or []
+            if not systems:
+                return
+            sysd = self._get(f"{ESI_BASE}/universe/systems/{systems[0]['id']}/")
+            con = self._get(f"{ESI_BASE}/universe/constellations/"
+                            f"{sysd['constellation_id']}/")
+            reg = self._get(f"{ESI_BASE}/universe/regions/{con['region_id']}/")
+            home = reg.get("name")
+            if not home:
+                return
+            out = [home] + (["The Citadel"] if home != "The Citadel" else [])
+            with CONFIG_LOCK:
+                CONFIG["pack_regions"] = out
+            save_config()
+        except Exception as e:
+            log_error("CN-PACK-02", "auto_regions", e)
 
     def _queue(self):
         q = CONFIG.get("pack_queue")
@@ -3757,6 +3789,116 @@ class PackIntel(threading.Thread):
                                     "edges": sorted(edges), "arrows": arrows})
         return out
 
+    # ---- Lokale Anflug-Simulation (nur sim_mode, wie der Missions-Simulator) --
+    def sim_run(self):
+        """Demo: eine Gank-Flotte naehert sich ueber bis zu 20 Systeme dem
+        eigenen Standort. Kills sind sim-markiert; am Ende 'spricht' der
+        Rudel-Kopf im eigenen Local und loest den ECHTEN Rot-Alarm-Pfad aus."""
+        if getattr(self, "sim_on", False) or not self.sysrow:
+            return
+        self.sim_on = True
+        try:
+            target_name = None
+            with ingest.lock:
+                for s in ingest.sessions.values():
+                    if s.system:
+                        target_name = s.system
+            name2id = {v[1]: sid for sid, v in self.sysrow.items() if v[1]}
+            tid = (name2id.get(target_name) or name2id.get("Gisleres")
+                   or name2id.get("Uedama")
+                   or (next(iter(name2id.values())) if name2id else None))
+            if not tid:
+                log_error("CN-PACK-03", "sim_run", "kein Zielsystem in der Karte")
+                return
+            # Anflug-Route: BFS vom Ziel nach aussen, tiefsten Ast nehmen,
+            # dann umdrehen -> die Flotte kommt von weit draussen auf dich zu.
+            prev = {tid: None}
+            frontier, order = [tid], [tid]
+            while frontier:
+                nxt = []
+                for sy in frontier:
+                    row = self.sysrow.get(sy)
+                    for g in (row[5] if row else []):
+                        if g in self.sysrow and g not in prev:
+                            prev[g] = sy
+                            nxt.append(g)
+                            order.append(g)
+                frontier = nxt
+            path, cur = [], order[-1]
+            while cur is not None:
+                path.append(cur)
+                cur = prev[cur]
+            path = path[-20:] if len(path) > 20 else path      # ... -> Ziel
+            chars = [999100101, 999100102, 999100103, 999100104]
+            corp = 998100001
+            self.names[corp] = "SIM Wolfsrudel"
+            for i, c in enumerate(chars):
+                self.names[c] = f"SIM Ganker {i + 1}"
+            kid = 990000000 + int(time.time()) % 900000
+            for sid in path:
+                if not self.enabled() or not self.sim_on:
+                    return
+                kid += 1
+                km = {"killmail_id": kid,
+                      "killmail_time": datetime.now(timezone.utc).strftime(
+                          "%Y-%m-%dT%H:%M:%SZ"),
+                      "solar_system_id": sid,
+                      "attackers": [{"character_id": c, "corporation_id": corp,
+                                     "ship_type_id": 16240} for c in chars],
+                      "victim": {"ship_type_id": 17478},
+                      "zkb": {"npc": False, "totalValue": 38000000}}
+                self._ingest(km, "sim")
+                now = time.time()
+                self._start_info(now)
+                self._alarms(now)
+                time.sleep(7)
+            # Finale: Rudel-Kopf erscheint als Local-Sprecher am Zielsystem.
+            nm = self.names[chars[0]]
+            with DB_LOCK:
+                DB.execute("INSERT OR REPLACE INTO threat VALUES(?,?,?)",
+                           (nm, json.dumps({"id": chars[0], "corp": "SIM Wolfsrudel",
+                                            "level": "red", "kills": 40, "losses": 2,
+                                            "danger": 90, "sec": -2.0,
+                                            "miner_kills": 12, "recent_kills": 15}),
+                            time.time()))
+                DB.commit()
+            chatwatch.speakers[nm.lower()] = {
+                "name": nm, "system": (self.sysrow.get(tid) or (None, "?"))[1],
+                "ts": time.time()}
+            self._alarms(time.time())
+        except Exception as e:
+            log_error("CN-PACK-03", "sim_run", e)
+        finally:
+            self.sim_on = False
+
+    def sim_reset(self):
+        """Alle Sim-Spuren entfernen und die Cluster aus den echten Kills
+        deterministisch neu aufbauen."""
+        self.sim_on = False
+        with DB_LOCK:
+            DB.execute("DELETE FROM pack_kills WHERE sim=1")
+            DB.execute("DELETE FROM threat WHERE name LIKE 'SIM Ganker%'")
+            DB.commit()
+        for k in [k for k in list(chatwatch.speakers) if k.startswith("sim ganker")]:
+            chatwatch.speakers.pop(k, None)
+        with self.lock:
+            self.packs.clear()
+            self.member_index.clear()
+            self.heat.clear()
+            self.alerted.clear()
+            self.near_alerted.clear()
+            self.info_alerted.clear()
+        self._seen.clear()
+        self.last_kill_ts = 0
+        with DB_LOCK:
+            rows = DB.execute("SELECT kill_id,ts,system_id,score,attackers "
+                              "FROM pack_kills WHERE ts>? AND sim=0 ORDER BY ts",
+                              (time.time() - 86400,)).fetchall()
+        for kid, ts, sysid, score, aj in rows:
+            self._seen.add(kid)
+            self._cluster(kid, ts, sysid, score, json.loads(aj or "[]"))
+            self.last_kill_ts = max(self.last_kill_ts, ts)
+
     # ---- Hauptschleife ----------------------------------------------------
     def run(self):
         time.sleep(8)
@@ -3768,6 +3910,8 @@ class PackIntel(threading.Thread):
                     continue
                 if not self.sysrow or any(v[1] is None for v in self.sysrow.values()):
                     self.mode = "laden"
+                    if not CONFIG.get("pack_regions"):
+                        self._auto_regions()   # Heimatregion einmalig ableiten
                     self._load_map()
                     # Cluster deterministisch aus den Roh-Kills der letzten 24h
                     with DB_LOCK:
@@ -3776,6 +3920,8 @@ class PackIntel(threading.Thread):
                             "WHERE ts>? AND sim=0 ORDER BY ts", (time.time() - 86400,)).fetchall()
                     for kid, ts, sysid, score, aj in rows:
                         self._seen.add(kid)
+                        if sysid not in self.sysrow:
+                            continue           # Kill aus frueherer Regions-Wahl
                         self._cluster(kid, ts, sysid, score, json.loads(aj or "[]"))
                         self.last_kill_ts = max(self.last_kill_ts, ts)
                     self._zkill()
@@ -5354,6 +5500,15 @@ class Handler(BaseHTTPRequestHandler):
                 if "corp" in body:
                     CONFIG["pack_corp_alert"] = bool(body.get("corp"))
             save_config()
+            self._send(json.dumps({"ok": True}))
+            return
+        elif action == "pack_sim_run" and CONFIG.get("sim_mode"):
+            # Anflug-Demo starten (nur lokal, wie der Missions-Simulator).
+            threading.Thread(target=packintel.sim_run, daemon=True).start()
+            self._send(json.dumps({"ok": True}))
+            return
+        elif action == "pack_sim_reset" and CONFIG.get("sim_mode"):
+            packintel.sim_reset()
             self._send(json.dumps({"ok": True}))
             return
         elif action == "pack_sim" and CONFIG.get("sim_mode"):
@@ -7465,7 +7620,9 @@ function renderBlutspur(bs){
   <div class="sub" style="margin-top:5px">🕯 ${en?'Honest by design: a pack becomes visible only AFTER its latest kill (echo principle), and only pilots who appear on killmails count. Silent campers stay invisible. Every age is computed from kill time, never receive time.':'Ehrlich per Bauart: ein Rudel wird erst NACH seinem letzten Kill sichtbar (Echo-Prinzip), und nur Piloten, die auf Killmails stehen, zählen. Stille Camper bleiben unsichtbar. Jede Zeitangabe kommt aus der Kill-Zeit, nie aus der Empfangszeit.'}</div>
   <div style="margin-top:9px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
    <label style="font-size:12px"><input type="checkbox" id="packCorp" ${bs.corp_alert?'checked':''}> ${en?'Corp escalation: hint when a local speaker is only in a pack corp':'Corp-Eskalation: Hinweis, wenn ein Local-Sprecher nur in einer Rudel-Corp ist'}</label>
-   <button class="btn" id="packOff" style="font-size:11px">${en?'Disable':'Ausschalten'}</button></div></div>`;
+   <button class="btn" id="packOff" style="font-size:11px">${en?'Disable':'Ausschalten'}</button>
+   ${state&&state.sim?`<button class="btn" id="packSimGo" style="font-size:11px">▶ ${en?'Simulate approach (local, ~20 systems)':'Anflug simulieren (lokal, ~20 Systeme)'}</button>
+   <button class="btn" id="packSimReset" style="font-size:11px">⏹ ${en?'Reset sim':'Sim zurücksetzen'}</button>`:''}</div></div>`;
  if(bs.mode==='laden'){const mp=bs.map_progress||[0,0];
   html+=`<div class="card"><div class="sub">🗺 ${en?'Building region map':'Karte wird aufgebaut'} (${mp[0]}/${mp[1]} ${en?'systems':'Systeme'}) · ${en?'one-time, takes a few minutes, radar starts right after':'einmalig, dauert ein paar Minuten, danach startet das Radar von selbst'}</div></div>`;}
  if(!(bs.packs||[]).length&&bs.mode!=='laden'){
@@ -7495,6 +7652,8 @@ function renderBlutspur(bs){
  box.innerHTML=html;
  const pc=document.getElementById('packCorp'); if(pc)pc.onchange=()=>post({action:'pack_cfg',corp:pc.checked});
  const po=document.getElementById('packOff'); if(po)po.onclick=()=>post({action:'pack_cfg',on:false});
+ const sg=document.getElementById('packSimGo'); if(sg)sg.onclick=()=>{sg.disabled=true;post({action:'pack_sim_run'});};
+ const sr=document.getElementById('packSimReset'); if(sr)sr.onclick=()=>post({action:'pack_sim_reset'});
 }
 async function intelPoll(){
  if(!intelNames.length||intelBusy||view!=='intel'||intelSettled)return;
