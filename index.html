@@ -694,8 +694,11 @@ function dlChartHtml() {
 }
 // Installationszahl zuerst, Downloads darunter: die Installationen sind die
 // ehrlichere Zahl, Downloads verteilen sich ueber viele Versionen.
+// usersHtml() wird bewusst NICHT angezeigt: die Zaehlung laeuft weiter und
+// steht in stats.json bzw. unter „python release.py --users", sie soll nur
+// nicht auf der Seite stehen, solange die Zahl noch nichts aussagt.
 function statsHtml() {
-  const teile = installsHtml() + usersHtml() + dlChartHtml();
+  const teile = installsHtml() + dlChartHtml();
   if (!teile || !ST || !ST.stand) return teile;
   const wann = new Date(ST.stand).toLocaleString(curLang,
     { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
