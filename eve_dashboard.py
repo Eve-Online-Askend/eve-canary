@@ -11,6 +11,7 @@ import base64
 import email.utils
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -22,7 +23,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.58.3"
+VERSION = "1.59.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -2168,6 +2169,31 @@ def _is_booster(s):
     return s.core_on()
 
 
+# Planetary Industry: Produkt-Tier aus der group_id des Typs (web-verifiziert).
+# P1=1042, P2=1034, P3=1040, P4=1041; alle Rohstoff-Gruppen (1032/1033/1035, …) = P0.
+PI_GROUP_TIER = {1042: "P1", 1034: "P2", 1040: "P3", 1041: "P4"}
+
+
+def extractor_total(install, expiry, cycle, qty):
+    """Gesamt-Extraktion eines Extractor-Programms ueber die ganze Laufzeit.
+    Exakt nach der offiziellen EVE-Formel (developers.eveonline.com, PI-Guide):
+    abklingender Grundwert mal Rausch-Oszillation. Liefert die erwartete
+    Gesamtmenge in Einheiten (das, was der Client beim Programmieren anzeigt)."""
+    if not (install and expiry and cycle and qty) or expiry <= install:
+        return 0
+    decay, noise = 0.012, 0.8
+    bar_width = cycle / 900.0
+    total = 0
+    for c in range(int((expiry - install) // cycle)):
+        t = (c + 0.5) * bar_width
+        decay_value = qty / (1 + t * decay)
+        ph = pow(qty, 0.7)
+        s = max((math.cos(ph + t * (1 / 12.0)) + math.cos(ph / 2 + t * 0.2)
+                 + math.cos(t * 0.5)) / 3, 0)
+        total += int(bar_width * (decay_value * (1 + noise * s)))
+    return total
+
+
 class Esi(threading.Thread):
     """EVE-SSO-Login (PKCE, ohne Client-Secret) + periodischer Abgleich:
     Schweres Wasser im aktuellen Schiff, Kern-Typ aus der Fitting, Wallet."""
@@ -2182,6 +2208,9 @@ class Esi(threading.Thread):
         self.loc_cache = {}   # location_id -> Name (Stationen/Strukturen, fuer die Erz-Schatzkammer)
         self.planet_cache = {} # planet_id -> Name (Planetary Industry, langlebig)
         self.sys_cache = {}   # system_id -> Name (fuer Planeten-Kolonien)
+        self.schem_cache = {} # schematic_id -> Produktname (PI-Fabriken)
+        self.group_cache = {} # type_id -> group_id (fuer den PI-Tier)
+        self.tid_cache = {}   # Produktname -> type_id (fuer Icon/Tier der Fabrik-Produkte)
         self.pi_alerted = {}  # (char, planet_id) -> Ablauf-ts, fuer den PI-Ablauf-Alarm ohne Wiederholung
         self.party_names = {} # id -> Name (Agenten aus dem Wallet-Journal)
         # Serialisiert den Token-Refresh: poll-Thread und HTTP-Thread (ui_open)
@@ -2407,6 +2436,61 @@ class Esi(threading.Thread):
             self.sys_cache[sid] = nm
         return nm or str(sid)
 
+    def _pub(self, path):
+        req = urllib.request.Request(ESI_BASE + path, headers={"User-Agent": ESI_UA})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.loads(r.read())
+
+    def schematic_name(self, sid):
+        """Produktname einer PI-Fabrik-Schematic (oeffentlich, gecacht)."""
+        if sid in self.schem_cache:
+            return self.schem_cache[sid]
+        nm = None
+        try:
+            nm = self._pub(f"/universe/schematics/{sid}/").get("schematic_name")
+        except Exception:
+            nm = None
+        if nm:
+            self.schem_cache[sid] = nm
+        return nm
+
+    def type_group(self, tid):
+        """group_id eines Typs (oeffentlich, gecacht) -> daraus der PI-Tier."""
+        if tid in self.group_cache:
+            return self.group_cache[tid]
+        g = None
+        try:
+            g = self._pub(f"/universe/types/{tid}/").get("group_id")
+        except Exception:
+            g = None
+        if g is not None:
+            self.group_cache[tid] = g
+        return g
+
+    def name_tid(self, name):
+        """type_id zu einem (Produkt-)Namen, fuer Icon + Tier der Fabrik-Produkte."""
+        if name in self.tid_cache:
+            return self.tid_cache[name]
+        tid = None
+        try:
+            req = urllib.request.Request(
+                ESI_BASE + "/universe/ids/", data=json.dumps([name]).encode(),
+                headers={"Content-Type": "application/json", "User-Agent": ESI_UA})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                its = json.loads(r.read()).get("inventory_types") or []
+            tid = its[0]["id"] if its else None
+        except Exception:
+            tid = None
+        if tid:
+            self.tid_cache[name] = tid
+        return tid
+
+    def pi_tier(self, tid):
+        """PI-Tier (P0-P4) aus der group_id des Produkttyps."""
+        if not tid:
+            return None
+        return PI_GROUP_TIER.get(self.type_group(tid), "P0")
+
     def sync_planets(self, name, c):
         """Planetary Industry (Scope esi-planets): Kolonien + je Kolonie das Layout.
         Phase 1 zieht die reinen ESI-Fakten (Produkt, Koepfe, Ablauf) heraus, ohne
@@ -2438,20 +2522,27 @@ class Esi(threading.Thread):
                 layout, _ = self._get(c, f"/characters/{c['char_id']}/planets/{pid}/")
             except Exception:
                 layout = {}   # Layout-Hiccup: Kolonie trotzdem mit Basisdaten zeigen
-            extractors, factories, contents = [], 0, {}
+            extractors, factories, schem_ids, contents = [], 0, [], {}
             for pin in layout.get("pins", []):
                 ed = pin.get("extractor_details") or {}
+                sid = pin.get("schematic_id") or (pin.get("factory_details") or {}).get("schematic_id")
                 if pin.get("factory_details") or pin.get("schematic_id"):
                     factories += 1
+                    if sid:
+                        schem_ids.append(sid)
                 ptid = ed.get("product_type_id")
                 if ptid:
+                    inst, exp_t = _ts(pin.get("install_time")), _ts(pin.get("expiry_time"))
+                    cyc, qty = ed.get("cycle_time"), ed.get("qty_per_cycle")
                     extractors.append({
                         "product": self.type_name(ptid) or str(ptid),
                         "product_id": ptid,
+                        "tier": self.pi_tier(ptid),
                         "heads": len(ed.get("heads") or []),
-                        "cycle": ed.get("cycle_time"),
-                        "install": _ts(pin.get("install_time")),
-                        "expiry": _ts(pin.get("expiry_time"))})
+                        "cycle": cyc,
+                        "install": inst,
+                        "expiry": exp_t,
+                        "total": extractor_total(inst, exp_t, cyc, qty)})
                 # Gelagerte Materialien (Speicher/Startrampe/Fabrik): Menge je Typ,
                 # spaeter mit Jita-Buy bewertet -> "wieviel ISK liegt auf dem Planeten".
                 for it in (pin.get("contents") or []):
@@ -2459,6 +2550,19 @@ class Esi(threading.Thread):
                     if tid:
                         contents[tid] = contents.get(tid, 0) + amt
             extractors.sort(key=lambda e: e.get("expiry") or 9e18)
+            # Fabrik-Produkte: distinct Schematics -> Name, Tier, Icon, Anzahl Fabriken.
+            pc = {}
+            for s in schem_ids:
+                pc[s] = pc.get(s, 0) + 1
+            products = []
+            for s, cnt in pc.items():
+                pnm = self.schematic_name(s)
+                if not pnm:
+                    continue
+                ptid = self.name_tid(pnm)
+                products.append({"name": pnm, "count": cnt,
+                                 "type_id": ptid, "tier": self.pi_tier(ptid)})
+            products.sort(key=lambda p: (p.get("tier") or "z", p["name"]))
             pinfo = self.planet_info(pid)
             out.append({
                 "planet_id": pid,
@@ -2469,16 +2573,21 @@ class Esi(threading.Thread):
                 "upgrade": col.get("upgrade_level"),
                 "pins": col.get("num_pins"),
                 "factories": factories,
+                "products": products,
                 "extractors": extractors,
                 "_contents": contents})
-        # Gelagerten Wert je Kolonie bewerten (Jita-Buy, ein Preis-Abruf fuer alle Typen).
+        # Preise fuer gelagerte Materialien UND Extraktor-Produkte (ein Abruf).
         all_tids = set()
         for col in out:
             all_tids |= set(col["_contents"])
+            all_tids |= {e["product_id"] for e in col["extractors"] if e.get("product_id")}
         pm = hub_prices("10000002", all_tids, prefer_esi=True) if all_tids else {}
         for col in out:
             col["isk"] = round(sum(a * pm.get(t, (0, 0))[0]
                                    for t, a in col.pop("_contents").items()))
+            col["ext_units"] = sum(e.get("total") or 0 for e in col["extractors"])
+            col["ext_isk"] = round(sum((e.get("total") or 0) * pm.get(e["product_id"], (0, 0))[0]
+                                       for e in col["extractors"] if e.get("product_id")))
         with CONFIG_LOCK:
             c["planets"] = {"as_of": int(asof), "next": int(exp) + 10, "cols": out}
         c["planets_next"] = exp + 10
@@ -4164,7 +4273,8 @@ def query_planeten():
     now = time.time()
     chars, extractors, reconnect = [], [], []
     n_col = n_ex = n_soon = n_exp = 0
-    total_isk = 0
+    total_isk = total_ext_isk = 0
+    prodagg = {}
     oldest = soonest = None
     for nm, c in ((CONFIG.get("esi") or {}).get("chars", {})).items():
         if c.get("planets_scope") is False:
@@ -4191,18 +4301,28 @@ def query_planeten():
                 extractors.append({"char": nm, "planet": col["planet"],
                                    "type": col.get("type"), "type_id": col.get("type_id"),
                                    "product": e.get("product"),
-                                   "product_id": e.get("product_id"),
-                                   "heads": e.get("heads"), "expiry": exp})
+                                   "product_id": e.get("product_id"), "tier": e.get("tier"),
+                                   "heads": e.get("heads"), "total": e.get("total"),
+                                   "expiry": exp})
+            # Fabrik-Produkte flottenweit aufsummieren (fuer den Gesamtausstoss)
+            for pr in (col.get("products") or []):
+                a = prodagg.setdefault(pr["name"], {"name": pr["name"], "tier": pr.get("tier"),
+                                                    "type_id": pr.get("type_id"), "count": 0})
+                a["count"] += pr.get("count", 1)
         cisk = sum(col.get("isk", 0) for col in cols)
+        cext = sum(col.get("ext_isk", 0) for col in cols)
         total_isk += cisk
-        chars.append({"name": nm, "cols": cols, "isk": cisk,
+        total_ext_isk += cext
+        chars.append({"name": nm, "cols": cols, "isk": cisk, "ext_isk": cext,
                       "as_of": p.get("as_of"), "next": p.get("next")})
     extractors.sort(key=lambda x: x.get("expiry") or 9e18)
     chars.sort(key=lambda x: x["name"])
+    order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "P4": 4}
+    products = sorted(prodagg.values(), key=lambda p: (order.get(p.get("tier"), 9), p["name"]))
     return {"chars": chars, "extractors": extractors, "reconnect": reconnect,
             "as_of": oldest, "next": soonest, "n_char": len(chars),
             "n_col": n_col, "n_ex": n_ex, "n_soon": n_soon, "n_exp": n_exp,
-            "total_isk": total_isk}
+            "total_isk": total_isk, "total_ext_isk": total_ext_isk, "products": products}
 
 
 def query_missions():
@@ -4885,6 +5005,11 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .piplanet{display:flex;align-items:center;gap:6px;min-width:0}
 .piglobe{width:18px;height:18px;border-radius:50%;flex:none}
 .pinm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pitier{display:inline-block;font-size:9px;font-weight:700;line-height:1;padding:2px 4px;border-radius:4px;margin-left:4px;vertical-align:middle;border:1px solid currentColor;opacity:.9}
+.pitier.P0{color:var(--dim)}.pitier.P1{color:var(--green)}.pitier.P2{color:var(--cyan)}.pitier.P3{color:#b07de8}.pitier.P4{color:var(--gold)}
+.piprodline{font-size:12px;margin:3px 0 7px;display:flex;flex-wrap:wrap;gap:5px 12px;align-items:center}
+.piprd{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.piicon2{width:16px;height:16px;border-radius:3px;flex:none}
 @media(max-width:640px){.pirow{grid-template-columns:12px 1fr max-content}.pirow .pichar,.pirow .piprod{display:none}}
 /* Live-Missionskampf: EVE-HUD an den Design-Tokens. Verlauf ueber var(--card)/
    var(--inset) (theme-fest), Radius/Border wie die uebrigen Karten, Schaden
@@ -6690,6 +6815,11 @@ function piType(t,en){
 // Reiner Typ-Name ohne Emoji (das Planeten-Render steht jetzt daneben).
 function piTypeName(t,en){const p=piType(t,en);const i=p.indexOf(' ');return i>0?p.slice(i+1):p;}
 function piGlobe(tid,cls){return tid?`<img class="${cls}" src="https://images.evetech.net/types/${tid}/icon?size=128" onerror="this.style.visibility='hidden'">`:'';}
+// Produkt-Tier-Badge (P0-P4) mit fester Farbe je Stufe.
+function piTierBadge(t){return t?`<span class="pitier ${t}">${t}</span>`:'';}
+// Produkt-Chips (Icon + Name + Tier + Anzahl) fuer "Produziert".
+function piProdList(products){return (products||[]).map(p=>
+  `<span class="piprd">${p.type_id?`<img class="piicon2" src="https://images.evetech.net/types/${p.type_id}/icon?size=32" onerror="this.style.display='none'">`:''}${esc(p.name)}${piTierBadge(p.tier)}${p.count>1?' ×'+p.count:''}</span>`).join('');}
 function piLeft(expiry,en){
  if(!expiry)return {cls:'dim',txt:en?'no extractor':'kein Extraktor'};
  const s=expiry-Date.now()/1000;
@@ -6715,13 +6845,16 @@ function renderPlaneten(pl){
  const asof=pl.as_of?((en?'as of ':'Stand vor ')+Math.max(0,Math.round((now-pl.as_of)/60))+(en?' min ago':' min')):'';
  const nxt=pl.next?(()=>{const z=Math.round((pl.next-now)/60);return z>0?(en?'next sync in '+z+' min':'nächster Abgleich in '+z+' min'):(en?'syncing now':'Abgleich läuft gerade');})():'';
  const fresh=`🛰 ${[asof,nxt].filter(Boolean).join(' · ')}${asof||nxt?' · ':''}${en?'only as fresh as last opened in client':'so aktuell wie zuletzt im Client geöffnet'}`;
- const stored=pl.total_isk?` · <span class="isk">≈ ${fmtM(pl.total_isk)} ISK ${en?'stored':'gelagert'}</span>`:'';
+ const stored=(pl.total_isk?` · <span class="isk">≈ ${fmtM(pl.total_isk)} ISK ${en?'stored':'gelagert'}</span>`:'')
+   +(pl.total_ext_isk?` · <span class="sub">~${fmtM(pl.total_ext_isk)} ISK ${en?'raw extraction':'Extraktion roh'}</span>`:'');
  const urg=(pl.n_exp||pl.n_soon)
   ?`<span style="color:var(--${pl.n_exp?'red':'gold'})">⚠ ${pl.n_exp?pl.n_exp+(en?' expired · ':' abgelaufen · '):''}${pl.n_soon}${en?' expiring < 6h':' laufen in < 6h ab'}</span>`
   :`<span style="color:var(--green)">${en?'all running':'alles läuft'}</span>`;
+ const prodline=pl.products&&pl.products.length?`<div class="piprodline">🏭 <span class="sub">${en?'Produces':'Produziert'}:</span> ${piProdList(pl.products)}</div>`:'';
  let html=`<div class="card mfp" style="grid-column:1/-1"><div class="mfphead"><span class="mfptitle">🪐 Planetary Industry</span></div>
    <div class="mfpmain"><span class="mfpval gold">${pl.n_col}</span><span class="mfpunit">${en?'colonies':'Kolonien'}</span>
     <span class="mfpsub">${pl.n_char} ${pl.n_char===1?'Char':'Chars'} · ${pl.n_ex}${en?' extractors':' Extraktoren'} · ${urg}${stored}</span></div>
+   ${prodline}
    <div class="sub" style="margin-top:8px">${fresh}</div></div>`;
  // Was zuerst nachfüllen (char-übergreifend, nach Ablauf sortiert)
  html+=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">${en?'What to reload first':'Was zuerst nachfüllen'}</span> <span class="sub">· ${en?'sorted by expiry':'nach Ablauf sortiert'}</span></div>`;
@@ -6731,7 +6864,7 @@ function renderPlaneten(pl){
   html+=`<div class="pirow"><span class="pidot ${L.cls}"></span>
     <span class="pichar">${esc(e.char)}</span>
     <span class="piplanet">${piGlobe(e.type_id,'piglobe')}<span class="pinm">${esc(e.planet)}</span> <span class="sub">${piTypeName(e.type,en)}</span></span>
-    <span class="piprod">${esc(e.product||'?')}</span>
+    <span class="piprod">${esc(e.product||'?')}${piTierBadge(e.tier)}</span>
     <span class="piexp ${L.cls}">${L.txt}</span></div>`;});
  if((pl.extractors||[]).length>board.length)html+=`<div class="sub" style="padding-top:6px">… ${pl.extractors.length-board.length} ${en?'more':'weitere'}</div>`;
  html+=`</div>`;
@@ -6744,8 +6877,9 @@ function renderPlaneten(pl){
     <span class="char">${isc?'▸':'▾'} ${esc(c.name)} <span class="sub">· ${c.cols.length} ${c.cols.length===1?(en?'colony':'Kolonie'):(en?'colonies':'Kolonien')}</span></span>${c.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(c.isk)} ISK</span>`:''}</div>`;
   if(!isc)c.cols.forEach(col=>{
    let body=`<div class="picolhead"><b>${esc(col.planet)}</b> <span class="sub">${piTypeName(col.type,en)} · ${esc(col.system||'')} · ${en?'level':'Stufe'} ${col.upgrade||0} · ${col.pins||0} Pins</span>${col.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(col.isk)} ISK ${en?'stored':'gelagert'}</span>`:''}</div>`;
+   if((col.products||[]).length)body+=`<div class="piprodline">🏭 <span class="sub">${en?'Produces':'Produziert'}:</span> ${piProdList(col.products)}</div>`;
    (col.extractors||[]).forEach(e=>{const L=piLeft(e.expiry,en);
-    body+=`<div class="piexrow"><span class="pidot ${L.cls}"></span>${e.product_id?`<img class="piicon" src="https://images.evetech.net/types/${e.product_id}/icon?size=32" onerror="this.style.visibility='hidden'">`:`<span class="piicon"></span>`}<span class="piname">${esc(e.product||'?')} <span class="sub">· ${e.heads} ${en?'heads':'Köpfe'}</span></span><span class="piexp ${L.cls}">${L.txt}</span></div>`;});
+    body+=`<div class="piexrow"><span class="pidot ${L.cls}"></span>${e.product_id?`<img class="piicon" src="https://images.evetech.net/types/${e.product_id}/icon?size=32" onerror="this.style.visibility='hidden'">`:`<span class="piicon"></span>`}<span class="piname">${esc(e.product||'?')}${piTierBadge(e.tier)} <span class="sub">· ${e.heads} ${en?'heads':'Köpfe'}${e.total?' · ~'+fmtC(e.total)+(en?' units':' Stk'):''}</span></span><span class="piexp ${L.cls}">${L.txt}</span></div>`;});
    if(!(col.extractors||[]).length)body+=`<div class="sub">${en?'No active extractors':'Keine aktiven Extraktoren'}</div>`;
    html+=`<div class="picolrow">${col.type_id?`<img class="piplanetimg" src="https://images.evetech.net/types/${col.type_id}/icon?size=128" onerror="this.style.visibility='hidden'">`:`<span class="piplanetimg"></span>`}<div class="picolbody">${body}</div></div>`;});
   html+=`</div>`;});
