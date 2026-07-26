@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.56.0"
+VERSION = "1.57.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
@@ -2124,7 +2124,7 @@ ESI_BASE = "https://esi.evetech.net/latest"
 ESI_SCOPES = ("esi-assets.read_assets.v1 esi-location.read_ship_type.v1 "
               "esi-wallet.read_character_wallet.v1 esi-location.read_online.v1 "
               "esi-ui.open_window.v1 esi-skills.read_skills.v1 "
-              "esi-industry.read_character_mining.v1")
+              "esi-industry.read_character_mining.v1 esi-planets.manage_planets.v1")
 # Mining-Skills, die den Erzertrag heben (typeID -> Ertrag je Stufe).
 # Mining und Astrogeology sind die beiden Kern-Ertragsskills (+5% je Stufe).
 MINING_YIELD_SKILLS = {3386: 0.05,   # Mining
@@ -2180,6 +2180,9 @@ class Esi(threading.Thread):
         self.type_cache = {}  # type_id -> Name (Schiffstypen, öffentlicher Endpunkt)
         self.vol_cache = {}   # type_id -> Volumen je Einheit (fuer Mining-Ledger-m³)
         self.loc_cache = {}   # location_id -> Name (Stationen/Strukturen, fuer die Erz-Schatzkammer)
+        self.planet_cache = {} # planet_id -> Name (Planetary Industry, langlebig)
+        self.sys_cache = {}   # system_id -> Name (fuer Planeten-Kolonien)
+        self.pi_alerted = {}  # (char, planet_id) -> Ablauf-ts, fuer den PI-Ablauf-Alarm ohne Wiederholung
         self.party_names = {} # id -> Name (Agenten aus dem Wallet-Journal)
         # Serialisiert den Token-Refresh: poll-Thread und HTTP-Thread (ui_open)
         # duerfen nicht gleichzeitig dasselbe Refresh-Token einloesen (CCP
@@ -2368,6 +2371,130 @@ class Esi(threading.Thread):
         c["mined_30d"] = round(m3)
         c["esi_mining"] = True
         c["mining_next"] = time.time() + 45 * 60
+
+    def planet_name(self, pid):
+        """Planetenname (z.B. 'Ii VI') aus dem oeffentlichen Universe-Endpunkt. Gecacht."""
+        if pid in self.planet_cache:
+            return self.planet_cache[pid]
+        nm = None
+        try:
+            req = urllib.request.Request(f"{ESI_BASE}/universe/planets/{pid}/",
+                                         headers={"User-Agent": ESI_UA})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                nm = json.loads(r.read()).get("name")
+        except Exception:
+            nm = None
+        if nm:
+            self.planet_cache[pid] = nm
+        return nm or f"#{pid}"
+
+    def system_name(self, sid):
+        """Systemname aus der System-ID (oeffentlich, gecacht)."""
+        if not sid:
+            return "?"
+        if sid in self.sys_cache:
+            return self.sys_cache[sid]
+        nm = None
+        try:
+            req = urllib.request.Request(f"{ESI_BASE}/universe/systems/{sid}/",
+                                         headers={"User-Agent": ESI_UA})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                nm = json.loads(r.read()).get("name")
+        except Exception:
+            nm = None
+        if nm:
+            self.sys_cache[sid] = nm
+        return nm or str(sid)
+
+    def sync_planets(self, name, c):
+        """Planetary Industry (Scope esi-planets): Kolonien + je Kolonie das Layout.
+        Phase 1 zieht die reinen ESI-Fakten (Produkt, Koepfe, Ablauf) heraus, ohne
+        Ertragsrechnung. Ablauf-/Install-Zeit werden zu Epoch-Sekunden fuer den
+        Countdown im Frontend. Die dynamischen Lager-Fuellstaende sind bewusst NICHT
+        dabei, die aktualisiert ESI erst beim Oeffnen im Client; das Extraktor-
+        Programm dagegen steht stabil server-seitig."""
+        cols, hdr = self._get(c, f"/characters/{c['char_id']}/planets/")
+        try:
+            exp = email.utils.parsedate_to_datetime(hdr["Expires"]).timestamp()
+        except Exception:
+            exp = time.time() + 600
+        try:
+            asof = email.utils.parsedate_to_datetime(hdr["Last-Modified"]).timestamp()
+        except Exception:
+            asof = time.time()
+
+        def _ts(s):
+            if not s:
+                return None
+            try:
+                return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
+            except Exception:
+                return None
+        out = []
+        for col in cols:
+            pid = col.get("planet_id")
+            try:
+                layout, _ = self._get(c, f"/characters/{c['char_id']}/planets/{pid}/")
+            except Exception:
+                continue
+            extractors, factories = [], 0
+            for pin in layout.get("pins", []):
+                ed = pin.get("extractor_details") or {}
+                if pin.get("factory_details") or pin.get("schematic_id"):
+                    factories += 1
+                ptid = ed.get("product_type_id")
+                if ptid:
+                    extractors.append({
+                        "product": self.type_name(ptid) or str(ptid),
+                        "product_id": ptid,
+                        "heads": len(ed.get("heads") or []),
+                        "cycle": ed.get("cycle_time"),
+                        "install": _ts(pin.get("install_time")),
+                        "expiry": _ts(pin.get("expiry_time"))})
+            extractors.sort(key=lambda e: e.get("expiry") or 9e18)
+            out.append({
+                "planet_id": pid,
+                "planet": self.planet_name(pid),
+                "type": col.get("planet_type"),
+                "system": self.system_name(col.get("solar_system_id")),
+                "upgrade": col.get("upgrade_level"),
+                "pins": col.get("num_pins"),
+                "factories": factories,
+                "extractors": extractors})
+        with CONFIG_LOCK:
+            c["planets"] = {"as_of": int(asof), "next": int(exp) + 10, "cols": out}
+        c["planets_next"] = exp + 10
+        self._pi_alerts(name, out)
+
+    def _pi_alerts(self, name, cols):
+        """Ablauf-Alarm je Kolonie: warnt, wenn der frueheste Extraktor abgelaufen
+        ist oder bald ablaeuft. Schwelle adaptiv (15% der Programmlaenge, gedeckelt
+        auf 1 bis 12h). Cooldown ueber (char, planet) + gemerkte Ablaufzeit, damit
+        ein neu programmierter Extraktor wieder alarmiert, sonst aber Ruhe ist."""
+        now = time.time()
+        for col in cols:
+            exs = [e for e in (col.get("extractors") or []) if e.get("expiry")]
+            if not exs:
+                continue
+            e = min(exs, key=lambda x: x["expiry"])
+            exp = e["expiry"]
+            length = (exp - e["install"]) if e.get("install") and exp > e["install"] else 0
+            thr = min(12 * 3600, max(3600, 0.15 * length)) if length else 6 * 3600
+            key = (name, col["planet_id"])
+            if exp - now > thr:
+                continue
+            if self.pi_alerted.get(key) == exp:
+                continue                       # fuer dieses Programm schon alarmiert
+            self.pi_alerted[key] = exp
+            n_soon = sum(1 for x in exs if x["expiry"] - now <= thr)
+            more = f" · +{n_soon - 1} weitere" if n_soon > 1 else ""
+            if exp <= now:
+                txt = f"🪐 {name}: {col['planet']} · Extraktor abgelaufen{more}"
+            else:
+                mins = int((exp - now) // 60)
+                left = f"{mins} min" if mins < 90 else f"{round(mins / 60)} Std"
+                txt = f"🪐 {name}: {col['planet']} · Extraktor läuft in {left} ab{more}"
+            alerts.push("pi", name, txt)
 
     def sync_ship(self, name, c, ship=None):
         """Heavy Water + Kern-Typ aus dem aktuellen Schiff uebernehmen.
@@ -2610,6 +2737,20 @@ class Esi(threading.Thread):
                 except Exception:
                     c.pop("esi_mining", None)
                     c.pop("mined_30d", None)
+                # Planetary Industry (neuer Scope). Fehlt er (Char noch nicht neu
+                # verbunden), kommt 403 -> als "neu verbinden" markieren, nicht
+                # dauernd nachfragen. Andere Fehler lassen die alten Daten stehen.
+                try:
+                    if time.time() >= c.get("planets_next", 0):
+                        self.sync_planets(name, c)
+                    c["planets_scope"] = True
+                except urllib.error.HTTPError as e:
+                    if e.code == 403:
+                        c["planets_scope"] = False
+                        c.pop("planets", None)
+                        c["planets_next"] = time.time() + 1800
+                except Exception:
+                    pass
                 c["poll_ts"] = time.time()   # ESI-Stand fuer die Steckbrief-Frische
                 self.status[name] = "verbunden"
                 changed = True
@@ -3997,6 +4138,50 @@ def query_vault():
             "next": soonest, "chars": chars}
 
 
+def query_planeten():
+    """Planetary Industry: Kolonien aller PI-verbundenen Chars. Liefert eine flache,
+    nach Ablauf sortierte Extraktor-Liste (die 'was zuerst nachfuellen'-Tafel) plus
+    die Kolonien je Char fuer die einklappbaren Bloecke, dazu Kennzahlen und die
+    Chars, die den neuen Scope noch nicht erteilt haben."""
+    now = time.time()
+    chars, extractors, reconnect = [], [], []
+    n_col = n_ex = n_soon = n_exp = 0
+    oldest = soonest = None
+    for nm, c in ((CONFIG.get("esi") or {}).get("chars", {})).items():
+        if c.get("planets_scope") is False:
+            reconnect.append(nm)
+            continue
+        p = c.get("planets")
+        cols = (p or {}).get("cols") or []
+        if not cols:
+            continue
+        oldest = p["as_of"] if oldest is None else min(oldest, p.get("as_of") or oldest)
+        if p.get("next"):
+            soonest = p["next"] if soonest is None else min(soonest, p["next"])
+        for col in cols:
+            n_col += 1
+            for e in (col.get("extractors") or []):
+                n_ex += 1
+                exp = e.get("expiry")
+                if not exp:
+                    continue
+                if exp <= now:
+                    n_exp += 1
+                elif exp - now <= 6 * 3600:
+                    n_soon += 1
+                extractors.append({"char": nm, "planet": col["planet"],
+                                   "type": col.get("type"), "product": e.get("product"),
+                                   "product_id": e.get("product_id"),
+                                   "heads": e.get("heads"), "expiry": exp})
+        chars.append({"name": nm, "cols": cols,
+                      "as_of": p.get("as_of"), "next": p.get("next")})
+    extractors.sort(key=lambda x: x.get("expiry") or 9e18)
+    chars.sort(key=lambda x: x["name"])
+    return {"chars": chars, "extractors": extractors, "reconnect": reconnect,
+            "as_of": oldest, "next": soonest, "n_char": len(chars),
+            "n_col": n_col, "n_ex": n_ex, "n_soon": n_soon, "n_exp": n_exp}
+
+
 def query_missions():
     """Missions-Statistik aus dem Wallet-Journal: Tage, Quellen, Agenten, Chars.
     Bounties aus bekannten Mining-Systemen bleiben draussen (Belt-Ratten)."""
@@ -4169,6 +4354,8 @@ class Handler(BaseHTTPRequestHandler):
                 data["chars"] = snapshot_live()
             elif view == "vault":
                 data["vault"] = query_vault()
+            elif view == "planeten":
+                data["planeten"] = query_planeten()
             elif view == "timeline":
                 data["timeline"] = query_timelines()
             elif view == "profil":
@@ -4524,6 +4711,7 @@ nav span.on{color:var(--cyan);border-bottom:2px solid var(--cyan)}
 .alert.rate{border-color:var(--gold);color:var(--gold);font-weight:600}
 .alert.drones{border-color:var(--red);color:var(--red);font-weight:600}
 .alert.cargo{border-color:var(--red);color:var(--red);font-weight:600}
+.alert.pi{border-color:var(--gold);color:var(--gold);font-weight:600}
 .cardwarn{border:1px solid var(--gold);color:var(--gold);border-radius:7px;
 padding:7px 10px;font-size:12px;font-weight:600;margin-bottom:8px;overflow:hidden}
 .cardwarn.drone{border-color:var(--red);color:var(--red)}
@@ -4648,6 +4836,24 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .sbname{font-size:17px;color:var(--white);font-weight:600;margin:8px 0 6px}
 .sbrow{font-size:13px;margin:3px 0;color:var(--txt)}
 .sbfresh{margin-top:8px}
+/* Planetary Industry: Dringlichkeitszeilen + einklappbare Char-Bloecke. */
+.pirow{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
+.pirow:first-of-type{border-top:none}
+.pichar{flex:0 0 130px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.piplanet{flex:1;min-width:120px}
+.piprod{flex:0 0 150px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.piexp{flex:0 0 auto;margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600}
+.pidot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--dim)}
+.pidot.ok,.piexp.ok{color:var(--green)}.pidot.ok{background:var(--green)}
+.pidot.warn,.piexp.warn{color:var(--gold)}.pidot.warn{background:var(--gold)}
+.pidot.bad,.piexp.bad{color:var(--red)}.pidot.bad{background:var(--red)}
+.pidot.dim{background:var(--line)}
+.picol{border-top:1px solid var(--line)}
+.picol:first-of-type{border-top:none}
+.pihead{padding:8px 0}
+.picolrow{padding:6px 0 6px 14px}
+.piexrow{display:flex;align-items:center;gap:7px;padding:3px 0 3px 4px;font-size:12px}
+@media(max-width:640px){.pichar{flex-basis:90px}.piprod{display:none}}
 /* Live-Missionskampf: EVE-HUD an den Design-Tokens. Verlauf ueber var(--card)/
    var(--inset) (theme-fest), Radius/Border wie die uebrigen Karten, Schaden
    raus=Cyan / rein=Rot / ISK=Gold wie in der ganzen App. */
@@ -4757,6 +4963,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="missionen">🎯 Missionen</span>
  <span data-v="timeline">🕑 Verlauf</span>
  <span data-v="profil">🪪 Steckbrief</span>
+ <span data-v="planeten">🪐 Planeten</span>
  <span data-v="vault">💎 Erz-Schatzkammer</span>
  <span data-v="rechner">💰 ISKray</span>
 </nav>
@@ -4882,7 +5089,7 @@ const fmtP=n=>n>=1e6?fmtM(n):n>=1000?fmt(n):(n||0).toLocaleString(undefined,{max
 // fremdbestimmt und dürfen nie ungefiltert in innerHTML landen (XSS).
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function lsGet(key,fallback){try{const v=localStorage.getItem(key);return v==null?fallback:JSON.parse(v);}catch(e){return fallback;}}
-const VIEWS=['live','month','total','analyse','intel','missionen','timeline','profil','vault','rechner'];
+const VIEWS=['live','month','total','analyse','intel','missionen','timeline','profil','planeten','vault','rechner'];
 let view=location.pathname.replace(/^\\//,'')||'live', state=null, lastAlertId=Number(localStorage.getItem('lastAlertId')||0);
 if(!VIEWS.includes(view))view='live';
 window.addEventListener('popstate',()=>{
@@ -5092,9 +5299,9 @@ function speakAlert(a){
  if(localStorage.getItem('ttsAlerts')!=='1')return;
  const en=(lang==='en');
  const P=en?{pvp:'under attack',cargo:'cargo full',drones:'check drones',idle:'mining stopped',
-             rate:'mining rate dropped',hw:'heavy water low',watch:'watchlist hit',intel:'threat detected'}
+             rate:'mining rate dropped',hw:'heavy water low',watch:'watchlist hit',intel:'threat detected',pi:'extractor expiring'}
            :{pvp:'unter Beschuss',cargo:'Frachtraum voll',drones:'Drohnen prüfen',idle:'Mining steht',
-             rate:'Abbaurate gefallen',hw:'Heavy Water fast leer',watch:'Watchlist-Treffer',intel:'Bedrohung erkannt'};
+             rate:'Abbaurate gefallen',hw:'Heavy Water fast leer',watch:'Watchlist-Treffer',intel:'Bedrohung erkannt',pi:'Extraktor läuft ab'};
  const phrase=P[a.kind]; if(!phrase)return;
  speak((a.char?a.char+': ':'')+phrase);
 }
@@ -5428,14 +5635,15 @@ $('#charFilter').onchange=()=>{
   localStorage.setItem('roleFilter','');
   document.querySelectorAll('.rolef').forEach(x=>x.classList.toggle('on',x.dataset.role===''));
  }
- renderLiveView();};
+ if(view==='planeten')renderPlaneten(lastPlaneten);else renderLiveView();};
 {const ms=$('#mainCharSel'); if(ms)ms.onchange=()=>localStorage.setItem('mainChar',ms.value);}
 $('#collapseAll').onclick=()=>{
- const names=(lastChars||[]).map(c=>c.name);
+ const pi=view==='planeten';
+ const names=(pi?(lastPlaneten&&lastPlaneten.chars||[]):(lastChars||[])).map(c=>c.name);
  if(names.length&&names.every(n=>collapsed.has(n)))names.forEach(n=>collapsed.delete(n));
  else names.forEach(n=>collapsed.add(n));
  localStorage.setItem('collapsed',JSON.stringify([...collapsed]));
- renderLiveView();};
+ if(pi)renderPlaneten(lastPlaneten);else renderLiveView();};
 // Rollen-Filter-Pills (Alle / Mining / Missionen / PvP)
 (function(){const rf=localStorage.getItem('roleFilter')||'';
  document.querySelectorAll('.rolef').forEach(p=>{
@@ -6438,6 +6646,79 @@ function renderVault(v){
  });
  $('#grid').innerHTML=html;
 }
+// Planetary Industry: Ueberblick + nach Ablauf sortierte Extraktor-Tafel +
+// einklappbare Char-Bloecke. Countdown wird bei jedem Tick (2s) neu gerechnet.
+let lastPlaneten=null;
+function piType(t,en){
+ const M={barren:['🟤','Barren','Öde'],temperate:['🟢','Temperate','Gemäßigt'],
+  gas:['🟠','Gas','Gas'],ice:['🔵','Ice','Eis'],lava:['🔴','Lava','Lava'],
+  oceanic:['🔵','Oceanic','Ozean'],plasma:['🟣','Plasma','Plasma'],storm:['⚪','Storm','Sturm']};
+ const m=M[t]; return m?m[0]+' '+(en?m[1]:m[2]):(t||'');
+}
+function piLeft(expiry,en){
+ if(!expiry)return {cls:'dim',txt:en?'no extractor':'kein Extraktor'};
+ const s=expiry-Date.now()/1000;
+ if(s<=0){const m=Math.round(-s/60), a=m<90?m+' min':Math.round(m/60)+' h';
+  return {cls:'bad',txt:en?('expired '+a+' ago'):('abgelaufen vor '+a)};}
+ const m=Math.round(s/60);
+ const txt=m<90?('in '+m+' min'):(m<60*24?('in '+Math.round(m/60)+' h'):('in '+Math.round(m/1440)+(en?' d':' t')));
+ return {cls:s<6*3600?'warn':'ok',txt};
+}
+function renderPlaneten(pl){
+ lastPlaneten=pl=pl||{chars:[],extractors:[],reconnect:[]};
+ const en=lang==='en', now=Date.now()/1000;
+ syncCharFilter(pl.chars||[]);
+ if(!(pl.chars||[]).length){
+  const msg=(pl.reconnect||[]).length
+   ?(en?`Reconnect your characters for Planetary Industry in ⚙ Options (new read-only permission "planets"). ${pl.reconnect.length} char(s) waiting.`
+        :`Verbinde deine Charaktere für Planetary Industry neu (⚙ Optionen, neue Nur-Lese-Berechtigung „Planeten"). ${pl.reconnect.length} Char(s) warten.`)
+   :(en?'No planetary colonies found on your connected characters. Connect a character with active PI via ⚙ Options.'
+        :'Keine Planeten-Kolonien auf deinen verbundenen Charakteren gefunden. Verbinde einen Char mit aktiver PI über ⚙ Optionen.');
+  $('#grid').innerHTML=`<div class="card" style="grid-column:1/-1"><b>🪐 Planetary Industry</b><div class="sub" style="margin-top:6px">${msg}</div></div>`;
+  return;
+ }
+ const stand=pl.as_of?((en?'as of ':'Stand vor ')+Math.max(0,Math.round((now-pl.as_of)/60))+' min'):'';
+ const urg=(pl.n_exp||pl.n_soon)
+  ?`<span style="color:var(--${pl.n_exp?'red':'gold'})">⚠ ${pl.n_exp?pl.n_exp+(en?' expired · ':' abgelaufen · '):''}${pl.n_soon}${en?' expiring < 6h':' laufen in < 6h ab'}</span>`
+  :`<span style="color:var(--green)">${en?'all running':'alles läuft'}</span>`;
+ let html=`<div class="card mfp" style="grid-column:1/-1"><div class="mfphead"><span class="mfptitle">🪐 Planetary Industry</span></div>
+   <div class="mfpmain"><span class="mfpval gold">${pl.n_col}</span><span class="mfpunit">${en?'colonies':'Kolonien'}</span>
+    <span class="mfpsub">${pl.n_char} ${pl.n_char===1?'Char':'Chars'} · ${pl.n_ex}${en?' extractors · ':' Extraktoren · '}${urg}${stand?' · '+stand:''} · ${en?'only as fresh as last opened in client':'so aktuell wie zuletzt im Client geöffnet'}</span></div></div>`;
+ // Was zuerst nachfüllen (char-übergreifend, nach Ablauf sortiert)
+ html+=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">${en?'What to reload first':'Was zuerst nachfüllen'}</span> <span class="sub">· ${en?'sorted by expiry':'nach Ablauf sortiert'}</span></div>`;
+ const board=(pl.extractors||[]).slice(0,12);
+ if(!board.length)html+=`<div class="sub">${en?'No extractors.':'Keine Extraktoren.'}</div>`;
+ board.forEach(e=>{const L=piLeft(e.expiry,en);
+  html+=`<div class="pirow"><span class="pidot ${L.cls}"></span>
+    <span class="pichar">${esc(e.char)}</span>
+    <span class="piplanet">${esc(e.planet)} <span class="sub">${piType(e.type,en)}</span></span>
+    <span class="piprod">${esc(e.product||'?')}</span>
+    <span class="piexp ${L.cls}">${L.txt}</span></div>`;});
+ if((pl.extractors||[]).length>board.length)html+=`<div class="sub" style="padding-top:6px">… ${pl.extractors.length-board.length} ${en?'more':'weitere'}</div>`;
+ html+=`</div>`;
+ // Nach Charakter (einklappbar, respektiert den Char-Filter)
+ const f=localStorage.getItem('charFilter')||'';
+ const list=f?pl.chars.filter(c=>c.name===f):pl.chars;
+ html+=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">${en?'By character':'Nach Charakter'}</span></div>`;
+ list.forEach(c=>{const isc=collapsed.has(c.name);
+  html+=`<div class="picol"><div class="chead pihead" data-pi="${esc(c.name)}" style="cursor:pointer">
+    <span class="char">${isc?'▸':'▾'} ${esc(c.name)} <span class="sub">· ${c.cols.length} ${c.cols.length===1?(en?'colony':'Kolonie'):(en?'colonies':'Kolonien')}</span></span></div>`;
+  if(!isc)c.cols.forEach(col=>{
+   html+=`<div class="picolrow"><div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap"><b>${esc(col.planet)}</b> <span class="sub">${piType(col.type,en)} · ${esc(col.system||'')} · ${en?'level':'Stufe'} ${col.upgrade||0} · ${col.pins||0} Pins</span></div>`;
+   (col.extractors||[]).forEach(e=>{const L=piLeft(e.expiry,en);
+    html+=`<div class="piexrow"><span class="pidot ${L.cls}"></span>${e.product_id?`<img src="https://images.evetech.net/types/${e.product_id}/icon?size=32" width="18" height="18" style="border-radius:3px;flex:none" onerror="this.style.display='none'">`:''}<span>${esc(e.product||'?')}</span> <span class="sub">· ${e.heads} ${en?'heads':'Köpfe'}</span><span class="piexp ${L.cls}" style="margin-left:auto">${L.txt}</span></div>`;});
+   if(!(col.extractors||[]).length)html+=`<div class="sub">${en?'No active extractors':'Keine aktiven Extraktoren'}</div>`;
+   html+=`</div>`;});
+  html+=`</div>`;});
+ if((pl.reconnect||[]).length)html+=`<div class="sub" style="padding:8px 0 0">· ${pl.reconnect.length} ${en?'char(s) not connected for planets yet':'Chars noch nicht für Planeten verbunden'}</div>`;
+ html+=`</div>`;
+ $('#grid').innerHTML=html;
+ document.querySelectorAll('.pihead').forEach(h=>h.onclick=()=>{
+  const n=h.dataset.pi;
+  if(collapsed.has(n))collapsed.delete(n);else collapsed.add(n);
+  try{localStorage.setItem('collapsed',JSON.stringify([...collapsed]));}catch(e){}
+  renderPlaneten(lastPlaneten);});
+}
 // Live-Kampfkachel(n) fuer Chars, die gerade eine Mission fliegen: Portrait
 // mittig, Schaden raus links, Schaden rein rechts, darunter Gesamtschaden,
 // eliminierte Gegner (Kills, sonst bekaempfte Typen) und eingesammelte Bounty.
@@ -6755,7 +7036,7 @@ const EN = {
 'Standardmäßig zeigt Live nur eingeloggte Charaktere. Hier einschalten, um auch Offline-Charaktere zu sehen.':
  'Live normally shows only logged-in characters. Turn this on to see offline ones too.',
 'Live':'Live','30 Tage':'30 days','Gesamt':'All time','Analyse':'Analysis',
-'🚦 Intel':'🚦 Intel','🎯 Missionen':'🎯 Missions','💰 ISKray':'💰 ISKray','🕑 Verlauf':'🕑 Timeline','🪪 Steckbrief':'🪪 Character sheet',
+'🚦 Intel':'🚦 Intel','🎯 Missionen':'🎯 Missions','💰 ISKray':'💰 ISKray','🕑 Verlauf':'🕑 Timeline','🪪 Steckbrief':'🪪 Character sheet','🪐 Planeten':'🪐 Planets',
 '🔎 Einzel-Item':'🔎 Single item','📦 Frachtraum':'📦 Cargo',
 '⚙ Optionen':'⚙ Options','◱ Overlay':'◱ Overlay',
 '◱ Mini-Overlay öffnen/schließen':'Open/close mini overlay',
@@ -6972,6 +7253,11 @@ const EN_PATTERNS = [
  [/Vermutlich ist ein Modul oder eine Drohne aus/, 'A module or a drone is probably off'],
  [/Mögliche Gank-Flotte im Local: ([0-9]+) geflaggte Piloten von (.+?), ([0-9]+) Miner-Kills/,
   'Possible gank fleet in local: $1 flagged pilots from $2, $3 miner kills'],
+ // Planetary-Industry-Ablauf-Alarm: distinkte Tokens, damit nichts anderes trifft.
+ [/ · Extraktor abgelaufen/, ' · extractor expired'],
+ [/ · Extraktor läuft in ([0-9]+) Std ab/, ' · extractor expires in $1 h'],
+ [/ · Extraktor läuft in ([0-9]+) min ab/, ' · extractor expires in $1 min'],
+ [/ · [+]([0-9]+) weitere/, ' · +$1 more'],
  [/ in 30 Tagen gefördert · Ø (.+?)[/]Tag · Skill-Bonus [+]([0-9]+)%/, ' mined in 30 days · avg $1/day · skill bonus +$2%'],
  [/ in 30 Tagen gefördert · Ø (.+?)[/]Tag/, ' mined in 30 days · avg $1/day'],
  [/[/]Tag/, '/day'],
@@ -7125,6 +7411,7 @@ async function tick(){
    else if(view==='analyse')renderAnalyse(d.analyse);
    else if(view==='intel')renderIntel(d.intel_auto);
    else if(view==='vault')renderVault(d.vault);
+   else if(view==='planeten')renderPlaneten(d.planeten);
    else if(view==='timeline')renderTimeline(d.timeline);
    else if(view==='profil')renderProfiles(d.profiles);
    else if(view==='rechner')renderRechner();
