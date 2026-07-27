@@ -1,5 +1,19 @@
 [
  {
+  "v": "1.66.0",
+  "d": "2026-07-27",
+  "de": [
+   "Die Blutspur kennt jetzt bekannte Gank-Gruppen. Wer regelmäßig in Highsec Miner und Transporter abschießt, wird mit einem roten ACHTUNG markiert, samt Beleg: wie viele Miner-Kills in wie vielen Systemen. Solche Gruppen werden immer angezeigt, auch unterhalb der normalen Punkte-Schwelle, und schon ab 15 Sprüngen Entfernung gemeldet statt erst ab 10.",
+   "Die Liste ist aus öffentlichen Killmails erhoben, über sechs Wochen und alle zwanzig Highsec-Regionen. Gezählt wird je Killmail, damit ein einzelner großer Gank nicht die halbe Rangliste verzerrt. NPC-Anfängercorps sind bewusst ausgeschlossen, sonst gälte jeder Neuling im Local als verdächtig.",
+   "Canary frischt die Liste einmal im Monat selbst von GitHub auf. Dafür ist kein Update nötig."
+  ],
+  "en": [
+   "Blood Trail now knows about known gank groups. Anyone regularly shooting miners and haulers in highsec gets a red CAUTION marker, with the evidence attached: how many miner kills across how many systems. Such groups are always shown, even below the normal score threshold, and are reported from 15 jumps out instead of 10.",
+   "The list is derived from public killmails, across six weeks and all twenty highsec regions. Counting happens per killmail so a single large gank does not skew half the ranking. NPC starter corps are deliberately excluded, otherwise every newbie in local would look suspicious.",
+   "Canary refreshes the list from GitHub once a month on its own. No update needed for that."
+  ]
+ },
+ {
   "v": "1.65.2",
   "d": "2026-07-26",
   "de": [

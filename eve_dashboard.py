@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.65.2"
+VERSION = "1.66.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -121,6 +121,27 @@ ORE_REFINE = load_json("ore_refine.json", {"refine": {}, "minerals": {}})
 # Reprocessing-Skills: typeID -> Bonus je Stufe. Basis NPC-Station 50%.
 REPROCESS_SKILLS = {3385: 0.03, 3389: 0.02}  # Reprocessing, Reprocessing Efficiency
 MINING_TOOLS = sorted(load_json("mining_tools.json", []), key=len, reverse=True)
+# Gruppen, die in Highsec regelmaessig Miner und Transporter abschiessen, aus
+# oeffentlichen Killmails erhoben (Skript gank_groups.py, wird mitgeliefert und
+# nicht bei jedem Nutzer gebaut). Struktur: {"stand", "zeitraum", "allianzen":
+# {id: {name, miner, hauler, systeme}}, "corps": {...}}. Absichtlich NUR Zahlen
+# und Namen, keine Wertung: die Oberflaeche schreibt "Achtung, N Miner-Kills".
+GANK_GROUPS = load_json("gank_groups.json", {})
+
+
+def gank_index(daten):
+    """Nach Sicherheitsstufe getrennt: wer in Highsec minert, hat es mit
+    anderen Gruppen zu tun als jemand in Lowsec. Welche Liste gilt, entscheidet
+    der eigene Standort, nicht der Ort des Kills."""
+    idx = {}
+    for band in ("highsec", "lowsec"):
+        d = daten.get(band) or {}
+        idx[band] = ({int(k): v for k, v in (d.get("allianzen") or {}).items()},
+                     {int(k): v for k, v in (d.get("corps") or {}).items()})
+    return idx
+
+
+GANK_IDX = gank_index(GANK_GROUPS)
 # Missionserkennung über einzigartige Gegnernamen (nur geprüfte Signaturen).
 MISSION_SIGS = {k.lower(): v for k, v in load_json("mission_sigs.json", {}).items()
                 if not k.startswith("_")}
@@ -947,6 +968,48 @@ def count_ping():
             save_config()
 
 
+GANK_STATE = {"ts": 0.0}
+
+
+def refresh_gank_list():
+    """Die Gank-Gruppen-Liste einmal im Monat frisch von GitHub holen.
+
+    Die Liste ist DATEN, kein Code: so bekommen auch Nutzer, die gerade kein
+    Update einspielen, die aktuellen Zahlen. Erhoben wird sie zentral (siehe
+    gank_groups.py), niemals hier, sonst wuerde jede Installation zKillboard
+    hunderte Male abfragen."""
+    global GANK_GROUPS, GANK_IDX
+    if time.time() - GANK_STATE["ts"] < 3600:
+        return
+    GANK_STATE["ts"] = time.time()
+    stamp = time.strftime("%Y-%m", time.gmtime())
+    if CONFIG.get("gank_stamp") == stamp:
+        return
+    base = (CONFIG.get("update_url") or "").rstrip("/")
+    if not base.startswith("https://"):
+        return
+    try:
+        neu = json.loads(fetch_url(f"{base}/gank_groups.json", timeout=30).decode("utf-8"))
+        # Nur uebernehmen, wenn es plausibel aussieht: eine kaputte oder leere
+        # Antwort darf die mitgelieferte Liste nicht ueberschreiben.
+        if not isinstance(neu.get("highsec"), dict) or not neu["highsec"].get("allianzen"):
+            raise ValueError("unbrauchbare Liste")
+        (APP_DIR / "gank_groups.json").write_text(
+            json.dumps(neu, ensure_ascii=False, indent=1), encoding="utf-8")
+        GANK_GROUPS = neu
+        GANK_IDX = gank_index(neu)
+    except urllib.error.HTTPError as e:
+        if e.code != 404:                  # 404 = noch keine Liste veroeffentlicht,
+            log_error("CN-UPD-01", "refresh_gank_list", e)   # das ist kein Fehler
+        return
+    except Exception as e:
+        log_error("CN-UPD-01", "refresh_gank_list", e)
+        return
+    with CONFIG_LOCK:
+        CONFIG["gank_stamp"] = stamp
+        save_config()
+
+
 def _ver(v):
     """Versionsstring in vergleichbares Tupel, '1.5.2' -> (1, 5, 2).
     Pro Segment nur den fuehrenden Zahlteil (so bleibt '1.6.0-rc1' vergleichbar)."""
@@ -1476,6 +1539,7 @@ class Ingest(threading.Thread):
                 self.hw_tick()
                 refresh_update_info()
                 count_ping()
+                refresh_gank_list()
             except Exception as e:
                 log_error("CN-LOG-05", "Ingest.run", e)
             time.sleep(2)
@@ -3281,6 +3345,7 @@ KMSTREAM = "https://killmail.stream/poll/"
 # den naechsten Undock ohne Bedeutung.
 PACK_NEAR_JUMPS = 10   # Annaeherung (Distanz sinkt) wird ab hier gemeldet
 PACK_INFO_JUMPS = 5    # "sitzt schon da"-Hinweis nur direkt in der Nachbarschaft
+PACK_WATCH_JUMPS = 15  # bekannte Gank-Gruppen (gank_groups.json) frueher melden
 
 
 class PackIntel(threading.Thread):
@@ -3456,12 +3521,13 @@ class PackIntel(threading.Thread):
                             (km.get("victim") or {}).get("ship_type_id"),
                             zkb.get("totalValue"),
                             json.dumps([[a.get("character_id"), a.get("corporation_id"),
-                                         a.get("ship_type_id")] for a in atk]),
+                                         a.get("ship_type_id"),
+                                         a.get("alliance_id")] for a in atk]),
                             1 if src == "sim" else 0))
                 DB.commit()
         self._cluster(kid, kt, sysid, score,
                       [[a.get("character_id"), a.get("corporation_id"),
-                        a.get("ship_type_id")] for a in atk])
+                        a.get("ship_type_id"), a.get("alliance_id")] for a in atk])
         return True
 
     def _cluster(self, kid, kt, sysid, score, atk):
@@ -3499,7 +3565,8 @@ class PackIntel(threading.Thread):
                 target = f"p{self._pid}"
                 self.packs[target] = {"members": set(), "kills": 0, "score": 0.0,
                                       "first": kt, "last": 0, "systems": [],
-                                      "corps": {}, "ships": {}, "value": 0.0,
+                                      "corps": {}, "allis": {}, "ships": {},
+                                      "value": 0.0,
                                       "kls": {}, "again": self._recognize(chars)}
             p = self.packs[target]
             dt = max(kt - p["last"], 0) if p["last"] else 0
@@ -3515,26 +3582,37 @@ class PackIntel(threading.Thread):
             for a in atk:
                 if a[1]:
                     p["corps"][a[1]] = p["corps"].get(a[1], 0) + 1
+                # Alte Zeilen in pack_kills haben nur drei Felder, deshalb Laenge
+                # pruefen statt blind auf a[3] zugreifen.
+                if len(a) > 3 and a[3]:
+                    p["allis"][a[3]] = p["allis"].get(a[3], 0) + 1
                 if a[2]:
                     p["ships"][a[2]] = p["ships"].get(a[2], 0) + 1
                 if a[0]:
                     p["kls"][a[0]] = p["kls"].get(a[0], 0) + 1
             for c in chars:
                 self.member_index[c] = target
-            # Annaeherungs-Warnung: die Kill-Distanz zum Zentrum sinkt. Gold ab
-            # 15 Spruengen, ROT (mit TTS) ab 3. Feuert je Rudel nur, wenn es
-            # NAEHER kommt als je zuvor gemeldet (kein Dauergeplapper).
+            # Annaeherungs-Warnung: die Kill-Distanz zum Zentrum sinkt. Feuert je
+            # Rudel nur, wenn es NAEHER kommt als je zuvor gemeldet (kein
+            # Dauergeplapper). Bekannte Gank-Gruppen werden frueher gemeldet.
             d = self.dist.get(sysid)
             if d is not None and self._visible(p):
                 prevd = p.get("dist")
                 p["dist_prev"] = prevd
                 p["dist"] = d
                 best = p.get("dist_alerted")
-                if (prevd is not None and d < prevd and d <= PACK_NEAR_JUMPS
+                flag = self._flagged(p)
+                grenze = PACK_WATCH_JUMPS if flag else PACK_NEAR_JUMPS
+                if (prevd is not None and d < prevd and d <= grenze
                         and (best is None or d < best)):
                     p["dist_alerted"] = d
                     sysn = (self.sysrow.get(sysid) or (None, "?"))[1]
-                    if d <= 3:
+                    if flag:
+                        alerts.push("pack" if d <= 5 else "packinfo", self._label(p),
+                                    f"🩸 Achtung, {flag['name']}: Rudel nähert sich, "
+                                    f"{prevd} → {d} Sprünge ({sysn}). "
+                                    f"{flag['miner']} Miner-Kills zuletzt.")
+                    elif d <= 3:
                         alerts.push("pack", self._label(p),
                                     f"🩸 Rudel [{self._label(p)}] nähert sich deinem "
                                     f"System: noch {d} Sprünge ({sysn})")
@@ -3561,7 +3639,33 @@ class PackIntel(threading.Thread):
         age = now - p["last"]
         return "aktiv" if age <= 1200 else ("abklingend" if age <= 5400 else "inaktiv")
 
+    def _flagged(self, p):
+        """Gehoert das Rudel zu einer bekannten Gank-Gruppe? Allianz zuerst:
+        die einschlaegigen Gruppen sind Allianzen (Safety., CODE.), auf
+        Corp-Ebene zerfallen sie in viele kleine Einheiten. NPC-Anfaengercorps
+        stehen bewusst nicht in der Liste, sonst gaelte jeder Neuling als
+        verdaechtig. Liefert den Eintrag aus gank_groups.json oder None."""
+        allis, corps = GANK_IDX.get(self._band()) or ({}, {})
+        for aid in (p.get("allis") or {}):
+            if aid in allis:
+                return dict(allis[aid], art="alliance")
+        for cid in (p.get("corps") or {}):
+            if cid in corps:
+                return dict(corps[cid], art="corp")
+        return None
+
+    def _band(self):
+        """Highsec oder Lowsec, bestimmt durch das EIGENE System (Userwunsch:
+        wer in Lowsec minert, will die Lowsec-Gruppen sehen, nicht die
+        Highsec-Ganker). sysrow: (region, name, sec, x, z, gates)."""
+        row = self.sysrow.get(self.center_id)
+        return "highsec" if (row and row[2] >= 0.45) else "lowsec"
+
     def _visible(self, p):
+        # Bekannte Gank-Gruppen immer zeigen, auch unter der Punkte-Schwelle:
+        # bei denen ist schon ein einzelner Kill in der Naehe eine Ansage.
+        if self._flagged(p):
+            return True
         return (p["score"] >= 50 and
                 (len(p["members"]) >= 2 and p["kills"] >= 2 or p["score"] >= 65))
 
@@ -3798,6 +3902,9 @@ class PackIntel(threading.Thread):
                     "last_system": syss[-1][0] if syss else "?",
                     "systems": [s for s, _ in syss],
                     "ships": [esi.type_name(t) or str(t) for t in ships],
+                    # Bekannte Gank-Gruppe? Dann Zahlen mitgeben, damit die
+                    # Oberflaeche belegen kann, warum sie Achtung schreibt.
+                    "achtung": self._flagged(p),
                     "top": [{"id": c, "name": self.names.get(c) or str(c), "kills": k}
                             for c, k in mem]})
                 for c, k in mem:
@@ -6115,6 +6222,9 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .pinm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pistat2{border-top:1px solid var(--line);margin-top:10px;padding-top:8px;font-size:12px}
 .pistat2>b{display:block;margin-bottom:5px}
+.pwatch{background:var(--red);color:#fff;border-radius:4px;padding:1px 6px;
+ font-size:11px;font-weight:700;letter-spacing:.4px;white-space:nowrap}
+html[data-skin=photon] .pwatch{border-radius:1px}
 .pinear{display:flex;align-items:baseline;gap:10px;padding:4px 0;flex-wrap:wrap}
 .pinearmid{min-width:200px}
 .pitier{display:inline-block;font-size:9px;font-weight:700;line-height:1;padding:2px 4px;border-radius:4px;margin-left:4px;vertical-align:middle;border:1px solid currentColor;opacity:.9}
@@ -7902,9 +8012,12 @@ function renderBlutspur(bs){
    const d=p.dist,cls=d!=null&&d<=3?'bad':(d!=null&&d<=10?'warn':'dim');
    const col=d!=null&&d<=3?'red':(d!=null&&d<=10?'gold':'dim');
    const trend=(p.dist_prev!=null&&p.dist_prev!==d)?`${p.dist_prev} → ${d}`:(d!=null?`${d}`:'?');
+   // Bekannte Gank-Gruppe: Markierung mit Beleg, bewusst als Zahl und nicht
+   // als Urteil ("Achtung, 58 Miner-Kills" statt "Ganker").
+   const w=p.achtung?`<span class="pwatch" title="${esc(p.achtung.name)}: ${p.achtung.miner} ${en?'miner kills':'Miner-Kills'}, ${p.achtung.hauler} ${en?'hauler kills':'Transporter-Kills'} ${en?'in':'in'} ${p.achtung.systeme} ${en?'systems':'Systemen'}">${en?'CAUTION':'ACHTUNG'} ${esc(p.achtung.name)} · ${p.achtung.miner} ${en?'miner kills':'Miner-Kills'}</span> `:'';
    return `<div class="pinear"><span class="pidot ${cls}"></span>
      <b style="color:var(--${col});flex:none">${trend} ${en?'jumps':'Sprünge'}</b>
-     <span class="pinearmid">[${esc(p.label)}] · ${p.members} ${en?'pilots':'Piloten'} · ${en?'last seen':'zuletzt'} ${packAge(now-p.last_seen,en)} in ${esc(p.last_system)}</span>
+     <span class="pinearmid">${w}[${esc(p.label)}] · ${p.members} ${en?'pilots':'Piloten'} · ${en?'last seen':'zuletzt'} ${packAge(now-p.last_seen,en)} in ${esc(p.last_system)}</span>
      <span class="sub">${(p.top||[]).slice(0,3).map(m=>`<a href="https://zkillboard.com/character/${m.id}/" target="_blank" rel="noopener">${esc(m.name)}</a>`).join(' · ')}</span></div>`;
   }).join('')+`</div>`;
  } else if(bs.mode!=='laden'){

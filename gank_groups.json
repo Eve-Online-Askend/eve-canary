@@ -1,0 +1,366 @@
+{
+ "stand": "2026-07-27",
+ "zeitraum": {
+  "von": "2026-06-12",
+  "bis": "2026-07-27"
+ },
+ "quelle": "zkillboard.com, Kills an Minern und Transportern",
+ "methode": "je Killmail einmal je Gruppe gezaehlt, NPC-Anfaengercorps aus, mindestens 5 Miner-Kills in 3 Systemen, getrennt nach Highsec und Lowsec",
+ "kills_gesamt": 17742,
+ "kills_passend": 1283,
+ "highsec": {
+  "allianzen": {
+   "99010569": {
+    "name": "Safety.",
+    "miner": 58,
+    "hauler": 1,
+    "systeme": 31,
+    "anteil": 0.25
+   },
+   "99014489": {
+    "name": "Heralds Of The Great One",
+    "miner": 42,
+    "hauler": 0,
+    "systeme": 16,
+    "anteil": 0.91
+   },
+   "99010089": {
+    "name": "Novus Ordo.",
+    "miner": 24,
+    "hauler": 6,
+    "systeme": 21,
+    "anteil": 0.34
+   },
+   "99010421": {
+    "name": "Something Really Pretentious",
+    "miner": 12,
+    "hauler": 21,
+    "systeme": 13,
+    "anteil": 0.27
+   },
+   "1354830081": {
+    "name": "Goonswarm Federation",
+    "miner": 15,
+    "hauler": 11,
+    "systeme": 13,
+    "anteil": 0.25
+   },
+   "99014873": {
+    "name": "The Sanguine Covenant",
+    "miner": 8,
+    "hauler": 17,
+    "systeme": 3,
+    "anteil": 0.24
+   },
+   "99014878": {
+    "name": "Fortuna Alliance",
+    "miner": 14,
+    "hauler": 0,
+    "systeme": 10,
+    "anteil": 0.93
+   },
+   "99002775": {
+    "name": "CODE.",
+    "miner": 13,
+    "hauler": 0,
+    "systeme": 8,
+    "anteil": 0.46
+   },
+   "99013674": {
+    "name": "Recklessly Tactical",
+    "miner": 7,
+    "hauler": 0,
+    "systeme": 7,
+    "anteil": 1.0
+   },
+   "99011227": {
+    "name": "Sorority",
+    "miner": 7,
+    "hauler": 0,
+    "systeme": 4,
+    "anteil": 1.0
+   },
+   "99010629": {
+    "name": "Safety. Net",
+    "miner": 5,
+    "hauler": 0,
+    "systeme": 4,
+    "anteil": 0.29
+   },
+   "99013739": {
+    "name": "Heirs To The Pleasurehub",
+    "miner": 5,
+    "hauler": 0,
+    "systeme": 4,
+    "anteil": 1.0
+   }
+  },
+  "corps": {
+   "98698455": {
+    "name": "Tsundere Death Squad",
+    "miner": 47,
+    "hauler": 0,
+    "systeme": 28,
+    "anteil": 0.23
+   },
+   "98620447": {
+    "name": "Possessed Wrecking Crew",
+    "miner": 42,
+    "hauler": 0,
+    "systeme": 16,
+    "anteil": 0.91
+   },
+   "98670023": {
+    "name": "Bigbadaboom.",
+    "miner": 29,
+    "hauler": 0,
+    "systeme": 20,
+    "anteil": 0.6
+   },
+   "98669819": {
+    "name": "Krigmakt",
+    "miner": 25,
+    "hauler": 0,
+    "systeme": 17,
+    "anteil": 0.56
+   },
+   "98336806": {
+    "name": "Amandla Legion",
+    "miner": 18,
+    "hauler": 2,
+    "systeme": 12,
+    "anteil": 0.95
+   },
+   "1324429368": {
+    "name": "NED-Clan",
+    "miner": 14,
+    "hauler": 0,
+    "systeme": 11,
+    "anteil": 0.61
+   },
+   "98753510": {
+    "name": "Servant Sisters of GRIEF",
+    "miner": 14,
+    "hauler": 0,
+    "systeme": 10,
+    "anteil": 0.4
+   },
+   "98796651": {
+    "name": "Kobold Krabhole.",
+    "miner": 13,
+    "hauler": 0,
+    "systeme": 11,
+    "anteil": 0.62
+   },
+   "98824136": {
+    "name": "New Eden Bureau Of Closeted Miner Investigations",
+    "miner": 13,
+    "hauler": 0,
+    "systeme": 11,
+    "anteil": 0.62
+   },
+   "98313729": {
+    "name": "Axis of Evil Emporium Imperium",
+    "miner": 10,
+    "hauler": 5,
+    "systeme": 8,
+    "anteil": 0.58
+   },
+   "98611861": {
+    "name": "New Order Mining Authority",
+    "miner": 12,
+    "hauler": 0,
+    "systeme": 10,
+    "anteil": 0.39
+   },
+   "98680335": {
+    "name": "Guiding Hand Princess Club",
+    "miner": 10,
+    "hauler": 0,
+    "systeme": 8,
+    "anteil": 0.34
+   },
+   "98663472": {
+    "name": "Epic Ganking Time",
+    "miner": 9,
+    "hauler": 0,
+    "systeme": 6,
+    "anteil": 0.41
+   },
+   "98808108": {
+    "name": "Bots are Bad",
+    "miner": 7,
+    "hauler": 0,
+    "systeme": 7,
+    "anteil": 0.5
+   },
+   "98669927": {
+    "name": "Kusionette Special Team",
+    "miner": 7,
+    "hauler": 0,
+    "systeme": 7,
+    "anteil": 0.26
+   },
+   "98730744": {
+    "name": "In Search of The Marauders Map",
+    "miner": 7,
+    "hauler": 0,
+    "systeme": 4,
+    "anteil": 1.0
+   },
+   "98812380": {
+    "name": "Gojo's Letter To Nanami",
+    "miner": 7,
+    "hauler": 0,
+    "systeme": 4,
+    "anteil": 1.0
+   },
+   "98810636": {
+    "name": "Aiko Danuja is ALWAYS your OFFICIAL High Princess",
+    "miner": 5,
+    "hauler": 0,
+    "systeme": 5,
+    "anteil": 0.21
+   },
+   "98824639": {
+    "name": "Aiko Danuja Is the Best B",
+    "miner": 5,
+    "hauler": 0,
+    "systeme": 4,
+    "anteil": 0.31
+   },
+   "98583746": {
+    "name": "Bad and Dumb",
+    "miner": 5,
+    "hauler": 0,
+    "systeme": 4,
+    "anteil": 0.62
+   },
+   "98790742": {
+    "name": "Yeet and Yoink Inc.",
+    "miner": 5,
+    "hauler": 0,
+    "systeme": 4,
+    "anteil": 1.0
+   }
+  }
+ },
+ "lowsec": {
+  "allianzen": {
+   "99008787": {
+    "name": "Transgress",
+    "miner": 10,
+    "hauler": 12,
+    "systeme": 5,
+    "anteil": 0.3
+   },
+   "99015054": {
+    "name": "War of the Flea",
+    "miner": 8,
+    "hauler": 7,
+    "systeme": 4,
+    "anteil": 0.29
+   },
+   "99014881": {
+    "name": "Drinking Habit",
+    "miner": 8,
+    "hauler": 3,
+    "systeme": 6,
+    "anteil": 0.22
+   },
+   "99005724": {
+    "name": "The Minions.",
+    "miner": 8,
+    "hauler": 1,
+    "systeme": 6,
+    "anteil": 0.23
+   },
+   "99007408": {
+    "name": "Come in and freak out",
+    "miner": 6,
+    "hauler": 2,
+    "systeme": 3,
+    "anteil": 0.47
+   },
+   "99009824": {
+    "name": "Domain Research and Mining Inst. Logistics",
+    "miner": 5,
+    "hauler": 3,
+    "systeme": 4,
+    "anteil": 0.2
+   },
+   "99011227": {
+    "name": "Sorority",
+    "miner": 5,
+    "hauler": 1,
+    "systeme": 5,
+    "anteil": 0.29
+   }
+  },
+  "corps": {
+   "98519867": {
+    "name": "Brother V Brother",
+    "miner": 15,
+    "hauler": 12,
+    "systeme": 5,
+    "anteil": 0.45
+   },
+   "98506105": {
+    "name": "HAMMER of TITAN",
+    "miner": 10,
+    "hauler": 14,
+    "systeme": 5,
+    "anteil": 0.3
+   },
+   "98263423": {
+    "name": "Armilies Corporation",
+    "miner": 13,
+    "hauler": 5,
+    "systeme": 9,
+    "anteil": 0.35
+   },
+   "98299671": {
+    "name": "Dark Chapter",
+    "miner": 10,
+    "hauler": 7,
+    "systeme": 5,
+    "anteil": 0.25
+   },
+   "98711678": {
+    "name": "Undocked Anyway",
+    "miner": 8,
+    "hauler": 3,
+    "systeme": 6,
+    "anteil": 0.26
+   },
+   "98778904": {
+    "name": "Clandestinauts",
+    "miner": 5,
+    "hauler": 7,
+    "systeme": 3,
+    "anteil": 0.41
+   },
+   "849473841": {
+    "name": "Beach Boys",
+    "miner": 8,
+    "hauler": 1,
+    "systeme": 6,
+    "anteil": 0.23
+   },
+   "98462095": {
+    "name": "Cargo Operations",
+    "miner": 6,
+    "hauler": 2,
+    "systeme": 3,
+    "anteil": 0.47
+   },
+   "98832220": {
+    "name": "Did he say dog fort",
+    "miner": 5,
+    "hauler": 0,
+    "systeme": 4,
+    "anteil": 0.5
+   }
+  }
+ }
+}
