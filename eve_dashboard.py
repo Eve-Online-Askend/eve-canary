@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.66.1"
+VERSION = "1.66.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -3607,6 +3607,7 @@ class PackIntel(threading.Thread):
                         and (best is None or d < best)):
                     p["dist_alerted"] = d
                     sysn = (self.sysrow.get(sysid) or (None, "?"))[1]
+                    self._resolve_ids([self._top_corp(p)])   # Name vor dem Alarm
                     if flag:
                         alerts.push("pack" if d <= 5 else "packinfo", self._label(p),
                                     f"🩸 Achtung, {flag['name']}: Rudel nähert sich, "
@@ -3694,10 +3695,35 @@ class PackIntel(threading.Thread):
             DB.execute("DELETE FROM pack_kills WHERE ts<?", (now - 7 * 86400,))
             DB.commit()
 
+    def _top_corp(self, p):
+        return max(p["corps"], key=p["corps"].get) if p["corps"] else None
+
+    def _top_alli(self, p):
+        a = p.get("allis") or {}
+        return max(a, key=a.get) if a else None
+
     def _label(self, p):
-        top = max(p["corps"], key=p["corps"].get) if p["corps"] else None
+        top = self._top_corp(p)
         nm = self.names.get(top) or (f"Corp #{top}" if top else "Unbekannt")
         return nm
+
+    def _resolve_ids(self, ids):
+        """Einzelne Namen sofort nachschlagen. Die Runden-Aufloesung haengt bis
+        zu 70s im Long-Poll fest; ein Alarm, der in dieser Luecke entsteht,
+        traegt sonst dauerhaft "Corp #98679090" statt des Namens, denn die
+        Alarmzeile wird nie neu gezeichnet."""
+        ids = [i for i in ids if isinstance(i, int) and i not in self.names]
+        if not ids:
+            return
+        try:
+            req = urllib.request.Request(
+                ESI_BASE + "/universe/names/", data=json.dumps(ids[:100]).encode(),
+                headers={"Content-Type": "application/json", "User-Agent": ESI_UA})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                for x in json.loads(r.read()):
+                    self.names[x["id"]] = x["name"]
+        except Exception:
+            pass
 
     def _resolve_names(self):
         ids = set()
@@ -3848,6 +3874,7 @@ class PackIntel(threading.Thread):
                 if d is None or d > PACK_INFO_JUMPS:
                     continue
                 self.info_alerted.add(pid)
+                self._resolve_ids([self._top_corp(p)])   # Name vor dem Alarm
                 mins = max(1, int((now - p["first"]) // 60))
                 sysn = (self.sysrow.get(p["systems"][-1][0]) or (None, "?"))[1] \
                     if p["systems"] else "?"
@@ -3892,6 +3919,8 @@ class PackIntel(threading.Thread):
                 mem = sorted(p["kls"].items(), key=lambda x: -x[1])[:8]
                 out["packs"].append({
                     "id": pid, "label": self._label(p), "again": p.get("again"),
+                    # IDs fuer die offiziellen Logos (images.evetech.net)
+                    "corp_id": self._top_corp(p), "alli_id": self._top_alli(p),
                     "dist": p.get("dist") if p.get("dist") is not None
                             else (self.dist.get(p["systems"][-1][0])
                                   if p["systems"] else None),
@@ -6222,6 +6251,7 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .pinm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pistat2{border-top:1px solid var(--line);margin-top:10px;padding-top:8px;font-size:12px}
 .pistat2>b{display:block;margin-bottom:5px}
+.pclogo{width:20px;height:20px;vertical-align:-5px;margin-right:5px;border-radius:3px}
 .pwatch{background:var(--red);color:#fff;border-radius:4px;padding:1px 6px;
  font-size:11px;font-weight:700;letter-spacing:.4px;white-space:nowrap}
 html[data-skin=photon] .pwatch{border-radius:1px}
@@ -8015,9 +8045,13 @@ function renderBlutspur(bs){
    // Bekannte Gank-Gruppe: Markierung mit Beleg, bewusst als Zahl und nicht
    // als Urteil ("Achtung, 58 Miner-Kills" statt "Ganker").
    const w=p.achtung?`<span class="pwatch" title="${esc(p.achtung.name)}: ${p.achtung.miner} ${en?'miner kills':'Miner-Kills'}, ${p.achtung.hauler} ${en?'hauler kills':'Transporter-Kills'} ${en?'in':'in'} ${p.achtung.systeme} ${en?'systems':'Systemen'}">${en?'CAUTION':'ACHTUNG'} ${esc(p.achtung.name)} · ${p.achtung.miner} ${en?'miner kills':'Miner-Kills'}</span> `:'';
+   // Offizielles Corp-Logo (bei Allianz-Rudeln zusaetzlich das Allianz-Logo),
+   // gleiche Bildquelle wie Portraits und Schiffsbilder.
+   const logo=p.corp_id?`<img class="pclogo" src="https://images.evetech.net/corporations/${encodeURIComponent(p.corp_id)}/logo?size=32" alt="" loading="eager">`:'';
+   const alogo=p.alli_id?`<img class="pclogo" src="https://images.evetech.net/alliances/${encodeURIComponent(p.alli_id)}/logo?size=32" alt="" title="${en?'alliance':'Allianz'}">`:'';
    return `<div class="pinear"><span class="pidot ${cls}"></span>
      <b style="color:var(--${col});flex:none">${trend} ${en?'jumps':'Sprünge'}</b>
-     <span class="pinearmid">${w}[${esc(p.label)}] · ${p.members} ${en?'pilots':'Piloten'} · ${en?'last seen':'zuletzt'} ${packAge(now-p.last_seen,en)} in ${esc(p.last_system)}</span>
+     <span class="pinearmid">${w}${logo}${alogo}[${esc(p.label)}] · ${p.members} ${en?'pilots':'Piloten'} · ${en?'last seen':'zuletzt'} ${packAge(now-p.last_seen,en)} in ${esc(p.last_system)}</span>
      <span class="sub">${(p.top||[]).slice(0,3).map(m=>`<a href="https://zkillboard.com/character/${m.id}/" target="_blank" rel="noopener">${esc(m.name)}</a>`).join(' · ')}</span></div>`;
   }).join('')+`</div>`;
  } else if(bs.mode!=='laden'){

@@ -1,5 +1,17 @@
 [
  {
+  "v": "1.66.2",
+  "d": "2026-07-27",
+  "de": [
+   "In der Blutspur steht jetzt das Corp-Logo neben jedem Rudel, bei Allianz-Rudeln zusätzlich das Allianz-Logo. Kommt vom offiziellen EVE-Bilddienst, genau wie die Charakterbilder.",
+   "Alarme zeigten manchmal eine rohe Nummer statt des Corp-Namens, etwa „Corp #98679090\". Grund war eine Lücke von bis zu 70 Sekunden, in der die Namensauflösung noch nicht durch war. Jetzt wird der Name direkt vor dem Alarm nachgeschlagen."
+  ],
+  "en": [
+   "Blood Trail now shows the corp logo next to each pack, plus the alliance logo for alliance packs. It comes from the official EVE image service, same as the character portraits.",
+   "Alerts sometimes showed a raw number instead of the corp name, like „Corp #98679090\". The cause was a gap of up to 70 seconds before name resolution had run. The name is now looked up right before the alert."
+  ]
+ },
+ {
   "v": "1.66.1",
   "d": "2026-07-27",
   "de": [
