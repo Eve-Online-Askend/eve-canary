@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.66.3"
+VERSION = "1.66.4"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -3655,12 +3655,16 @@ class PackIntel(threading.Thread):
         stehen bewusst nicht in der Liste, sonst gaelte jeder Neuling als
         verdaechtig. Liefert den Eintrag aus gank_groups.json oder None."""
         allis, corps = GANK_IDX.get(self._band()) or ({}, {})
+        # Die getroffene ID MUSS mit zurueck: das Wappen muss dieselbe Gruppe
+        # zeigen, die im Text steht. Vorher nahm das Bild die haeufigste Allianz
+        # des Rudels, und bei gemischten Rudeln stand dann "Goonswarm" im Text,
+        # waehrend das Wappen von Shadow Cartel danebenhing.
         for aid in (p.get("allis") or {}):
             if aid in allis:
-                return dict(allis[aid], art="alliance")
+                return dict(allis[aid], art="alliance", id=aid)
         for cid in (p.get("corps") or {}):
             if cid in corps:
-                return dict(corps[cid], art="corp")
+                return dict(corps[cid], art="corp", id=cid)
         return None
 
     def _band(self):
@@ -3704,11 +3708,13 @@ class PackIntel(threading.Thread):
             DB.commit()
 
     def _logo(self, p, flag=None):
-        """Bildpfad fuers Rudel: bei einer gelisteten Gank-ALLIANZ deren Wappen,
-        sonst das Corp-Logo. Der Alarm-Balken ist eine eigene Oberflaeche, die
-        Bilder aus der Karte tauchen dort nicht automatisch auf."""
-        if flag and flag.get("art") == "alliance" and self._top_alli(p):
-            return f"alliances/{self._top_alli(p)}"
+        """Bildpfad fuers Rudel. Ist die Gruppe gelistet, zeigt das Wappen GENAU
+        die getroffene Gruppe (sonst widersprechen sich Bild und Text), sonst
+        das Logo der dominanten Corp. Der Alarm-Balken ist eine eigene
+        Oberflaeche, die Bilder aus der Karte tauchen dort nicht auf."""
+        if flag and flag.get("id"):
+            return ("alliances/" if flag.get("art") == "alliance"
+                    else "corporations/") + str(flag["id"])
         c = self._top_corp(p)
         return f"corporations/{c}" if c else None
 
@@ -8073,7 +8079,10 @@ function renderBlutspur(bs){
    // Offizielles Corp-Logo (bei Allianz-Rudeln zusaetzlich das Allianz-Logo),
    // gleiche Bildquelle wie Portraits und Schiffsbilder.
    const logo=p.corp_id?`<img class="pclogo" src="https://images.evetech.net/corporations/${encodeURIComponent(p.corp_id)}/logo?size=32" alt="" loading="eager">`:'';
-   const alogo=p.alli_id?`<img class="pclogo" src="https://images.evetech.net/alliances/${encodeURIComponent(p.alli_id)}/logo?size=32" alt="" title="${en?'alliance':'Allianz'}">`:'';
+   // Bei einer gelisteten Gruppe deren Wappen zeigen, nicht die haeufigste
+   // Allianz des Rudels: sonst passt das Bild nicht zum Namen daneben.
+   const wid=p.achtung&&p.achtung.art==='alliance'?p.achtung.id:(p.achtung?null:p.alli_id);
+   const alogo=wid?`<img class="pclogo" src="https://images.evetech.net/alliances/${encodeURIComponent(wid)}/logo?size=32" alt="" title="${en?'alliance':'Allianz'}">`:'';
    return `<div class="pinear"><span class="pidot ${cls}"></span>
      <b style="color:var(--${col});flex:none">${trend} ${en?'jumps':'Sprünge'}</b>
      <span class="pinearmid">${w}${logo}${alogo}[${esc(p.label)}] · ${p.members} ${en?'pilots':'Piloten'} · ${en?'last seen':'zuletzt'} ${packAge(now-p.last_seen,en)} in ${esc(p.last_system)}</span>

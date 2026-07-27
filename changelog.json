@@ -1,5 +1,15 @@
 [
  {
+  "v": "1.66.4",
+  "d": "2026-07-27",
+  "de": [
+   "Wappen und Name gehörten nicht immer zusammen: bei gemischten Rudeln nannte der Alarm die Gank-Allianz, zeigte daneben aber das Wappen der Allianz, die im Rudel am häufigsten vertreten war. Jetzt zeigt das Bild genau die Gruppe, die auch im Text steht."
+  ],
+  "en": [
+   "Emblem and name did not always match: for mixed packs the alert named the gank alliance but showed the emblem of whichever alliance was most common in that pack. The image now shows exactly the group named in the text."
+  ]
+ },
+ {
   "v": "1.66.3",
   "d": "2026-07-27",
   "de": [
