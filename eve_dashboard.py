@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.66.4"
+VERSION = "1.66.5"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -6104,7 +6104,28 @@ padding:4px 11px;border-radius:20px;cursor:pointer;user-select:none}
  color:var(--dim);font-size:10px;padding:2px 6px;border-radius:20px;cursor:pointer;flex:none}
 .rolesel:hover{color:var(--txt);border-color:var(--cyan)}
 html[data-skin=photon] .rolesel{border-radius:1px}
-nav{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:14px}
+/* Elf Tabs passen in schmalen Fenstern nicht nebeneinander. Vorher wurde die
+   Leiste rechts einfach abgeschnitten ("PLA…" statt Planeten), jetzt laesst
+   sie sich seitlich schieben. */
+nav{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:14px;
+ overflow-x:auto;scrollbar-width:thin}
+nav::-webkit-scrollbar{height:4px}
+nav::-webkit-scrollbar-thumb{background:var(--line);border-radius:2px}
+nav span{white-space:nowrap;flex:none}
+/* Kopfleiste: je enger das Fenster, desto kompakter die Schalter. Sonst geht
+   sie auf vier Zeilen auf und frisst den halben Bildschirm, besonders wenn
+   jemand das Dashboard im Stream oder neben dem Spiel zeigt. */
+@media (max-width:1600px){
+ header .pill{font-size:10px;padding:4px 8px}
+ header h1{font-size:13px;letter-spacing:1px}
+ header .byline{display:none}
+}
+@media (max-width:1200px){
+ header{gap:6px}
+ header .pill{padding:3px 7px}
+ header h1{font-size:12px;letter-spacing:0}
+ nav span{padding:7px 11px}
+}
 .vinfo{background:var(--inset);border:1px solid var(--line);border-radius:8px;
  padding:8px 12px;margin:10px 0}
 .vitog{color:var(--cyan);font-size:12px;cursor:pointer;user-select:none}

@@ -1,5 +1,17 @@
 [
  {
+  "v": "1.66.5",
+  "d": "2026-07-27",
+  "de": [
+   "Kopfleiste und Tabs vertragen jetzt schmale Fenster. Die Schalter oben werden kompakter, statt auf mehrere Zeilen umzubrechen, und die Tab-Leiste lässt sich seitlich schieben, statt rechts abgeschnitten zu werden. Bei 1400 Pixel Breite spart das gut die Hälfte der Kopfhöhe.",
+   "Das fiel auf, als jemand Canary im Stream neben dem Spiel gezeigt hat: dort ging die Kopfleiste über vier Zeilen und der Planeten-Tab war nicht mehr lesbar."
+  ],
+  "en": [
+   "The header and tabs now cope with narrow windows. The switches at the top get more compact instead of wrapping onto several rows, and the tab bar scrolls sideways instead of being cut off. At 1400 pixels wide that saves about half the header height.",
+   "This showed up when someone presented Canary on stream next to the game: the header ran over four rows and the planets tab was no longer readable."
+  ]
+ },
+ {
   "v": "1.66.4",
   "d": "2026-07-27",
   "de": [
