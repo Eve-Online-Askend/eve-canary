@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.66.0"
+VERSION = "1.66.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -8929,6 +8929,11 @@ const EN_PATTERNS = [
   'Pack [$1] closing on your system: $2 jumps out ($3)'],
  [/Rudel \\[(.+?)\\] nähert sich: ([0-9]+) → ([0-9]+) Sprünge \\((.+?)\\)/,
   'Pack [$1] approaching: $2 to $3 jumps ($4)'],
+ // Bekannte Gank-Gruppe naehert sich. MUSS vor dem allgemeinen
+ // "([0-9.]+) Sprünge"-Muster weiter unten stehen: sonst ersetzt das zuerst
+ // nur die Sprungzahl und der Rest der Zeile bleibt deutsch stehen.
+ [/Achtung, (.+?): Rudel nähert sich, ([0-9]+) → ([0-9]+) Sprünge \\((.+?)\\)\\. ([0-9]+) Miner-Kills zuletzt\\./,
+  'Caution, $1: pack closing in, $2 to $3 jumps ($4). $5 miner kills recently.'],
  // Planetary-Industry-Ablauf-Alarm: distinkte Tokens, damit nichts anderes trifft.
  [/ · Extraktor abgelaufen/, ' · extractor expired'],
  [/ · Extraktor läuft in ([0-9]+) Std ab/, ' · extractor expires in $1 h'],

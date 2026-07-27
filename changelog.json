@@ -1,5 +1,15 @@
 [
  {
+  "v": "1.66.1",
+  "d": "2026-07-27",
+  "de": [
+   "Der neue Achtung-Alarm der Blutspur blieb im englischen Dashboard halb deutsch stehen. Übersetzung nachgetragen."
+  ],
+  "en": [
+   "The new Blood Trail caution alert stayed half German in the English dashboard. Translation added."
+  ]
+ },
+ {
   "v": "1.66.0",
   "d": "2026-07-27",
   "de": [
