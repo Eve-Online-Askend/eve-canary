@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.66.2"
+VERSION = "1.66.3"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -1123,10 +1123,15 @@ class Alerts:
         self.next_id = 1
         self.lock = threading.Lock()
 
-    def push(self, kind, char, text):
+    def push(self, kind, char, text, logo=None):
+        """logo: optionaler Pfad beim offiziellen Bilddienst, z.B.
+        "corporations/98679090" oder "alliances/1354830081". Nur Pfad, keine
+        volle Adresse: die baut das Frontend und prueft sie vorher gegen ein
+        festes Muster, damit ueber diesen Weg keine fremde URL ins Bild kommt."""
         with self.lock:
             self.items.append({"id": self.next_id, "ts": time.time(),
-                               "kind": kind, "char": char, "text": text})
+                               "kind": kind, "char": char, "text": text,
+                               "logo": logo})
             self.next_id += 1
 
     def resolve(self, kinds, char, min_age=0):
@@ -3612,15 +3617,18 @@ class PackIntel(threading.Thread):
                         alerts.push("pack" if d <= 5 else "packinfo", self._label(p),
                                     f"🩸 Achtung, {flag['name']}: Rudel nähert sich, "
                                     f"{prevd} → {d} Sprünge ({sysn}). "
-                                    f"{flag['miner']} Miner-Kills zuletzt.")
+                                    f"{flag['miner']} Miner-Kills zuletzt.",
+                                    self._logo(p, flag))
                     elif d <= 3:
                         alerts.push("pack", self._label(p),
                                     f"🩸 Rudel [{self._label(p)}] nähert sich deinem "
-                                    f"System: noch {d} Sprünge ({sysn})")
+                                    f"System: noch {d} Sprünge ({sysn})",
+                                    self._logo(p))
                     else:
                         alerts.push("packinfo", self._label(p),
                                     f"🩸 Rudel [{self._label(p)}] nähert sich: "
-                                    f"{prevd} → {d} Sprünge ({sysn})")
+                                    f"{prevd} → {d} Sprünge ({sysn})",
+                                    self._logo(p))
 
     def _recognize(self, chars):
         """14-Tage-Wiedererkennung: >=50% Mitglieder-Ueberlappung mit dem Archiv."""
@@ -3694,6 +3702,15 @@ class PackIntel(threading.Thread):
         with DB_LOCK:
             DB.execute("DELETE FROM pack_kills WHERE ts<?", (now - 7 * 86400,))
             DB.commit()
+
+    def _logo(self, p, flag=None):
+        """Bildpfad fuers Rudel: bei einer gelisteten Gank-ALLIANZ deren Wappen,
+        sonst das Corp-Logo. Der Alarm-Balken ist eine eigene Oberflaeche, die
+        Bilder aus der Karte tauchen dort nicht automatisch auf."""
+        if flag and flag.get("art") == "alliance" and self._top_alli(p):
+            return f"alliances/{self._top_alli(p)}"
+        c = self._top_corp(p)
+        return f"corporations/{c}" if c else None
 
     def _top_corp(self, p):
         return max(p["corps"], key=p["corps"].get) if p["corps"] else None
@@ -3799,7 +3816,8 @@ class PackIntel(threading.Thread):
                     if p["systems"] else "?"
             alerts.push("pack", sp.get("name") or low,
                         f"🩸 Bekanntes Rudel im Local: {sp.get('name') or low} gehört zu "
-                        f"Rudel [{label}] ({n} Piloten, zuletzt aktiv vor {mins} min in {sysn})")
+                        f"Rudel [{label}] ({n} Piloten, zuletzt aktiv vor {mins} min in {sysn})",
+                        self._logo(p) if p else None)
         # GOLD (Options-Schalter): Sprecher ist nur in der CORP eines aktiven
         # Rudels, stand selbst aber auf keiner Killmail (faengt Scouts).
         if CONFIG.get("pack_corp_alert"):
@@ -3853,7 +3871,8 @@ class PackIntel(threading.Thread):
                         self.near_alerted[key] = now
                         sysn = (self.sysrow.get(sid) or (None, "?"))[1]
                         alerts.push("packinfo", self._label(p),
-                                    f"🩸 Rudel [{self._label(p)}]: Kill in der Nähe ({sysn})")
+                                    f"🩸 Rudel [{self._label(p)}]: Kill in der Nähe ({sysn})",
+                                    self._logo(p))
 
     def _start_info(self, now):
         """Einmaliger Hinweis je Rudel, aber NUR wenn es wirklich in der Naehe
@@ -3880,7 +3899,8 @@ class PackIntel(threading.Thread):
                     if p["systems"] else "?"
                 alerts.push("packinfo", self._label(p),
                             f"🩸 Rudel [{self._label(p)}] ist {d} Sprünge entfernt aktiv "
-                            f"({sysn}, seit {mins} min, {len(p['members'])} Piloten)")
+                            f"({sysn}, seit {mins} min, {len(p['members'])} Piloten)",
+                            self._logo(p))
 
     def _bfs(self, start, depth):
         seen = {start}
@@ -6252,6 +6272,7 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .pistat2{border-top:1px solid var(--line);margin-top:10px;padding-top:8px;font-size:12px}
 .pistat2>b{display:block;margin-bottom:5px}
 .pclogo{width:20px;height:20px;vertical-align:-5px;margin-right:5px;border-radius:3px}
+.alogo{width:22px;height:22px;vertical-align:-6px;margin-right:7px;border-radius:3px}
 .pwatch{background:var(--red);color:#fff;border-radius:4px;padding:1px 6px;
  font-size:11px;font-weight:700;letter-spacing:.4px;white-space:nowrap}
 html[data-skin=photon] .pwatch{border-radius:1px}
@@ -6805,7 +6826,11 @@ function handleAlerts(){
  const now=Date.now()/1000;
  $('#alerts').innerHTML=list.filter(a=>now-a.ts<300).slice(-4).reverse().map(a=>{
   const t=new Date(a.ts*1000).toLocaleTimeString();
-  return `<div class="alert ${a.kind}">[${t}] ${esc(a.text)}</div>`}).join('');
+  // Wappen nur bauen, wenn der Pfad exakt passt. So kann ueber dieses Feld
+  // keine fremde Adresse ins Bild kommen, auch nicht ueber Umwege.
+  const lg=(a.logo&&/^(corporations|alliances)\\/[0-9]+$/.test(a.logo))
+   ? `<img class="alogo" src="https://images.evetech.net/${a.logo}/logo?size=32" alt="">` : '';
+  return `<div class="alert ${a.kind}">${lg}[${t}] ${esc(a.text)}</div>`}).join('');
  // Notification-API kann fehlen (aelterer Browser/WebView, kein Secure-Context).
  // Ohne diese Pruefung wuerde jeder tick() hier werfen und die Seite bliebe leer.
  const canNotify=('Notification' in window)&&Notification.permission==='granted';

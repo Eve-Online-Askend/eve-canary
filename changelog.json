@@ -1,5 +1,15 @@
 [
  {
+  "v": "1.66.3",
+  "d": "2026-07-27",
+  "de": [
+   "Die Wappen stehen jetzt auch im Alarm-Balken, nicht nur in der Blutspur-Karte. Bei einer bekannten Gank-Allianz zeigt der Alarm deren Allianz-Wappen, sonst das Corp-Logo."
+  ],
+  "en": [
+   "Logos now also appear in the alert bar, not just on the Blood Trail card. For a known gank alliance the alert shows its alliance emblem, otherwise the corp logo."
+  ]
+ },
+ {
   "v": "1.66.2",
   "d": "2026-07-27",
   "de": [
