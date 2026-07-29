@@ -16,8 +16,9 @@ das die Spiel-Logs auswertet und Miner warnt, bevor es teuer wird.
 
 ## Installation
 
-Siehe [README_INSTALL.md](README_INSTALL.md) — Kurzfassung: Python installieren,
-Dateien herunterladen, `start_dashboard.bat` doppelklicken.
+Für Windows, macOS und Linux. Siehe [README_INSTALL.md](README_INSTALL.md) —
+Kurzfassung: ein Installationsbefehl im Terminal (bzw. `start_dashboard.bat`
+doppelklicken unter Windows), Python wird bei Bedarf mit installiert.
 
 ## Updates
 

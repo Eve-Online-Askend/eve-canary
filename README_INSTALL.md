@@ -20,7 +20,32 @@ automatisch), laedt Canary nach `%LOCALAPPDATA%\EVE-Canary`, legt eine
 Desktop-Verknuepfung "EVE Canary" an und startet das Dashboard. Updates kommen
 danach wie gewohnt ueber den eingebauten Auto-Updater.
 
-Wer lieber von Hand installiert, folgt den nächsten beiden Abschnitten.
+Wer lieber von Hand installiert, folgt den nächsten Abschnitten.
+
+## macOS
+
+Ein Terminal öffnen (Spotlight, cmd+leertaste, „Terminal" tippen) und diesen
+Befehl einfügen:
+
+```
+curl -fsSL https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main/install-mac.sh | sh
+```
+
+Canary landet in `~/Library/Application Support/EVE-Canary`, legt auf dem
+Schreibtisch die Datei **„EVE Canary"** an (Doppelklick oder per Spotlight
+starten) und startet danach direkt. Gebraucht wird nur Python 3 — fehlt es,
+schlägt der Installer `xcode-select --install` (Apples Kommandozeilen-Tools)
+oder https://www.python.org/downloads/macos/ vor.
+
+Autostart beim Login und der Zwischenablage-Auto-Scan im Intel-Tab (Local per
+Cmd+A/Cmd+C kopieren) funktionieren wie unter Windows. Den Log-Ordner
+(`Dokumente/EVE/logs/Gamelogs`) findet Canary automatisch; wird nichts
+gefunden, den Pfad in den Optionen eintragen.
+
+**Deinstallieren:** Canary beenden, dann den Ordner
+`~/Library/Application Support/EVE-Canary`, die Datei „EVE Canary.command"
+auf dem Schreibtisch und — falls Autostart aktiviert war —
+`~/Library/LaunchAgents/io.evecanary.autostart.plist` löschen.
 
 ## Linux (EVE über Steam/Proton oder Wine)
 

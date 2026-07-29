@@ -858,14 +858,16 @@ def fetch_url(url, timeout=15):
         return r.read()
 
 
-AUTOSTART_OK = os.name == "nt" or sys.platform.startswith("linux")
-CLIPBOARD_OK = sys.platform == "win32"
+AUTOSTART_OK = os.name == "nt" or sys.platform.startswith("linux") or sys.platform == "darwin"
+CLIPBOARD_OK = sys.platform in ("win32", "darwin")
 
 
 def autostart_path():
     if os.name == "nt":
         return (Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows"
                 / "Start Menu" / "Programs" / "Startup" / "EVE-Canary-Autostart.vbs")
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "LaunchAgents" / "io.evecanary.autostart.plist"
     base = os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")
     return Path(base) / "autostart" / "eve-canary.desktop"
 
@@ -873,7 +875,8 @@ def autostart_path():
 def set_autostart(on):
     """Startet Canary beim Login still im Hintergrund.
     Windows: VBS im Autostart-Ordner (unterdrueckt das Konsolenfenster).
-    Linux: .desktop-Datei nach XDG-Standard, greift in GNOME/KDE/XFCE gleich."""
+    Linux: .desktop-Datei nach XDG-Standard, greift in GNOME/KDE/XFCE gleich.
+    macOS: LaunchAgent-plist, von launchd beim naechsten Login geladen."""
     if not AUTOSTART_OK:
         return
     p = autostart_path()
@@ -892,6 +895,19 @@ def set_autostart(on):
         # --no-browser: beim Login still starten, ohne Browser-Tab aufzupoppen
         p.write_text('CreateObject("WScript.Shell").Run '
                      f'"""{runner}"" ""{script}"" --no-browser", 0\n', encoding="utf-8")
+    elif sys.platform == "darwin":
+        p.write_text('<?xml version="1.0" encoding="UTF-8"?>\n'
+                     '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+                     '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+                     '<plist version="1.0"><dict>\n'
+                     '  <key>Label</key><string>io.evecanary.autostart</string>\n'
+                     '  <key>ProgramArguments</key><array>\n'
+                     f'    <string>{sys.executable}</string>\n'
+                     f'    <string>{script}</string>\n'
+                     '    <string>--no-browser</string>\n'
+                     '  </array>\n'
+                     '  <key>RunAtLoad</key><true/>\n'
+                     '</dict></plist>\n', encoding="utf-8")
     else:
         p.write_text("[Desktop Entry]\nType=Application\nName=EVE Canary\n"
                      f'Exec="{sys.executable}" "{script}" --no-browser\n'
@@ -3275,10 +3291,11 @@ NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9' .-]{1,36}$")
 
 
 class ClipWatch(threading.Thread):
-    """Beobachtet die Windows-Zwischenablage (opt-in): Kopiert man im EVE-Local
-    die Mitgliederliste (Strg+A, Strg+C), erkennt Canary die Namensliste und
-    startet automatisch den Bedrohungs-Scan — ohne Alt-Tab. Der Inhalt bleibt
-    lokal; nur als Pilotennamen erkannte Zeilen gehen zur Auflösung an ESI."""
+    """Beobachtet die Zwischenablage unter Windows und macOS (opt-in): Kopiert
+    man im EVE-Local die Mitgliederliste (Strg+A/Cmd+A, Strg+C/Cmd+C), erkennt
+    Canary die Namensliste und startet automatisch den Bedrohungs-Scan — ohne
+    Alt-Tab. Der Inhalt bleibt lokal; nur als Pilotennamen erkannte Zeilen
+    gehen zur Auflösung an ESI."""
     daemon = True
 
     def __init__(self):
@@ -3289,6 +3306,13 @@ class ClipWatch(threading.Thread):
 
     @staticmethod
     def read_clipboard():
+        if sys.platform == "darwin":
+            import subprocess
+            try:
+                r = subprocess.run(["pbpaste"], capture_output=True, timeout=2)
+            except (OSError, subprocess.SubprocessError):
+                return None
+            return r.stdout.decode("utf-8", errors="replace") if r.returncode == 0 else None
         import ctypes
         from ctypes import wintypes
         u32, k32 = ctypes.windll.user32, ctypes.windll.kernel32
@@ -3331,7 +3355,7 @@ class ClipWatch(threading.Thread):
         threat.request(self.names, alert="red")
 
     def run(self):
-        while sys.platform == "win32":
+        while CLIPBOARD_OK:
             time.sleep(2)
             try:
                 if CONFIG.get("clip_watch"):
@@ -6747,7 +6771,7 @@ function syncOpts(){
  document.querySelectorAll('#opts input[name=mode]').forEach(r=>r.checked=r.value===state.mode);
  document.querySelectorAll('#opts input[name=skin]').forEach(r=>r.checked=r.value===(document.documentElement.dataset.skin||''));
  $('#autostart').checked=!!state.autostart;
- // Autostart gibt es nur auf Windows und Linux — sonst Zeile ausblenden
+ // Autostart gibt es auf Windows, Linux und macOS — sonst Zeile ausblenden
  $('#autostartRow').hidden=state.autostart_ok===false;
  $('#countMe').checked=state.count_me!==false;
  // Log-Ordner nur befüllen, solange niemand darin tippt
@@ -7987,9 +8011,9 @@ function renderIntel(auto,bs){
   };
   $('#clipWatch').checked=!!(state&&state.clip_watch);
   $('#clipWatch').onchange=()=>post({action:'clip_watch',on:$('#clipWatch').checked});
-  // Zwischenablage-Auto-Scan gibt es nur unter Windows; sonst nur Einfügen von Hand
+  // Zwischenablage-Auto-Scan gibt es nur unter Windows und macOS; sonst nur Einfügen von Hand
   if(state&&state.clip_ok===false){$('#clipRow').hidden=true;
-   $('#intelIn').placeholder='Piloten-Namen einfügen … (Auto-Scan gibt es nur unter Windows)';}
+   $('#intelIn').placeholder='Piloten-Namen einfügen … (Auto-Scan gibt es nur unter Windows/macOS)';}
   if(intelNames.length)$('#intelIn').value=intelNames.join('\\n');
   document.querySelectorAll('.imode').forEach(p=>p.onclick=()=>{
    localStorage.setItem('intelMode',p.dataset.im);syncIntelMode();
@@ -8971,8 +8995,8 @@ const EN = {
  'Waiting for game log data … (Is the EVE client running? Enable „Log game to file" in the client.)',
 'Heavy Water im Laderaum (Stück). Nach dem Nachfüllen einfach Enter drücken, 0 entfernt die Anzeige':
  'Heavy Water in the cargo hold (units). After refilling just press Enter, 0 removes the display',
-'Piloten-Namen einfügen … (Auto-Scan gibt es nur unter Windows)':
- 'Paste pilot names … (auto-scan is Windows only)',
+'Piloten-Namen einfügen … (Auto-Scan gibt es nur unter Windows/macOS)':
+ 'Paste pilot names … (auto-scan is Windows/macOS only)',
 'Always-on-top Mini-Overlay (Chrome/Edge)':'Always-on-top mini overlay (Chrome/Edge)',
 'Open/Close Mini-Overlay':'Open/close mini overlay',
 '🤖 Drohnen liefern gerade kein Erz (gestoppt, voll oder auf dem Rückweg).':
