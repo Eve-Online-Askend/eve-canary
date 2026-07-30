@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.66.5"
+VERSION = "1.67.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -271,7 +271,11 @@ ACTIVE_WINDOW = 300  # ohne Log-Ereignis in den letzten X s gilt ein Char als in
 # Schweres Wasser pro Sekunde Kernlaufzeit (ESI-Dogma: Medium/Large Industrial Core,
 # T1 = 100/min, T2 = 200/min — gilt für Porpoise und Orca gleichermassen)
 HW_RATE = {"t1": 100 / 60.0, "t2": 200 / 60.0}
-HW_CORE_GAP = 300  # laengere Kompressions-Pause -> Kern gilt als aus (Verbrauch pausiert)
+# Laengere Kompressions-Pause -> Kern gilt als aus (Verbrauch pausiert). An 27
+# echten Logs gemessen (~13.000 Luecken): 99% der Pausen ohne Andocken liegen
+# unter 4 min, Andock-Pausen dauern im Median 11 min. 10 min trennt beides und
+# kostet nur 7 von 12.940 Luecken; das Andocken bremst zusaetzlich explizit.
+HW_CORE_GAP = 600
 
 TS_RE = re.compile(r"^\[ (\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2}):(\d{2}) \] \((\w+)\) (.*)$")
 HINT_RE = re.compile(r'hint="([^"]+)"')
@@ -1174,6 +1178,7 @@ class CharSession:
         self.tool_off = {}    # Werkzeug -> [Anzahl, letzter ts] — verfaellt nach 240s
         self.lasers_off = {}  # Laser -> {"since": ts, "before": m3/min} — bleibt bis Erholung/Dock/Klick
         self.core_timeline = []  # (ts, kumulative Kern-Sekunden) je Kompressions-Event
+        self.core_break = None   # letztes An-/Abdocken: davor und danach nicht ueberbruecken
         self.cargo_full = False
         self.cargo_ts = 0
         self.last_ore_ts = None   # fuer Stillstand-Erkennung
@@ -1221,6 +1226,8 @@ class CharSession:
         if k == "travel":
             # Angedockt oder im Warp: kein aktives Minen -> Verlustzaehler pausieren.
             self.traveling = ev["ts"]
+            if ev["key"] == "dock":
+                self.core_break = ev["ts"]   # an der Station laeuft kein Kern
             return
         if k == "ore":
             self.cargo_full = False
@@ -1296,19 +1303,13 @@ class CharSession:
         elif k == "fleet_compress":
             d = self.fleet_compress.setdefault(ev["key"], {})
             d[ev["raw"]] = d.get(ev["raw"], 0) + ev["value"]
+            # Auch fremde Piloten koennen nur ueber den Kompressionsdienst
+            # komprimieren, wenn der Kern laeuft: derselbe Beleg wie eigene
+            # Kompression, oft aber haeufiger (mehrere Miner liefern laufend).
+            self._core_heartbeat(ev["ts"])
         elif k == "compressed":
             self.cargo_full = False  # Kompression schafft Platz
-            # Kern-Laufzeit aus Kompressions-Kadenz: Luecken > HW_CORE_GAP
-            # zaehlen nicht (Kern war vermutlich aus / angedockt)
-            tl = self.core_timeline
-            cum = tl[-1][1] if tl else 0.0
-            if tl:
-                gap = ev["ts"] - tl[-1][0]
-                if 0 < gap < HW_CORE_GAP:
-                    cum += gap
-            tl.append((ev["ts"], cum))
-            if len(tl) > 6000:
-                del tl[:1000]
+            self._core_heartbeat(ev["ts"])
             self.compressed[ev["key"]] = self.compressed.get(ev["key"], 0) + ev["value"]
             self.hold_comp[ev["key"]] = self.hold_comp.get(ev["key"], 0) + ev["value"]
             raw_ore = ev.get("raw")
@@ -1324,6 +1325,7 @@ class CharSession:
                 # Station-Stopp: Karte beginnt einen neuen Trip, sonst zeigen
                 # ISK/Erz-Werte laengst abgeladene Ladung an. Historie (DB)
                 # bleibt davon unberuehrt.
+                self.core_break = ev["ts"]   # Abdocken: davor war der Kern aus
                 self.trips += 1
                 self.mining = {}
                 self.compressed = {}
@@ -1413,6 +1415,27 @@ class CharSession:
         if len(hist) < 5:
             return None
         return hist[len(hist) // 2], cur
+
+    def _core_heartbeat(self, ts):
+        """Ein Kompressions-Ereignis (eigenes oder eines Flottenmitglieds ueber
+        den Dienst) ist der einzige Log-Beleg, dass der Industriekern in diesem
+        Moment lief: ohne aktiven Kern lehnt EVE die Kompression rundweg ab.
+
+        Zwei Bremsen gegen Ueberzaehlung: Luecken > HW_CORE_GAP zaehlen nicht,
+        und ueber ein An-/Abdocken hinweg wird nie ueberbrueckt (an der Station
+        laeuft garantiert kein Kern). An echten Logs gemessen liegen 99% der
+        Luecken ohne Andocken unter 4 Minuten, waehrend Andock-Pausen im Median
+        11 Minuten dauern, deshalb trennt HW_CORE_GAP beides zuverlaessig."""
+        tl = self.core_timeline
+        cum = tl[-1][1] if tl else 0.0
+        if tl:
+            gap = ts - tl[-1][0]
+            docked = self.core_break is not None and self.core_break > tl[-1][0]
+            if 0 < gap < HW_CORE_GAP and not docked:
+                cum += gap
+        tl.append((ts, cum))
+        if len(tl) > 6000:
+            del tl[:1000]
 
     def core_active_since(self, t0):
         """Sekunden mit laufendem Industriekern seit t0 (aus Kompressions-Kadenz)."""
@@ -1573,11 +1596,16 @@ class Ingest(threading.Thread):
                     continue
                 rate = HW_RATE.get(e.get("core"), HW_RATE["t1"])
                 active = s.core_active_since(e.get("ts", now))
+                if active <= 0 and e.get("burn_on"):
+                    # Kein Kompressions-Beleg, aber ESI hat echten Verbrauch
+                    # gemessen: der Kern laeuft nachweislich, also die Zeit voll
+                    # anrechnen statt die Anzeige einfrieren zu lassen.
+                    active = max(0.0, now - e.get("ts", now))
                 if active > 0:
                     e["units"] = max(0.0, e.get("units", 0.0) - active * rate)
                     e["ts"] = now
                     changed = True
-                if (s.core_on() and not e.get("warned")
+                if ((s.core_on() or e.get("burn_on")) and not e.get("warned")
                         and e.get("units", 0.0) < rate * 1800):
                     e["warned"] = True
                     changed = True
@@ -2842,9 +2870,47 @@ class Esi(threading.Thread):
                 if prev.get("esi"):
                     hw.pop(name, None)
             else:
-                hw[name] = {"units": float(units), "fill": max(float(units), prev.get("fill") or 0),
-                            "core": core or prev.get("core", "t1"),
+                ctype = core or prev.get("core", "t1")
+                # HARTER BELEG statt Heuristik: Heavy Water verbraucht NUR der
+                # Industriekern. Zwei aufeinanderfolgende ESI-Messungen zeigen
+                # den echten Schwund, daraus folgt direkt, ob der Kern lief.
+                # Gemessen wird gegen "esi_units"/"esi_ts" (die ROHEN Werte der
+                # letzten Messung), nicht gegen "units": das wird zwischendurch
+                # von hw_tick lokal heruntergerechnet und waere als Basis falsch.
+                # Zeitbasis ist Last-Modified, nicht jetzt: ESI-Assets sind bis
+                # zu eine Stunde alt, sonst waere die Spanne zu gross gemessen.
+                rate = HW_RATE.get(ctype, HW_RATE["t1"])
+                burn_on, burn = bool(prev.get("burn_on")), None
+                used = float(prev.get("used") or 0.0)
+                fill = max(float(units), float(prev.get("fill") or 0))
+                p_units, p_ts = prev.get("esi_units"), prev.get("esi_ts")
+                if p_units is not None and p_ts is not None:
+                    span = asof - p_ts
+                    drop = float(p_units) - float(units)
+                    if span > 0:
+                        if drop > 0:
+                            # Gemessener Schwund: exakt der Verbrauch dieses
+                            # Intervalls, keine Schaetzung. Summiert ergibt das
+                            # den echten Verbrauch seit dem letzten Nachfuellen.
+                            used += drop
+                            secs = min(drop / rate, span)
+                            burn = {"secs": round(secs), "span": round(span),
+                                    "at": int(asof)}
+                            # Mindestens die halbe Spanne verbrannt -> Kern lief
+                            # durch. Weniger kann ein kurzes Anschalten sein,
+                            # das reicht als Beleg nicht.
+                            burn_on = secs >= 0.5 * span
+                        elif drop < 0:
+                            # Bestand gestiegen -> nachgefuellt. Neuer Tank,
+                            # Verbrauchszaehler beginnt von vorn; ueber das
+                            # Intervall selbst laesst sich nichts sagen.
+                            used, fill = 0.0, float(units)
+                        else:
+                            burn_on = False      # unveraendert -> kein Verbrauch
+                hw[name] = {"units": float(units), "fill": fill, "core": ctype,
                             "ts": time.time(), "ck": 0, "esi": True,
+                            "esi_units": float(units), "esi_ts": asof,
+                            "burn_on": burn_on, "burn": burn, "used": used,
                             "warned": bool(prev.get("warned")) and units <= prev.get("units", 0)}
 
     def value_cargo(self, name, c, items, ship_item_id, asof, nxt):
@@ -4587,10 +4653,27 @@ def snapshot_live():
             rate = HW_RATE.get(hw_cfg.get("core"), HW_RATE["t1"])
             rem = max(0.0, hw_cfg.get("units", 0.0)
                       - s.core_active_since(hw_cfg.get("ts", 0)) * rate)
-            on = s.core_on()
+            # Zwei unabhaengige Belege, dass der Kern laeuft: eine Kompression
+            # (sofort sichtbar, aber nur wenn jemand komprimiert) und gemessener
+            # ESI-Verbrauch (hart, aber bis zu eine Stunde alt). Keiner von
+            # beiden ist geraten. Fehlen beide, behaupten wir nichts.
+            burned = bool(hw_cfg.get("burn_on"))
+            on = s.core_on() or burned
+            # Verbrauch seit dem letzten Nachfuellen: die Summe der gemessenen
+            # ESI-Rueckgaenge (hart) plus das, was seit der letzten Messung
+            # lokal dazugekommen ist. Ohne ESI gibt es keine Messung, dann
+            # bleibt nur die Differenz zum gesetzten Anfangsbestand.
+            e_units = hw_cfg.get("esi_units")
+            if hw_cfg.get("esi") and e_units is not None:
+                used = float(hw_cfg.get("used") or 0.0) + max(0.0, float(e_units) - rem)
+            else:
+                used = max(0.0, float(hw_cfg.get("fill") or 0) - rem)
             hw = {"units": round(rem), "core": hw_cfg.get("core", "t1"), "on": on,
                   "fill": round(hw_cfg.get("fill") or 0), "esi": bool(hw_cfg.get("esi")),
-                  "min_left": round(rem / rate / 60),
+                  "min_left": round(rem / rate / 60), "used": round(used),
+                  "src": "log" if s.core_on() else ("esi" if burned else None),
+                  "quiet": (round(time.time() - s.core_timeline[-1][0])
+                            if s.core_timeline else None),
                   "eta": round(time.time() + rem / rate) if on else None}
         esi_char = (CONFIG.get("esi") or {}).get("chars", {}).get(s.name)
         # Aktiv/Online: ESI-Online-Status falls vorhanden (Scope granted), sonst
@@ -7427,6 +7510,28 @@ function renderLive(chars,summary){
  $('#grid').innerHTML=safeCards(chars);
  wireCards();
 }
+// Heavy-Water-Status, wenn gerade nicht komprimiert wird. EVE loggt NIRGENDS,
+// ob der Industriekern an ist; der einzige harte Beleg ist eine Kompression,
+// die ohne aktiven Kern gar nicht zustande kaeme. Bleibt es still, sagen wir
+// genau das, statt "Kern inaktiv" zu behaupten: wer nur selten komprimiert,
+// laesst den Kern trotzdem laufen.
+function hwQuiet(hw){
+ const m=hw&&hw.quiet!=null?Math.round(hw.quiet/60):null;
+ if(m==null)return lang==='en'?'no compression yet, consumption paused'
+                              :'noch keine Kompression, Verbrauch pausiert';
+ return lang==='en'?`no compression for ${m} min, consumption paused`
+                   :`seit ${m} min keine Kompression, Verbrauch pausiert`;
+}
+// Verbrauch seit dem letzten Nachfuellen. Mit EVE-Login ist das die Summe der
+// per ESI GEMESSENEN Rueckgaenge, also kein Schaetzwert; ohne Login bleibt nur
+// die Differenz zum selbst gesetzten Anfangsbestand.
+function hwUsedTitle(hw){
+ if(!hw||!hw.used)return '';
+ const v=fmt(hw.used), src=hw.esi?(lang==='en'?'measured via ESI':'per ESI gemessen')
+                               :(lang==='en'?'vs. the amount you entered':'gegenüber dem gesetzten Bestand');
+ return (lang==='en'?`Used since last refill: ${v} (${src})`
+                    :`Verbraucht seit dem letzten Nachfüllen: ${v} (${src})`);
+}
 // Mining-Karte eines Charakters (Erz, m³, Heavy Water, Lager, Gefahr).
 function miningCardHtml(c){
   const maxOre=Math.max(1,...c.ores.map(o=>o.isk));
@@ -7468,7 +7573,7 @@ function miningCardHtml(c){
        ?'<span style="color:var(--dim);font-size:12px;font-weight:400">keine Preisdaten</span>'
        :'~'+fmtM(c.hold_isk)+(c.hold_prices==='partial'?' <span style="color:var(--dim)" title="Für einzelne Erztypen fehlen Preisdaten">±</span>':'')
     }</div></div>
-    ${c.heavy_water||!c.esi_linked?`<div class="stat"><div class="l">Heavy Water${c.heavy_water?' · '+c.heavy_water.core.toUpperCase():''}${c.heavy_water&&c.heavy_water.esi?' · ESI':''} ${c.heavy_water&&c.heavy_water.esi?'':`<span class="hwset" data-char="${esc(c.name)}" data-core="${c.heavy_water?c.heavy_water.core:''}" data-fill="${c.heavy_water&&c.heavy_water.fill?c.heavy_water.fill:''}" title="Bestand im Laderaum setzen">⛽</span>`}</div><div class="v ${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'in':''}">${c.heavy_water?fmt(c.heavy_water.units):'—'}</div><div class="l">${c.heavy_water?(c.heavy_water.on&&c.heavy_water.eta?'reicht bis ~'+new Date(c.heavy_water.eta*1000).toLocaleTimeString().slice(0,5)+' Uhr':'Kern inaktiv, Verbrauch pausiert'):'per ⛽ setzen'}</div></div>`:''}
+    ${c.heavy_water||!c.esi_linked?`<div class="stat"><div class="l">Heavy Water${c.heavy_water?' · '+c.heavy_water.core.toUpperCase():''}${c.heavy_water&&c.heavy_water.esi?' · ESI':''} ${c.heavy_water&&c.heavy_water.esi?'':`<span class="hwset" data-char="${esc(c.name)}" data-core="${c.heavy_water?c.heavy_water.core:''}" data-fill="${c.heavy_water&&c.heavy_water.fill?c.heavy_water.fill:''}" title="Bestand im Laderaum setzen">⛽</span>`}</div><div class="v ${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'in':''}" title="${esc(hwUsedTitle(c.heavy_water))}">${c.heavy_water?fmt(c.heavy_water.units):'—'}</div><div class="l">${c.heavy_water?(c.heavy_water.on&&c.heavy_water.eta?'reicht bis ~'+new Date(c.heavy_water.eta*1000).toLocaleTimeString().slice(0,5)+' Uhr'+(c.heavy_water.src==='esi'?(lang==='en'?' (ESI usage)':' (ESI-Verbrauch)'):''):hwQuiet(c.heavy_water)):'per ⛽ setzen'}</div></div>`:''}
     <div class="stat"><div class="l">Bounties</div><div class="v grn">${fmtM(c.bounty)}</div></div>
     ${c.wallet!=null?`<div class="stat"><div class="l">Wallet (ESI)</div><div class="v grn">${fmtM(c.wallet)}</div></div>`:''}
     <div class="stat"><div class="l">Schaden raus/rein</div><div class="v"><span class="out">${fmtM(c.dmg_out)}</span> / <span class="in">${fmtM(c.dmg_in)}</span></div></div>
@@ -8762,7 +8867,8 @@ const EN = {
 'Gesamt nach Typ':'Total by type','Menge':'Amount','Typ':'Type','Stk':'units',
 'seit Abdocken':'since undocking','Asteroiden leergebaggert':'asteroids depleted',
 'Asteroiden leergebaggert · Preise':'asteroids depleted · prices',
-'per ⛽ setzen':'set via ⛽','Kern inaktiv, Verbrauch pausiert':'Core inactive, consumption paused',
+'per ⛽ setzen':'set via ⛽',
+'noch keine Kompression, Verbrauch pausiert':'no compression yet, consumption paused',
 'Bestand im Laderaum setzen':'Set amount in cargo hold','Spielzeit':'Played time',
 'Waffen-Bilanz':'Weapon balance','Noch keine Kampfdaten':'No combat data yet',
 'Nicht zuzuordnen':'Unassigned','Nicht erkannt':'Not recognised',

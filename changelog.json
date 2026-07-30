@@ -1,5 +1,23 @@
 [
  {
+  "v": "1.67.0",
+  "d": "2026-07-30",
+  "de": [
+   "Heavy Water: Canary erkennt jetzt zuverlässig, ob der Industriekern läuft. Vorher stand oft \"Kern inaktiv\" da, obwohl er lief, weil als einziger Beleg die eigene Kompression zählte. Jetzt zählt auch, wenn Flottenmitglieder über deinen Kompressionsdienst komprimieren, denn ohne aktiven Kern lässt EVE das gar nicht zu.",
+   "Zweiter, harter Beleg über den EVE-Login: Heavy Water verbraucht ausschließlich der Kern. Sinkt der Bestand zwischen zwei ESI-Messungen, lief er nachweislich. Damit wird auch der Verbrauch seit dem letzten Nachfüllen echt gemessen statt geschätzt, er steht als Hinweis auf der Heavy-Water-Kachel.",
+   "Die Pausen-Schwelle liegt jetzt bei 10 statt 5 Minuten, gemessen an 27 echten Logs: 99% der Pausen ohne Andocken sind kürzer als 4 Minuten, Andock-Pausen dauern im Median 11 Minuten. Über ein An- oder Abdocken hinweg wird nie weitergezählt, an der Station läuft garantiert kein Kern. Über alle Logs gerechnet erkennt Canary damit 487 Minuten Kern-Laufzeit mehr als vorher.",
+   "Ehrlicher formuliert: fehlt jeder Beleg, steht jetzt \"seit X min keine Kompression\" statt der Behauptung \"Kern inaktiv\". Der Kern kann laufen, ohne dass jemand komprimiert, und das weiß Canary dann eben nicht.",
+   "Installation: ore_refine.json und eve_map.json werden jetzt gleich mitinstalliert. Vorher fehlten sie bis zum ersten Update, dadurch starteten Erz-Verwertungs-Berater und die Blutspur-Karte verzögert."
+  ],
+  "en": [
+   "Heavy Water: Canary now reliably detects whether the industrial core is running. It often said \"core inactive\" while it was running, because only your own compression counted as evidence. Fleet members compressing through your compression service now count too, since EVE does not allow that without an active core.",
+   "A second, hard piece of evidence via the EVE login: heavy water is consumed by the core alone. If the stock drops between two ESI readings, the core demonstrably ran. That also makes the amount used since the last refill a real measurement instead of an estimate, shown as a hint on the Heavy Water tile.",
+   "The pause threshold is now 10 minutes instead of 5, measured against 27 real logs: 99% of pauses without docking are under 4 minutes, while docking breaks last 11 minutes on median. Runtime is never carried across a docking, since no core runs at a station. Across all logs Canary now recognises 487 more minutes of core runtime than before.",
+   "More honest wording: with no evidence at all it now says \"no compression for X min\" instead of claiming \"core inactive\". The core can run without anyone compressing, and in that case Canary simply does not know.",
+   "Installation: ore_refine.json and eve_map.json are now installed right away. They used to be missing until the first update, which delayed the ore processing advisor and the Blood Trail map."
+  ]
+ },
+ {
   "v": "1.66.5",
   "d": "2026-07-27",
   "de": [
