@@ -90,7 +90,7 @@ if (-not $py) {
 }
 Write-Host "  Python gefunden ($py)"
 
-$files = "eve_dashboard.py", "ore_types.json",
+$files = "eve_dashboard.py", "ore_types.json", "ore_refine.json", "eve_map.json",
          "mining_tools.json", "mission_sigs.json", "market_types.json", "README_INSTALL.md", "start_dashboard.bat", "uninstall.ps1"
 # Erst vollstaendig in einen Temp-Ordner laden, dann ans Ziel verschieben.
 # Bricht ein Download ab, bleibt keine halbe Installation am Zielort zurueck.
