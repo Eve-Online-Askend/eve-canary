@@ -767,15 +767,28 @@ function openDlModal() {
   const d = document.getElementById('dlModal');
   if (d && d.showModal) d.showModal();
 }
+// Nur die juengsten Versionen anzeigen, sonst waere der Changelog laenger als
+// der Rest der Seite zusammen (90+ Releases seit v1.0). Fuer den Rest gibt es
+// bereits den "Alle Versionen"-Link im Footer.
+const CHANGELOG_LIMIT = 15;
 function renderChangelog() {
   const box = document.getElementById('changelog');
   if (!box || !CL) return;
-  box.innerHTML = CL.map(e => {
+  const L = ({
+    de: 'Ältere Versionen auf GitHub ansehen',
+    fr: 'Voir les anciennes versions sur GitHub',
+    ru: 'Смотреть старые версии на GitHub',
+    en: 'See older versions on GitHub'
+  })[curLang] || 'See older versions on GitHub';
+  box.innerHTML = CL.slice(0, CHANGELOG_LIMIT).map(e => {
     const items = e[curLang] || e.en || e.de || [];
     return `<div class="clentry"><div class="clhead"><b>v${e.v}</b>`
       + `<span class="cldate">${e.d}</span></div><ul>`
       + items.map(t => `<li>${t}</li>`).join('') + `</ul></div>`;
-  }).join('');
+  }).join('')
+    + (CL.length > CHANGELOG_LIMIT
+      ? `<p class="tiny"><a href="https://github.com/Eve-Online-Askend/eve-canary/releases">${L}</a></p>`
+      : '');
 }
 // "Der Weg": sichtbare Meilenstein-Zeitachse aus MILESTONES, in der aktuellen Sprache.
 function renderJourney() {
