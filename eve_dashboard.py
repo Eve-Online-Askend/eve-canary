@@ -632,7 +632,7 @@ def load_config():
            "mode": "all", "install_ts": time.time(),
            "goal": None, "watchlist": [], "idle_warn": 240, "heavy_water": {},
            "clip_watch": False, "roles": {}, "log_texts": {},
-           "count_me": True, "ping": {},
+           "count_me": True, "ping": {}, "share_ore": False,
            "update_url": "https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main"}
     if CONFIG_PATH.exists():
         try:
@@ -940,6 +940,117 @@ def refresh_update_info():
 # --------------------------------------------- Installations-Zaehlung
 PING_REPO = "Eve-Online-Askend/eve-canary"
 PING_STATE = {"ts": 0.0}
+
+# Groessenklassen fuer die freiwillige Ertrags-Statistik (share_ore).
+# Bewusst dieselbe Mechanik wie die Zaehlmarken: es wird NICHTS gesendet, die
+# Installation holt lediglich EINE vorbereitete leere Datei, deren Name die
+# Klasse traegt. Aus GitHubs Download-Zaehler wird daraus ein Histogramm.
+# Halb-dekadisch (1, 3, 10, ...), damit wenige Klassen einen sehr weiten
+# Bereich abdecken. Veroeffentlicht wird spaeter die UNTERGRENZE je Klasse,
+# die Gesamtzahl ist damit ein belegbares Minimum und niemals geschoent.
+ORE_M3_BUCKETS = [10_000, 30_000, 100_000, 300_000, 1_000_000, 3_000_000,
+                  10_000_000, 30_000_000, 100_000_000, 300_000_000, 1_000_000_000]
+ORE_ISK_BUCKETS = [10_000_000, 30_000_000, 100_000_000, 300_000_000,
+                   1_000_000_000, 3_000_000_000, 10_000_000_000,
+                   30_000_000_000, 100_000_000_000]
+
+
+def ore_bucket(wert, klassen):
+    """Groesste Klasse, die 'wert' noch erreicht, sonst None (zu wenig)."""
+    treffer = None
+    for k in klassen:
+        if wert >= k:
+            treffer = k
+        else:
+            break
+    return treffer
+
+
+def ore_month_totals(stamp):
+    """m3 und ISK-Wert des angegebenen Monats ('2026-07') aus der Datenbank.
+
+    Bewertet wird wie ueberall sonst ueber ore_value(), also zum Preis der
+    komprimierten Variante. Ohne Preisdaten bleibt der ISK-Wert 0 und wird
+    dann auch nicht gemeldet, statt eine Zahl zu erfinden."""
+    with DB_LOCK:
+        rows = DB.execute("SELECT key, SUM(value) FROM daily "
+                          "WHERE kind='ore' AND substr(day,1,7)=? GROUP BY key",
+                          (stamp,)).fetchall()
+    if not rows:
+        return 0.0, 0.0
+    ids = set()
+    for ore, _ in rows:
+        t = ORE_TYPES.get(ore)
+        if t:
+            ids.add(t["typeID"])
+        comp = ORE_TYPES.get("Compressed " + ore)
+        if comp:
+            ids.add(comp["typeID"])
+    pm = {}
+    if ids:
+        try:
+            roh = hub_prices(str(CONFIG.get("region") or "10000002"), ids)
+            pm = {t: p[0] for t, p in roh.items()}   # Buy-Preis, wie in der Gesamt-Ansicht
+        except Exception:
+            pm = {}
+    m3 = isk = 0.0
+    for ore, units in rows:
+        i, v = ore_value(ore, units or 0.0, pm)
+        isk += i
+        m3 += v
+    return m3, isk
+
+
+def share_ore_ping():
+    """Freiwillige Ertrags-Statistik (Opt-in, Standard AUS).
+
+    Meldet EINMAL pro Monat, in welche Groessenklasse die Foerdermenge des
+    VORMONATS faellt, indem genau eine vorbereitete leere Datei geholt wird.
+    Gesendet wird dabei nichts: kein Wert, keine Kennung, keine Namen. Allein
+    die Wahl der Datei traegt die Groessenordnung, und GitHub zaehlt nur, wie
+    oft sie ausgeliefert wurde.
+
+    Bewusst der VORMONAT: nur der ist vollstaendig, der laufende waere je nach
+    Meldezeitpunkt beliebig unfertig und wuerde die Statistik nach unten
+    verzerren."""
+    if not CONFIG.get("share_ore", False):
+        return
+    now = time.time()
+    vor = time.gmtime(now - 15 * 86400)         # sicher im Vormonat gelandet
+    stamp = time.strftime("%Y-%m", vor) if time.gmtime(now).tm_mday >= 2 \
+        else time.strftime("%Y-%m", time.gmtime(now - 40 * 86400))
+    if (CONFIG.get("ping") or {}).get("ore") == stamp:
+        return
+    try:
+        m3, isk = ore_month_totals(stamp)
+    except Exception as e:
+        log_error("CN-UPD-01", "share_ore_ping(db)", e)
+        return
+    marken = []
+    b = ore_bucket(m3, ORE_M3_BUCKETS)
+    if b:
+        marken.append(f"ore-{stamp}-m3-{b}.json")
+    b = ore_bucket(isk, ORE_ISK_BUCKETS)
+    if b:
+        marken.append(f"ore-{stamp}-isk-{b}.json")
+    for name in marken:
+        try:
+            fetch_url(f"https://github.com/{PING_REPO}/releases/download/"
+                      f"stats-{stamp}/{name}", timeout=20)
+        except urllib.error.HTTPError as e:
+            if e.code != 404:      # 404 = Klasse nicht angelegt, gilt als erledigt
+                log_error("CN-UPD-01", "share_ore_ping", e)
+                return
+        except Exception as e:
+            log_error("CN-UPD-01", "share_ore_ping", e)
+            return
+    # Auch ohne Marken (zu wenig gefoerdert) als erledigt vermerken, sonst
+    # rechnet die Installation den Monat immer wieder neu durch.
+    with CONFIG_LOCK:
+        p = dict(CONFIG.get("ping") or {})
+        p["ore"] = stamp
+        CONFIG["ping"] = p
+        save_config()
 
 
 def count_ping():
@@ -1586,6 +1697,7 @@ class Ingest(threading.Thread):
                 self.hw_tick()
                 refresh_update_info()
                 count_ping()
+                share_ore_ping()
                 refresh_gank_list()
             except Exception as e:
                 log_error("CN-LOG-05", "Ingest.run", e)
@@ -5280,6 +5392,7 @@ def state_info():
             "idle_warn": int(CONFIG.get("idle_warn", 240) or 0),
             "clip_watch": bool(CONFIG.get("clip_watch")),
             "count_me": bool(CONFIG.get("count_me", True)),
+            "share_ore": bool(CONFIG.get("share_ore", False)),
             "autostart": AUTOSTART_OK and autostart_path().exists(),
             # Was diese Plattform kann — die Oberflaeche blendet den Rest aus,
             # damit auf Linux keine toten Schalter stehen.
@@ -5974,6 +6087,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         elif action == "count_me":
             CONFIG["count_me"] = bool(body.get("on"))
+        elif action == "share_ore":
+            CONFIG["share_ore"] = bool(body.get("on"))
         elif action == "clip_watch":
             CONFIG["clip_watch"] = bool(body.get("on"))
         elif action == "calc":
@@ -6618,6 +6733,8 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   <label id="autostartRow"><input type="checkbox" id="autostart"> Canary beim Systemstart automatisch mitstarten (still im Hintergrund, ohne Konsolenfenster)</label>
   <label><input type="checkbox" id="countMe"> Anonym mitzählen lassen</label>
   <div class="hint">Einmal am Tag holt Canary eine leere Datei von GitHub, deren Name nur das Datum enthält. Gesendet wird dabei nichts: keine Kennung, keine Namen, keine Spieldaten. GitHub zählt nur, wie oft die Datei ausgeliefert wurde, und daraus wird sichtbar, wie viele Installationen es gibt. Ohne diese Zahl gibt es keinen Nachweis für die EVE-Partnerschaft.</div>
+  <label><input type="checkbox" id="shareOre"> Erz-Erträge für die Homepage-Statistik freigeben</label>
+  <div class="hint">Standardmäßig aus. Ist es an, holt Canary einmal im Monat eine weitere leere Datei, deren Name die Größenklasse deiner Fördermenge des Vormonats trägt (zum Beispiel „ab 3 Mio m³"). Auch hier wird nichts gesendet: keine genaue Zahl, keine Kennung, keine Namen, keine Charaktere, keine Orte. Aus der Summe aller Klassen entsteht auf der Homepage eine Gesamtmenge, die bewusst als Untergrenze ausgewiesen wird. Deine eigenen Zahlen bleiben auf deinem Rechner, verraten wird allein die Größenordnung.</div>
   <div style="margin-top:10px"><b>Main-Charakter (für das Teilen-Bild)</b>
    <div class="hint">Welcher Name auf dem geteilten Mining-Fleet-Power-Bild steht. Automatisch = Command Ship, sonst der aktivste Miner.</div>
    <select id="mainCharSel" class="pill" style="margin-top:4px"><option value="">Automatisch</option></select></div>
@@ -6704,6 +6821,7 @@ const savedSkin=localStorage.getItem('skin');
 if(savedSkin)document.documentElement.dataset.skin=savedSkin;
 $('#autostart').onchange=async()=>{const r=await post({action:'autostart',on:$('#autostart').checked});if(r.state)state=r.state;syncOpts();};
 $('#countMe').onchange=()=>post({action:'count_me',on:$('#countMe').checked});
+$('#shareOre').onchange=()=>post({action:'share_ore',on:$('#shareOre').checked});
 $('#saveLogDir').onclick=async()=>{
  const st=$('#logDirStat');st.textContent='Prüfe …';st.style.color='';
  const r=await post({action:'log_dir',path:$('#logDir').value});
@@ -6876,6 +6994,7 @@ function syncOpts(){
  // Autostart gibt es nur auf Windows und Linux — sonst Zeile ausblenden
  $('#autostartRow').hidden=state.autostart_ok===false;
  $('#countMe').checked=state.count_me!==false;
+ $('#shareOre').checked=state.share_ore===true;
  // Log-Ordner nur befüllen, solange niemand darin tippt
  if(document.activeElement!==$('#logDir'))$('#logDir').value=state.log_dir||'';
  // Aufgetretene Fehlercodes auflisten, damit man sie schicken kann
