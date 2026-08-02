@@ -1,5 +1,23 @@
 [
  {
+  "v": "1.70.0",
+  "d": "2026-08-02",
+  "de": [
+   "Neuer Tab „🧾 Wallet Buddy\": deine Wallet-Auswertung mit Schwerpunkt Handel. Oben das Handelsergebnis, darunter die Tabelle „Was wirklich einbringt\" mit Einkaufs- und Verkaufsdurchschnitt, Marge in Prozent und Gewinn je Item, dazu deine offenen Orders und eine Aufstellung, woher deine ISK insgesamt kommen, von Bounty über Verträge bis Planeten.",
+   "Der Gewinn wird per FIFO gerechnet, jeder Verkauf gegen deine ältesten Einkäufe desselben Typs. Als Handel zählen nur Sachen, die du gekauft UND verkauft hast. Sonst stünde dein eigener gekaufter Hulk als 200-Millionen-Verlust in der Bilanz, obwohl du ihn einfach fliegst.",
+   "Gebühren werden anteilig auf die gehandelte Menge umgelegt, zu deinen tatsächlichen Sätzen aus dem Wallet. Die insgesamt gebuchten Broker- und Steuerbeträge betreffen ja auch Ware, die noch im Bestand liegt. Und geparktes Geld für offene Kauforders (market_escrow) fließt bewusst nicht in die Rechnung, das ist keine Ausgabe, sondern kommt zurück.",
+   "Hinter jedem Item steht ein kleiner Kopier-Knopf, der den Namen in die Zwischenablage legt, praktisch zum Einfügen in die Marktsuche im Client.",
+   "Braucht keine neue Berechtigung für die Auswertung selbst, die Transaktionen hängen am schon vorhandenen Wallet-Zugriff. Nur für die offenen Orders kommt ein Recht dazu, dafür den Charakter einmal neu verbinden (⚙ Optionen)."
+  ],
+  "en": [
+   "New tab \"🧾 Wallet Buddy\": your wallet analysis focused on trading. The trading result up top, then the table \"What actually earns\" with average buy and sell price, margin in percent and profit per item, plus your open orders and a breakdown of where your ISK comes from overall, from bounty through contracts to planets.",
+   "Profit is computed FIFO, every sale against your oldest buys of the same type. Only items you both bought AND sold count as trading. Otherwise the Hulk you bought to fly would sit in the books as a 200 million loss.",
+   "Fees are apportioned to the traded volume at your own effective rates taken from the wallet, because the broker and tax amounts booked overall also cover goods still sitting in stock. Money parked for open buy orders (market_escrow) is deliberately left out, it is not an expense, it comes back.",
+   "Every item has a small copy button that puts the name on your clipboard, handy for pasting into the market search in the client.",
+   "The analysis itself needs no new permission, transactions hang off the wallet access you already granted. Only the open orders add one, so reconnect the character once (⚙ Options) if you want those."
+  ]
+ },
+ {
   "v": "1.69.0",
   "d": "2026-08-02",
   "de": [

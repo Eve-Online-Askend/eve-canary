@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.69.0"
+VERSION = "1.70.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -714,6 +714,15 @@ CREATE TABLE IF NOT EXISTS threat(name TEXT PRIMARY KEY COLLATE NOCASE,
     data TEXT, ts REAL);
 CREATE TABLE IF NOT EXISTS journal(id INTEGER, char TEXT, ts REAL,
     ref_type TEXT, amount REAL, party TEXT, PRIMARY KEY(id, char));
+-- Wallet Buddy: eigene Tabellen, damit die Missions-Logik oben unberuehrt
+-- bleibt (die speichert nur positive Betraege ausgewaehlter ref_types).
+-- trades = jede Order-Ausfuehrung, wbook = das VOLLSTAENDIGE Journal inklusive
+-- negativer Posten, denn genau dort stehen Broker-Gebuehr und Steuer.
+CREATE TABLE IF NOT EXISTS trades(tx_id INTEGER, char TEXT, ts REAL,
+    type_id INTEGER, qty INTEGER, price REAL, is_buy INTEGER, loc_id INTEGER,
+    PRIMARY KEY(tx_id, char));
+CREATE TABLE IF NOT EXISTS wbook(id INTEGER, char TEXT, ts REAL,
+    ref_type TEXT, amount REAL, PRIMARY KEY(id, char));
 CREATE TABLE IF NOT EXISTS item_ids(name TEXT PRIMARY KEY COLLATE NOCASE, type_id INTEGER);
 CREATE TABLE IF NOT EXISTS missions(mid TEXT PRIMARY KEY, char_id TEXT, char TEXT,
     start_ts REAL, end_ts REAL, system TEXT, dmg_out INTEGER, dmg_in INTEGER,
@@ -2430,7 +2439,8 @@ ESI_BASE = "https://esi.evetech.net/latest"
 ESI_SCOPES = ("esi-assets.read_assets.v1 esi-location.read_ship_type.v1 "
               "esi-wallet.read_character_wallet.v1 esi-location.read_online.v1 "
               "esi-ui.open_window.v1 esi-skills.read_skills.v1 "
-              "esi-industry.read_character_mining.v1 esi-planets.manage_planets.v1")
+              "esi-industry.read_character_mining.v1 esi-planets.manage_planets.v1 "
+              "esi-markets.read_character_orders.v1")
 # Mining-Skills, die den Erzertrag heben (typeID -> Ertrag je Stufe).
 # Mining und Astrogeology sind die beiden Kern-Ertragsskills (+5% je Stufe).
 MINING_YIELD_SKILLS = {3386: 0.05,   # Mining
@@ -3175,7 +3185,50 @@ class Esi(threading.Thread):
                 DB.execute("INSERT OR IGNORE INTO journal VALUES(?,?,?,?,?,?,?)",
                            (e["id"], name, ts, e["ref_type"], e["amount"],
                             self.party_names.get(e.get("first_party_id"), ""), ctx))
+            # Wallet Buddy: das VOLLSTAENDIGE Journal mitschreiben, ungefiltert
+            # und mit Vorzeichen. Nur so sind Broker-Gebuehr und Steuer sichtbar.
+            for e in data:
+                ts = datetime.fromisoformat(
+                    e["date"].replace("Z", "+00:00")).timestamp()
+                DB.execute("INSERT OR IGNORE INTO wbook VALUES(?,?,?,?,?)",
+                           (e["id"], name, ts, e.get("ref_type") or "?",
+                            e.get("amount") or 0.0))
             DB.commit()
+        try:
+            self.sync_trades(name, c)
+        except Exception as e:
+            log_error("CN-ESI-01", "sync_trades", e)
+
+    def sync_trades(self, name, c):
+        """Markt-Transaktionen einlesen (Wallet Buddy).
+
+        Braucht KEINEN neuen Scope: /wallet/transactions/ haengt am selben
+        esi-wallet.read_character_wallet.v1 wie das Journal. ESI liefert die
+        letzten ~1000 Ausfuehrungen, die lokale Historie waechst darueber
+        hinaus, weil jede Zeile eine feste transaction_id hat."""
+        data, _ = self._get(c, f"/characters/{c['char_id']}/wallet/transactions/")
+        with DB_LOCK:
+            for t in data:
+                ts = datetime.fromisoformat(
+                    t["date"].replace("Z", "+00:00")).timestamp()
+                DB.execute("INSERT OR IGNORE INTO trades VALUES(?,?,?,?,?,?,?,?)",
+                           (t["transaction_id"], name, ts, t["type_id"],
+                            t["quantity"], t["unit_price"],
+                            1 if t["is_buy"] else 0, t.get("location_id") or 0))
+            DB.commit()
+        # Offene Orders sind optional: sie haengen an einem ZUSAETZLICHEN Scope.
+        # Fehlt er (Char noch nicht neu verbunden), bleibt der Rest nutzbar.
+        try:
+            orders, _ = self._get(c, f"/characters/{c['char_id']}/orders/")
+            c["orders"] = [{"type_id": o["type_id"], "buy": bool(o.get("is_buy_order")),
+                            "price": o["price"], "rest": o.get("volume_remain") or 0,
+                            "total": o.get("volume_total") or 0,
+                            "loc_id": o.get("location_id") or 0,
+                            "issued": o.get("issued")} for o in orders]
+            c["orders_scope"] = True
+        except Exception:
+            c.pop("orders", None)
+            c["orders_scope"] = False
 
     def resolve_mine_systems(self):
         """System-Namen aus dem Belt-Bounty-Filter zu IDs auflösen (öffentlich)."""
@@ -5663,6 +5716,143 @@ def query_profiles():
     return out
 
 
+# Journal-Posten, die im Wallet Buddy als Einnahme-/Ausgabe-Kategorie
+# zusammengefasst werden. Alles nicht Genannte landet unter "sonstiges".
+WB_GROUPS = {
+    "handel": ("market_transaction",),
+    "gebuehren": ("brokers_fee", "transaction_tax", "market_provider_tax",
+                  "market_fine_paid"),
+    "bounty": ("bounty_prizes", "bounty_prize", "agent_mission_reward",
+               "agent_mission_time_bonus_reward"),
+    "industrie": ("industry_job_tax", "reprocessing_tax", "manufacturing"),
+    "planeten": ("planetary_import_tax", "planetary_export_tax",
+                 "planetary_construction"),
+    "vertraege": ("contract_price", "contract_reward", "contract_brokers_fee",
+                  "contract_sales_tax", "contract_deposit",
+                  "contract_price_payment_corp"),
+    "geschenke": ("player_donation", "corporation_account_withdrawal"),
+    "skills": ("skill_purchase",),
+    "versicherung": ("insurance",),
+}
+# NICHT in die Einnahmen-/Ausgaben-Rechnung: market_escrow ist kein Verlust,
+# sondern nur Geld, das fuer offene Kauforders geparkt wird und zurueckkommt,
+# sobald die Order zieht oder storniert wird. Ohne diese Ausnahme sieht jedes
+# Wallet eines Traders nach einer Katastrophe aus (hier: -2,0 Mrd).
+WB_IGNORE = ("market_escrow", "contract_deposit_refund", "market_escrow_refund")
+
+
+def query_wallet(days=30):
+    """Wallet Buddy: vollstaendige Wallet-Analyse mit Schwerpunkt Handel.
+
+    Handelsgewinn wird per FIFO gerechnet: jeder Verkauf wird gegen die
+    aeltesten noch offenen Kaeufe desselben Typs verrechnet. Das ist die
+    uebliche Methode und die einzige, die ohne Zusatzangaben auskommt.
+
+    WICHTIG und bewusst getrennt: Typen, die nur GEKAUFT und nie verkauft
+    wurden, sind meist Eigenbedarf (das eigene Schiff, Module, Munition) und
+    keine Handelsware. Sie wuerden die Bilanz sonst voellig verzerren, ein
+    gekaufter Hulk sieht sonst aus wie ein Verlust von 200 Mio. Deshalb weist
+    Canary den Handelsgewinn NUR ueber echte Rundlaeufe aus und listet den
+    Rest getrennt als Bestand."""
+    seit = time.time() - days * 86400
+    with DB_LOCK:
+        tx = DB.execute("SELECT char, ts, type_id, qty, price, is_buy, loc_id "
+                        "FROM trades WHERE ts>=? ORDER BY ts", (seit,)).fetchall()
+        jr = DB.execute("SELECT ref_type, SUM(amount), COUNT(*) FROM wbook "
+                        "WHERE ts>=? GROUP BY ref_type", (seit,)).fetchall()
+    gekauft = {t[2] for t in tx if t[5]}
+    verkauft = {t[2] for t in tx if not t[5]}
+    rund = gekauft & verkauft            # nur diese gelten als Handel
+
+    lager = {}                            # type_id -> [[menge, preis], ...]
+    stat = {}                             # type_id -> Kennzahlen
+    for _, ts, tid, qty, price, is_buy, _loc in tx:
+        s = stat.setdefault(tid, {"kauf_st": 0, "kauf_isk": 0.0, "verk_st": 0,
+                                  "verk_isk": 0.0, "gewinn": 0.0, "matched": 0,
+                                  "letzte": 0.0})
+        s["letzte"] = max(s["letzte"], ts)
+        if is_buy:
+            lager.setdefault(tid, []).append([qty, price])
+            s["kauf_st"] += qty
+            s["kauf_isk"] += qty * price
+        else:
+            s["verk_st"] += qty
+            s["verk_isk"] += qty * price
+            rest = qty
+            while rest > 0 and lager.get(tid):
+                los = lager[tid][0]
+                n = min(rest, los[0])
+                s["gewinn"] += n * (price - los[1])
+                s["matched"] += n
+                los[0] -= n
+                rest -= n
+                if los[0] == 0:
+                    lager[tid].pop(0)
+
+    posten = []
+    for tid, s in stat.items():
+        if tid not in rund or not s["matched"]:
+            continue
+        ek = s["kauf_isk"] / s["kauf_st"] if s["kauf_st"] else 0.0
+        vk = s["verk_isk"] / s["verk_st"] if s["verk_st"] else 0.0
+        posten.append({"type_id": tid, "name": esi.type_name(tid) or str(tid),
+                       "stk": s["matched"], "ek": round(ek, 2), "vk": round(vk, 2),
+                       "gewinn": round(s["gewinn"]),
+                       "marge": round(100 * s["gewinn"] / (ek * s["matched"]), 1)
+                       if ek and s["matched"] else 0.0,
+                       "letzte": int(s["letzte"])})
+    posten.sort(key=lambda p: -p["gewinn"])
+
+    grupp, sonst = {}, 0.0
+    steuer = broker = 0.0
+    for ref, summe, n in jr:
+        if ref in WB_IGNORE:
+            continue
+        if ref == "transaction_tax":
+            steuer += -(summe or 0.0)
+        elif ref == "brokers_fee":
+            broker += -(summe or 0.0)
+        ziel = next((g for g, refs in WB_GROUPS.items() if ref in refs), None)
+        if ziel:
+            grupp[ziel] = round(grupp.get(ziel, 0.0) + (summe or 0.0))
+        else:
+            sonst += summe or 0.0
+    grupp["sonstiges"] = round(sonst)
+
+    brutto = sum(p["gewinn"] for p in posten)
+    # Gebuehren ANTEILIG auf die Rundlauf-Ware umlegen. Die Brutto-Marge stammt
+    # nur aus Rundlaeufen, die gebuchten Gebuehren dagegen aus dem GESAMTEN
+    # Marktgeschaeft (auch Eigenbedarf und noch nicht verkaufter Bestand).
+    # Beides direkt zu verrechnen waere Aepfel gegen Birnen. Der effektive Satz
+    # kommt aus dem eigenen Wallet, ist also keine geratene Pauschale.
+    m_kauf = sum(s["kauf_isk"] for s in stat.values())
+    m_verk = sum(s["verk_isk"] for s in stat.values())
+    r_kauf = sum(s["kauf_isk"] for t, s in stat.items() if t in rund)
+    r_verk = sum(s["verk_isk"] for t, s in stat.items() if t in rund)
+    s_satz = steuer / m_verk if m_verk else 0.0            # Steuer faellt beim Verkauf an
+    b_satz = broker / (m_kauf + m_verk) if (m_kauf + m_verk) else 0.0
+    geb = s_satz * r_verk + b_satz * (r_kauf + r_verk)
+    wallets = {n: c.get("wallet") for n, c in
+               ((CONFIG.get("esi") or {}).get("chars") or {}).items()
+               if c.get("wallet") is not None}
+    orders = []
+    for n, c in ((CONFIG.get("esi") or {}).get("chars") or {}).items():
+        for o in (c.get("orders") or []):
+            orders.append({**o, "char": n,
+                           "name": esi.type_name(o["type_id"]) or str(o["type_id"])})
+    orders.sort(key=lambda o: -(o["price"] * o["rest"]))
+    scope = any(c.get("orders_scope") for c in
+                ((CONFIG.get("esi") or {}).get("chars") or {}).values())
+    return {"tage": days, "posten": posten[:40],
+            "gruppen": grupp, "brutto": round(brutto), "gebuehren": round(geb),
+            "netto": round(brutto - geb),
+            "geb_gesamt": round(steuer + broker),
+            "satz_steuer": round(100 * s_satz, 2), "satz_broker": round(100 * b_satz, 2),
+            "kauf": round(r_kauf), "verkauf": round(r_verk),
+            "wallets": wallets, "orders": orders[:30], "orders_scope": scope,
+            "trades": len(tx)}
+
+
 def query_vault():
     """Erz-Schatzkammer: Erz-Bestand aller ESI-verbundenen Chars (aus den Assets),
     Gesamtsumme (m³/ISK) plus Aufschluesselung je Char und Standort."""
@@ -5932,6 +6122,8 @@ class Handler(BaseHTTPRequestHandler):
                 data["vault"]["advisor"] = query_ore_advisor(CONFIG["region"])
             elif view == "planeten":
                 data["planeten"] = query_planeten()
+            elif view == "wallet":
+                data["wallet"] = query_wallet()
             elif view == "timeline":
                 data["timeline"] = query_timelines()
             elif view == "profil":
@@ -6391,6 +6583,12 @@ padding:8px 16px;font-weight:600;cursor:pointer;font-size:13px}
 color:var(--dim);cursor:pointer;font-weight:400;margin-left:8px}
 .laserok:hover{color:var(--txt);border-color:var(--txt)}
 .hwset{cursor:pointer;opacity:.55}
+/* Item-Namen kopieren (Wallet Buddy): direkt in die EVE-Suche einfuegbar.
+   Erscheint dezent und wird beim Ueberfahren der Zeile deutlich. */
+.cpy{cursor:pointer;opacity:.35;margin-left:7px;user-select:none;font-size:11px}
+tr:hover .cpy{opacity:.8}
+.cpy:hover{opacity:1}
+.cpy.ok{opacity:1;color:var(--grn,#4fd47f)}
 .hwset:hover{opacity:1}
 tr.lvl-red td{background:rgba(232,86,79,.10)}
 tr.lvl-yellow td{background:rgba(228,179,76,.07)}
@@ -6660,6 +6858,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="profil">🪪 Steckbrief</span>
  <span data-v="planeten">🪐 Planeten</span>
  <span data-v="vault">💎 Erz-Schatzkammer</span>
+ <span data-v="wallet">🧾 Wallet Buddy</span>
  <span data-v="rechner">💰 ISKray</span>
 </nav>
 <div id="viewinfo"></div>
@@ -6867,6 +7066,8 @@ const VIEW_INFO={
   q:'Daten: die Datenbank von Canary für das Netz. Mit EVE-Login Bild, Kontostand und Schiff. Corp und Sicherheitsstatus über öffentliche Quellen.'},
  planeten:{d:'Deine Planeten-Fabriken. Wann läuft ein Extraktor ab, was liegt im Lager, was wird produziert und was ist es wert.',
   q:'Daten: nur über den EVE-Login. Achtung: die Lagerstände sind so aktuell, wie du die Kolonie zuletzt im Spiel geöffnet hast. Die Ablaufzeiten stimmen dagegen immer.'},
+ wallet:{d:'Dein Wallet unter der Lupe, mit Schwerpunkt Handel. Welches Item bringt wirklich Gewinn, was hast du dafür bezahlt und wofür verkauft, und was fressen Gebühren und Steuer. Dazu die Herkunft deiner Einnahmen insgesamt, von Bounty bis Vertrag.',
+  q:'Daten: nur über den EVE-Login, aus deinem Wallet-Journal und deinen Markt-Transaktionen. Beides ist bis zu eine Stunde alt. Gewinn wird per FIFO gerechnet, also jeder Verkauf gegen deine ältesten Einkäufe desselben Typs. Als Handel zählen nur Sachen, die du gekauft UND verkauft hast, sonst würde dein eigenes Schiff als Riesenverlust dastehen.'},
  vault:{d:'Dein Erz in den Stationen, und der Rat, was sich mehr lohnt: roh verkaufen, komprimiert verkaufen oder einschmelzen.',
   q:'Daten: EVE-Login für den Bestand, Marktpreise von Fuzzwork. Der Einschmelz-Wert ist vorsichtig gerechnet, dein echter Erlös liegt eher darüber.'},
  rechner:{d:'Ein Preisrechner. Frachtraum im Spiel markieren, kopieren, hier einfügen, und du siehst sofort, was es an welchem Handelsplatz wert ist.',
@@ -8542,6 +8743,82 @@ function renderProfiles(list){
  }
  $('#grid').innerHTML=html;
 }
+// Wallet Buddy: Handels-Auswertung plus Herkunft der Einnahmen.
+function renderWallet(w){
+ w=w||{};
+ const en=lang==='en';
+ if(!w.trades){
+  $('#grid').innerHTML='<div class="card" style="grid-column:1/-1"><div class="sub">'
+   +(en?'No wallet data yet. Connect your characters via the EVE login (⚙ Options). After the first sync (up to 1 hour) your trades appear here.'
+       :'Noch keine Wallet-Daten. Verbinde deine Chars per EVE-Login (⚙ Optionen). Nach dem ersten Abgleich (bis zu 1 Stunde) erscheinen hier deine Geschäfte.')+'</div></div>';
+  return;
+ }
+ const g=w.gruppen||{};
+ const kachel=(l,v,cls)=>`<div class="stat"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div></div>`;
+ const vz=n=>(n>=0?'grn':'in');
+ let h=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">🧾 ${en?'Trading result':'Handelsergebnis'}</span>
+   <span class="sub">· ${en?'last':'letzte'} ${w.tage} ${en?'days':'Tage'} · ${w.trades} ${en?'executions':'Ausführungen'}</span></div>
+  <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+   ${kachel(en?'Gross margin':'Brutto-Marge',fmtM(w.brutto)+' ISK',vz(w.brutto))}
+   ${kachel(en?'Fees & tax':'Gebühren & Steuer','-'+fmtM(w.gebuehren)+' ISK','in')}
+   ${kachel(en?'Net':'Netto',fmtM(w.netto)+' ISK',vz(w.netto))}
+   ${kachel(en?'Turnover':'Umsatz',fmtM(w.verkauf)+' ISK')}
+  </div>
+  <div class="sub" style="margin-top:8px">${en
+    ? `Counted as trading are only items you both bought and sold (FIFO). Items you only bought are listed separately as stock, otherwise your own ship would look like a huge loss. Fees are apportioned to that traded volume at your own effective rates (${w.satz_steuer}% tax on sales, ${w.satz_broker}% broker), because the ${fmtM(w.geb_gesamt)} ISK booked overall also covers stock you have not sold yet.`
+    : `Als Handel zählen nur Sachen, die du gekauft UND verkauft hast (FIFO). Nur Gekauftes steht getrennt als Bestand, sonst sähe dein eigenes Schiff wie ein Riesenverlust aus. Die Gebühren sind anteilig auf diese Handelsmenge umgelegt, zu deinen echten Sätzen (${w.satz_steuer}% Steuer auf Verkäufe, ${w.satz_broker}% Broker), denn die insgesamt gebuchten ${fmtM(w.geb_gesamt)} ISK betreffen auch Bestand, den du noch nicht verkauft hast.`}</div>
+ </div>`;
+ const P=w.posten||[];
+ if(P.length){
+  h+=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">🏆 ${en?'What actually earns':'Was wirklich einbringt'}</span></div>
+   <table><tr><th>${en?'Item':'Item'}</th><th class="r">${en?'Qty':'Stk'}</th>
+   <th class="r">${en?'Bought Ø':'Einkauf Ø'}</th><th class="r">${en?'Sold Ø':'Verkauf Ø'}</th>
+   <th class="r">${en?'Margin':'Marge'}</th><th class="r">${en?'Profit':'Gewinn'}</th></tr>`
+   +P.map(p=>`<tr><td>${esc(p.name)}<span class="cpy" data-cpy="${esc(p.name)}" title="${en?'Copy name':'Namen kopieren'}">⧉</span></td><td class="r">${fmt(p.stk)}</td>
+     <td class="r">${fmtP(p.ek)}</td><td class="r">${fmtP(p.vk)}</td>
+     <td class="r ${p.marge>=0?'grn':'in'}">${p.marge.toFixed(1)}%</td>
+     <td class="r ${p.gewinn>=0?'grn':'in'}"><b>${fmtM(p.gewinn)}</b></td></tr>`).join('')
+   +`</table></div>`;
+ }
+ const O=w.orders||[];
+ if(O.length){
+  h+=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">📋 ${en?'Open orders':'Offene Orders'}</span>
+    <span class="sub">· ${O.length}</span></div>
+   <table><tr><th>${en?'Item':'Item'}</th><th>${en?'Side':'Seite'}</th><th class="r">${en?'Price':'Preis'}</th>
+   <th class="r">${en?'Remaining':'Rest'}</th><th class="r">${en?'Value':'Wert'}</th></tr>`
+   +O.map(o=>`<tr><td>${esc(o.name)}<span class="cpy" data-cpy="${esc(o.name)}" title="${en?'Copy name':'Namen kopieren'}">⧉</span></td>
+     <td><span class="${o.buy?'grn':'out'}">${o.buy?(en?'Buy':'Kauf'):(en?'Sell':'Verkauf')}</span></td>
+     <td class="r">${fmtP(o.price)}</td><td class="r">${fmt(o.rest)}/${fmt(o.total)}</td>
+     <td class="r">${fmtM(o.price*o.rest)}</td></tr>`).join('')+`</table></div>`;
+ }else if(!w.orders_scope){
+  h+=`<div class="card" style="grid-column:1/-1"><div class="sub">${en
+    ? '📋 Open orders need one extra permission. Reconnect your character in ⚙ Options to see them here.'
+    : '📋 Für offene Orders fehlt eine Berechtigung. Verbinde deinen Charakter in ⚙ Optionen neu, dann stehen sie hier.'}</div></div>`;
+ }
+ const rows=Object.entries(g).filter(([k,v])=>v).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
+ if(rows.length){
+  const L=en?{handel:'Market trades',gebuehren:'Fees & tax',bounty:'Bounty & missions',industrie:'Industry',
+              planeten:'Planetary',vertraege:'Contracts',versicherung:'Insurance',sonstiges:'Other'}
+           :{handel:'Markt-Geschäfte',gebuehren:'Gebühren & Steuer',bounty:'Bounty & Missionen',industrie:'Industrie',
+             planeten:'Planeten',vertraege:'Verträge',versicherung:'Versicherung',sonstiges:'Sonstiges'};
+  h+=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">💼 ${en?'Where the ISK comes from':'Woher die ISK kommen'}</span>
+    <span class="sub">· ${en?'whole wallet':'ganzes Wallet'}, ${w.tage} ${en?'days':'Tage'}</span></div>
+   <table><tr><th>${en?'Category':'Kategorie'}</th><th class="r">ISK</th></tr>`
+   +rows.map(([k,v])=>`<tr><td>${L[k]||k}</td><td class="r ${v>=0?'grn':'in'}">${fmtM(v)}</td></tr>`).join('')
+   +`</table></div>`;
+ }
+ $('#grid').innerHTML=h;
+ // Kopier-Knoepfe: EIN Handler am Container statt einer je Zeile, sonst waeren
+ // sie nach dem naechsten Neuzeichnen (2s-Takt) wieder weg.
+ $('#grid').onclick=ev=>{
+  const b=ev.target.closest('.cpy'); if(!b)return;
+  const txt=b.dataset.cpy||'';
+  navigator.clipboard.writeText(txt).then(()=>{
+   const alt=b.textContent; b.textContent='✓'; b.classList.add('ok');
+   setTimeout(()=>{b.textContent=alt;b.classList.remove('ok');},900);
+  }).catch(()=>{});
+ };
+}
 function renderVault(v){
  v=v||{}; const chars=v.chars||[];
  if(!chars.length){
@@ -9009,7 +9286,11 @@ const EN = {
 'Standardmäßig zeigt Live nur eingeloggte Charaktere. Hier einschalten, um auch Offline-Charaktere zu sehen.':
  'Live normally shows only logged-in characters. Turn this on to see offline ones too.',
 'Live':'Live','30 Tage':'30 days','Gesamt':'All time','Analyse':'Analysis',
-'🚦 Intel':'🚦 Intel','🎯 Missionen':'🎯 Missions','💰 ISKray':'💰 ISKray','🕑 Verlauf':'🕑 Timeline','🪪 Steckbrief':'🪪 Character sheet','🪐 Planeten':'🪐 Planets',
+'🚦 Intel':'🚦 Intel','🎯 Missionen':'🎯 Missions','💰 ISKray':'💰 ISKray','🕑 Verlauf':'🕑 Timeline','🪪 Steckbrief':'🪪 Character sheet','🪐 Planeten':'🪐 Planets','🧾 Wallet Buddy':'🧾 Wallet Buddy',
+'Dein Wallet unter der Lupe, mit Schwerpunkt Handel. Welches Item bringt wirklich Gewinn, was hast du dafür bezahlt und wofür verkauft, und was fressen Gebühren und Steuer. Dazu die Herkunft deiner Einnahmen insgesamt, von Bounty bis Vertrag.':
+ 'Your wallet under the microscope, focused on trading. Which item actually turns a profit, what you paid and what you sold it for, and how much fees and tax eat up. Plus where your income comes from overall, from bounty to contract.',
+'Daten: nur über den EVE-Login, aus deinem Wallet-Journal und deinen Markt-Transaktionen. Beides ist bis zu eine Stunde alt. Gewinn wird per FIFO gerechnet, also jeder Verkauf gegen deine ältesten Einkäufe desselben Typs. Als Handel zählen nur Sachen, die du gekauft UND verkauft hast, sonst würde dein eigenes Schiff als Riesenverlust dastehen.':
+ 'Data: through the EVE login only, from your wallet journal and your market transactions. Both are up to an hour old. Profit is computed FIFO, every sale against your oldest buys of the same type. Only items you both bought AND sold count as trading, otherwise your own ship would show up as a huge loss.',
 '🔎 Einzel-Item':'🔎 Single item','📦 Frachtraum':'📦 Cargo',
 '⚙ Optionen':'⚙ Options','◱ Overlay':'◱ Overlay',
 '◱ Mini-Overlay öffnen/schließen':'Open/close mini overlay',
@@ -9466,6 +9747,7 @@ async function tick(){
    else if(view==='planeten')renderPlaneten(d.planeten);
    else if(view==='timeline')renderTimeline(d.timeline);
    else if(view==='profil')renderProfiles(d.profiles);
+   else if(view==='wallet')renderWallet(d.wallet);
    else if(view==='rechner')renderRechner();
    else renderTotal(d.total);
   }
