@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.68.0"
+VERSION = "1.69.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -9242,6 +9242,9 @@ const EN = {
 'Daten: Marktpreise von Fuzzwork für die großen Handelsplätze. Der Text, den du einfügst, bleibt auf deinem Rechner.':
  'Data: market prices from Fuzzwork for the major trade hubs. The text you paste stays on your machine.',
 'Anonym mitzählen lassen':'Let this install be counted anonymously',
+'Erz-Erträge für die Homepage-Statistik freigeben':'Share ore yields for the homepage statistics',
+'Standardmäßig aus. Ist es an, holt Canary einmal im Monat eine weitere leere Datei, deren Name die Größenklasse deiner Fördermenge des Vormonats trägt (zum Beispiel „ab 3 Mio m³"). Auch hier wird nichts gesendet: keine genaue Zahl, keine Kennung, keine Namen, keine Charaktere, keine Orte. Aus der Summe aller Klassen entsteht auf der Homepage eine Gesamtmenge, die bewusst als Untergrenze ausgewiesen wird. Deine eigenen Zahlen bleiben auf deinem Rechner, verraten wird allein die Größenordnung.':
+ 'Off by default. When on, Canary fetches one more empty file once a month whose name carries the size band of what you mined last month (for example "from 3M m³ up"). Nothing is sent here either: no exact figure, no identifier, no names, no characters, no locations. Adding up all the bands produces a total on the homepage that is deliberately published as a lower bound. Your own numbers stay on your machine, only the order of magnitude is revealed.',
 'Einmal am Tag holt Canary eine leere Datei von GitHub, deren Name nur das Datum enthält. Gesendet wird dabei nichts: keine Kennung, keine Namen, keine Spieldaten. GitHub zählt nur, wie oft die Datei ausgeliefert wurde, und daraus wird sichtbar, wie viele Installationen es gibt. Ohne diese Zahl gibt es keinen Nachweis für die EVE-Partnerschaft.':
  'Once a day Canary fetches an empty file from GitHub whose name only contains the date. Nothing is sent: no identifier, no names, no game data. GitHub merely counts how often that file was served, which shows how many installations exist. Without that number there is no proof for the EVE partnership.',
 'Rolle zuweisen (für die Filter oben)':'Assign role (for the filters above)',

@@ -1,5 +1,21 @@
 [
  {
+  "v": "1.69.0",
+  "d": "2026-08-02",
+  "de": [
+   "Neu und freiwillig: „Erz-Erträge für die Homepage-Statistik freigeben\" in den Optionen unter „System & Daten\". Standardmäßig AUS. Ist es an, holt Canary einmal im Monat eine weitere leere Datei, deren Name die Größenklasse deiner Fördermenge des Vormonats trägt, zum Beispiel „ab 3 Mio m³\".",
+   "Auch dabei wird nichts gesendet: keine genaue Zahl, keine Kennung, keine Namen, keine Charaktere, keine Orte. Es ist dieselbe Mechanik wie beim Installations-Zähler, verraten wird allein die Größenordnung. Deine eigenen Zahlen bleiben auf deinem Rechner.",
+   "Auf der Homepage entsteht daraus der neue Bereich „Gemeinsam gefördert\": wie viele m³ und wie viel ISK alle freigebenden Installationen zusammen erwirtschaftet haben. Gezählt wird von jeder Klasse nur die Untergrenze, die Zahl ist also bewusst ein Minimum und niemals geschönt. Wer nichts freigibt, taucht darin gar nicht auf.",
+   "Gemeldet wird immer der abgeschlossene Vormonat, denn nur der ist vollständig. Der laufende Monat würde die Statistik je nach Meldezeitpunkt nach unten verzerren."
+  ],
+  "en": [
+   "New and voluntary: \"Share ore yields for the homepage statistics\" in the options under \"System & data\". OFF by default. When on, Canary fetches one more empty file once a month whose name carries the size band of what you mined last month, for example \"from 3M m³ up\".",
+   "Nothing is sent here either: no exact figure, no identifier, no names, no characters, no locations. It is the same mechanism as the installation counter, only the order of magnitude is revealed. Your own numbers stay on your machine.",
+   "On the homepage this feeds the new section \"Mined together\": how many m³ and how much ISK all sharing installations produced in total. Only the lower bound of each band is counted, so the figure is deliberately a minimum and never flattering. Anyone who does not share is simply absent from it.",
+   "The report always covers the completed previous month, because only that one is whole. The running month would skew the statistics downwards depending on when it was reported."
+  ]
+ },
+ {
   "v": "1.68.0",
   "d": "2026-08-02",
   "de": [
