@@ -1,5 +1,21 @@
 [
  {
+  "v": "1.68.0",
+  "d": "2026-08-02",
+  "de": [
+   "Gas-Mining wird jetzt erkannt. Canary kennt ab sofort alle 55 Gas-Typen: Mykoserocin, Cytoserocin und Fullerite, jeweils roh und komprimiert. Menge, m³ und ISK-Wert stehen damit genauso in der Statistik wie beim Erz. Vorher tauchte Gas zwar mit Namen auf, aber mit 0 m³ und 0 ISK, weil die Volumen-Tabelle nur Erz und Eis kannte.",
+   "Rückstände zählen nicht mehr als Ertrag. Die Meldung „Zusätzliche N Einheiten als Rückstände erschöpft\" ist Verlust, wurde beim Gas aber als Ausbeute gebucht (als „Harvestable Cloud\"). Beim Erz fiel das nie auf, weil der Client dort keinen Namen verlinkt. Erkannt wird es jetzt an der Farbe der Zeile, also unabhängig von der Client-Sprache. Der Bonus „Kritischer Bergbauerfolg\" zählt weiterhin voll mit.",
+   "Beides wirkt rückwirkend: deine bisherigen Logs werden einmalig neu eingelesen, damit die Gas-Ausbeute der letzten Tage auftaucht und der falsch gebuchte Abfall verschwindet.",
+   "Danke an And-I für die Meldung, dass Gas-Mining nicht erkannt wird."
+  ],
+  "en": [
+   "Gas mining is now recognised. Canary knows all 55 gas types: Mykoserocin, Cytoserocin and Fullerite, raw and compressed. Amount, m³ and ISK value now appear in your statistics just like ore. Gas used to show up by name but with 0 m³ and 0 ISK, because the volume table only covered ore and ice.",
+   "Residue no longer counts as yield. The message \"Additional N units wasted as residue\" is a loss, but for gas it was booked as output (as \"Harvestable Cloud\"). It never showed up with ore because the client does not link a name there. Detection now runs off the line colour, so it works in any client language. The \"critical mining success\" bonus still counts in full.",
+   "Both apply retroactively: your existing logs are read in once more, so the gas you mined over the last days shows up and the wrongly booked waste disappears.",
+   "Thanks to And-I for reporting that gas mining was not being recognised."
+  ]
+ },
+ {
   "v": "1.67.0",
   "d": "2026-07-30",
   "de": [

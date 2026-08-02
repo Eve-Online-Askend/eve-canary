@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.67.0"
+VERSION = "1.68.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -288,6 +288,16 @@ CHAT_LINE_RE = re.compile(r"^\[ [\d. :]+ \] ([^>]+?) > (.*)$")
 CHAT_TS_RE = re.compile(r"^\[ (\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2}):(\d{2}) \]")
 OUT_COLOR = "0xff00ffff"
 IN_COLOR = "0xffcc0000"
+# Mining-Zeilen: die Farbe vor der Zahl trennt Ertrag von Verlust, sprach-
+# unabhaengig wie bei der Schadensrichtung. Gruen = normale Ausbeute,
+# Gelb = "Kritischer Bergbauerfolg" (Bonus, zaehlt mit), ROT = Rueckstand
+# ("Zusaetzliche N Einheiten aus X als Rueckstaende erschoepft"), also Abfall.
+# An 60.000 echten Mining-Zeilen geprueft: Rot kommt AUSSCHLIESSLICH in
+# Rueckstands-Zeilen vor. Ohne diese Pruefung zaehlt Canary den Abfall als
+# Ertrag, sobald der Client den Namen in <localized hint=...> wrappt — beim
+# GAS ist das der Fall ("Harvestable Cloud"), beim Erz steht dort nur der
+# unverlinkte Klartext "Asteroid", weshalb es dort nie auffiel.
+MINE_WASTE_COLOR = "#ffff454b"
 # Spieler stehen im Kampflog IMMER als "Name[TICKER](Schiffstyp)", NPCs nie.
 # Das gilt in jeder Client-Sprache und ist damit das verlaessliche Kriterium —
 # eine Namensliste kann es nicht sein, weil Missionen ihre Rats frei umbenennen
@@ -382,6 +392,11 @@ def parse_line(raw):
     day = f"{y}-{mo}-{d}"
     base = {"ts": ts, "day": day}
     if tag == "mining":
+        # Rueckstaende sind Verlust, kein Ertrag: verwerfen, bevor irgendetwas
+        # gezaehlt wird. Erkennung ueber die Farbe, damit es in jeder Sprache
+        # greift (siehe MINE_WASTE_COLOR).
+        if MINE_WASTE_COLOR in body:
+            return None
         text = STRIP_RE.sub("", body)
         n = NUM_RE.search(text)
         hint = HINT_RE.search(body)
@@ -759,7 +774,11 @@ def meta_get(key, default=None):
 # "5" = Missionsort aus dem Gamelog (Undock-Ziel/Sprung) rueckwirkend nachtragen
 # "6" = EWAR-Profil je Mission rueckwirkend aus allen Logs mitschreiben
 # "7" = Mining-Trip-Episoden (Verlauf/Zeitachse) der letzten 48h aus Logs rekonstruieren
-PARSE_VER = "7"
+# "8" = Gas (Mykoserocin/Cytoserocin/Fullerite) bekommt Volumen und Preis, und
+#       Rueckstands-Zeilen zaehlen nicht mehr als Ertrag. Beides muss rueckwirkend
+#       durch alle Logs, sonst bleiben Gas-Ausbeuten auf 0 m3 und der faelschlich
+#       gebuchte Abfall ("Harvestable Cloud") stehen.
+PARSE_VER = "8"
 
 
 def rebuild_if_needed():
@@ -6463,6 +6482,16 @@ html[data-skin=photon] .pwatch{border-radius:1px}
 dialog{background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:12px;
 padding:20px 22px;max-width:620px;width:94%}
 dialog::backdrop{background:rgba(0,0,0,.55)}
+/* Der globale Reset *{margin:0} kippt das margin:auto, mit dem der Browser
+   modale Dialoge zentriert — sonst klebt das Popup oben links. Nur hier
+   zuruecksetzen, damit die bestehenden Dialoge unveraendert bleiben. */
+#newsGas{margin:auto;max-width:560px}
+#newsGas p{margin:0 0 10px}
+/* Danksagung an den Melder: bewusst groesser und mit Gold-Akzent, das ist
+   die Botschaft, die haengen bleiben soll. */
+#newsGas .thanks{font-size:14px;line-height:1.55;color:var(--txt);margin:16px 0 0;
+ padding:11px 13px;border-left:3px solid var(--gold);background:var(--inset);border-radius:6px}
+#newsGas .thanks b{color:var(--gold);font-size:15px}
 dialog h2{font-size:14px;margin-bottom:12px;color:var(--white)}
 dialog label{display:block;font-size:13px;margin:8px 0;cursor:pointer}
 dialog .hint{font-size:11px;color:var(--dim);margin:2px 0 10px 0}
@@ -6628,6 +6657,20 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  </div>
 
  <div style="text-align:right"><button class="btn" id="close">Schließen</button></div>
+</dialog>
+
+<!-- Einmaliger Hinweis nach dem Update auf Gas-Mining. Wird ueber einen eigenen
+     localStorage-Schluessel gemerkt und danach nie wieder gezeigt. -->
+<dialog id="newsGas">
+ <h2>🫧 Neu: Gas-Mining wird jetzt erkannt</h2>
+ <p>Canary erfasst ab sofort auch Gas: Mykoserocin, Cytoserocin und Fullerite, roh und komprimiert.
+ Menge, m³ und ISK-Wert stehen damit genauso in deiner Statistik wie beim Erz.</p>
+ <p>Deine bisherigen Logs werden dafür einmalig neu eingelesen, die Gas-Ausbeute der letzten Tage
+ taucht also rückwirkend auf. Nebenbei behoben: Rückstände wurden beim Gas fälschlich als Ertrag
+ mitgezählt, das ist jetzt sauber getrennt.</p>
+ <p class="thanks">Danke an <b>And-I</b> für die Meldung, dass Gas-Mining nicht erkannt wurde. Wenn dir
+ etwas auffällt, sag Bescheid, genau so entstehen diese Verbesserungen.</p>
+ <div style="text-align:right"><button class="btn" id="newsGasOk">Alles klar</button></div>
 </dialog>
 
 <script>
@@ -8905,6 +8948,17 @@ const EN = {
 'Übernehmen':'Apply','Log-Ordner':'Log folder',
 // Optionen
 'Schließen':'Close','Backup erstellen':'Create backup','🩺 Diagnose kopieren':'🩺 Copy diagnostics',
+'🫧 Neu: Gas-Mining wird jetzt erkannt':'🫧 New: gas mining is now recognised',
+'Canary erfasst ab sofort auch Gas: Mykoserocin, Cytoserocin und Fullerite, roh und komprimiert. Menge, m³ und ISK-Wert stehen damit genauso in deiner Statistik wie beim Erz.':
+ 'Canary now tracks gas as well: Mykoserocin, Cytoserocin and Fullerite, raw and compressed. Amount, m³ and ISK value show up in your statistics just like ore.',
+'Deine bisherigen Logs werden dafür einmalig neu eingelesen, die Gas-Ausbeute der letzten Tage taucht also rückwirkend auf. Nebenbei behoben: Rückstände wurden beim Gas fälschlich als Ertrag mitgezählt, das ist jetzt sauber getrennt.':
+ 'Your existing logs are read in once more for this, so the gas you mined over the last days shows up retroactively. Fixed along the way: residue was wrongly counted as yield for gas, that is cleanly separated now.',
+'Alles klar':'Got it',
+// Der <b>-Tag um den Spielernamen zerlegt den Satz in drei Textknoten, deshalb
+// zwei Schluessel statt einem. xlate() trimmt und haengt den Leerraum wieder an.
+'Danke an':'Thanks to',
+'für die Meldung, dass Gas-Mining nicht erkannt wurde. Wenn dir etwas auffällt, sag Bescheid, genau so entstehen diese Verbesserungen.':
+ 'for reporting that gas mining was not being recognised. If you spot anything, let me know, that is exactly how these improvements come about.',
 'Nach Update suchen':'Check for updates','Update installieren':'Install update',
 'Alle vorhandenen Logs auswerten':'Evaluate all existing logs',
 'Nur ab Installation zählen':'Count from installation onwards',
@@ -9300,6 +9354,22 @@ async function tick(){
 document.querySelectorAll('.langsel').forEach(b=>b.onclick=()=>{setLang(b.dataset.l);tick();});
 setLang(lang);
 tick();setInterval(tick,2000);
+
+// Einmaliger Gas-Hinweis nach dem Update. Der Schluessel haengt am THEMA, nicht
+// an der Version: einmal weggeklickt, kommt er nie wieder, auch nach spaeteren
+// Updates nicht. Steht bewusst GANZ AM ENDE des Skripts, denn hier sind lang,
+// tr() und setLang() fertig initialisiert — weiter oben wuerde der Zugriff auf
+// das spaeter mit let deklarierte lang eine ReferenceError werfen und damit den
+// ganzen Rest des Skripts (und das Dashboard) stilllegen.
+(function(){
+ const dlg=$('#newsGas'); if(!dlg||!dlg.showModal) return;
+ try{ if(localStorage.getItem('news_gas')==='1') return; }catch(e){ return; }
+ const zu=()=>{ try{localStorage.setItem('news_gas','1');}catch(e){} };
+ $('#newsGasOk').onclick=()=>dlg.close();
+ dlg.addEventListener('close',zu);
+ if(lang!=='de')tr(dlg);
+ dlg.showModal();
+})();
 </script></body></html>"""
 
 

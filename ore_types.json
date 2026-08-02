@@ -1838,5 +1838,225 @@
  "Compressed Kangite X-Grade": {
   "typeID": 92821,
   "volume": 0.01
+ },
+ "Amber Cytoserocin": {
+  "typeID": 25268,
+  "volume": 10.0
+ },
+ "Amber Mykoserocin": {
+  "typeID": 28694,
+  "volume": 10.0
+ },
+ "Azure Cytoserocin": {
+  "typeID": 25279,
+  "volume": 10.0
+ },
+ "Azure Mykoserocin": {
+  "typeID": 28695,
+  "volume": 10.0
+ },
+ "Celadon Cytoserocin": {
+  "typeID": 25275,
+  "volume": 10.0
+ },
+ "Celadon Mykoserocin": {
+  "typeID": 28696,
+  "volume": 10.0
+ },
+ "Chartreuse Cytoserocin": {
+  "typeID": 28630,
+  "volume": 10.0
+ },
+ "Compressed Amber Cytoserocin": {
+  "typeID": 62396,
+  "volume": 1.0
+ },
+ "Compressed Amber Mykoserocin": {
+  "typeID": 62377,
+  "volume": 1.0
+ },
+ "Compressed Azure Cytoserocin": {
+  "typeID": 62386,
+  "volume": 1.0
+ },
+ "Compressed Azure Mykoserocin": {
+  "typeID": 62379,
+  "volume": 1.0
+ },
+ "Compressed Celadon Cytoserocin": {
+  "typeID": 62387,
+  "volume": 1.0
+ },
+ "Compressed Celadon Mykoserocin": {
+  "typeID": 62380,
+  "volume": 1.0
+ },
+ "Compressed Chartreuse Cytoserocin": {
+  "typeID": 62388,
+  "volume": 1.0
+ },
+ "Compressed Fullerite-C28": {
+  "typeID": 62402,
+  "volume": 0.2
+ },
+ "Compressed Fullerite-C32": {
+  "typeID": 62404,
+  "volume": 0.5
+ },
+ "Compressed Fullerite-C320": {
+  "typeID": 62406,
+  "volume": 0.5
+ },
+ "Compressed Fullerite-C50": {
+  "typeID": 62399,
+  "volume": 0.1
+ },
+ "Compressed Fullerite-C540": {
+  "typeID": 62405,
+  "volume": 1.0
+ },
+ "Compressed Fullerite-C60": {
+  "typeID": 62397,
+  "volume": 0.1
+ },
+ "Compressed Fullerite-C70": {
+  "typeID": 62398,
+  "volume": 0.1
+ },
+ "Compressed Fullerite-C72": {
+  "typeID": 62403,
+  "volume": 0.2
+ },
+ "Compressed Fullerite-C84": {
+  "typeID": 62400,
+  "volume": 0.2
+ },
+ "Compressed Gamboge Cytoserocin": {
+  "typeID": 62389,
+  "volume": 1.0
+ },
+ "Compressed Golden Cytoserocin": {
+  "typeID": 62390,
+  "volume": 1.0
+ },
+ "Compressed Golden Mykoserocin": {
+  "typeID": 62381,
+  "volume": 1.0
+ },
+ "Compressed Lime Cytoserocin": {
+  "typeID": 62391,
+  "volume": 1.0
+ },
+ "Compressed Lime Mykoserocin": {
+  "typeID": 62382,
+  "volume": 1.0
+ },
+ "Compressed Malachite Cytoserocin": {
+  "typeID": 62392,
+  "volume": 1.0
+ },
+ "Compressed Malachite Mykoserocin": {
+  "typeID": 62383,
+  "volume": 1.0
+ },
+ "Compressed Vermillion Cytoserocin": {
+  "typeID": 62393,
+  "volume": 1.0
+ },
+ "Compressed Vermillion Mykoserocin": {
+  "typeID": 62384,
+  "volume": 1.0
+ },
+ "Compressed Viridian Cytoserocin": {
+  "typeID": 62394,
+  "volume": 1.0
+ },
+ "Compressed Viridian Mykoserocin": {
+  "typeID": 62385,
+  "volume": 1.0
+ },
+ "Fullerite-C28": {
+  "typeID": 30375,
+  "volume": 2.0
+ },
+ "Fullerite-C32": {
+  "typeID": 30376,
+  "volume": 5.0
+ },
+ "Fullerite-C320": {
+  "typeID": 30377,
+  "volume": 5.0
+ },
+ "Fullerite-C50": {
+  "typeID": 30370,
+  "volume": 1.0
+ },
+ "Fullerite-C540": {
+  "typeID": 30378,
+  "volume": 10.0
+ },
+ "Fullerite-C60": {
+  "typeID": 30371,
+  "volume": 1.0
+ },
+ "Fullerite-C70": {
+  "typeID": 30372,
+  "volume": 1.0
+ },
+ "Fullerite-C72": {
+  "typeID": 30373,
+  "volume": 2.0
+ },
+ "Fullerite-C84": {
+  "typeID": 30374,
+  "volume": 2.0
+ },
+ "Gamboge Cytoserocin": {
+  "typeID": 28629,
+  "volume": 10.0
+ },
+ "Golden Cytoserocin": {
+  "typeID": 25273,
+  "volume": 10.0
+ },
+ "Golden Mykoserocin": {
+  "typeID": 28697,
+  "volume": 10.0
+ },
+ "Hiemal Tricarboxyl Vapor": {
+  "typeID": 49787,
+  "volume": 10.0
+ },
+ "Lime Cytoserocin": {
+  "typeID": 25277,
+  "volume": 10.0
+ },
+ "Lime Mykoserocin": {
+  "typeID": 28698,
+  "volume": 10.0
+ },
+ "Malachite Cytoserocin": {
+  "typeID": 25276,
+  "volume": 10.0
+ },
+ "Malachite Mykoserocin": {
+  "typeID": 28699,
+  "volume": 10.0
+ },
+ "Vermillion Cytoserocin": {
+  "typeID": 25278,
+  "volume": 10.0
+ },
+ "Vermillion Mykoserocin": {
+  "typeID": 28700,
+  "volume": 10.0
+ },
+ "Viridian Cytoserocin": {
+  "typeID": 25274,
+  "volume": 10.0
+ },
+ "Viridian Mykoserocin": {
+  "typeID": 28701,
+  "volume": 10.0
  }
 }
