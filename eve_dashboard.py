@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.70.0"
+VERSION = "1.71.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -229,6 +229,25 @@ FACTIONS = [
      ["exp", "kin"], ["exp", "kin"], None),
     ("EoM",            ["equilibrium", "eom "],
      ["kin", "therm"], ["kin"], None),
+    # --- Nachgetragen v1.71, weil sie in 1.021 fremden Logs die haeufigsten
+    # Gegner ueberhaupt waren und Canary zu ihnen bisher geschwiegen hat.
+    # Schadensprofile am EVE-University-Wiki geprueft, nicht geschaetzt.
+    # Drifter: Schildwiderstaende 73-85%, EM ist das schwaechste Loch, sie
+    # selbst schiessen EM/Therm.
+    ("Drifter",        ["drifter", "lux kontos"],
+     ["em", "therm"], ["em"], "neut"),
+    # Sleeper: omni rein wie raus, es gibt KEINEN Schadensvorteil. Genau das
+    # ist die nuetzliche Auskunft, sonst sucht man ewig nach der Schwaeche.
+    # Dazu neuten sie den Kondensator leer.
+    ("Sleeper",        ["sleeper", "sleepless", "awakened", "awoken",
+                        "emergent "],
+     ["omni"], ["omni"], "neut"),
+    # Triglavianer: sie schiessen omni, sind aber gegen Explosiv und Thermal
+    # am duennsten. Der Desintegrator dreht mit der Zeit hoch, deshalb Web.
+    ("Triglavian",     ["leshak", "vedmak", "damavik", "rodiva", "kikimora",
+                        "zirnitra", "drekavac", "ikitursa", "nergal",
+                        "triglavian"],
+     ["omni"], ["exp", "therm"], "web"),
 ]
 
 
@@ -288,6 +307,25 @@ CHAT_LINE_RE = re.compile(r"^\[ [\d. :]+ \] ([^>]+?) > (.*)$")
 CHAT_TS_RE = re.compile(r"^\[ (\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2}):(\d{2}) \]")
 OUT_COLOR = "0xff00ffff"
 IN_COLOR = "0xffcc0000"
+# Fernunterstuetzung (Logi): eigene Farbe, weder Schaden aus noch Schaden ein.
+# "298 remote capacitor transmitted to Guardian [PR.BL] [C.H.P] [Jarrod Sands]
+#  - - Large Inductive Compact Remote Capacitor Transmitter"
+# An 12.252 echten Zeilen aus sechs Jahren geprueft, ausschliesslich dort.
+LOGI_COLOR = "0xffccff66"
+# Die ART der Hilfe kommt aus dem MODULNAMEN am Zeilenende, nicht aus dem Satz:
+# Modulnamen sind nie lokalisiert, der Satz drumherum schon.
+LOGI_ART = (("capacitor transmitter", "cap"), ("capacitor transporter", "cap"),
+            ("armor repairer", "armor"), ("shield booster", "shield"),
+            ("hull repairer", "hull"))
+# Richtung laesst sich NICHT an der Farbe ablesen, die ist fuer beide gleich.
+# Also doch am Wort. Englisch ist belegt, Deutsch ist begruendete Annahme.
+# Passt keins, wird die Zeile trotzdem gezaehlt, nur ohne Richtung: die Farbe
+# beweist ja, dass Hilfe geflossen ist.
+LOGI_DIR = {"to": "out", "by": "in", "an": "out", "von": "in"}
+# Wie lange nach der letzten Fernunterstuetzung gilt die Anzeige als aktuell.
+# 15 Minuten: lang genug, dass eine Feuerpause im Einsatz sie nicht wegnimmt,
+# kurz genug, dass nach dem Einsatz nichts Totes stehen bleibt.
+LOGI_FRISCH = 900
 # Mining-Zeilen: die Farbe vor der Zahl trennt Ertrag von Verlust, sprach-
 # unabhaengig wie bei der Schadensrichtung. Gruen = normale Ausbeute,
 # Gelb = "Kritischer Bergbauerfolg" (Bonus, zaehlt mit), ROT = Rueckstand
@@ -412,6 +450,31 @@ def parse_line(raw):
             return {**base, "kind": "ore", "key": ore, "value": num(n.group(1))}
     elif tag == "combat":
         low = body.lower()
+        # ---- Fernunterstuetzung zuerst: eigene Farbe, kein Schaden ----------
+        if LOGI_COLOR in low:
+            plain = STRIP_RE.sub("", body).strip()
+            n = NUM_RE.search(plain)
+            if not n:
+                return None
+            modul = plain.rsplit(" - ", 1)[-1].strip() if " - " in plain else ""
+            ml = modul.lower()
+            art = next((a for w, a in LOGI_ART if w in ml), "?")
+            # Vor dem ersten Klammerblock steht "<Menge> <Satz> <Richtung> <Schiff>".
+            # Von hinten nach dem Richtungswort suchen, alles danach ist das Schiff.
+            kopf = plain.split("[", 1)[0] if "[" in plain else plain
+            worte = kopf.split()
+            richtung, schiff = "unklar", ""
+            for i in range(len(worte) - 1, -1, -1):
+                r = LOGI_DIR.get(worte[i].lower())
+                if r:
+                    richtung, schiff = r, " ".join(worte[i + 1:]).strip()
+                    break
+            # Reihenfolge der Klammern ist [Corp] [Allianz] [Pilot], die
+            # Allianz fehlt manchmal. Der Pilot steht immer zuletzt.
+            klammern = re.findall(r"\[([^\[\]]+)\]", plain)
+            return {**base, "kind": "logi_" + richtung, "art": art,
+                    "key": (klammern[-1].strip() if klammern else "?"),
+                    "ship": schiff, "weapon": modul, "value": num(n.group(1))}
         direction = "dmg_out" if OUT_COLOR in low else ("dmg_in" if IN_COLOR in low else None)
         if direction:
             plain = STRIP_RE.sub("", body).strip()
@@ -745,6 +808,13 @@ try:  # v1.50: EWAR-Profil je Mission (Scram/Web/Jam/Neut … gegen dich)
     DB.commit()
 except sqlite3.OperationalError:
     pass
+try:  # v1.71: Fernunterstuetzung je Einsatz. Ohne diese Spalten ist die
+      # Leistung eines Logi-Piloten nach dem Andocken fuer immer weg.
+    DB.execute("ALTER TABLE missions ADD COLUMN logi_out REAL")
+    DB.execute("ALTER TABLE missions ADD COLUMN logi_in REAL")
+    DB.commit()
+except sqlite3.OperationalError:
+    pass
 # v1.54: Zeitachse/Verlauf. Schlanke Ereignis-Tabelle fuer Episoden, die sonst
 # nirgends zeitgestempelt liegen: Mining-Trips und Bedrohungen. Kampf kommt aus
 # missions, ISK aus journal (beide schon zeitgestempelt) und werden bei der
@@ -787,7 +857,7 @@ def meta_get(key, default=None):
 #       Rueckstands-Zeilen zaehlen nicht mehr als Ertrag. Beides muss rueckwirkend
 #       durch alle Logs, sonst bleiben Gas-Ausbeuten auf 0 m3 und der faelschlich
 #       gebuchte Abfall ("Harvestable Cloud") stehen.
-PARSE_VER = "8"
+PARSE_VER = "9"
 
 
 def rebuild_if_needed():
@@ -833,19 +903,22 @@ def save_mission(m):
     mid = f"{m['char_id']}:{int(m['start_ts'])}"
     DB.execute("""INSERT INTO missions
         (mid,char_id,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
-         hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,ewar)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,ewar,
+         logi_out,logi_in)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(mid) DO UPDATE SET
          char=excluded.char, end_ts=excluded.end_ts, system=excluded.system,
          dmg_out=excluded.dmg_out, dmg_in=excluded.dmg_in, kills=excluded.kills,
          bounty=excluded.bounty, hits=excluded.hits, miss_out=excluded.miss_out,
          miss_in=excluded.miss_in, weapons=excluded.weapons, enemies=excluded.enemies,
-         dialog=COALESCE(excluded.dialog, missions.dialog), ewar=excluded.ewar""",
+         dialog=COALESCE(excluded.dialog, missions.dialog), ewar=excluded.ewar,
+         logi_out=excluded.logi_out, logi_in=excluded.logi_in""",
         (mid, m["char_id"], m["char"], m["start_ts"], m["end_ts"], m["system"],
          m["dmg_out"], m["dmg_in"], m["kills"], m["bounty"], m["hits"],
          m["miss_out"], m["miss_in"], json.dumps(m["weapons"], ensure_ascii=False),
          json.dumps(m["enemies"], ensure_ascii=False), None, None, m.get("dialog"),
-         json.dumps(m.get("ewar") or [], ensure_ascii=False)))
+         json.dumps(m.get("ewar") or [], ensure_ascii=False),
+         m.get("logi_out") or 0, m.get("logi_in") or 0))
 
 
 def do_backup():
@@ -1349,6 +1422,14 @@ class CharSession:
         self.miss_out = 0     # eigene Fehlschuesse
         self.miss_in = 0      # Gegner daneben
         self.ewar = {}        # Typ -> Anzahl (scramble/jam/web/…)
+        # Fernunterstuetzung: was ich gegeben und was ich bekommen habe, je Art
+        # (cap/armor/shield/hull), dazu die Partner. Ein Logi-Pilot teilt keinen
+        # Schaden aus und bekommt keine Bounty, seine ganze Leistung steckt hier.
+        self.logi_out = {}      # Art -> Menge gegeben
+        self.logi_in = {}       # Art -> Menge bekommen
+        self.logi_partner = {}  # Pilot -> {"out": Menge, "in": Menge, "ship": Typ}
+        self.logi_unklar = 0    # Menge ohne erkennbare Richtung
+        self.logi_last = 0      # Zeitstempel der letzten Fernunterstuetzung
         self.salvage = {"ok": 0, "empty": 0, "fail": 0}
         self.dmg_min = deque(maxlen=180)  # [Minute, {"out":x,"in":y}] — Kampfverlauf
         self.system = None            # aktueller Ort aus dem Gamelog (Undock/Sprung)
@@ -1431,6 +1512,25 @@ class CharSession:
             self.miss_out += 1
         elif k == "miss_in":
             self.miss_in += 1
+        elif k in ("logi_out", "logi_in", "logi_unklar"):
+            self.logi_last = ev["ts"]
+            art = ev.get("art") or "?"
+            # Ohne erkannte Richtung trotzdem zaehlen, aber getrennt fuehren:
+            # lieber eine Zeile "Richtung unbekannt" als eine falsche Summe.
+            ziel = self.logi_out if k == "logi_out" else (
+                self.logi_in if k == "logi_in" else None)
+            if ziel is None:
+                self.logi_unklar += ev["value"]
+            else:
+                ziel[art] = ziel.get(art, 0) + ev["value"]
+            p = self.logi_partner.setdefault(
+                ev["key"], {"out": 0, "in": 0, "ship": ev.get("ship") or ""})
+            if k == "logi_out":
+                p["out"] += ev["value"]
+            elif k == "logi_in":
+                p["in"] += ev["value"]
+            if ev.get("ship"):
+                p["ship"] = ev["ship"]
         elif k == "ewar":
             self.ewar[ev["key"]] = self.ewar.get(ev["key"], 0) + 1
         elif k == "salvage":
@@ -1477,6 +1577,11 @@ class CharSession:
                 self.dmg_out = self.dmg_in = 0
                 self.hits_out = self.miss_out = self.miss_in = 0
                 self.ewar = {}
+                self.logi_out = {}
+                self.logi_in = {}
+                self.logi_partner = {}
+                self.logi_unklar = 0
+                self.logi_last = 0
                 self.salvage = {"ok": 0, "empty": 0, "fail": 0}
                 self.dmg_min = deque(maxlen=180)
                 self.mission_system = None
@@ -1665,7 +1770,11 @@ class CharSession:
         """Die gerade abgeschlossene Mission als Datensatz — oder None, wenn
         seit dem letzten Undock kein Kampf stattfand (z.B. reiner Mining-Trip).
         Ort = wo der Kampf begann (aus dem Gamelog, zuverlaessig)."""
-        if not (self.bounty or self.kills or self.dmg_out):
+        # Auch ein reiner Logi-Einsatz zaehlt: kein Schaden, keine Bounty,
+        # trotzdem stundenlange Arbeit. Seit v1.71 hat die Tabelle Spalten
+        # dafuer, vorher waere der Datensatz leer gewesen.
+        if not (self.bounty or self.kills or self.dmg_out
+                or self.logi_out or self.logi_in):
             return None
         return {"char_id": self.char_id, "char": self.name,
                 "start_ts": self.first_ts or end_ts, "end_ts": end_ts,
@@ -1678,7 +1787,9 @@ class CharSession:
                 # den Schaden, die fraktionsverratenden Rat-Schiffe stehen weiter
                 # unten. Fuer die Fraktions-Erkennung in der Historie noetig.
                 "enemies": sorted(self.targets.items(), key=lambda x: -x[1])[:30],
-                "ewar": sorted(self.ewar.items(), key=lambda x: -x[1])}
+                "ewar": sorted(self.ewar.items(), key=lambda x: -x[1]),
+                "logi_out": sum(self.logi_out.values()),
+                "logi_in": sum(self.logi_in.values())}
 
 
 # ---------------------------------------------------------------- Ingest
@@ -4940,6 +5051,19 @@ def snapshot_live():
             "npc": chatwatch.dialogue(s.char_id, s.first_ts)[-3:],
             "hits_out": s.hits_out, "miss_out": s.miss_out, "miss_in": s.miss_in,
             "ewar": sorted(s.ewar.items(), key=lambda x: -x[1]),
+            # Fernunterstuetzung. Summen je Art plus die Partner, absteigend
+            # nach dem, was insgesamt zwischen euch geflossen ist.
+            # Nur zeigen, solange gerade wirklich Logi geflogen wird. Erkannt
+            # und gezaehlt wird immer, aber eine Karte, auf der seit Stunden
+            # dieselben Reparaturzahlen stehen, sagt nichts mehr. Faellt der
+            # letzte Eintrag aus dem Fenster, verschwindet der Block von selbst.
+            "logi": ({"out": s.logi_out, "in": s.logi_in,
+                      "unklar": s.logi_unklar,
+                      "partner": sorted(
+                          [{"name": n, **d} for n, d in s.logi_partner.items()],
+                          key=lambda x: -(x["out"] + x["in"]))[:10]}
+                     if s.logi_last and (time.time() - s.logi_last) < LOGI_FRISCH
+                     else None),
             "salvage": s.salvage,
             "spark_out": [b[1]["out"] for b in list(s.dmg_min)[-60:]],
             "spark_in": [b[1]["in"] for b in list(s.dmg_min)[-60:]],
@@ -5483,7 +5607,7 @@ def query_mission_history(limit=40):
         rows = DB.execute(
             """SELECT mid,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
                       hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,
-                      char_id,ewar
+                      char_id,ewar,logi_out,logi_in
                FROM missions ORDER BY start_ts DESC LIMIT ?""", (limit * 5,)).fetchall()
         # Verifizierte Missions-Belohnungen aus dem Wallet-Journal (Server-Wahrheit).
         # Jede wird gleich der Mission zugeordnet, die kurz davor endete.
@@ -5513,7 +5637,7 @@ def query_mission_history(limit=40):
         if len(out) >= limit:
             break
         (mid, char, st, et, sysn, do, di, kills, bounty, hits, mo, mi,
-         wj, ej, loot, loot_text, dialog, char_id, ewj) = r
+         wj, ej, loot, loot_text, dialog, char_id, ewj, lo, li) = r
         shots = (hits or 0) + (mo or 0)
         enemies = json.loads(ej or "[]")
         # Fehlt der gespeicherte Funk (aeltere Mission, oder Reingest lief vor dem
@@ -5525,7 +5649,11 @@ def query_mission_history(limit=40):
         # spuerbaren eigenen Schaden (>5000), oder echte Bounty (>100k). Reine
         # Flotten-Bounty beim Mining (winziger/kein Schaden, Kleinst-Bounty von
         # Guertel-Ratten) faellt hier raus, das ist keine Mission.
-        if not mission and (do or 0) < 5000 and (bounty or 0) < 100000:
+        # Ein Logi-Einsatz hat naturgemaess weder Schaden noch Bounty. Ohne
+        # diese Ausnahme faellt er hier raus und waere trotz Speicherung
+        # unsichtbar.
+        if (not mission and (do or 0) < 5000 and (bounty or 0) < 100000
+                and not (lo or 0) and not (li or 0)):
             continue
         # NPC-Funk: bis zu 3 aussagekräftige Zeilen als Story-Schnipsel
         dlines = [d.strip() for d in re.split(r"(?<=[.!?])\s+", dialog or "") if len(d.strip()) > 12][:3]
@@ -5539,6 +5667,7 @@ def query_mission_history(limit=40):
             "bounty": round(bounty or 0), "hit": round(100 * hits / shots) if shots else None,
             "mission": mission, "npc": dlines, "faction": faction_info(enemies),
             "ewar": json.loads(ewj or "[]"),
+            "logi_out": round(lo or 0), "logi_in": round(li or 0),
             "reward": vreward, "bonus": vbonus,
             "weapons": json.loads(wj or "[]"), "enemies": enemies,
             "loot_isk": round(loot) if loot else None, "loot_text": loot_text or "",
@@ -8027,8 +8156,10 @@ function wireCards(){
 const EWAR_LABEL={scramble:'🔴 Scram',disrupt:'Point',web:'Web',jam:'Jam',neut:'Neut',paint:'Paint',damp:'Damp',td:'TD'};
 // Fraktions-Tipp (Alpha): welchen Schaden du bekommst (tanken) und welchen du
 // am besten austeilst (schiessen). Kommt aus den Gegnernamen im Kampflog.
-const DMG_LABEL={de:{em:'EM',therm:'Thermal',kin:'Kinetik',exp:'Explosiv'},
-                 en:{em:'EM',therm:'Thermal',kin:'Kinetic',exp:'Explosive'}};
+const DMG_LABEL={de:{em:'EM',therm:'Thermal',kin:'Kinetik',exp:'Explosiv',
+  omni:'alle gleich'},
+                 en:{em:'EM',therm:'Thermal',kin:'Kinetic',exp:'Explosive',
+                     omni:'all alike'}};
 function dmgList(codes){const M=DMG_LABEL[lang==='en'?'en':'de'];return (codes||[]).map(c=>M[c]||c).join('/');}
 function factionHtml(f){
  if(!f||!f.fac)return '';
@@ -8148,8 +8279,38 @@ function combatCardHtml(c){
     ${c.top_attackers.length?`<div class="sect">Top-Angreifer</div><table>`+c.top_attackers.map(t=>
       `<tr><td>${esc(t[0])}</td><td class="r">${fmt(t[1])}</td></tr>`).join('')+`</table>`:''}
     ${(c.salvage&&(c.salvage.ok||c.salvage.empty||c.salvage.fail))?`<div class="sect">Salvage</div><div class="l">${c.salvage.ok} Wracks geborgen · ${c.salvage.empty} leer · ${c.salvage.fail} Fehlversuch</div>`:''}
+    ${logiBlock(c)}
    </div>
   </div>`;
+}
+
+// Fernunterstuetzung. Wer Logi fliegt, teilt keinen Schaden aus und bekommt
+// keine Bounty: ohne diesen Block sieht seine Karte aus, als haette er nichts
+// getan. cap in GJ, die Reparaturen in Hitpoints, deshalb getrennte Zeilen.
+const LOGI_LABEL={cap:'Cap',armor:'Panzerung',shield:'Schild',hull:'Struktur'};
+const LOGI_EINH={cap:'GJ',armor:'HP',shield:'HP',hull:'HP'};
+function logiZeile(d){
+ const k=Object.keys(d||{}).filter(a=>d[a]>0);
+ if(!k.length)return '';
+ return k.sort((a,b)=>d[b]-d[a]).map(a=>
+   (LOGI_LABEL[a]||a)+' '+fmt(d[a])+' '+(LOGI_EINH[a]||'')).join(' · ');
+}
+function logiBlock(c){
+ const L=c.logi;
+ if(!L)return '';
+ const raus=logiZeile(L.out), rein=logiZeile(L.in);
+ if(!raus&&!rein&&!L.unklar)return '';
+ let h='<div class="sect">🔗 Fernunterstützung</div>';
+ if(raus)h+='<div class="l">gegeben: '+raus+'</div>';
+ if(rein)h+='<div class="l">bekommen: '+rein+'</div>';
+ if(L.unklar)h+='<div class="l">ohne erkennbare Richtung: '+fmt(L.unklar)+'</div>';
+ if(L.partner&&L.partner.length){
+  h+='<table><tr><th>Pilot</th><th>Schiff</th><th class="r">gegeben</th><th class="r">bekommen</th></tr>'
+   +L.partner.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.ship||'')}</td>`
+   +`<td class="r">${p.out?fmt(p.out):''}</td>`
+   +`<td class="r">${p.in?fmt(p.in):''}</td></tr>`).join('')+'</table>';
+ }
+ return h;
 }
 
 function renderMonth(days){
@@ -9072,10 +9233,13 @@ function renderMissions(d){
      ${x.mission?`<span class="mtag">${missionHtml(x.mission)}</span>`:''}
      <span style="margin-left:auto" class="isk"><b>${fmtM(x.total)} ISK</b></span>
     </div>
-    <div class="sub">${x.kills} Kills · Bounty ${fmtM(x.bounty)} · Schaden ${fmt(x.dmg_out)} raus / ${fmt(x.dmg_in)} rein${x.hit!=null?' · Trefferquote '+x.hit+'%':''}${x.enemies.length?' · Top: '+esc(x.enemies[0][0]):''}</div>
+    ${(!x.kills&&!x.bounty&&!x.dmg_out&&(x.logi_out||x.logi_in))
+      ? `<div class="sub">${lang==='en'?'Support run, no damage of your own':'Unterstützungseinsatz, kein eigener Schaden'}${x.dmg_in?' · '+fmt(x.dmg_in)+' '+(lang==='en'?'damage taken':'Schaden rein'):''}</div>`
+      : `<div class="sub">${x.kills} Kills · Bounty ${fmtM(x.bounty)} · Schaden ${fmt(x.dmg_out)} raus / ${fmt(x.dmg_in)} rein${x.hit!=null?' · Trefferquote '+x.hit+'%':''}${x.enemies.length?' · Top: '+esc(x.enemies[0][0]):''}</div>`}
     ${(x.reward!=null||x.bonus!=null)?`<div class="sub vreward">✅ ${lang==='en'?'ESI verified':'ESI-verifiziert'}: ${lang==='en'?'reward':'Belohnung'} <b class="isk">${fmtM(x.reward||0)}</b>${x.bonus?` + ${lang==='en'?'time bonus':'Zeitbonus'} <b class="isk">${fmtM(x.bonus)}</b>`:''}${x.min>0?` · ${fmtM(Math.round(((x.reward||0)+(x.bonus||0))/(x.min/60)))}/h`:''}</div>`:''}
     ${factionHtml(x.faction)}
     ${ewarHtml(x.ewar)}
+    ${(x.logi_out||x.logi_in)?`<div class="sub">🔗 ${lang==='en'?'Remote assistance':'Fernunterstützung'}: ${fmt(x.logi_out||0)} ${lang==='en'?'given':'gegeben'} · ${fmt(x.logi_in||0)} ${lang==='en'?'received':'bekommen'}</div>`:''}
     ${(x.npc&&x.npc.length)?`<div class="npc">${x.npc.map(l=>`<div>💬 ${esc(l)}</div>`).join('')}</div>`:''}
     <div class="sub" style="margin-top:6px">${x.loot_isk!=null?'Loot: <b class="isk">'+fmtM(x.loot_isk)+'</b>':''}
      <span class="mloottoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px">${x.loot_isk!=null?'✎ Loot ändern':'＋ Loot eintragen'}</span></div>

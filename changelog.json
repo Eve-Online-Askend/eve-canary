@@ -1,5 +1,23 @@
 [
  {
+  "v": "1.71.0",
+  "d": "2026-08-02",
+  "de": [
+   "Neu: Canary erkennt jetzt Fernunterstützung. Wenn du Logi fliegst, siehst du auf deiner Karte, wie viel Kondensator und Panzerung du gibst und bekommst, mit welchem Piloten und in welchem Schiff. Der Block erscheint nur, solange gerade wirklich repariert wird, und räumt sich danach von selbst weg.",
+   "Ein reiner Logi-Einsatz zählt endlich als Einsatz. Bisher brauchte es Schaden oder Kopfgeld, damit ein Einsatz in der Historie landete. Wer drei Stunden die Flotte am Leben hält, hat aber beides nicht und stand hinterher mit einer leeren Karte da. Jetzt steht der Einsatz in der Historie, mit gegeben und bekommen.",
+   "Möglich gemacht hat das ein Spieler, der uns seine Logs aus sechs Jahren überlassen hat. Erst daran fiel auf, dass Canary Logi-Piloten komplett übersieht: über zwölftausend Zeilen fielen stumm durch, ohne dass je etwas kaputt aussah. Danke dafür.",
+   "Drei Fraktionen ergänzt, zu denen Canary bisher geschwiegen hat: Drifter, Sleeper und Triglavianer. Damit gibt es endlich auch für Wurmlöcher und Pochven einen Hinweis, worauf du schießt und was du tankst. Bei den Sleepern lautet die Auskunft „alle gleich\", denn dort gibt es keine Schwachstelle, und auch das muss man wissen.",
+   "Beim ersten Start nach dem Update liest Canary alle vorhandenen Logs einmal neu ein. Dadurch bekommen auch zurückliegende Einsätze ihre Zahlen zur Fernunterstützung. Das dauert je nach Menge einen Moment, passiert aber nur dieses eine Mal."
+  ],
+  "en": [
+   "New: Canary now recognises remote assistance. If you fly logi, your card shows how much capacitor and armour you give and receive, with which pilot and in which ship. The block only appears while repairs are actually happening and clears itself afterwards.",
+   "A pure logi run finally counts as a run. Until now a run needed damage or bounty to make it into your history. Someone who keeps the fleet alive for three hours has neither and was left with an empty card. Now the run is in the history, with given and received.",
+   "This was made possible by a player who handed us six years of his logs. Only then did it show that Canary was missing logi pilots entirely: over twelve thousand lines fell through silently, and nothing ever looked broken. Thank you for that.",
+   "Three factions added that Canary used to be silent about: Drifters, Sleepers and Triglavians. Wormholes and Pochven finally get a hint on what to shoot and what to tank. For Sleepers the answer is \"all alike\", because there is no weak spot, and that is worth knowing too.",
+   "On the first start after this update Canary reads all existing logs once more. That way past runs get their remote assistance numbers as well. Depending on how much you have it takes a moment, but it only happens this one time."
+  ]
+ },
+ {
   "v": "1.70.0",
   "d": "2026-08-02",
   "de": [
