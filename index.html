@@ -794,24 +794,45 @@ function usersHtml() {
     days.push({ d, n: ST.aktiv.tag[`${ym(d)}-${p2(d.getUTCDate())}`] || 0 });
   }
   const max = Math.max(1, ...days.map(x => x.n));
-  const gab = days.filter(x => x.n > 0);
+  // Der laufende UTC-Tag ist unvollstaendig und darf nicht in den Schnitt.
+  // Sonst faellt der Wert jeden Morgen ins Bodenlose und steigt bis Mitternacht
+  // wieder, was wie ein Einbruch aussieht und keiner ist.
+  const heuteKey = `${ym(now)}-${p2(now.getUTCDate())}`;
+  const voll = days.filter(x => `${ym(x.d)}-${p2(x.d.getUTCDate())}` !== heuteKey);
+  const gab = voll.filter(x => x.n > 0);
   const schnitt = gab.length ? gab.reduce((s, x) => s + x.n, 0) / gab.length : 0;
+  // Bindung: wie viele der im Monat aktiven Installationen laufen an einem
+  // beliebigen Tag. Nur zeigen, wenn beide Zahlen wirklich vorliegen.
+  const bindung = (curN && schnitt) ? Math.round(100 * schnitt / curN) : 0;
+  // Wie viele Tage des Vormonats sind ueberhaupt erfasst? Die Zaehlung startete
+  // am 26.07.2026, fuer Juli gibt es nur sechs Tage. Ein Monatsvergleich waere
+  // dann falsch, also wird er beschriftet statt stillschweigend gezeigt.
+  const prevYm = ym(prev);
+  const prevTage = Object.keys(ST.aktiv.tag || {}).filter(k => k.startsWith(prevYm + '-')).length;
+  const prevSoll = new Date(Date.UTC(prev.getUTCFullYear(), prev.getUTCMonth() + 1, 0)).getUTCDate();
+  const prevVoll = prevTage >= prevSoll * 0.8;
   const L = ({
-    de: { now: 'aktive Installationen im', prev: 'Vormonat', today: 'heute', avg: 'Ø / Tag', last: 'Letzte 14 Tage',
-          note: 'Aktiv heißt: die Installation lief und hat sich einmal mit einem leeren Abruf gemeldet, ohne Kennung und ohne Daten. Möglich ist das erst ab Version 1.64, ältere Installationen tauchen hier also noch nicht auf.' },
-    fr: { now: 'installations actives en', prev: 'mois précédent', today: "aujourd'hui", avg: 'moy. / jour', last: '14 derniers jours',
-          note: 'Active signifie : l\'installation tournait et s\'est signalée une fois par une requête vide, sans identifiant ni données. Possible seulement à partir de la version 1.64, les installations plus anciennes n\'apparaissent donc pas encore ici.' },
-    ru: { now: 'активных установок за', prev: 'прошлый месяц', today: 'сегодня', avg: 'в среднем в день', last: 'последние 14 дней',
-          note: 'Активная означает: установка работала и один раз отметилась пустым запросом, без идентификатора и без данных. Это возможно только начиная с версии 1.64, поэтому более старые установки здесь пока не видны.' },
-    en: { now: 'active installations in', prev: 'previous month', today: 'today', avg: 'avg / day', last: 'last 14 days',
-          note: 'Active means: the installation was running and reported in once with an empty request, no identifier and no data. This only works from version 1.64 on, so older installations do not show up here yet.' }
+    de: { now: 'aktive Installationen im', prev: 'Vormonat', today: 'heute, läuft noch', avg: 'Ø / Tag', last: 'Letzte 14 Tage',
+          bind: 'Bindung', teil: 'Tage erfasst',
+          note: 'Aktiv heißt: die Installation lief und hat sich einmal mit einem leeren Abruf gemeldet, ohne Kennung und ohne Daten. Möglich ist das erst ab Version 1.64, ältere Installationen tauchen hier also noch nicht auf. Gezählt werden Installationen, nicht Personen. Der Tagesschnitt lässt den laufenden Tag aus, der ist noch nicht vorbei. Bindung heißt: so viel Prozent der im Monat aktiven Installationen laufen an einem beliebigen Tag.' },
+    fr: { now: 'installations actives en', prev: 'mois précédent', today: "aujourd'hui, en cours", avg: 'moy. / jour', last: '14 derniers jours',
+          bind: 'fidélité', teil: 'jours couverts',
+          note: 'Active signifie : l\'installation tournait et s\'est signalée une fois par une requête vide, sans identifiant ni données. Possible seulement à partir de la version 1.64, les installations plus anciennes n\'apparaissent donc pas encore ici. On compte des installations, pas des personnes. La moyenne exclut le jour en cours. Fidélité : part des installations actives du mois qui tournent un jour donné.' },
+    ru: { now: 'активных установок за', prev: 'прошлый месяц', today: 'сегодня, ещё идёт', avg: 'в среднем в день', last: 'последние 14 дней',
+          bind: 'вовлечённость', teil: 'дней учтено',
+          note: 'Активная означает: установка работала и один раз отметилась пустым запросом, без идентификатора и без данных. Это возможно только начиная с версии 1.64, поэтому более старые установки здесь пока не видны. Считаются установки, а не люди. Среднее не учитывает текущий день. Вовлечённость: доля активных за месяц установок, работающих в произвольный день.' },
+    en: { now: 'active installations in', prev: 'previous month', today: 'today, still running', avg: 'avg / day', last: 'last 14 days',
+          bind: 'stickiness', teil: 'days covered',
+          note: 'Active means: the installation was running and reported in once with an empty request, no identifier and no data. This only works from version 1.64 on, so older installations do not show up here yet. These are installations, not people. The daily average leaves out the current day. Stickiness: the share of the active installations that run on any given day.' }
   })[curLang] || {};
   const mon = now.toLocaleDateString(curLang, { month: 'long', year: 'numeric' });
   return `<div class="dltotal"><b>${curN.toLocaleString(curLang)}</b> ${L.now} ${mon}</div>`
     + `<div class="dlstats">`
-    +   `<div class="dltile"><b>${prevN}</b><span>${L.prev}</span></div>`
+    +   `<div class="dltile"><b>${prevN}</b><span>${L.prev}`
+    +     (prevVoll ? '' : ` <span class="tiny">(${prevTage} ${L.teil})</span>`) + `</span></div>`
     +   `<div class="dltile"><b>${days[days.length - 1].n}</b><span>${L.today}</span></div>`
     +   `<div class="dltile"><b>${schnitt.toLocaleString(curLang, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</b><span>${L.avg}</span></div>`
+    +   (bindung ? `<div class="dltile"><b>${bindung}%</b><span>${L.bind}</span></div>` : '')
     + `</div>`
     + `<div class="dltop">${L.last}</div>`
     + days.map(x => `<div class="dlrow"><span class="dlv">`
