@@ -1,5 +1,19 @@
 [
  {
+  "v": "1.78.0",
+  "d": "2026-08-10",
+  "de": [
+   "Der ISKray-Rechner nimmt jetzt auch die Ergebnisse der Bergbauvermessung. Fenster im Spiel markieren, kopieren, einfuegen, und du siehst auf einen Blick, wie viel Volumen und wie viel ISK in dem Belt liegen, aufgeschluesselt nach Erzsorte und bewertet an allen fuenf Handelsplaetzen. An einer echten Kopie geprueft: 43.305 Einheiten und 12.992 m3, das Spiel selbst nennt 12.988 m3.",
+   "Dahinter steckt eine Korrektur, die auch den Frachtraum betrifft. Der Rechner nahm bisher stur die erste Zahl hinter dem Namen. Standen die Spalten anders herum, oder gingen beim Kopieren die Tabulatoren verloren, verschmolz die Mengenspalte mit der daneben. Aus 2.870 Einheiten wurden so 2.870.861, das Vierhundertfache, ohne jede Warnung. Jetzt werden Spalten mit einer Einheit dahinter uebersprungen, also Volumen, Wert, Entfernung und Prozent. Damit stimmt die Menge unabhaengig von der Reihenfolge.",
+   "Ein Hinweis zu den Zahlen: EVE rechnet im Vermesser-Fenster mit seinem eigenen Schaetzpreis, Canary mit dem echten Ankaufsgebot von jetzt. Deshalb weichen die ISK-Summen um einige Prozent voneinander ab, beide sind richtig, sie beantworten nur verschiedene Fragen."
+  ],
+  "en": [
+   "The ISKray calculator now also accepts survey scanner results. Select the window in game, copy, paste, and you see at a glance how much volume and how much ISK the belt holds, broken down by ore type and valued at all five trade hubs. Checked against a real copy: 43,305 units and 12,992 m3, where the game itself says 12,988 m3.",
+   "Behind that sits a correction that affects cargo lists too. The calculator used to blindly take the first number after the name. If the columns were in a different order, or if tabs were lost while copying, the quantity column merged with the one next to it. 2,870 units became 2,870,861, four hundred times too many, without any warning. Columns carrying a unit are now skipped: volume, value, distance and percentages. The quantity is correct regardless of column order.",
+   "A note on the numbers: in the survey window EVE uses its own estimated price, Canary uses the actual buy offer right now. That is why the ISK totals differ by a few percent. Both are correct, they answer different questions."
+  ]
+ },
+ {
   "v": "1.77.2",
   "d": "2026-08-10",
   "de": [

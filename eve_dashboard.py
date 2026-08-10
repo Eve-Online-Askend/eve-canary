@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.77.2"
+VERSION = "1.78.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -5850,9 +5850,25 @@ def hub_prices(region, ids, prefer_esi=False):
         return dict(merged)
 
 
+# Spalten trennen: an Tabulatoren ODER an zwei und mehr Leerzeichen. Ein
+# EINZELNES Leerzeichen bleibt drin, denn manche Clients setzen es als
+# Tausendertrenner ("1 234 567").
+SPALTEN_RE = re.compile(r"\t+| {2,}")
+# Spalten, die eine Einheit tragen, sind niemals die Stueckzahl. Ohne diese
+# Pruefung las der Rechner aus einer Bergbauvermesser-Kopie, deren Tabulatoren
+# unterwegs zu Leerzeichen geworden waren, "2.870    861 m3" als 2.870.861
+# Einheiten: Faktor 9.404 zu viel, ohne jede Warnung.
+# Das einzelne "m" (Entfernung: "2.352 m") braucht das Leerzeichen davor, sonst
+# wuerde eine blosse Zahl mitgefangen.
+EINHEIT_RE = re.compile(r"(m3|m³|ISK|km|%|\sm)\s*$", re.I)
+
+
 def parse_calc_text(text):
-    """Zeilen wie 'Compressed Veldspar<TAB>49.105' (Frachtraum-Kopie) oder
-    'Compressed Scordite 42000' in (Typname, Menge) übersetzen."""
+    """Zeilen wie 'Compressed Veldspar<TAB>49.105' (Frachtraum-Kopie),
+    'Compressed Scordite 42000' oder eine Zeile aus der Bergbauvermessung
+    ('Pyroxeres II-Grade*<TAB>2.870<TAB>861 m3<TAB>69.800,00 ISK<TAB>2.352 m')
+    in (Typname, Menge) uebersetzen. Genommen wird die erste Spalte OHNE
+    Einheit, alles mit m3, ISK, km oder Prozent wird uebersprungen."""
     names = sorted(ORE_TYPES, key=len, reverse=True)
     items, unknown = {}, []
     for raw in (text or "").splitlines():
@@ -5862,12 +5878,15 @@ def parse_calc_text(text):
         low = line.lower()
         match = next((n for n in names if low.startswith(n.lower())), None)
         if not match:
-            unknown.append(line.split("\t")[0][:40])
+            unknown.append(SPALTEN_RE.split(line)[0][:40])
             continue
-        rest = line[len(match):].lstrip("*").split("\t")
+        rest = SPALTEN_RE.split(line[len(match):].lstrip("*"))
         qty = 1
         for part in rest:
-            m = NUM_RE.search(STRIP_RE.sub("", part))
+            sauber = STRIP_RE.sub("", part).strip()
+            if not sauber or EINHEIT_RE.search(sauber):
+                continue          # Volumen, Wert, Entfernung: keine Stueckzahl
+            m = NUM_RE.search(sauber)
             if m and num(m.group(1)) > 0:
                 qty = num(m.group(1))
                 break
@@ -10372,7 +10391,7 @@ function renderRechner(){
  <div class="card" id="calcBox" style="grid-column:1/-1">
   <b>📦 Frachtraum</b>
   <div style="font-size:12px;color:var(--dim);margin:6px 0">Im Spiel den Frachtraum oder Container öffnen, alles markieren (Strg+A) und kopieren (Strg+C), dann hier einfügen.
-  Einzelne Zeilen wie "Compressed Veldspar 50000" funktionieren genauso.</div>
+  Einzelne Zeilen wie "Compressed Veldspar 50000" funktionieren genauso. Auch die Ergebnisse der Bergbauvermessung lassen sich so einfügen, dann steht hier, wie viel Volumen und ISK im Belt liegen.</div>
   <textarea id="calcIn" rows="7" style="width:100%" placeholder="Compressed Veldspar	49.105&#10;Compressed Scordite	42.990"></textarea>
   <div style="margin:8px 0"><button class="btn" id="calcGo">Berechnen</button> <span id="calcStat" style="font-size:12px;color:var(--dim)"></span></div>
   <div id="calcOut" style="overflow-x:auto"></div></div>`;
@@ -10709,8 +10728,8 @@ const EN = {
  'Comes straight from the game logs. Pure belt-rat trips (fleet bounty without real combat) are filtered out.',
 'Noch keine Journal-Daten. Nach dem ersten ESI-Abgleich (spätestens in einer Stunde) erscheinen hier die letzten 30 Tage.':
  'No journal data yet. After the first ESI sync (within an hour at the latest) the last 30 days appear here.',
-'Im Spiel den Frachtraum oder Container öffnen, alles markieren (Strg+A) und kopieren (Strg+C), dann hier einfügen. Einzelne Zeilen wie "Compressed Veldspar 50000" funktionieren genauso.':
- 'Open your cargo hold or a container in game, select everything (Ctrl+A) and copy (Ctrl+C), then paste it here. Single lines like "Compressed Veldspar 50000" work just as well.',
+'Im Spiel den Frachtraum oder Container öffnen, alles markieren (Strg+A) und kopieren (Strg+C), dann hier einfügen. Einzelne Zeilen wie "Compressed Veldspar 50000" funktionieren genauso. Auch die Ergebnisse der Bergbauvermessung lassen sich so einfügen, dann steht hier, wie viel Volumen und ISK im Belt liegen.':
+ 'Open your cargo hold or a container in game, select everything (Ctrl+A) and copy (Ctrl+C), then paste it here. Single lines like "Compressed Veldspar 50000" work just as well. Survey scanner results can be pasted the same way, then you see how much volume and ISK the belt holds.',
 'Photon (angelehnt ans EVE-Interface: dunkel, kantig, Gold-Akzente)':
  'Photon (modelled on the EVE interface: dark, angular, gold accents)',
 'Das Overlay ist ein schwebendes Always-on-top-Fenster mit Status und Alarmen, bleibt über dem EVE-Client (Fenstermodus/randlos). In Chrome und Edge klickbar, in Firefox als Bild. Start nur per Klick.':
