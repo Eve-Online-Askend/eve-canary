@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.75.1"
+VERSION = "1.75.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -7140,6 +7140,12 @@ html[data-skin=photon] .rolesel{border-radius:1px}
    Leiste rechts einfach abgeschnitten ("PLA…" statt Planeten), jetzt laesst
    sie sich seitlich schieben. */
 #loadbar{height:2px;background:var(--inset);overflow:hidden;margin-bottom:-2px;position:relative;z-index:2}
+#loadtxt{font-size:12.5px;color:var(--cyan);padding:6px 2px 0;display:flex;gap:7px;align-items:center}
+#loadtxt:before{content:'';width:9px;height:9px;border-radius:50%;background:var(--cyan);
+ animation:lbp 900ms ease-in-out infinite}
+#loadtxt.lang{color:var(--gold)}
+#loadtxt.lang:before{background:var(--gold)}
+@keyframes lbp{0%,100%{opacity:.25}50%{opacity:1}}
 #loadbar>div{height:100%;width:35%;background:var(--cyan);border-radius:2px;
  animation:lb 900ms ease-in-out infinite}
 @keyframes lb{0%{margin-left:-35%}100%{margin-left:100%}}
@@ -7476,6 +7482,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span class="pill" id="gear">⚙ Optionen</span>
 </header>
 <div id="loadbar" hidden><div></div></div>
+<div id="loadtxt" hidden></div>
 <nav>
  <span data-v="live" class="on">Live</span>
  <span data-v="month">30 Tage</span>
@@ -7717,22 +7724,42 @@ function renderViewInfo(){
  };
  if(lang!=='de')tr(document.body);
 }
-let ladeTimer=null;
+let ladeTimer=null,ladeTimer2=null;
 // Sichtbares Zeichen, dass der Klick angekommen ist. Erst nach 150 ms, weil ein
-// Wechsel oft in 15 ms durch ist und ein Balken dann nur flackern wuerde.
-function ladeAn(){
- clearTimeout(ladeTimer);
- ladeTimer=setTimeout(()=>{const b=$('#loadbar');if(b)b.hidden=false;},150);
+// Wechsel oft in 15 ms durch ist und Balken samt Text dann nur flackern wuerden.
+// Der Name kommt aus der Beschriftung des angeklickten Tabs, damit er ohne
+// eigene Uebersetzungstabelle in jeder Sprache stimmt.
+function ladeAn(was){
+ clearTimeout(ladeTimer);clearTimeout(ladeTimer2);
+ const t=$('#loadtxt');
+ ladeTimer=setTimeout(()=>{
+  const b=$('#loadbar');if(b)b.hidden=false;
+  if(t){
+   t.className='';
+   t.textContent=(lang==='en'?'Loading ':'Lade ')+(was||'')+' …';
+   t.hidden=false;
+  }
+  // Zweite Stufe: dauert es ungewoehnlich lange, sagen wir das auch. Sonst
+  // sieht ein haengender Abruf genauso aus wie ein normaler.
+  ladeTimer2=setTimeout(()=>{
+   if(t&&!t.hidden){
+    t.className='lang';
+    t.textContent=(lang==='en'
+      ?'Still loading '+(was||'')+' … the data fetch is taking longer than usual'
+      :'Lade '+(was||'')+' … der Abruf dauert länger als sonst');
+   }},1500);
+ },150);
 }
 function ladeAus(){
- clearTimeout(ladeTimer);
+ clearTimeout(ladeTimer);clearTimeout(ladeTimer2);
  const b=$('#loadbar');if(b)b.hidden=true;
+ const t=$('#loadtxt');if(t){t.hidden=true;t.className='';}
 }
 document.querySelectorAll('nav span').forEach(el=>el.onclick=()=>{
  if(view===el.dataset.v)return;            // derselbe Tab, nichts zu tun
  document.querySelectorAll('nav span').forEach(x=>x.classList.remove('on'));
  el.classList.add('on');view=el.dataset.v;
- ladeAn();
+ ladeAn(el.textContent.trim());
  // Direkt umschalten: tick() faellt aus, solange noch eine Abfrage laeuft
  // (tickBusy), der Kasten haette sonst bis zu zwei Sekunden den alten Text.
  renderViewInfo();

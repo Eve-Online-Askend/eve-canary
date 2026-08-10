@@ -1,5 +1,17 @@
 [
  {
+  "v": "1.75.2",
+  "d": "2026-08-10",
+  "de": [
+   "Der Ladebalken sagt jetzt auch, worauf du wartest. Statt nur eines Striches steht dort „Lade 🎯 Missionen …\" mit dem Namen des Tabs, den du angeklickt hast. Dauert es ungewöhnlich lange, wechselt der Text nach anderthalb Sekunden auf „der Abruf dauert länger als sonst\" und wird gelb. Ein hängender Abruf sieht damit nicht mehr aus wie ein normaler.",
+   "Der Name kommt aus der Beschriftung des Tabs selbst, deshalb stimmt er in beiden Sprachen ohne eigene Übersetzungsliste. Wie beim Balken erscheint auch der Text erst nach 150 Millisekunden, die schnellen Wechsel bleiben also ruhig."
+  ],
+  "en": [
+   "The loading bar now also tells you what you are waiting for. Instead of just a line it says \"Loading 🎯 Missions …\" with the name of the tab you clicked. If it takes unusually long, after one and a half seconds the text switches to \"the data fetch is taking longer than usual\" and turns amber. A stalled fetch no longer looks like a normal one.",
+   "The name comes from the tab label itself, so it is correct in both languages without a separate translation list. Like the bar, the text only appears after 150 milliseconds, so quick switches stay calm."
+  ]
+ },
+ {
   "v": "1.75.1",
   "d": "2026-08-10",
   "de": [
