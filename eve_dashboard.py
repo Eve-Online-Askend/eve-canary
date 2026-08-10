@@ -26,7 +26,7 @@ import urllib.request
 
 VERSION = "1.72.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
-                "eve_map.json", "npc_factions.json",
+                "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
 from collections import deque
@@ -145,6 +145,14 @@ GANK_IDX = gank_index(GANK_GROUPS)
 # Missionserkennung über einzigartige Gegnernamen (nur geprüfte Signaturen).
 MISSION_SIGS = {k.lower(): v for k, v in load_json("mission_sigs.json", {}).items()
                 if not k.startswith("_")}
+# Ort-Erkennung. Fuer Kampfanomalien gibt es sowas NICHT und wird es nie geben:
+# alle Anomalien einer Fraktion ziehen aus demselben Rattenpool, es gibt keinen
+# site-eindeutigen Gegner. Fuer den Abyss dagegen fuehrt CCP zwei eigene Gruppen
+# ("Abyssal Spaceship Entities", "Abyssal Drone Entities"), und was dort steht,
+# kommt nirgendwo sonst vor. Die Liste wird aus dem SDE erzeugt
+# (baue_npc_fraktionen.py), nicht von Hand gepflegt.
+SITE_SIGS = {k.lower(): v for k, v in load_json("site_sigs.json", {}).items()
+             if not k.startswith("_")}
 # Alle handelbaren Item-Namen -> typeID, fuer die Autovervollstaendigung der
 # Marktpreis-Suche. Liegt als Datei bei; der Server haelt sie im Speicher und
 # liefert nur die passenden Vorschlaege, damit die Oberflaeche leicht bleibt.
@@ -185,6 +193,26 @@ def detect_mission(enemies, dialogue=""):
             if name and (best is None or conf > best["conf"]):
                 best = {"name": name, "conf": conf}
     return best
+
+
+def detect_site(enemies):
+    """Wo war der Einsatz? Aktuell nur der Abyss, und zwar ueber EXAKTE
+    Gegnernamen aus CCPs Abyssal-Gruppen.
+
+    Bewusst kein Teilwort-Vergleich wie bei den Missionen: "Vila" sieht
+    exklusiv aus, aber "Vila Allopoiesis Node" ist ein Spawn Container, und die
+    EWAR-Praefixe (Harrowing, Starving, Tangling, Ghosting, Anchoring) gibt es
+    auch ausserhalb des Abyss. An einem echten Logbestand haette ein
+    Teilwort-Vergleich 1,3 Mio Zeilen falsch markiert.
+
+    Ein einziger Treffer genuegt, denn diese Namen kann es woanders nicht
+    geben. Gibt {'name','conf'} oder None."""
+    for name, _cnt in (enemies or []):
+        v = SITE_SIGS.get((name or "").strip().lower())
+        if v:
+            return {"name": v.get("m") if isinstance(v, dict) else v,
+                    "conf": int(v.get("c", 90)) if isinstance(v, dict) else 90}
+    return None
 
 
 # Fraktions-Erkennung aus den Gegnernamen: welchen Schaden du BEKOMMST (tanken)
@@ -1138,6 +1166,16 @@ def meta_get(key, default=None):
 #       Rueckstands-Zeilen zaehlen nicht mehr als Ertrag. Beides muss rueckwirkend
 #       durch alle Logs, sonst bleiben Gas-Ausbeuten auf 0 m3 und der faelschlich
 #       gebuchte Abfall ("Harvestable Cloud") stehen.
+# "9" = Fernunterstuetzung (Logi) wird ueberhaupt erst erkannt, und ein reiner
+#       Logi-Einsatz zaehlt als Einsatz. Ohne Neu-Einlesen fehlt jede Logi-Zeile
+#       der Vergangenheit.
+# "10" = mehrere Zahlen waren falsch und muessen rueckwirkend richtig werden:
+#       Tausendertrenner Apostroph ("131'250 ISK" wurde als 131 gelesen),
+#       Dezimalstellen bis 2020 ("3'384'375.00"), verunreinigte Erznamen
+#       ("Veldspar with a lost residue of 0 units" war ein eigener Schluessel),
+#       eigener Nosferatu zaehlte als EWAR gegen dich, Wracks und Drohnen
+#       zaehlten als Spieler. Dazu die neue Art "residue" und die stummen
+#       "noise"-Zeilen, die absichtlich NICHT in die Datenbank wandern.
 PARSE_VER = "10"
 
 
@@ -5339,6 +5377,7 @@ def snapshot_live():
             "top_attackers": sorted(s.attackers.items(), key=lambda x: -x[1])[:12],
             "mission": detect_mission(sorted(s.targets.items(), key=lambda x: -x[1]),
                                       " ".join(chatwatch.dialogue(s.char_id, s.first_ts))),
+            "site": detect_site(sorted(s.targets.items(), key=lambda x: -x[1])),
             "faction": faction_info(sorted(s.targets.items(), key=lambda x: -x[1])),
             "npc": chatwatch.dialogue(s.char_id, s.first_ts)[-3:],
             "hits_out": s.hits_out, "miss_out": s.miss_out, "miss_in": s.miss_in,
@@ -5937,6 +5976,7 @@ def query_mission_history(limit=40):
         if not dialog and char_id:
             dialog = " ".join(chatwatch.dialogue(str(char_id), st or 0, et or None))[:2000]
         mission = detect_mission(enemies, dialog or "")
+        site = detect_site(enemies)
         # Belt-Ratten raus: eine echte Mission ist entweder erkannt, oder hat
         # spuerbaren eigenen Schaden (>5000), oder echte Bounty (>100k). Reine
         # Flotten-Bounty beim Mining (winziger/kein Schaden, Kleinst-Bounty von
@@ -5944,7 +5984,10 @@ def query_mission_history(limit=40):
         # Ein Logi-Einsatz hat naturgemaess weder Schaden noch Bounty. Ohne
         # diese Ausnahme faellt er hier raus und waere trotz Speicherung
         # unsichtbar.
-        if (not mission and (do or 0) < 5000 and (bounty or 0) < 100000
+        # Ein erkannter Ort (Abyss) zaehlt wie eine erkannte Mission: dort gibt
+        # es gar keine Bounty, der Einsatz waere sonst nur ueber den Schaden
+        # drin und bei einem kurzen Lauf auch der zu klein.
+        if (not mission and not site and (do or 0) < 5000 and (bounty or 0) < 100000
                 and not (lo or 0) and not (li or 0)):
             continue
         # NPC-Funk: bis zu 3 aussagekräftige Zeilen als Story-Schnipsel
@@ -5957,7 +6000,8 @@ def query_mission_history(limit=40):
             "min": round(((et or 0) - (st or 0)) / 60), "system": sysn or "?",
             "dmg_out": do or 0, "dmg_in": di or 0, "kills": kills or 0,
             "bounty": round(bounty or 0), "hit": round(100 * hits / shots) if shots else None,
-            "mission": mission, "npc": dlines, "faction": faction_info(enemies),
+            "mission": mission, "site": site, "npc": dlines,
+            "faction": faction_info(enemies),
             "ewar": json.loads(ewj or "[]"),
             "logi_out": round(lo or 0), "logi_in": round(li or 0),
             "reward": vreward, "bonus": vbonus,
@@ -5995,11 +6039,12 @@ def query_timelines():
     for char, st, et, sysn, kills, bounty, do, di, ej, ewj in mrows:
         enemies = json.loads(ej or "[]")
         mission = detect_mission(enemies, "")
+        site = detect_site(enemies)
         # Belt-Ratten raus, wie in der Missions-Historie
-        if not mission and (do or 0) < 5000 and (bounty or 0) < 100000:
+        if not mission and not site and (do or 0) < 5000 and (bounty or 0) < 100000:
             continue
         add(char, {"ts": int(st or 0), "kind": "combat",
-                   "mission": mission, "faction": faction_info(enemies),
+                   "mission": mission, "site": site, "faction": faction_info(enemies),
                    "kills": kills or 0, "bounty": round(bounty or 0),
                    "dmg_out": do or 0, "dmg_in": di or 0,
                    "min": round(((et or 0) - (st or 0)) / 60),
@@ -6052,7 +6097,9 @@ def query_timelines():
                              "kills": s.kills, "bounty": round(s.bounty), "min": mins,
                              "sys": s.mission_system or s.system or "?",
                              "mission": detect_mission(
-                                 sorted(s.targets.items(), key=lambda x: -x[1]), "")})
+                                 sorted(s.targets.items(), key=lambda x: -x[1]), ""),
+                             "site": detect_site(
+                                 sorted(s.targets.items(), key=lambda x: -x[1]))})
     chars = []
     for char, items in per.items():
         items.sort(key=lambda x: -x["ts"])
@@ -8096,6 +8143,14 @@ function missionHtml(m){
  const c=m.conf!=null?` <span class="mconf">~${m.conf}% sicher</span>`:'';
  return `🎯 ${esc(m.name)}${c} <a href="https://duckduckgo.com/?q=${encodeURIComponent('EVE Online '+m.name+' mission guide')}" target="_blank" rel="noopener">Guide</a>`;
 }
+// Ort statt Mission. Ein Abyss-Lauf ist keine Mission, deshalb eigenes Zeichen
+// und kein Prozentwert: die Gegnernamen dort gibt es nirgendwo sonst, das ist
+// keine Schaetzung. Ohne Prozent sieht man auch sofort den Unterschied zur
+// Missionserkennung, die immer eine Genauigkeit mitfuehrt.
+function siteHtml(s){
+ if(!s||!s.name)return '';
+ return `🌀 ${esc(s.name)}`;
+}
 function mfpTier(m){
  if(m>=15000)return {n:'Rorqual-Overlord',c:'gold'};
  if(m>=6000)return {n:'Erz-Baron',c:'gold'};
@@ -8536,7 +8591,7 @@ function combatCardHtml(c){
      <div class="stat"><div class="l">Session gesamt</div><div class="v isk">${fmtM(sessISK)}</div></div>
     </div>
     ${c.mission
-      ?`<div class="mtag" style="margin-top:8px">${missionHtml(c.mission)}</div>`
+      ?`<div class="mtag" style="margin-top:8px">${missionHtml(c.mission)}${c.site?' '+siteHtml(c.site):''}</div>`
       :(((c.dmg_out||0)>0||(c.top_targets&&c.top_targets.length))
         ?`<div class="mtag mtired" style="margin-top:8px" title="Keine Mission erkannt. Entweder Ratting ohne feste Mission oder eine Signatur, die Canary noch nicht kennt.">🔍 Keine Erkennungsdaten gefunden</div>`
         :'')}
@@ -9102,7 +9157,7 @@ function tlRow(it){
  if(it.kind==='live'){
   const now=lang==='en'?'now':'jetzt';
   if(it.sub==='combat'){
-   const nm=it.mission?missionHtml(it.mission):(lang==='en'?'<b>Combat</b>':'<b>Kampf</b>');
+   const nm=it.mission?missionHtml(it.mission):(it.site?siteHtml(it.site):(lang==='en'?'<b>Combat</b>':'<b>Kampf</b>'));
    return `<div class="tlrow live"><span class="tlt">${now}</span><span><span class="tllive">●</span> ${lang==='en'?'live':'läuft'} ⚔ ${nm} · ${it.kills} Kills · <span class="isk">${fmtM(it.bounty)}</span> · ${it.min} min${it.sys&&it.sys!=='?'?' · '+esc(it.sys):''}</span></div>`;
   }
   return `<div class="tlrow live"><span class="tlt">${now}</span><span><span class="tllive">●</span> ${lang==='en'?'mining now':'am Minen'} ⛏ ${fmt(it.m3)} m³ · <span class="isk">${fmtM(it.isk)}</span> · ${it.min} min${it.ore?' · '+esc(it.ore):''}${it.sys&&it.sys!=='?'?' · '+esc(it.sys):''}</span></div>`;
@@ -9110,7 +9165,7 @@ function tlRow(it){
  if(it.kind==='mine')
   return `<div class="tlrow"><span class="tlt">${t}</span><span>⛏ <b>Mining-Trip</b> ${fmt(it.m3)} m³ · <span class="isk">${fmtM(it.isk)}</span> · ${it.min} min${it.ore?' · '+esc(it.ore):''}${it.sys&&it.sys!=='?'?' · '+esc(it.sys):''}</span></div>`;
  if(it.kind==='combat'){
-  const nm=it.mission?missionHtml(it.mission):(lang==='en'?'<b>Combat</b>':'<b>Kampf</b>');
+  const nm=it.mission?missionHtml(it.mission):(it.site?siteHtml(it.site):(lang==='en'?'<b>Combat</b>':'<b>Kampf</b>'));
   return `<div class="tlrow"><span class="tlt">${t}</span><span>⚔ ${nm} · ${it.kills} Kills · <span class="isk">${fmtM(it.bounty)}</span> · ${it.min} min${it.sys&&it.sys!=='?'?' · '+esc(it.sys):''}</span></div>`;
  }
  if(it.kind==='reward')
@@ -9458,7 +9513,7 @@ function renderMissionLive(chars){
     <div class="mlive-center">
      <div class="mlive-ring${c.portrait?'':' noimg'}">${c.portrait?`<img src="${c.portrait}" alt="">`:'👤'}</div>
      <div class="mlive-nm">${esc(c.name)}</div>
-     ${c.mission?`<div class="mtag">${missionHtml(c.mission)}</div>`:`<div class="mtag mtired" title="Keine Mission erkannt. Entweder Ratting ohne feste Mission oder eine Signatur, die Canary noch nicht kennt.">🔍 Keine Erkennungsdaten gefunden</div>`}
+     ${c.mission?`<div class="mtag">${missionHtml(c.mission)}</div>`:c.site?`<div class="mtag">${siteHtml(c.site)}</div>`:`<div class="mtag mtired" title="Keine Mission erkannt. Entweder Ratting ohne feste Mission oder eine Signatur, die Canary noch nicht kennt.">🔍 Keine Erkennungsdaten gefunden</div>`}
     </div>
     <div class="mlive-side">
      <div class="l">${lang==='en'?'Damage in':'Schaden rein'}</div>
@@ -9522,7 +9577,7 @@ function renderMissions(d){
     <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:baseline">
      <b>${new Date(x.start*1000).toLocaleString().slice(0,16)}</b>
      <span class="sys">${x.system&&x.system!=='?'?'· '+esc(x.system)+' ':''}· ${x.min} min</span>
-     ${x.mission?`<span class="mtag">${missionHtml(x.mission)}</span>`:''}
+     ${x.mission?`<span class="mtag">${missionHtml(x.mission)}</span>`:x.site?`<span class="mtag">${siteHtml(x.site)}</span>`:''}
      <span style="margin-left:auto" class="isk"><b>${fmtM(x.total)} ISK</b></span>
     </div>
     ${(!x.kills&&!x.bounty&&!x.dmg_out&&(x.logi_out||x.logi_in))

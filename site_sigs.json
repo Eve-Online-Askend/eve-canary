@@ -1,0 +1,482 @@
+{
+ "anchoring damavik": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "anchoring vila damavik": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "arrester marshal disparu troop": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "arrester pacifier disparu troop": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "assault enforcer disparu troop": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "attacker marshal disparu troop": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "attacker pacifier disparu troop": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "awoken preserver": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "bathyic abyssal overmind": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "battered drifter battleship": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "battered shackling leshak": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "benthic abyssal overmind": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "blastgrip tessera": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "blastlance tessella": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "blastneedle tessella": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "blinding leshak": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "blinding vila damavik": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "devoted fisher": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "devoted herald": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "devoted hunter": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "devoted knight": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "devoted lookout": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "devoted priest": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "devoted smith": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "devoted torchbearer": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "devoted trapper": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "dievas shackling leshak": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "drainer enforcer disparu troop": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "drainer marshal disparu troop": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "drainer pacifier disparu troop": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "drifter assault battleship": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "drifter command battleship": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "drifter entanglement cruiser": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "drifter foothold battleship": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "drifter frontline battleship": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "drifter nullcharge cruiser": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "drifter nullwarp cruiser": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "drifter rearguard battleship": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "drifter vanguard battleship": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "edencom battleship placeholder": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "elite lucifer cynabal": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "elite lucifer dramiel": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "embergrip tessera": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "emberlance tessella": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "emberneedle tessella": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "endobenthic abyssal overmind": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "ephialtes confuser": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "ephialtes dissipator": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "ephialtes entangler": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "ephialtes illuminator": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "ephialtes lancer": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "ephialtes obfuscator": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "ephialtes spearfisher": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "fieldweaver tessella": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "fogcaster tessella": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "gazedimmer tessella": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "ghosting damavik": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "ghosting kikimora": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "ghosting vila damavik": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "hadal abyssal overmind": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "harrowing vedmak": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "harrowing vila vedmak": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "igniting swarmer": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "impaired blitzing kikimora": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "impaired drifter battleship": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "impaired shackling leshak": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "lucid aegis": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "lucid deepwatcher": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "lucid escort": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "lucid firewatcher": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "lucid preserver": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "lucid sentinel": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "lucid upholder": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "lucid warden": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "lucid watchman": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "lucifer burst": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "lucifer cynabal": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "lucifer dramiel": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "lucifer echo": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "lucifer fury": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "lucifer ixion": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "lucifer medusa": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "lucifer swordspine": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "marker enforcer disparu troop": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "marker pacifier disparu troop": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "photic abyssal overmind": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "plateforger tessella": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "renewing leshak": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "renewing rodiva": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "ruptured drifter battleship": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "ruptured shackling leshak": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "shining drekavac": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "shining vila damavik": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "skybreaker disparu troop": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "snarecaster tessella": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "sparkgrip tessera": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "sparklance tessella": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "sparkneedle tessella": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "spotlighter tessella": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "starving damavik": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "starving leshak": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "starving vedmak": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "stormbringer disparu troop": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "strikegrip tessera": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "strikelance tessella": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "strikeneedle tessella": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "striking damavik": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "striking drekavac": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "striking kikimora": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "striking leshak": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "striking vila damavik": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "tangling damavik": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "tangling kikimora": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "tangling leshak": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "tangling vila damavik": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "thunderchild disparu troop": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "twilit abyssal overmind": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "tyrannos typhon": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "vila swarmer": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ },
+ "warding leshak": {
+  "c": 95,
+  "m": "Abyssal Deadspace"
+ }
+}
