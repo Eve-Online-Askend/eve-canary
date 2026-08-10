@@ -1,1 +1,40 @@
-[]
+[
+ {
+  "name": "BamKi",
+  "role": {
+   "de": "Streamer"
+  },
+  "note": {
+   "de": "Canary Supporter der ersten Stunden. Schaut rein !"
+  },
+  "links": [
+   {
+    "k": "twitch",
+    "u": "https://www.twitch.tv/bamki"
+   },
+   {
+    "k": "youtube",
+    "u": "https://www.youtube.com/@BamKi"
+   },
+   {
+    "k": "discord",
+    "u": "https://discord.com/invite/YNVvjNDM7w"
+   }
+  ]
+ },
+ {
+  "name": "switchhitgames",
+  "role": {
+   "de": "Streamer"
+  },
+  "note": {
+   "de": "lovely person, supporter of Eve Canary"
+  },
+  "links": [
+   {
+    "k": "twitch",
+    "u": "https://www.twitch.tv/switchhitgames"
+   }
+  ]
+ }
+]
