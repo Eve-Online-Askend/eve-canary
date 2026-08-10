@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.72.0"
+VERSION = "1.72.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -623,7 +623,16 @@ def classify_rest(base, tag, text):
 
 
 def num(s):
-    return int(re.sub("[.,\xa0 '’]", "", s) or 0)
+    # Erst die eindeutigen Tausendertrenner weg: NBSP, Leerzeichen, Apostroph.
+    t = re.sub("[\xa0 '’]", "", s)
+    # Punkt und Komma sind zweideutig. Steht am ENDE einer davon mit ein oder
+    # zwei Ziffern dahinter, ist es ein Dezimaltrenner und keine Tausenderstelle:
+    # "3'384'375.00" sind 3.384.375 ISK und nicht 338.437.500. EVE hat bis 2020
+    # Kopfgelder mit zwei Nachkommastellen geschrieben, danach nicht mehr.
+    # Eine Tausendergruppe hat IMMER genau drei Ziffern, deshalb ist die
+    # Unterscheidung eindeutig.
+    t = re.sub(r"[.,]\d{1,2}$", "", t)
+    return int(re.sub("[.,]", "", t) or 0)
 
 
 def parse_line(raw):
