@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.75.0"
+VERSION = "1.75.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -7139,6 +7139,10 @@ html[data-skin=photon] .rolesel{border-radius:1px}
 /* Elf Tabs passen in schmalen Fenstern nicht nebeneinander. Vorher wurde die
    Leiste rechts einfach abgeschnitten ("PLA…" statt Planeten), jetzt laesst
    sie sich seitlich schieben. */
+#loadbar{height:2px;background:var(--inset);overflow:hidden;margin-bottom:-2px;position:relative;z-index:2}
+#loadbar>div{height:100%;width:35%;background:var(--cyan);border-radius:2px;
+ animation:lb 900ms ease-in-out infinite}
+@keyframes lb{0%{margin-left:-35%}100%{margin-left:100%}}
 nav{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:14px;
  overflow-x:auto;scrollbar-width:thin}
 nav::-webkit-scrollbar{height:4px}
@@ -7471,6 +7475,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span class="pill" id="theme" title="Dark/Light">◐</span>
  <span class="pill" id="gear">⚙ Optionen</span>
 </header>
+<div id="loadbar" hidden><div></div></div>
 <nav>
  <span data-v="live" class="on">Live</span>
  <span data-v="month">30 Tage</span>
@@ -7712,9 +7717,22 @@ function renderViewInfo(){
  };
  if(lang!=='de')tr(document.body);
 }
+let ladeTimer=null;
+// Sichtbares Zeichen, dass der Klick angekommen ist. Erst nach 150 ms, weil ein
+// Wechsel oft in 15 ms durch ist und ein Balken dann nur flackern wuerde.
+function ladeAn(){
+ clearTimeout(ladeTimer);
+ ladeTimer=setTimeout(()=>{const b=$('#loadbar');if(b)b.hidden=false;},150);
+}
+function ladeAus(){
+ clearTimeout(ladeTimer);
+ const b=$('#loadbar');if(b)b.hidden=true;
+}
 document.querySelectorAll('nav span').forEach(el=>el.onclick=()=>{
+ if(view===el.dataset.v)return;            // derselbe Tab, nichts zu tun
  document.querySelectorAll('nav span').forEach(x=>x.classList.remove('on'));
  el.classList.add('on');view=el.dataset.v;
+ ladeAn();
  // Direkt umschalten: tick() faellt aus, solange noch eine Abfrage laeuft
  // (tickBusy), der Kasten haette sonst bis zu zwei Sekunden den alten Text.
  renderViewInfo();
@@ -10414,9 +10432,13 @@ function setLang(l){
  document.documentElement.lang = l;
  tr(document.body);
 }
-let tickBusy=false;
+let tickBusy=false,tickErneut=false;
 async function tick(){
- if(tickBusy)return;  // kein Request-Stau bei langsamem /data
+ // Laeuft schon eine Abfrage, wird der Wunsch GEMERKT statt verworfen. Vorher
+ // fiel ein Tab-Klick in diesem Fall ersatzlos aus und die Ansicht wechselte
+ // erst beim naechsten Intervall: gemessen bis zu 1.755 ms, in denen der alte
+ // Inhalt stehen blieb und nichts passierte.
+ if(tickBusy){tickErneut=true;return;}
  tickBusy=true;
  const reqView=view;  // View einfrieren: nach dem await zählt der Stand von JETZT
  try{
@@ -10445,7 +10467,11 @@ async function tick(){
   }
   if(lang!=='de')tr(document.body);   // frisch gerenderte Teile nachuebersetzen
  }catch(e){}
- finally{tickBusy=false;}
+ finally{
+  tickBusy=false;
+  if(tickErneut){tickErneut=false;tick();}   // gemerkten Wunsch sofort nachholen
+  else ladeAus();
+ }
 }
 document.querySelectorAll('.langsel').forEach(b=>b.onclick=()=>{setLang(b.dataset.l);tick();});
 setLang(lang);

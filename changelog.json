@@ -1,5 +1,17 @@
 [
  {
+  "v": "1.75.1",
+  "d": "2026-08-10",
+  "de": [
+   "Das Umschalten zwischen den Tabs war manchmal zäh, und die Ursache war ein verschluckter Klick. Canary fragt alle zwei Sekunden neue Daten ab. Fiel dein Klick genau in so eine laufende Abfrage, wurde er ersatzlos verworfen und die Ansicht wechselte erst beim nächsten Durchlauf. Gemessen: bis zu 1,8 Sekunden, in denen der alte Inhalt stehen blieb und scheinbar nichts passierte. Der Klick wird jetzt gemerkt und sofort nachgeholt, sobald die laufende Abfrage durch ist. Im Test danach: schlechtester Fall 0,65 Sekunden, Mittelwert 0,16, kein einziger Wechsel über einer Sekunde.",
+   "Dazu ein schmaler Ladebalken unter der Kopfleiste. Er erscheint erst nach 150 Millisekunden, damit die schnellen Wechsel nicht flackern, und verschwindet, sobald die Ansicht steht. Ein Klick auf den Tab, auf dem du schon bist, löst jetzt gar nichts mehr aus."
+  ],
+  "en": [
+   "Switching between tabs was sometimes sluggish, and the cause was a swallowed click. Canary fetches fresh data every two seconds. If your click landed while such a fetch was running, it was dropped entirely and the view only switched on the next round. Measured: up to 1.8 seconds during which the old content stayed and nothing appeared to happen. The click is now remembered and carried out as soon as the running fetch completes. Measured afterwards: worst case 0.65 seconds, average 0.16, not a single switch over one second.",
+   "Plus a slim loading bar below the header. It only appears after 150 milliseconds so quick switches do not flicker, and it disappears once the view is up. Clicking the tab you are already on now does nothing at all."
+  ]
+ },
+ {
   "v": "1.75.0",
   "d": "2026-08-10",
   "de": [
