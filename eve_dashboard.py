@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.77.0"
+VERSION = "1.77.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -8058,8 +8058,8 @@ const VIEW_INFO={
   q:'Daten: die Datenbank von Canary für das Netz. Mit EVE-Login Bild, Kontostand und Schiff. Corp und Sicherheitsstatus über öffentliche Quellen.'},
  planeten:{d:'Deine Planeten-Fabriken. Wann läuft ein Extraktor ab, was liegt im Lager, was wird produziert und was ist es wert.',
   q:'Daten: nur über den EVE-Login. Achtung: die Lagerstände sind so aktuell, wie du die Kolonie zuletzt im Spiel geöffnet hast. Die Ablaufzeiten stimmen dagegen immer.'},
- wallet:{d:'Dein Wallet unter der Lupe, mit Schwerpunkt Handel. Welches Item bringt wirklich Gewinn, was hast du dafür bezahlt und wofür verkauft, und was fressen Gebühren und Steuer. Dazu die Herkunft deiner Einnahmen insgesamt, von Bounty bis Vertrag.',
-  q:'Daten: nur über den EVE-Login, aus deinem Wallet-Journal und deinen Markt-Transaktionen. Beides ist bis zu eine Stunde alt. Gewinn wird per FIFO gerechnet, also jeder Verkauf gegen deine ältesten Einkäufe desselben Typs. Als Handel zählen nur Sachen, die du gekauft UND verkauft hast, sonst würde dein eigenes Schiff als Riesenverlust dastehen.'},
+ wallet:{d:'Dein Wallet unter der Lupe. Oben die Bilanz: Einnahmen, Ausgaben und was unterm Strich bleibt, je Kategorie und umschaltbar für 7 Tage, 30 Tage oder alles. Darunter der Handel im Detail, welches Item wirklich Gewinn bringt und was Gebühren und Steuer fressen, dazu Ranglisten nach Umsatz und verkaufter Menge.',
+  q:'Daten: nur über den EVE-Login, aus deinem Wallet-Journal und deinen Markt-Transaktionen. Beides ist bis zu eine Stunde alt. Die Käufe kommen aus den Transaktionen und nicht aus dem Journal, denn EVE bucht eine Kauforder schon beim Einstellen als hinterlegte Sicherheit, und die käme bei Storno zurück. Gewinn wird per FIFO gerechnet, also jeder Verkauf gegen deine ältesten Einkäufe desselben Typs. Als Handel zählen nur Sachen, die du gekauft UND verkauft hast, sonst würde dein eigenes Schiff als Riesenverlust dastehen. Was du nur verkauft hast, etwa selbst gefördertes Erz, steht deshalb in einer eigenen Liste.'},
  vault:{d:'Dein Erz in den Stationen, und der Rat, was sich mehr lohnt: roh verkaufen, komprimiert verkaufen oder einschmelzen.',
   q:'Daten: EVE-Login für den Bestand, Marktpreise von Fuzzwork. Der Einschmelz-Wert ist vorsichtig gerechnet, dein echter Erlös liegt eher darüber.'},
  rechner:{d:'Ein Preisrechner. Frachtraum im Spiel markieren, kopieren, hier einfügen, und du siehst sofort, was es an welchem Handelsplatz wert ist.',
@@ -10322,13 +10322,25 @@ function renderMissions(d){
  });
  document.querySelectorAll('.mlootgo').forEach(b=>b.onclick=async()=>{
   const mid=b.dataset.mid;
-  const ta=[...document.querySelectorAll('.mlootin')].find(t=>t.dataset.mid===mid);
-  const st=[...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===mid);
-  st.textContent='Prüfe …';
-  let r;try{r=await post({action:'mission_loot',mid,text:ta?ta.value:''});}catch(e){r=null;}
-  if(r&&r.ok){st.textContent='Loot: '+fmtM(r.isk)+(r.unknown&&r.unknown.length?' · nicht erkannt: '+r.unknown.join(', '):'');
-   setTimeout(tick,600);}
-  else st.textContent=r?'Fehler':'Server nicht erreichbar';
+  // Das Statusfeld JEDES MAL frisch suchen statt es vor dem Abschicken zu
+  // merken. Sobald der Knopf gedrueckt wird, verliert das Eingabefeld den
+  // Fokus, damit greift der Tipp-Schutz nicht mehr und die Ansicht darf sich
+  // neu aufbauen. Das gemerkte Element haengt dann nicht mehr im Dokument, und
+  // "Prüfe …" blieb ewig stehen, obwohl der Server laengst geantwortet hatte
+  // (gemessen: Antwort nach 1.029 ms).
+  const finde=sel=>[...document.querySelectorAll(sel)].find(e=>e.dataset.mid===mid);
+  const setzStatus=txt=>{const s=finde('.mlootstat'); if(s)s.textContent=txt;};
+  const ta=finde('.mlootin');
+  const text=ta?ta.value:'';
+  setzStatus(lang==='en'?'Checking …':'Prüfe …');
+  let r;try{r=await post({action:'mission_loot',mid,text});}catch(e){r=null;}
+  const en2=lang==='en';
+  if(r&&r.ok){
+   setzStatus('Loot: '+fmtM(r.isk)
+    +(r.unknown&&r.unknown.length?(en2?' · not recognised: ':' · nicht erkannt: ')+r.unknown.join(', '):''));
+   setTimeout(tick,600);
+  }else setzStatus(r?(en2?'Error':'Fehler')
+                    :(en2?'Server not reachable':'Server nicht erreichbar'));
  });
 }
 function renderRechner(){
@@ -10495,10 +10507,10 @@ const EN = {
  'Live normally shows only logged-in characters. Turn this on to see offline ones too.',
 'Live':'Live','30 Tage':'30 days','Gesamt':'All time','Analyse':'Analysis',
 '🚦 Intel':'🚦 Intel','🎯 Missionen':'🎯 Missions','💰 ISKray':'💰 ISKray','🕑 Verlauf':'🕑 Timeline','🪪 Steckbrief':'🪪 Character sheet','🪐 Planeten':'🪐 Planets','🧾 Wallet Buddy':'🧾 Wallet Buddy',
-'Dein Wallet unter der Lupe, mit Schwerpunkt Handel. Welches Item bringt wirklich Gewinn, was hast du dafür bezahlt und wofür verkauft, und was fressen Gebühren und Steuer. Dazu die Herkunft deiner Einnahmen insgesamt, von Bounty bis Vertrag.':
- 'Your wallet under the microscope, focused on trading. Which item actually turns a profit, what you paid and what you sold it for, and how much fees and tax eat up. Plus where your income comes from overall, from bounty to contract.',
-'Daten: nur über den EVE-Login, aus deinem Wallet-Journal und deinen Markt-Transaktionen. Beides ist bis zu eine Stunde alt. Gewinn wird per FIFO gerechnet, also jeder Verkauf gegen deine ältesten Einkäufe desselben Typs. Als Handel zählen nur Sachen, die du gekauft UND verkauft hast, sonst würde dein eigenes Schiff als Riesenverlust dastehen.':
- 'Data: through the EVE login only, from your wallet journal and your market transactions. Both are up to an hour old. Profit is computed FIFO, every sale against your oldest buys of the same type. Only items you both bought AND sold count as trading, otherwise your own ship would show up as a huge loss.',
+'Dein Wallet unter der Lupe. Oben die Bilanz: Einnahmen, Ausgaben und was unterm Strich bleibt, je Kategorie und umschaltbar für 7 Tage, 30 Tage oder alles. Darunter der Handel im Detail, welches Item wirklich Gewinn bringt und was Gebühren und Steuer fressen, dazu Ranglisten nach Umsatz und verkaufter Menge.':
+ 'Your wallet under the microscope. At the top the balance: income, spending and what is left, by category and switchable between 7 days, 30 days or everything. Below that trading in detail, which item actually turns a profit and how much fees and tax eat up, plus rankings by turnover and quantity sold.',
+'Daten: nur über den EVE-Login, aus deinem Wallet-Journal und deinen Markt-Transaktionen. Beides ist bis zu eine Stunde alt. Die Käufe kommen aus den Transaktionen und nicht aus dem Journal, denn EVE bucht eine Kauforder schon beim Einstellen als hinterlegte Sicherheit, und die käme bei Storno zurück. Gewinn wird per FIFO gerechnet, also jeder Verkauf gegen deine ältesten Einkäufe desselben Typs. Als Handel zählen nur Sachen, die du gekauft UND verkauft hast, sonst würde dein eigenes Schiff als Riesenverlust dastehen. Was du nur verkauft hast, etwa selbst gefördertes Erz, steht deshalb in einer eigenen Liste.':
+ 'Data: through the EVE login only, from your wallet journal and your market transactions. Both are up to an hour old. Purchases come from the transactions rather than the journal, because EVE books a buy order as escrow the moment you place it, and that money would come back on cancellation. Profit is computed FIFO, every sale against your oldest buys of the same type. Only items you both bought AND sold count as trading, otherwise your own ship would show up as a huge loss. What you only sold, ore you mined yourself for instance, therefore has a list of its own.',
 '🔎 Einzel-Item':'🔎 Single item','📦 Frachtraum':'📦 Cargo',
 '⚙ Optionen':'⚙ Options','◱ Overlay':'◱ Overlay',
 '◱ Mini-Overlay öffnen/schließen':'Open/close mini overlay',

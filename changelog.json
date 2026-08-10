@@ -1,5 +1,19 @@
 [
  {
+  "v": "1.77.1",
+  "d": "2026-08-10",
+  "de": [
+   "Nachtrag zum Loot-Eintragen: das Feld blieb zwar offen, aber nach dem Klick auf „Loot bewerten“ stand dauerhaft „Prüfe …“ da, obwohl das Ergebnis längst berechnet war. Der Server hatte nach gemessenen 1.029 Millisekunden geantwortet, nur schrieb Canary die Antwort in ein Anzeigefeld, das der zwischenzeitliche Neuaufbau der Ansicht schon ersetzt hatte. Jetzt steht das Ergebnis nach einer halben Sekunde da und bleibt stehen.",
+   "Die Meldungen „Fehler“ und „Server nicht erreichbar“ erschienen im englischen Modus zunächst auf Deutsch, bis der nächste Durchlauf sie übersetzt hat. Sie sind jetzt sofort richtig.",
+   "Der Erklärkasten über dem Wallet Buddy beschreibt jetzt auch die neue Bilanz und sagt dazu, warum die Käufe aus den Transaktionen kommen und nicht aus dem Journal."
+  ],
+  "en": [
+   "Follow-up on entering loot: the box stayed open, but after pressing “evaluate loot” it kept showing “Checking …” even though the result was long since computed. The server had answered after a measured 1,029 milliseconds, but Canary wrote the answer into a status field that the view had already replaced while rebuilding itself. The result now appears after half a second and stays put.",
+   "The messages “Error” and “Server not reachable” first appeared in German while in English mode, until the next refresh translated them. They are correct straight away now.",
+   "The explanation box above Wallet Buddy now also describes the new balance sheet, including why purchases come from your transactions rather than from the journal."
+  ]
+ },
+ {
   "v": "1.77.0",
   "d": "2026-08-10",
   "de": [
