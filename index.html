@@ -119,6 +119,19 @@ text-transform:uppercase;letter-spacing:1px}
 .dltile span{display:block;font-size:11px;color:var(--dim);margin-top:2px}
 .dltop{font-size:11px;color:var(--dim);margin:18px 0 9px;text-transform:uppercase;letter-spacing:.05em}
 .dltop:first-child,.dltotal+.dlstats+.dltop{margin-top:0}
+/* Danke-Bereich: Karten mit Name, kurzer Zeile und Link-Pillen */
+.thx{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));margin:16px 0 12px}
+.thx .p{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.thx .n{color:var(--white);font-size:15.5px;margin:0}
+.thx .r{color:var(--gold);font-size:10.5px;text-transform:uppercase;letter-spacing:1.4px;margin:3px 0 0}
+.thx .t{color:var(--dim);font-size:13px;margin:8px 0 0;line-height:1.55}
+.thx .l{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px}
+.thx .l a{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);
+background:var(--inset);border-radius:20px;padding:3px 10px;font-size:11.5px;
+color:var(--txt);text-decoration:none;line-height:1.7}
+.thx .l a:hover{border-color:var(--cyan);color:var(--white)}
+.thx .l a:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.thx .l svg{width:13px;height:13px;fill:currentColor;flex:none}
 .mstones{list-style:none;margin:0;padding:2px 0 0;position:relative}
 .mstones:before{content:'';position:absolute;left:7px;top:10px;bottom:12px;width:2px;background:var(--line)}
 .mstones li{position:relative;display:flex;align-items:baseline;gap:10px;padding:5px 0 5px 26px;font-size:12px}
@@ -350,6 +363,13 @@ directly. The report contains no character names and no credentials.</p>
 <p class="tiny" data-i18n="journey.intro">It started as a small log reader that just told you "strip miner off". Today it's a full cockpit: mining, missions, gank-pack radar, ore treasury, character sheets, planetary industry. Built in the open, one milestone at a time, always local and free.</p>
 <div id="journey"></div>
 
+<section id="thanksWrap" hidden>
+<h2 data-i18n="h.thanks">Thank you</h2>
+<p class="tiny" data-i18n="thanks.intro">Canary got better because people gave their time: streamers who put it on screen next to the game, players who handed over years of their log files, testers who reported the awkward bugs instead of just uninstalling. Every name here changed something in the tool.</p>
+<div id="thanks" class="thx"></div>
+<p class="tiny" data-i18n="thanks.cta">Helped out and not listed? <a href="https://github.com/Eve-Online-Askend/eve-canary/issues">Get in touch</a> and you go on the list.</p>
+</section>
+
 <h2 data-i18n="h.changelog">What's new</h2>
 <div id="changelog"><p class="tiny" data-i18n="cl.loading">Loading version history …</p></div>
 
@@ -470,6 +490,9 @@ const LANGS = {
     'h.downloads': 'Downloads', 'dl.loading': 'Download-Zahlen werden geladen …',
     'h.journey': 'Der Weg',
     'journey.intro': 'Angefangen als kleiner Log-Leser, der nur „Strip Miner aus“ meldete. Heute ein komplettes Cockpit: Mining, Missionen, Gank-Rudel-Radar, Erz-Schatzkammer, Steckbriefe, Planetary Industry. Offen entwickelt, ein Meilenstein nach dem anderen, immer lokal und kostenlos.',
+    'h.thanks': 'Danke',
+    'thanks.intro': 'Canary ist besser geworden, weil Leute ihre Zeit gegeben haben: Streamer, die es neben dem Spiel gezeigt haben, Spieler, die jahrelange Logbestände herausgerückt haben, Tester, die unbequeme Fehler gemeldet haben statt einfach zu deinstallieren. Hinter jedem Namen hier steckt eine Änderung im Werkzeug.',
+    'thanks.cta': 'Du hast geholfen und stehst nicht dabei? <a href="https://github.com/Eve-Online-Askend/eve-canary/issues">Melde dich</a>, dann kommst du auf die Liste.',
     'h.changelog': 'Was ist neu', 'cl.loading': 'Versionsverlauf wird geladen …',
     r1: 'Windows oder Linux, EVE Online installiert (unter Linux über Steam/Proton oder Wine)',
     r2: 'Python 3, wird unter Windows vom Installer bei Bedarf mitinstalliert',
@@ -560,6 +583,9 @@ const LANGS = {
     'h.downloads': 'Téléchargements', 'dl.loading': 'Chargement des téléchargements …',
     'h.journey': 'Le parcours',
     'journey.intro': 'Au début un simple lecteur de logs qui disait juste « strip miner coupé ». Aujourd\'hui un vrai cockpit : minage, missions, radar anti-gankers, trésor de minerai, fiches perso, Planetary Industry. Développé au grand jour, un jalon après l\'autre, toujours local et gratuit.',
+    'h.thanks': 'Merci',
+    'thanks.intro': 'Canary s\'est amélioré parce que des gens ont donné de leur temps : des streameurs qui l\'ont montré à côté du jeu, des joueurs qui ont confié des années de logs, des testeurs qui ont signalé les bugs gênants au lieu de simplement désinstaller. Derrière chaque nom ici se cache un changement dans l\'outil.',
+    'thanks.cta': 'Vous avez aidé et vous n\'êtes pas dans la liste ? <a href="https://github.com/Eve-Online-Askend/eve-canary/issues">Écrivez-moi</a> et vous y serez.',
     'h.changelog': 'Nouveautés', 'cl.loading': 'Chargement de l\'historique …',
     r1: 'Windows ou Linux avec EVE Online installé (sous Linux via Steam/Proton ou Wine)',
     r2: 'Python 3, installé automatiquement par l\'installateur Windows s\'il manque',
@@ -650,6 +676,9 @@ const LANGS = {
     'h.downloads': 'Загрузки', 'dl.loading': 'Загрузка чисел …',
     'h.journey': 'Путь',
     'journey.intro': 'Начиналось как небольшой читатель логов, который просто говорил «стрип-майнер выключен». Сегодня это полноценная панель: майнинг, миссии, радар банд ганкеров, хранилище руды, профили, Planetary Industry. Разрабатывается открыто, веха за вехой, всегда локально и бесплатно.',
+    'h.thanks': 'Спасибо',
+    'thanks.intro': 'Canary стал лучше, потому что люди тратили своё время: стримеры показывали его рядом с игрой, игроки передавали логи за годы, тестировщики сообщали о неудобных ошибках вместо того, чтобы просто удалить программу. За каждым именем здесь стоит изменение в инструменте.',
+    'thanks.cta': 'Помогли, но вас тут нет? <a href="https://github.com/Eve-Online-Askend/eve-canary/issues">Напишите</a>, и вы попадёте в список.',
     'h.changelog': 'Что нового', 'cl.loading': 'Загрузка истории версий …',
     r1: 'Windows или Linux с установленной EVE Online (на Linux через Steam/Proton или Wine)',
     r2: 'Python 3, установщик для Windows ставит его сам, если он отсутствует',
@@ -685,6 +714,76 @@ const MILESTONES = [
   { v: '1.61', de: 'Blutspur: Gank-Rudel-Radar',             en: 'Blood Trail: gank-pack radar',              fr: 'Blood Trail : radar anti-gankers',              ru: 'Blood Trail: радар банд ганкеров' },
   { v: '1.66', de: 'Blutspur erkennt bekannte Gank-Gruppen', en: 'Blood Trail flags known gank groups',       fr: 'Blood Trail signale les groupes de gankers connus', ru: 'Blood Trail распознаёт известные группы ганкеров' }
 ];
+
+/* ---------------------------------------------------------------------------
+   DANKE-BEREICH. Hier trägst du Leute ein, die Canary geholfen haben.
+
+   Eine Zeile je Person. Nur "name" ist Pflicht, alles andere kann weg.
+
+     name  : wie die Person genannt werden möchte
+     role  : kurze Rolle, erscheint klein und in Gold über dem Text.
+             Entweder ein Text für alle Sprachen oder {de,en,fr,ru}.
+     note  : ein bis zwei Sätze, was die Person beigetragen hat.
+             Auch entweder ein Text oder {de,en,fr,ru}. Fehlt eine Sprache,
+             wird Englisch genommen.
+     links : Liste von {k, u}. k ist die Art, u die Adresse.
+             Mögliche Arten: twitch, youtube, x, discord, github, web
+
+   Beispiel (die Rauten am Zeilenanfang weg, dann ist er sichtbar):
+
+     { name: 'Beispiel',
+       role: { de: 'Streamer', en: 'Streamer', fr: 'Streameur', ru: 'Стример' },
+       note: { de: 'Hat Canary neben dem Spiel gezeigt und dabei gemerkt, dass die Kopfleiste in schmalen Fenstern umbricht.',
+               en: 'Showed Canary next to the game and spotted that the header wraps in narrow windows.' },
+       links: [ { k: 'twitch',  u: 'https://twitch.tv/beispiel' },
+                { k: 'youtube', u: 'https://youtube.com/@beispiel' } ] },
+
+   Ist die Liste leer, blendet sich der ganze Bereich auf der Seite aus.
+   --------------------------------------------------------------------------- */
+const THANKS = [
+];
+
+// Kleine Symbole für die Link-Pillen. Bewusst eingebettet, damit die Seite
+// nichts nachlädt und auch ohne Netz sauber aussieht.
+const THX_ICON = {
+  twitch:  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.57 4.71h1.72v5.15h-1.72zm4.72 0H18v5.15h-1.71zM6 0L1.71 4.29v15.43h5.15V24l4.28-4.28h3.43L22.29 12V0zm14.57 11.14l-3.43 3.43h-3.43l-3 3v-3H6.86V1.71h13.71z"/></svg>',
+  youtube: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.3 3.6z"/></svg>',
+  x:       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.9 1.2h3.68l-8.04 9.19L24 22.8h-7.41l-5.8-7.58-6.64 7.58H.46l8.6-9.83L0 1.2h7.6l5.24 6.93zm-1.3 19.4h2.04L6.49 3.3H4.3z"/></svg>',
+  discord: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.25.5a18.3 18.3 0 0 1 4.35 1.4 15.6 15.6 0 0 0-13-.02A18.3 18.3 0 0 1 10.85 3.5L10.6 3a19.8 19.8 0 0 0-4.9 1.4C2.6 9 1.76 13.4 2.18 17.75A19.9 19.9 0 0 0 8.24 20.8l.66-1.36a12.8 12.8 0 0 1-2.04-.98l.5-.4a14.2 14.2 0 0 0 12.28 0l.5.4c-.64.38-1.32.71-2.04.98l.66 1.36a19.9 19.9 0 0 0 6.06-3.05c.5-5.05-.85-9.41-4.52-13.35zM8.9 15.3c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44s2.17 1.1 2.15 2.44c0 1.35-.95 2.44-2.15 2.44zm6.2 0c-1.18 0-2.15-1.1-2.15-2.44 0-1.35.95-2.44 2.15-2.44s2.16 1.1 2.14 2.44c0 1.35-.94 2.44-2.14 2.44z"/></svg>',
+  github:  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.2 11.39.6.11.82-.26.82-.58v-2.2c-3.34.73-4.04-1.42-4.04-1.42-.55-1.4-1.34-1.77-1.34-1.77-1.1-.75.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.84 2.8 1.31 3.49 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.39 1.24-3.23-.13-.3-.54-1.53.11-3.18 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6.01 0c2.29-1.55 3.3-1.23 3.3-1.23.65 1.65.24 2.88.12 3.18.77.84 1.23 1.91 1.23 3.23 0 4.63-2.8 5.65-5.48 5.95.43.37.81 1.1.81 2.22v3.29c0 .32.22.7.83.58A12 12 0 0 0 24 12.5C24 5.87 18.63.5 12 .5z"/></svg>',
+  web:     '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm6.9 6h-2.95a15.6 15.6 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.9 8zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14a7.9 7.9 0 0 1 0-4h3.38a16.5 16.5 0 0 0 0 4zm.84 2h2.95c.34 1.28.8 2.48 1.38 3.56A8.03 8.03 0 0 1 5.1 16zm2.95-8H5.1a8.03 8.03 0 0 1 4.33-3.56A15.6 15.6 0 0 0 8.05 8zM12 19.96a13.6 13.6 0 0 1-1.91-3.96h3.82A13.6 13.6 0 0 1 12 19.96zM14.34 14H9.66a14.7 14.7 0 0 1 0-4h4.68a14.7 14.7 0 0 1 0 4zm.23 5.56c.58-1.08 1.04-2.28 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56zM16.36 14a16.5 16.5 0 0 0 0-4h3.38a7.9 7.9 0 0 1 0 4z"/></svg>'
+};
+const THX_LABEL = { twitch: 'Twitch', youtube: 'YouTube', x: 'X', discord: 'Discord',
+                    github: 'GitHub', web: 'Website' };
+
+// Text kann ein einfacher String sein oder {de,en,fr,ru}. Fehlt die Sprache,
+// faellt es auf Englisch zurueck, wie ueberall sonst auf dieser Seite auch.
+function thxText(v) {
+  if (!v) return '';
+  return typeof v === 'string' ? v : (v[curLang] || v.en || '');
+}
+function renderThanks() {
+  const box = document.getElementById('thanks');
+  const wrap = document.getElementById('thanksWrap');
+  if (!box || !wrap) return;
+  wrap.hidden = !THANKS.length;          // leere Liste -> Bereich ganz weg
+  if (!THANKS.length) return;
+  box.innerHTML = THANKS.map(p => {
+    const rolle = thxText(p.role);
+    const text = thxText(p.note);
+    const links = (p.links || []).map(l => {
+      const art = THX_ICON[l.k] ? l.k : 'web';
+      return `<a href="${l.u}" target="_blank" rel="noopener noreferrer">`
+           + THX_ICON[art] + (l.t || THX_LABEL[art]) + '</a>';
+    }).join('');
+    return '<div class="p">'
+         + `<p class="n">${p.name}</p>`
+         + (rolle ? `<p class="r">${rolle}</p>` : '')
+         + (text ? `<p class="t">${text}</p>` : '')
+         + (links ? `<div class="l">${links}</div>` : '')
+         + '</div>';
+  }).join('');
+}
 // Installationen insgesamt. start_dashboard.bat/.sh und uninstall.ps1 stehen
 // NICHT in UPDATE_FILES, der Updater fasst sie also nie an: sie werden einzig
 // beim Einrichten geholt. Ihre Downloadzahl ist damit die Zahl der
@@ -943,6 +1042,7 @@ function applyLang(code) {
   renderChangelog();   // Changelog in der neuen Sprache neu zeichnen
   renderDlChart();     // Download-Verlauf-Label in der neuen Sprache
   renderJourney();     // Meilenstein-Zeitachse in der neuen Sprache
+  renderThanks();      // Danke-Bereich in der neuen Sprache
   renderMined();       // Gemeinsame Foerdermenge in der neuen Sprache
 }
 
