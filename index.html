@@ -716,32 +716,27 @@ const MILESTONES = [
 ];
 
 /* ---------------------------------------------------------------------------
-   DANKE-BEREICH. Hier trägst du Leute ein, die Canary geholfen haben.
+   DANKE-BEREICH.
 
-   Eine Zeile je Person. Nur "name" ist Pflicht, alles andere kann weg.
+   Die Namen stehen NICHT hier im Quelltext, sondern in thanks.json daneben.
+   Gepflegt wird die Datei ueber ein Formular: im Ordner eve-live-dashboard
 
-     name  : wie die Person genannt werden möchte
-     role  : kurze Rolle, erscheint klein und in Gold über dem Text.
-             Entweder ein Text für alle Sprachen oder {de,en,fr,ru}.
-     note  : ein bis zwei Sätze, was die Person beigetragen hat.
-             Auch entweder ein Text oder {de,en,fr,ru}. Fehlt eine Sprache,
-             wird Englisch genommen.
+       python danke.py
+
+   starten, dann oeffnet sich die Eingabemaske im Browser. Von Hand muss hier
+   also niemand etwas aendern.
+
+   Aufbau eines Eintrags in thanks.json:
+     name  : wie die Person genannt werden moechte (Pflicht)
+     role  : kurze Rolle, klein und in Gold ueber dem Text.
+             Text oder {de,en,fr,ru}
+     note  : ein bis zwei Saetze zum Beitrag. Text oder {de,en,fr,ru}
      links : Liste von {k, u}. k ist die Art, u die Adresse.
-             Mögliche Arten: twitch, youtube, x, discord, github, web
+             Arten: twitch, youtube, x, discord, github, web
 
-   Beispiel (die Rauten am Zeilenanfang weg, dann ist er sichtbar):
-
-     { name: 'Beispiel',
-       role: { de: 'Streamer', en: 'Streamer', fr: 'Streameur', ru: 'Стример' },
-       note: { de: 'Hat Canary neben dem Spiel gezeigt und dabei gemerkt, dass die Kopfleiste in schmalen Fenstern umbricht.',
-               en: 'Showed Canary next to the game and spotted that the header wraps in narrow windows.' },
-       links: [ { k: 'twitch',  u: 'https://twitch.tv/beispiel' },
-                { k: 'youtube', u: 'https://youtube.com/@beispiel' } ] },
-
-   Ist die Liste leer, blendet sich der ganze Bereich auf der Seite aus.
+   Ist die Liste leer oder die Datei fehlt, blendet sich der Bereich aus.
    --------------------------------------------------------------------------- */
-const THANKS = [
-];
+let THANKS = [];
 
 // Kleine Symbole für die Link-Pillen. Bewusst eingebettet, damit die Seite
 // nichts nachlädt und auch ohne Netz sauber aussieht.
@@ -1133,6 +1128,23 @@ applyLang(start);
     document.getElementById('changelog').innerHTML =
       '<p class="tiny"><a href="https://github.com/' + repo + '/releases">Alle Versionen auf GitHub</a></p>';
   }
+  try {
+    // Danke-Liste. Erst die Datei NEBEN der Seite versuchen: auf GitHub Pages
+    // liegt sie dort und ist sofort aktuell, waehrend raw.githubusercontent
+    // noch ein paar Minuten den alten Stand cached. Klappt das nicht (z.B.
+    // beim lokalen Oeffnen per file://), dann eben ueber raw.
+    // Fehlt die Datei ganz oder ist sie leer, bleibt der Bereich ausgeblendet:
+    // renderThanks() setzt das hidden-Attribut selbst.
+    let t = null;
+    try {
+      const r = await fetch(`thanks.json?_=${Date.now()}`);
+      if (r.ok) t = await r.json();
+    } catch (e) {}
+    if (!Array.isArray(t)) {
+      t = await (await fetch(`https://raw.githubusercontent.com/${repo}/main/thanks.json?_=${Date.now()}`)).json();
+    }
+    if (Array.isArray(t)) { THANKS = t; renderThanks(); }
+  } catch (e) {}   // keine Datei, kein Bereich. Der Rest der Seite bleibt heil.
 })();
 </script>
 </body>
