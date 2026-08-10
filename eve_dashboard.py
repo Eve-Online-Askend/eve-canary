@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.78.0"
+VERSION = "1.79.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -7861,6 +7861,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span class="pill" id="showOffline" title="Standardmäßig zeigt Live nur eingeloggte Charaktere. Hier einschalten, um auch Offline-Charaktere zu sehen.">💤 Offline zeigen</span>
  <select class="pill" id="charFilter" title="Charakter-Filter"><option value="">Alle Charaktere</option></select>
  <span class="pill" id="collapseAll">Alle einklappen</span>
+ <span class="pill" id="beltBtn" title="Ergebnisse der Bergbauvermessung einfügen und sehen, wie viel Volumen und ISK im Belt liegen">🪨 Belt auswerten</span>
  <span class="pill langsel" data-l="de" title="Deutsch">DE</span><span class="pill langsel" data-l="en" title="English">EN</span>
  <div class="pills" id="regions"></div>
  <span class="pill srv" id="srvStatus" hidden title="EVE-Server (Tranquility)"></span>
@@ -8012,6 +8013,23 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <p class="thanks">Danke an <b>And-I</b> für die Meldung, dass Gas-Mining nicht erkannt wurde. Wenn dir
  etwas auffällt, sag Bescheid, genau so entstehen diese Verbesserungen.</p>
  <div style="text-align:right"><button class="btn" id="newsGasOk">Alles klar</button></div>
+</dialog>
+
+<!-- Belt-Auswertung. Bewusst ein eigener Dialog im festen HTML und NICHT im
+     Grid: die Live-Ansicht baut sich alle zwei Sekunden neu auf und wuerde ein
+     Eingabefeld darin samt Inhalt wegwerfen. -->
+<dialog id="beltDlg">
+ <h2>🪨 Was steckt in diesem Belt?</h2>
+ <p class="sub">Im Spiel das Fenster „Ergebnisse der Bergbauvermessung“ öffnen, hineinklicken,
+ alles markieren (Strg+A), kopieren (Strg+C) und hier einfügen. Die Spalten für Volumen,
+ Wert und Entfernung darfst du mitkopieren, Canary nimmt sich nur die Mengen.</p>
+ <textarea id="beltIn" rows="8" style="width:100%" placeholder="Pyroxeres II-Grade*	2.870	861 m3	69.800,00 ISK	2.352 m"></textarea>
+ <div class="btnrow" style="margin-top:6px">
+  <button class="btn" id="beltGo">Berechnen</button>
+  <span class="sub" id="beltStat"></span>
+ </div>
+ <div id="beltOut" style="margin-top:10px"></div>
+ <div style="text-align:right;margin-top:10px"><button class="btn" id="beltClose">Schließen</button></div>
 </dialog>
 
 <script>
@@ -8675,6 +8693,58 @@ $('#collapseAll').onclick=()=>{
  else names.forEach(n=>collapsed.add(n));
  localStorage.setItem('collapsed',JSON.stringify([...collapsed]));
  if(pi)renderPlaneten(lastPlaneten);else renderLiveView();};
+// ---- Belt auswerten (Bergbauvermessung einfuegen) ------------------------
+$('#beltBtn').onclick=()=>{
+ $('#beltStat').textContent='';
+ $('#beltDlg').showModal();
+ const t=$('#beltIn'); if(t){t.focus(); t.select();}
+};
+$('#beltClose').onclick=()=>$('#beltDlg').close();
+$('#beltGo').onclick=async()=>{
+ const en=lang==='en';
+ const txt=($('#beltIn')||{}).value||'';
+ // Statusfeld JEDES MAL frisch holen: der Dialog liegt zwar ausserhalb des
+ // Grids, aber die Regel hat uns beim Loot schon einmal Zeit gekostet.
+ const setz=s=>{const el=$('#beltStat'); if(el)el.textContent=s;};
+ if(!txt.trim()){setz(en?'Nothing pasted yet.':'Noch nichts eingefügt.');return;}
+ setz(en?'Calculating …':'Rechne …');
+ let r;try{r=await post({action:'calc',text:txt});}catch(e){r=null;}
+ if(!r||!r.ok){setz(en?'Server not reachable':'Server nicht erreichbar');return;}
+ const rows=r.items||[];
+ if(!rows.length){
+  setz(en?'No ore recognised. Did you copy the survey window?'
+        :'Kein Erz erkannt. Hast du das Vermesser-Fenster kopiert?');
+  $('#beltOut').innerHTML='';
+  return;
+ }
+ setz('');
+ const gesISK=rows.reduce((s,x)=>s+x.isk,0);
+ // Wie lange braeuchte die Flotte dafuer? Nur zeigen, wenn gerade wirklich
+ // gemint wird, sonst waere es eine erfundene Zahl.
+ const rate=(lastChars||[]).filter(c=>c.active&&autoRole(c)==='mining')
+   .reduce((s,c)=>s+sustainedRate(c),0);
+ const dauer=rate>0?(r.m3/rate):0;
+ const h=Math.floor(dauer/60), m=Math.round(dauer%60);
+ $('#beltOut').innerHTML=`
+  <div class="stats" style="grid-template-columns:repeat(3,1fr)">
+   <div class="stat"><div class="l">${en?'Volume in the belt':'Volumen im Belt'}</div><div class="v">${fmtC(r.m3)} m³</div></div>
+   <div class="stat"><div class="l">${en?'Worth (Jita, instant sell)':'Wert (Jita, Sofortverkauf)'}</div><div class="v isk">${fmtM(gesISK)}</div></div>
+   <div class="stat"><div class="l">${en?'Ore types':'Erzsorten'}</div><div class="v">${rows.length}</div></div>
+  </div>
+  ${rate>0?`<div class="sub" style="margin-top:6px">${en
+    ? `At your current rate of ${fmt(Math.round(rate))} m³/min that is about ${h?h+' h ':''}${m} min of mining.`
+    : `Bei deiner aktuellen Rate von ${fmt(Math.round(rate))} m³/min sind das etwa ${h?h+' Std ':''}${m} min Abbau.`}</div>`:''}
+  <table style="margin-top:8px"><tr><th>${en?'Ore':'Erz'}</th><th class="r">${en?'Units':'Einheiten'}</th>
+   <th class="r">m³</th><th class="r">ISK</th></tr>`
+  +rows.map(x=>`<tr><td>${esc(x.name)}</td><td class="r">${fmt(x.qty)}</td>
+    <td class="r">${fmt(x.m3)}</td><td class="r isk">${fmtM(x.isk)}</td></tr>`).join('')
+  +`</table>
+  <div class="sub" style="margin-top:8px">${en
+    ? 'Valued at the current Jita buy offer, so what you would get selling it right away. EVE shows its own estimated price in the survey window, which is why the totals differ a little. And of course: the ore is still in the rocks.'
+    : 'Bewertet zum aktuellen Jita-Ankaufsgebot, also was du beim Sofortverkauf bekämst. EVE rechnet im Vermesser-Fenster mit seinem eigenen Schätzpreis, deshalb weichen die Summen etwas ab. Und natürlich: das Erz steckt noch im Fels.'}</div>
+  ${(r.unknown&&r.unknown.length)?`<div class="sub" style="margin-top:6px">${en?'Not recognised':'Nicht erkannt'}: ${r.unknown.map(esc).join(', ')}</div>`:''}`;
+ if(en)tr($('#beltOut'));
+};
 // Rollen-Filter-Pills (Alle / Mining / Missionen / PvP)
 (function(){const rf=localStorage.getItem('roleFilter')||'';
  document.querySelectorAll('.rolef').forEach(p=>{
@@ -10571,6 +10641,12 @@ const EN = {
 'noch keine Kompression, Verbrauch pausiert':'no compression yet, consumption paused',
 'Keine Kompression im Zeitraum.':'No compression in this period.',
 'Nach Charakter (gesamt)':'By character (total)',
+'🪨 Belt auswerten':'🪨 Check this belt',
+'🪨 Was steckt in diesem Belt?':'🪨 What is in this belt?',
+'Ergebnisse der Bergbauvermessung einfügen und sehen, wie viel Volumen und ISK im Belt liegen':
+ 'Paste your survey scanner results and see how much volume and ISK the belt holds',
+'Im Spiel das Fenster „Ergebnisse der Bergbauvermessung“ öffnen, hineinklicken, alles markieren (Strg+A), kopieren (Strg+C) und hier einfügen. Die Spalten für Volumen, Wert und Entfernung darfst du mitkopieren, Canary nimmt sich nur die Mengen.':
+ 'In game open the survey scanner results window, click into it, select everything (Ctrl+A), copy (Ctrl+C) and paste it here. Feel free to include the volume, value and distance columns, Canary only takes the quantities.',
 'Bestand im Laderaum setzen':'Set amount in cargo hold','Spielzeit':'Played time',
 'Waffen-Bilanz':'Weapon balance','Noch keine Kampfdaten':'No combat data yet',
 'Nicht zuzuordnen':'Unassigned','Nicht erkannt':'Not recognised',

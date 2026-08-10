@@ -1,5 +1,21 @@
 [
  {
+  "v": "1.79.0",
+  "d": "2026-08-10",
+  "de": [
+   "Neuer Knopf oben in der Leiste: „🪨 Belt auswerten“. Ein Klick, das Vermesser-Fenster aus dem Spiel hineinkopieren, und du siehst sofort, wie viel Volumen und wie viel ISK in dem Belt stecken, aufgeschluesselt nach Erzsorte. Die Spalten fuer Volumen, Wert und Entfernung darfst du mitkopieren, Canary nimmt sich nur die Mengen.",
+   "Wenn deine Flotte gerade mint, steht darunter auch, wie lange ihr fuer den Belt braucht, gerechnet mit eurer tatsaechlichen Rate der letzten Minuten. Mint gerade niemand, bleibt die Zeile weg, statt eine Zahl zu erfinden.",
+   "Bewertet wird zum aktuellen Jita-Ankaufsgebot, also zu dem, was beim Sofortverkauf ankommt. EVE selbst zeigt im Vermesser-Fenster seinen eigenen Schaetzpreis, deshalb weichen die Summen etwas voneinander ab. Und das Erz steckt natuerlich noch im Fels, das schreibt Canary auch dazu.",
+   "Danke an Savox76 fuer die Idee."
+  ],
+  "en": [
+   "New button in the top bar: “🪨 Check this belt”. One click, paste the survey window from the game, and you immediately see how much volume and how much ISK the belt holds, broken down by ore type. Feel free to include the volume, value and distance columns, Canary only takes the quantities.",
+   "If your fleet is mining right now, it also tells you how long the belt will take, based on your actual rate over the last few minutes. If nobody is mining, that line stays away rather than inventing a number.",
+   "Values use the current Jita buy offer, so what you would actually receive selling right away. EVE shows its own estimated price in the survey window, which is why the totals differ a little. And the ore is of course still in the rocks, Canary says so too.",
+   "Thanks to Savox76 for the idea."
+  ]
+ },
+ {
   "v": "1.78.0",
   "d": "2026-08-10",
   "de": [
