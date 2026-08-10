@@ -1,5 +1,21 @@
 [
  {
+  "v": "1.73.0",
+  "d": "2026-08-10",
+  "de": [
+   "Neu: Canary erkennt Burner-Missionen. Elf davon, vom Anomic Agent bis zum Anomic Team, alle vier Fraktionen. Bisher stand bei diesen Einsätzen nur \"Kampf\", jetzt steht der Missionsname da. An einem gespendeten Logbestand geprüft: die Zahl der Einsätze mit erkanntem Namen steigt dadurch um 73 Prozent.",
+   "Neu: Canary erkennt Abyssal Deadspace. Wenn du im Abyss unterwegs bist, steht das jetzt auf der Karte und im Verlauf, mit eigenem Zeichen statt als Mission. Erkannt wird über 120 Gegnernamen, die CCP in eigenen Abyss-Gruppen führt und die es nirgendwo sonst gibt.",
+   "Warum keine Prozentangabe beim Abyss steht: bei Missionen ist die Erkennung eine Schlussfolgerung aus Gegnernamen und bekommt deshalb eine Genauigkeit. Die Abyss-Gegner kann es außerhalb des Abyss nicht geben, da gibt es nichts zu schätzen.",
+   "Und was bewusst NICHT kommt: Kampfanomalien lassen sich nicht benennen. Alle Anomalien einer Fraktion ziehen aus demselben Gegnerpool, ein Forsaken Hub sieht im Log aus wie ein Hidden Rally Point. Eine Anzeige dazu wäre geraten, und geraten ist schlimmer als gar nichts."
+  ],
+  "en": [
+   "New: Canary recognises Burner missions. Eleven of them, from Anomic Agent to Anomic Team, all four factions. These runs used to show only \"Combat\", now the mission name is there. Measured against a donated log archive: the number of runs with a recognised name goes up by 73 percent.",
+   "New: Canary recognises Abyssal Deadspace. When you are in the Abyss it now says so on the card and in the timeline, with its own symbol rather than as a mission. Detection uses 120 enemy names that CCP keeps in dedicated Abyss groups and that exist nowhere else.",
+   "Why there is no percentage on the Abyss tag: for missions the detection is an inference from enemy names and therefore carries a confidence. Abyss enemies cannot occur outside the Abyss, so there is nothing to estimate.",
+   "And what deliberately does not come: combat anomalies cannot be named. Every anomaly of a faction draws from the same enemy pool, a Forsaken Hub looks exactly like a Hidden Rally Point in the log. Showing one would be guesswork, and guessing is worse than saying nothing."
+  ]
+ },
+ {
   "v": "1.72.1",
   "d": "2026-08-10",
   "de": [
