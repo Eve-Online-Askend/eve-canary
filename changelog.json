@@ -1,5 +1,23 @@
 [
  {
+  "v": "1.77.0",
+  "d": "2026-08-10",
+  "de": [
+   "Wallet Buddy hat eine Bilanz bekommen: Einnahmen, Ausgaben und Saldo, jeweils nach Kategorie aufgeschlüsselt, umschaltbar zwischen 7 Tagen, 30 Tagen und allem was da ist.",
+   "Dabei kam ein Fehler ans Licht. Die Zeile „Markt-Geschäfte“ zeigte nur die Verkäufe. Der Grund: EVE bucht einen Kauf über eine Order nicht als Ausgabe, sondern schon beim Einstellen als hinterlegte Sicherheit, und die zählt Canary bewusst nicht mit, weil sie bei Storno zurückkommt. In einem Testwallet fehlten dadurch 5,9 Milliarden ISK Einkauf. Die Käufe kommen jetzt aus den Transaktionen, und die Zeile zeigt den Saldo.",
+   "Neu sind vier Ranglisten: die zehn größten Posten nach Umsatz, die zehn nach verkaufter Stückzahl, dazu getrennt was du verkauft aber nie gekauft hast und was du nur für dich selbst gekauft hast. Die erste Liste ist für Miner interessant: selbst gefördertes Erz taucht im Handelsgewinn nicht auf, weil es keinen Einkaufspreis hat, und stand deshalb bisher nirgends.",
+   "Fünf Buchungsarten haben Namen bekommen, die vorher als „sonstiges“ zusammengefasst waren: Hypernet, Reparaturen, Klon-Gebühren, Belohnungen aus Projekten und Tageszielen sowie der direkte Handel zwischen Spielern. In einem Testwallet waren das 450 Millionen ISK, die vorher unerklärt in einer Sammelzeile standen.",
+   "Behoben: beim Eintragen von Loot zu einer Mission schloss sich das Eingabefeld nach spätestens zwei Sekunden von selbst wieder, samt allem was schon drinstand. Die Missionsansicht baut sich im Takt neu auf und hat das Feld dabei jedes Mal zugeklappt. Gemeldet wurde es für Firefox, betroffen waren aber alle Browser. Jetzt bleibt das Feld offen, Text und Schreibmarke bleiben stehen, und während du tippst wird gar nicht erst neu gezeichnet."
+  ],
+  "en": [
+   "Wallet Buddy now has a balance sheet: income, spending and the resulting balance, each broken down by category, switchable between 7 days, 30 days and everything on record.",
+   "Building it brought a bug to light. The “market trades” line only showed sales. The reason: EVE does not book a buy order as spending, it takes the money as escrow the moment you place the order, and Canary deliberately ignores escrow because it returns on cancellation. In a test wallet that hid 5.9 billion ISK of purchases. Purchases now come from your transactions, and the line shows the balance.",
+   "Four new rankings: the ten biggest positions by turnover, the ten by quantity sold, plus separate lists for what you sold but never bought and what you only bought for yourself. The first of those matters to miners: ore you mined yourself never shows up in the trading result, because there is no purchase price for it, so until now it appeared nowhere at all.",
+   "Five booking types got proper names instead of being lumped into “other”: Hypernet, repairs, clone fees, rewards from projects and daily goals, and direct player trades. In a test wallet those were 450 million ISK sitting unexplained in a catch-all row.",
+   "Fixed: when adding loot to a mission, the input box closed itself again within two seconds, taking whatever you had already entered with it. The mission view rebuilds itself on a timer and collapsed the box every time. It was reported for Firefox but affected every browser. The box now stays open, text and cursor position survive, and while you are typing nothing is redrawn at all."
+  ]
+ },
+ {
   "v": "1.76.0",
   "d": "2026-08-10",
   "de": [

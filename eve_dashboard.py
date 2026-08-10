@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.76.0"
+VERSION = "1.77.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -6512,18 +6512,29 @@ def query_profiles():
 WB_GROUPS = {
     "handel": ("market_transaction",),
     "gebuehren": ("brokers_fee", "transaction_tax", "market_provider_tax",
-                  "market_fine_paid"),
+                  "market_fine_paid", "cspa"),
     "bounty": ("bounty_prizes", "bounty_prize", "agent_mission_reward",
                "agent_mission_time_bonus_reward"),
-    "industrie": ("industry_job_tax", "reprocessing_tax", "manufacturing"),
+    "industrie": ("industry_job_tax", "reprocessing_tax", "manufacturing", "copying"),
     "planeten": ("planetary_import_tax", "planetary_export_tax",
                  "planetary_construction"),
     "vertraege": ("contract_price", "contract_reward", "contract_brokers_fee",
                   "contract_sales_tax", "contract_deposit",
-                  "contract_price_payment_corp"),
+                  "contract_price_payment_corp", "contract_reward_deposited"),
     "geschenke": ("player_donation", "corporation_account_withdrawal"),
     "skills": ("skill_purchase",),
     "versicherung": ("insurance",),
+    # Nachgetragen, weil diese Arten in einem echten Wallet zusammen 450 Mio ISK
+    # ausmachten und unbenannt unter "sonstiges" verschwanden. Aufgenommen ist
+    # nur, was belegt ist: flux_ticket_sale gehoert laut CCPs eigener
+    # ref_type-Liste zur Hypernet-Gruppe, der Rest ist aus dem Namen eindeutig.
+    # Was nicht belegt ist, bleibt bewusst bei "sonstiges" stehen.
+    "hypernet": ("flux_ticket_sale",),
+    "reparatur": ("repair_bill",),
+    "klone": ("jump_clone_activation_fee", "jump_clone_installation_fee"),
+    "belohnungen": ("project_payouts", "daily_goal_payouts",
+                    "campaign_objective_isk_reward", "air_career_program_reward"),
+    "direkthandel": ("player_trading",),
 }
 # NICHT in die Einnahmen-/Ausgaben-Rechnung: market_escrow ist kein Verlust,
 # sondern nur Geld, das fuer offene Kauforders geparkt wird und zurueckkommt,
@@ -6544,13 +6555,24 @@ def query_wallet(days=30):
     keine Handelsware. Sie wuerden die Bilanz sonst voellig verzerren, ein
     gekaufter Hulk sieht sonst aus wie ein Verlust von 200 Mio. Deshalb weist
     Canary den Handelsgewinn NUR ueber echte Rundlaeufe aus und listet den
-    Rest getrennt als Bestand."""
-    seit = time.time() - days * 86400
+    Rest getrennt als Bestand.
+
+    days=0 heisst "alles, was in der Datenbank steht"."""
+    seit = (time.time() - days * 86400) if days else 0
     with DB_LOCK:
         tx = DB.execute("SELECT char, ts, type_id, qty, price, is_buy, loc_id "
                         "FROM trades WHERE ts>=? ORDER BY ts", (seit,)).fetchall()
         jr = DB.execute("SELECT ref_type, SUM(amount), COUNT(*) FROM wbook "
                         "WHERE ts>=? GROUP BY ref_type", (seit,)).fetchall()
+        # Fuer die Bilanz: Ein- und Ausgaben je Art getrennt. Eine Art kann
+        # beides haben (Spenden gehen hin UND her), eine Summe allein wuerde
+        # das verschlucken.
+        jr_vz = DB.execute(
+            "SELECT ref_type, SUM(CASE WHEN amount>0 THEN amount ELSE 0 END), "
+            "SUM(CASE WHEN amount<0 THEN amount ELSE 0 END), COUNT(*) "
+            "FROM wbook WHERE ts>=? GROUP BY ref_type", (seit,)).fetchall()
+        zeitraum = DB.execute("SELECT MIN(ts), MAX(ts) FROM wbook WHERE ts>=?",
+                              (seit,)).fetchone()
     gekauft = {t[2] for t in tx if t[5]}
     verkauft = {t[2] for t in tx if not t[5]}
     rund = gekauft & verkauft            # nur diese gelten als Handel
@@ -6630,6 +6652,11 @@ def query_wallet(days=30):
     s_satz = steuer / m_verk if m_verk else 0.0            # Steuer faellt beim Verkauf an
     b_satz = broker / (m_kauf + m_verk) if (m_kauf + m_verk) else 0.0
     geb = s_satz * r_verk + b_satz * (r_kauf + r_verk)
+    # Die Gruppe "handel" kam bisher allein aus market_transaction und zeigte
+    # damit NUR die Verkaeufe, im Testwallet +3,97 Mrd, waehrend 5,90 Mrd
+    # Einkauf gar nicht auftauchten (Begruendung siehe Bilanz weiter unten).
+    # Jetzt steht dort der Saldo, wie bei jeder anderen Gruppe auch.
+    grupp["handel"] = round(m_verk - m_kauf)
     wallets = {n: c.get("wallet") for n, c in
                ((CONFIG.get("esi") or {}).get("chars") or {}).items()
                if c.get("wallet") is not None}
@@ -6641,7 +6668,87 @@ def query_wallet(days=30):
     orders.sort(key=lambda o: -(o["price"] * o["rest"]))
     scope = any(c.get("orders_scope") for c in
                 ((CONFIG.get("esi") or {}).get("chars") or {}).values())
-    return {"tage": days, "posten": posten[:40],
+
+    # ---------------------------------------------------------------- Bilanz
+    # WARUM die Kaeufe NICHT aus dem Journal kommen: EVE bucht einen Kauf ueber
+    # eine Buy-Order nicht als negative market_transaction, sondern schon beim
+    # EINSTELLEN der Order als market_escrow. Wer nur ueber Orders kauft, hat
+    # deshalb null negative Markt-Zeilen im Journal (an einem echten Wallet
+    # gemessen: 0 von 695). market_escrow selbst taugt aber nicht als Ausgabe,
+    # weil es bei Storno zurueckkommt. Die Tabelle trades kennt dagegen beide
+    # Richtungen sauber, ihre Verkaufssumme stimmt auf die ISK genau mit dem
+    # Journal ueberein. Also: alles aus dem Journal AUSSER dem Markt, und die
+    # Marktseite komplett aus trades.
+    ein_kat, aus_kat = {}, {}
+    for ref, pos, neg, n in jr_vz:
+        if ref in WB_IGNORE or ref in WB_GROUPS["handel"]:
+            continue        # Markt kommt unten aus trades, escrow gar nicht
+        ziel = next((g for g, refs in WB_GROUPS.items() if ref in refs), "sonstiges")
+        if pos:
+            ein_kat[ziel] = round(ein_kat.get(ziel, 0.0) + pos)
+        if neg:
+            aus_kat[ziel] = round(aus_kat.get(ziel, 0.0) + abs(neg))
+    if m_verk:
+        ein_kat["handel"] = round(ein_kat.get("handel", 0.0) + m_verk)
+    if m_kauf:
+        aus_kat["handel"] = round(aus_kat.get("handel", 0.0) + m_kauf)
+    ein_ges = sum(ein_kat.values())
+    aus_ges = sum(aus_kat.values())
+    # Was noch in offenen Kauforders geparkt ist. Weder ausgegeben noch
+    # verfuegbar, gehoert deshalb weder in Einnahmen noch in Ausgaben.
+    geparkt = round(sum((o.get("price") or 0) * (o.get("rest") or 0)
+                        for n, c in ((CONFIG.get("esi") or {}).get("chars") or {}).items()
+                        for o in (c.get("orders") or []) if o.get("is_buy")))
+    bilanz = {
+        "ein": ein_ges, "aus": aus_ges, "saldo": ein_ges - aus_ges,
+        "ein_kat": sorted(({"k": k, "isk": v} for k, v in ein_kat.items()),
+                          key=lambda x: -x["isk"]),
+        "aus_kat": sorted(({"k": k, "isk": v} for k, v in aus_kat.items()),
+                          key=lambda x: -x["isk"]),
+        "geparkt": geparkt,
+        "von": int(zeitraum[0]) if zeitraum and zeitraum[0] else None,
+        "bis": int(zeitraum[1]) if zeitraum and zeitraum[1] else None,
+    }
+
+    # ------------------------------------------------------------- Top-Listen
+    # Namen fuer ALLE gehandelten Typen holen, nicht nur fuer die Rundlaeufe:
+    # sonst steht in der Umsatzliste die nackte Typnummer.
+    esi.type_names_bulk(list(stat))
+
+    def nm(tid):
+        return esi.type_name(tid) or str(tid)
+
+    top_umsatz = sorted(
+        ({"type_id": t, "name": nm(t), "isk": round(s["kauf_isk"] + s["verk_isk"]),
+          "kauf": round(s["kauf_isk"]), "verkauf": round(s["verk_isk"]),
+          "stk": s["kauf_st"] + s["verk_st"]}
+         for t, s in stat.items()), key=lambda x: -x["isk"])[:10]
+    top_menge = sorted(
+        ({"type_id": t, "name": nm(t), "stk": s["verk_st"],
+          "isk": round(s["verk_isk"])}
+         for t, s in stat.items() if s["verk_st"]), key=lambda x: -x["stk"])[:10]
+    # Nur verkauft, nie gekauft: selbst gefoerdert, gebaut oder erbeutet. Fuer
+    # einen Miner ist genau das die Haupteinnahme, und im Handelsgewinn taucht
+    # es nicht auf, weil es keinen Einkaufspreis gibt.
+    eigen = sorted(
+        ({"type_id": t, "name": nm(t), "stk": s["verk_st"], "isk": round(s["verk_isk"])}
+         for t, s in stat.items() if t in (verkauft - gekauft) and s["verk_isk"]),
+        key=lambda x: -x["isk"])[:10]
+    eigen_ges = round(sum(s["verk_isk"] for t, s in stat.items()
+                          if t in (verkauft - gekauft)))
+    # Eigenbedarf: gekauft und nie verkauft.
+    bedarf = sorted(
+        ({"type_id": t, "name": nm(t), "stk": s["kauf_st"], "isk": round(s["kauf_isk"])}
+         for t, s in stat.items() if t in (gekauft - verkauft) and s["kauf_isk"]),
+        key=lambda x: -x["isk"])[:10]
+    bedarf_ges = round(sum(s["kauf_isk"] for t, s in stat.items()
+                           if t in (gekauft - verkauft)))
+    tops = {"umsatz": top_umsatz, "menge": top_menge,
+            "eigen": eigen, "eigen_ges": eigen_ges, "eigen_n": len(verkauft - gekauft),
+            "bedarf": bedarf, "bedarf_ges": bedarf_ges, "bedarf_n": len(gekauft - verkauft),
+            "rund_n": len(rund), "typen": len(stat)}
+
+    return {"tage": days, "bilanz": bilanz, "tops": tops, "posten": posten[:40],
             "gruppen": grupp, "brutto": round(brutto), "gebuehren": round(geb),
             "netto": round(brutto - geb),
             "geb_gesamt": round(steuer + broker),
@@ -6975,7 +7082,14 @@ class Handler(BaseHTTPRequestHandler):
             elif view == "planeten":
                 data["planeten"] = query_planeten()
             elif view == "wallet":
-                data["wallet"] = query_wallet()
+                # Zeitraum aus der URL: 7, 30 oder 0 fuer "alles". Alles andere
+                # faellt auf 30 zurueck, damit ein Tippfehler nichts sprengt.
+                try:
+                    tage = int(self.path.split("days=")[1].split("&")[0]) \
+                        if "days=" in self.path else 30
+                except ValueError:
+                    tage = 30
+                data["wallet"] = query_wallet(tage if tage in (0, 7, 30, 90) else 30)
             elif view == "timeline":
                 data["timeline"] = query_timelines()
             elif view == "profil":
@@ -7911,6 +8025,10 @@ $('#theme').onclick=()=>{const t=document.documentElement.dataset.theme==='light
 
 const FS_LABEL={1:'A',2:'A+',3:'A++'};
 let fontsize=Number(localStorage.getItem('fontsize')||1);
+// Zeitraum der Wallet-Bilanz: 7, 30 oder 0 fuer "alles". Bleibt gemerkt, damit
+// nicht bei jedem Start wieder umgestellt werden muss.
+let walletTage=Number(localStorage.getItem('walletTage')??30);
+if(![0,7,30].includes(walletTage))walletTage=30;
 function applyFs(){
  document.documentElement.dataset.fs=fontsize;
  $('#fontsize').textContent=FS_LABEL[fontsize];
@@ -9711,8 +9829,51 @@ function renderWallet(w){
  const g=w.gruppen||{};
  const kachel=(l,v,cls)=>`<div class="stat"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div></div>`;
  const vz=n=>(n>=0?'grn':'in');
+ // Namen der Buchungs-Kategorien an EINER Stelle, damit Bilanz und die alte
+ // Herkunfts-Tabelle nie auseinanderlaufen.
+ const KAT=en?{handel:'Market trades',gebuehren:'Fees & tax',bounty:'Bounty & missions',
+               industrie:'Industry',planeten:'Planetary',vertraege:'Contracts',
+               versicherung:'Insurance',geschenke:'Donations',skills:'Skills',
+               hypernet:'Hypernet',reparatur:'Repairs',klone:'Clones',
+               belohnungen:'Rewards',direkthandel:'Direct trades',sonstiges:'Other'}
+            :{handel:'Markt-Geschäfte',gebuehren:'Gebühren & Steuer',bounty:'Bounty & Missionen',
+              industrie:'Industrie',planeten:'Planeten',vertraege:'Verträge',
+              versicherung:'Versicherung',geschenke:'Spenden',skills:'Skills',
+              hypernet:'Hypernet',reparatur:'Reparaturen',klone:'Klone',
+              belohnungen:'Belohnungen',direkthandel:'Direkthandel',sonstiges:'Sonstiges'};
+
+ // ---- Zeitraum-Umschalter -------------------------------------------------
+ const ZR=[[7,en?'7 days':'7 Tage'],[30,en?'30 days':'30 Tage'],[0,en?'all':'alles']];
+ let h0=`<div class="card" style="grid-column:1/-1"><div class="mfphead">
+   <span class="mfptitle">${en?'Period':'Zeitraum'}</span>
+   <span>`+ZR.map(([t,l])=>`<span class="pill wtage${walletTage===t?' on':''}" data-wt="${t}">${l}</span>`).join(' ')
+   +`</span></div></div>`;
+ // ---- Bilanz: Einnahmen, Ausgaben, Saldo ---------------------------------
+ const B=w.bilanz;
+ if(B&&(B.ein||B.aus)){
+  const zeile=(x,cls)=>`<tr><td>${KAT[x.k]||x.k}</td><td class="r ${cls}">${fmtM(x.isk)}</td></tr>`;
+  h0+=`<div class="card" style="grid-column:1/-1"><div class="chead">
+    <span class="char">⚖️ ${en?'Income and spending':'Einnahmen und Ausgaben'}</span>
+    <span class="sub">· ${B.von?new Date(B.von*1000).toLocaleDateString():''} ${en?'to':'bis'} ${B.bis?new Date(B.bis*1000).toLocaleDateString():''}</span></div>
+   <div class="stats" style="grid-template-columns:repeat(3,1fr)">
+    ${kachel(en?'Income':'Einnahmen',fmtM(B.ein)+' ISK','grn')}
+    ${kachel(en?'Spending':'Ausgaben','-'+fmtM(B.aus)+' ISK','in')}
+    ${kachel(en?'Balance':'Saldo',fmtM(B.saldo)+' ISK',vz(B.saldo))}
+   </div>
+   <div class="advrow" style="margin-top:10px">
+    <div style="flex:1"><div class="l" style="margin-bottom:4px">${en?'Income by category':'Einnahmen nach Kategorie'}</div>
+     <table>${(B.ein_kat||[]).map(x=>zeile(x,'grn')).join('')}</table></div>
+    <div style="flex:1"><div class="l" style="margin-bottom:4px">${en?'Spending by category':'Ausgaben nach Kategorie'}</div>
+     <table>${(B.aus_kat||[]).map(x=>zeile(x,'in')).join('')}</table></div>
+   </div>
+   <div class="sub" style="margin-top:8px">${en
+     ? `Purchases come from your transactions, not from the journal: EVE books a buy order the moment you place it, as escrow, and that money would come back on cancellation. ${B.geparkt?`Currently ${fmtM(B.geparkt)} ISK are parked in open buy orders and count as neither income nor spending.`:''}`
+     : `Die Käufe stammen aus deinen Transaktionen und nicht aus dem Journal: EVE bucht eine Kauforder schon beim Einstellen als Sicherheit, und das Geld käme bei Storno zurück. ${B.geparkt?`Aktuell liegen ${fmtM(B.geparkt)} ISK in offenen Kauforders, die zählen weder als Einnahme noch als Ausgabe.`:''}`}</div>
+  </div>`;
+ }
+
  let h=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">🧾 ${en?'Trading result':'Handelsergebnis'}</span>
-   <span class="sub">· ${en?'last':'letzte'} ${w.tage} ${en?'days':'Tage'} · ${w.trades} ${en?'executions':'Ausführungen'}</span></div>
+   <span class="sub">· ${w.tage?((en?'last ':'letzte ')+w.tage+(en?' days':' Tage')):(en?'all data':'alle Daten')} · ${w.trades} ${en?'executions':'Ausführungen'}</span></div>
   <div class="stats" style="grid-template-columns:repeat(4,1fr)">
    ${kachel(en?'Gross margin':'Brutto-Marge',fmtM(w.brutto)+' ISK',vz(w.brutto))}
    ${kachel(en?'Fees & tax':'Gebühren & Steuer','-'+fmtM(w.gebuehren)+' ISK','in')}
@@ -9750,19 +9911,56 @@ function renderWallet(w){
     ? '📋 Open orders need one extra permission. Reconnect your character in ⚙ Options to see them here.'
     : '📋 Für offene Orders fehlt eine Berechtigung. Verbinde deinen Charakter in ⚙ Optionen neu, dann stehen sie hier.'}</div></div>`;
  }
+ // ---- Top-Listen ----------------------------------------------------------
+ const T=w.tops||{};
+ const liste=(titel,zusatz,spalten,daten,leer)=>{
+  if(!daten||!daten.length)return leer||'';
+  return `<div class="card"><div class="chead"><span class="char">${titel}</span>
+    ${zusatz?`<span class="sub">· ${zusatz}</span>`:''}</div>
+   <table><tr>${spalten.map(c=>`<th${c[2]?' class="r"':''}>${c[0]}</th>`).join('')}</tr>`
+   +daten.map(d=>`<tr>${spalten.map(c=>`<td${c[2]?' class="r"':''}>${c[1](d)}</td>`).join('')}</tr>`).join('')
+   +`</table></div>`;
+ };
+ const nameZelle=d=>`${esc(d.name)}<span class="cpy" data-cpy="${esc(d.name)}" title="${en?'Copy name':'Namen kopieren'}">⧉</span>`;
+ h+=liste(`📊 ${en?'Top 10 by turnover':'Top 10 nach Umsatz'}`,
+   en?'buy plus sell':'Kauf plus Verkauf',
+   [[en?'Item':'Item',nameZelle,0],[en?'Bought':'Gekauft',d=>fmtM(d.kauf),1],
+    [en?'Sold':'Verkauft',d=>fmtM(d.verkauf),1],[en?'Turnover':'Umsatz',d=>`<b>${fmtM(d.isk)}</b>`,1]],
+   T.umsatz);
+ h+=liste(`📦 ${en?'Top 10 by quantity sold':'Top 10 nach verkaufter Menge'}`,'',
+   [[en?'Item':'Item',nameZelle,0],[en?'Qty':'Stk',d=>fmt(d.stk),1],[en?'Revenue':'Erlös',d=>fmtM(d.isk),1]],
+   T.menge);
+ h+=liste(`⛏ ${en?'Sold but never bought':'Verkauft, nie gekauft'}`,
+   (T.eigen_n||0)+' '+(en?'types':'Sorten')+' · '+fmtM(T.eigen_ges||0)+' ISK',
+   [[en?'Item':'Item',nameZelle,0],[en?'Qty':'Stk',d=>fmt(d.stk),1],[en?'Revenue':'Erlös',d=>`<b>${fmtM(d.isk)}</b>`,1]],
+   T.eigen);
+ h+=liste(`🛒 ${en?'Bought for your own use':'Für den Eigenbedarf gekauft'}`,
+   (T.bedarf_n||0)+' '+(en?'types':'Sorten')+' · '+fmtM(T.bedarf_ges||0)+' ISK',
+   [[en?'Item':'Item',nameZelle,0],[en?'Qty':'Stk',d=>fmt(d.stk),1],[en?'Cost':'Kosten',d=>fmtM(d.isk),1]],
+   T.bedarf);
+ if(T.eigen&&T.eigen.length){
+  h+=`<div class="card" style="grid-column:1/-1"><div class="sub">${en
+    ? `“Sold but never bought” is what you mined, built or looted yourself. It does not appear in the trading result above, because there is no purchase price to compare against. For a miner this is usually the main source of income.`
+    : `„Verkauft, nie gekauft“ ist das, was du selbst gefördert, gebaut oder erbeutet hast. Im Handelsergebnis weiter oben taucht es nicht auf, weil es dafür keinen Einkaufspreis gibt. Bei einem Miner ist das meist die Haupteinnahme.`}</div></div>`;
+ }
+
  const rows=Object.entries(g).filter(([k,v])=>v).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]));
  if(rows.length){
-  const L=en?{handel:'Market trades',gebuehren:'Fees & tax',bounty:'Bounty & missions',industrie:'Industry',
-              planeten:'Planetary',vertraege:'Contracts',versicherung:'Insurance',sonstiges:'Other'}
-           :{handel:'Markt-Geschäfte',gebuehren:'Gebühren & Steuer',bounty:'Bounty & Missionen',industrie:'Industrie',
-             planeten:'Planeten',vertraege:'Verträge',versicherung:'Versicherung',sonstiges:'Sonstiges'};
   h+=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">💼 ${en?'Where the ISK comes from':'Woher die ISK kommen'}</span>
-    <span class="sub">· ${en?'whole wallet':'ganzes Wallet'}, ${w.tage} ${en?'days':'Tage'}</span></div>
+    <span class="sub">· ${en?'net per category':'netto je Kategorie'}</span></div>
    <table><tr><th>${en?'Category':'Kategorie'}</th><th class="r">ISK</th></tr>`
-   +rows.map(([k,v])=>`<tr><td>${L[k]||k}</td><td class="r ${v>=0?'grn':'in'}">${fmtM(v)}</td></tr>`).join('')
+   +rows.map(([k,v])=>`<tr><td>${KAT[k]||k}</td><td class="r ${v>=0?'grn':'in'}">${fmtM(v)}</td></tr>`).join('')
    +`</table></div>`;
  }
- $('#grid').innerHTML=h;
+ $('#grid').innerHTML=h0+h;
+ // Zeitraum umschalten: merken und sofort neu holen, nicht auf den Takt warten.
+ $('#grid').querySelectorAll('.wtage').forEach(el=>{
+  el.onclick=()=>{
+   walletTage=Number(el.dataset.wt);
+   localStorage.setItem('walletTage',walletTage);
+   tick();
+  };
+ });
  // Kopier-Knoepfe: EIN Handler am Container statt einer je Zeile, sonst waeren
  // sie nach dem naechsten Neuzeichnen (2s-Takt) wieder weg.
  $('#grid').onclick=ev=>{
@@ -9996,6 +10194,26 @@ function renderMissionLive(chars){
 }
 function renderMissions(d){
  lastMissionD=d;                         // fuer die lokale Simulation merken
+ // Offene Loot-Eingaben ueber den Neubau retten. Diese Ansicht baut das Grid
+ // im 2-Sekunden-Takt komplett neu, und dabei war das Eingabefeld wieder
+ // zugeklappt: gemessen ging es nach 1.016 ms wieder zu, mitsamt allem, was
+ // schon getippt war. Deshalb hier Zustand, Text und Cursor sichern und nach
+ // dem Neubau zurueckschreiben. Das betraf jeden Browser, nicht nur Firefox.
+ // Waehrend im Loot-Feld getippt wird, gar nicht erst neu bauen. Sonst
+ // verliert die Eingabe bei jedem Takt kurz den Fokus, und genau das macht
+ // das Einfuegen mit Strg+V unzuverlaessig.
+ if(document.activeElement&&document.activeElement.classList
+    &&document.activeElement.classList.contains('mlootin'))return;
+ const lootOffen={};
+ document.querySelectorAll('.mlootedit').forEach(b=>{
+  if(b.hidden)return;
+  const ta=b.querySelector('.mlootin');
+  lootOffen[b.dataset.mid]={
+   text:ta?ta.value:'',
+   start:ta?ta.selectionStart:0, end:ta?ta.selectionEnd:0,
+   fokus:document.activeElement===ta,
+   status:(([...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||''};
+ });
  // Lokale Demo (nur mit sim_mode-Flag, reine Frontend-Simulation): Live-Char,
  // 50-Missionen-Historie und Journal-Summen einspeisen, nichts davon aus DB/Logs.
  if(SIM.on&&SIM.char)d=Object.assign({},d,{
@@ -10083,6 +10301,21 @@ function renderMissions(d){
   <div class="sect">Nach Charakter (gesamt)</div><table>
   <tr><th>Charakter</th><th class="r">Missionen</th><th class="r">ISK</th></tr>`+
   m.chars.map(c=>`<tr><td>${c.char}</td><td class="r">${c.missions}</td><td class="r isk">${fmtM(c.total)}</td></tr>`).join('')+'</table></div>':''}`;
+ // Gesicherten Zustand zurueckschreiben, bevor irgendein Handler haengt.
+ Object.entries(lootOffen).forEach(([mid,z])=>{
+  const box=[...document.querySelectorAll('.mlootedit')].find(e=>e.dataset.mid===mid);
+  if(!box)return;
+  box.hidden=false;
+  const ta=box.querySelector('.mlootin');
+  if(ta){
+   ta.value=z.text;
+   if(z.fokus)ta.focus();
+   // Cursor immer zuruecksetzen, sonst springt er beim naechsten Klick ans Ende.
+   try{ta.setSelectionRange(z.start,z.end);}catch(e){}
+  }
+  const st=[...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===mid);
+  if(st&&z.status)st.textContent=z.status;
+ });
  document.querySelectorAll('.mloottoggle').forEach(t=>t.onclick=()=>{
   const box=[...document.querySelectorAll('.mlootedit')].find(e=>e.dataset.mid===t.dataset.mid);
   if(box){box.hidden=!box.hidden; if(!box.hidden){const ta=box.querySelector('.mlootin'); if(ta)ta.focus();}}
@@ -10709,7 +10942,10 @@ async function tick(){
  tickBusy=true;
  const reqView=view;  // View einfrieren: nach dem await zählt der Stand von JETZT
  try{
-  const d=await (await fetch('/data?view='+reqView,{cache:'no-store'})).json();
+  // Der Wallet-Bereich hat einen eigenen Zeitraum (7/30/alles), der Server
+  // rechnet die Bilanz danach. Bei allen anderen Ansichten bleibt die URL wie sie war.
+  const zusatz=(reqView==='wallet')?('&days='+walletTage):'';
+  const d=await (await fetch('/data?view='+reqView+zusatz,{cache:'no-store'})).json();
   if(reqView!==view)return;  // Nutzer hat inzwischen gewechselt -> Antwort verwerfen
   state=d.state;regionPills();handleAlerts();updateBadge();updateBanner();serverBadge();bootScreen();renderViewInfo();
   if(state.log_ok===false){renderSetup();return;}
