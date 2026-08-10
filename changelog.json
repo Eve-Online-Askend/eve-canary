@@ -1,5 +1,15 @@
 [
  {
+  "v": "1.77.2",
+  "d": "2026-08-10",
+  "de": [
+   "Der Einzel-Item-Rechner zeigte teils Preise, die es so nicht geben kann: bei Tritanium stand in Jita ein Verkaufspreis von 3,79 unter dem Ankaufsgebot von 3,85. Ursache war der Preis-Cache. Er merkte sich zwar, welche Preise er hat, aber nicht, woher sie stammen. Dadurch bekam eine Abfrage, die ausdruecklich das frische Orderbuch von CCP wollte, stillschweigend Werte aus der Ausweichquelle, und die mittelt ueber die ganze Region statt ueber den Handelsplatz selbst. Jetzt merkt sich der Cache die Herkunft je Artikel. Nachgemessen zeigt Canary fuer Tritanium wieder genau das, was im Orderbuch von Jita steht."
+  ],
+  "en": [
+   "The single item lookup sometimes showed prices that cannot exist: for Tritanium in Jita it listed a sell price of 3.79 below the buy offer of 3.85. The cause was the price cache. It remembered which prices it had, but not where they came from. So a lookup that explicitly asked for CCP’s live order book quietly received values from the fallback source, which averages across the whole region rather than the trade hub itself. The cache now records the origin per item. Measured afterwards, Canary shows exactly what the Jita order book says."
+  ]
+ },
+ {
   "v": "1.77.1",
   "d": "2026-08-10",
   "de": [

@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.77.1"
+VERSION = "1.77.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -5800,7 +5800,17 @@ def hub_prices(region, ids, prefer_esi=False):
     with CALC_LOCK:
         e = CALC_CACHE.get(region)
         if e and time.time() - e["ts"] < PRICE_REFRESH and ids <= set(e["prices"]):
-            return dict(e["prices"])
+            # Der Cache merkt sich JE TYP, woher der Preis stammt. Ohne das bekam
+            # ein Aufruf mit prefer_esi stillschweigend Fuzzwork-Werte, sobald ein
+            # frueherer Aufruf denselben Typ ohne prefer_esi geholt hatte. Das ist
+            # nicht dasselbe: Fuzzwork mittelt ueber die GANZE Region, ESI filtert
+            # auf das Hub-System. An Tritanium sichtbar geworden, wo der regionale
+            # Verkaufspreis (3,79) UNTER dem Jita-Ankaufsgebot (3,85) lag.
+            quellen = e.get("src") or {}
+            if not prefer_esi or all(quellen.get(t) == "esi" for t in ids):
+                PRICE_SOURCE[str(region)] = ("esi" if all(quellen.get(t) == "esi" for t in ids)
+                                             else "fuzzwork")
+                return dict(e["prices"])
     fetched = {}
     if prefer_esi:
         try:
@@ -5826,9 +5836,17 @@ def hub_prices(region, ids, prefer_esi=False):
             if not result:
                 raise
     with CALC_LOCK:
-        merged = CALC_CACHE.get(region, {}).get("prices", {})
+        alt = CALC_CACHE.get(region, {})
+        merged = alt.get("prices", {})
         merged.update(result)
-        CALC_CACHE[region] = {"ts": time.time(), "prices": merged}
+        # Als "esi" gilt ein Typ nur, wenn das Orderbuch BEIDE Seiten geliefert
+        # hat. Wurde eine Seite aus Fuzzwork ergaenzt, ist der Eintrag gemischt
+        # und darf beim naechsten prefer_esi-Aufruf nicht als frisch durchgehen.
+        quellen = alt.get("src", {})
+        for t in result:
+            eb, es = fetched.get(t, (0.0, 0.0))
+            quellen[t] = "esi" if (eb and es) else "fuzzwork"
+        CALC_CACHE[region] = {"ts": time.time(), "prices": merged, "src": quellen}
         return dict(merged)
 
 
