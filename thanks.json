@@ -8,7 +8,7 @@
    "ru": "Стример"
   },
   "note": {
-   "de": "Canary Supporter der ersten Stunde. Schaut rein!",
+   "de": "Canary Supporter der ersten Stunde. Bester Eve Content. Schaut rein!",
    "en": "A Canary supporter from the very first hour. Go take a look!",
    "fr": "Soutient Canary depuis la toute première heure. Allez y jeter un œil !",
    "ru": "Поддерживает Canary с самого первого часа. Загляните!"
@@ -46,6 +46,21 @@
    {
     "k": "twitch",
     "u": "https://www.twitch.tv/switchhitgames"
+   }
+  ]
+ },
+ {
+  "name": "rookiebearr",
+  "role": {
+   "de": "Streamer"
+  },
+  "note": {
+   "de": "Canary Supporter von anfang an, herz am richtigen Pfleg und immer für Abwechslung gut"
+  },
+  "links": [
+   {
+    "k": "twitch",
+    "u": "https://www.twitch.tv/rookiebearr"
    }
   ]
  }
