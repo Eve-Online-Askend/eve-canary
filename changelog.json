@@ -1,5 +1,31 @@
 [
  {
+  "v": "1.72.0",
+  "d": "2026-08-10",
+  "de": [
+   "Kopfgelder wurden bei vielen Spielern rund tausendmal zu niedrig angezeigt. Je nach Einstellung schreibt EVE grosse Zahlen mit einem Apostroph, also \"131'250 ISK\", und Canary hat dort abgebrochen und 131 gelesen. An einem gespendeten Logbestand von sieben Jahren waren davon 99,9 Prozent aller Kopfgeldzeilen betroffen, aus 695 Milliarden ISK wurden 79 Millionen. Wenn dich das betroffen hat, stimmen deine ISK-Zahlen ab jetzt.",
+   "Erznamen waren seit 2022 verunreinigt. Der englische Client haengt an die Bergbauzeile den Zusatz \"with a lost residue of N units\", und der landete mitten im Erznamen. Aus 72 echten Erzsorten wurden dadurch 984 erfundene, 21 Sorten tauchten ueberhaupt nie richtig auf und fehlten in Preisen, Verwertung und Flottenleistung. Ist behoben, deine Erzstatistik zaehlt jetzt wieder zusammen, was zusammengehoert.",
+   "Neu: Canary zeigt den Verschnitt beim Bergbau. Das ist das Erz, das deine Laser aus dem Asteroiden loesen und liegen lassen. Bisher wurde diese Zeile stumm weggeworfen.",
+   "Die Fraktionserkennung kennt jetzt deutlich mehr Gegner. Statt geratener Stichwoerter liegt eine Namenstabelle aus CCPs eigenen Spieldaten bei. Gegner ohne Auskunft sind von 42 auf 25 Prozent gefallen, und ueber 300.000 falsch zugeordnete Zeilen sind weg. Darunter waren Blood Raider, die als Serpentis gezaehlt wurden.",
+   "Dein eigener Nosferatu galt als Angriff gegen dich. Weil das Wort im Modulnamen steht, hat Canary den Kondensator, den du dem Gegner abzapfst, als gegnerisches EWAR verbucht. Jetzt wird die Richtung an der Farbe unterschieden, und das funktioniert in jeder Client-Sprache.",
+   "Die Drohnen-Warnung ging bei englischen Clients nie wieder weg, weil Canary das Wiederansetzen der Bergbaudrohnen dort nicht erkannt hat. Behoben.",
+   "In der Logi-Anzeige stand manchmal ein Allianzkuerzel da, wo der Pilot stehen sollte. Je nach Overview-Einstellung steht der Name gar nicht im Log. Canary schreibt dort jetzt ein Fragezeichen statt eines falschen Namens.",
+   "Wracks, Drohnen, Bergungsschlepper und sogar Wurmloch-Systemnamen wurden als Spieler gezaehlt. Sie tragen im Log dieselbe Form wie ein Pilot. Die PvP-Liste ist jetzt sauber.",
+   "Canary versteht jetzt 99,9 Prozent aller Logzeilen statt 95. Der Zuwachs ist bewusst stumm: Drohnenmeldungen, Modul-Abschaltungen und Nachladen werden erkannt, aber nicht angezeigt, weil sie siebzig Mal pro Sitzung vorkommen. Der Gewinn steckt in der Diagnose, die zeigt jetzt nur noch, was Canary wirklich nicht kennt. Das hilft vor allem bei Clients in anderen Sprachen."
+  ],
+  "en": [
+   "Bounties were shown about a thousand times too low for many players. Depending on your settings EVE writes large numbers with an apostrophe, so \"131'250 ISK\", and Canary stopped there and read 131. In a donated seven year log archive this hit 99.9 percent of all bounty lines, turning 695 billion ISK into 79 million. If this affected you, your ISK figures are correct from now on.",
+   "Ore names had been polluted since 2022. The English client appends \"with a lost residue of N units\" to the mining line, and that ended up inside the ore name. 72 real ore types turned into 984 invented ones, 21 types never showed up correctly at all and were missing from prices, reprocessing and fleet output. Fixed, your ore statistics add up again.",
+   "New: Canary shows mining residue. That is the ore your lasers knock loose and leave behind. Until now that line was silently discarded.",
+   "Faction detection now knows far more enemies. Instead of guessed keywords there is a name table built from CCP's own game data. Enemies with no answer dropped from 42 to 25 percent, and over 300,000 wrongly labelled lines are gone. Among them Blood Raiders that were counted as Serpentis.",
+   "Your own nosferatu counted as an attack against you. Because the word appears in the module name, Canary booked the capacitor you drain from the enemy as incoming EWAR. Direction is now told apart by colour, which works in every client language.",
+   "The drone warning never cleared on English clients because Canary did not recognise mining drones going back to work there. Fixed.",
+   "The logi display sometimes showed an alliance ticker where the pilot should be. Depending on your overview settings the name is not in the log at all. Canary now writes a question mark instead of a wrong name.",
+   "Wrecks, drones, tractor units and even wormhole system names were counted as players. In the log they carry the same shape as a pilot. The PvP list is clean now.",
+   "Canary now understands 99.9 percent of all log lines instead of 95. The gain is deliberately silent: drone messages, module shutdowns and reloading are recognised but not displayed, because they occur seventy times per session. The benefit is in the diagnostics, which now only show what Canary genuinely does not know. That mainly helps clients in other languages."
+  ]
+ },
+ {
   "v": "1.71.0",
   "d": "2026-08-02",
   "de": [

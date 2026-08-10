@@ -24,9 +24,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.71.0"
+VERSION = "1.72.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
-                "eve_map.json",
+                "eve_map.json", "npc_factions.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
                 "README_INSTALL.md"]
 from collections import deque
@@ -198,9 +198,15 @@ def detect_mission(enemies, dialogue=""):
 FACTIONS = [
     ("Guristas",       ["pith", "guristas", "dread guri"],
      ["kin", "therm"], ["kin", "therm"], "jam"),
+    # "shadow" allein war ein Fehlgriff: an 9.161 gespendeten Logs fing der Key
+    # 125.380 Zeilen ein, die keine Serpentis sind. "Elder Corpum Shadow Sage"
+    # und "Corpum Shadow Sage" tragen den Blood-Key "corpum", werden aber hier
+    # zuerst geprueft. Echte Shadow-Serpentis-Treffer waren rund 700 Zeilen.
+    # "pleasure hub"/"pleasure garden" ebenfalls raus: CCPs SDE kennt keinen NPC
+    # dieses Namens (nur Strukturen), die 163.143 Zeilen waren also unbelegt.
     ("Serpentis",      ["serpenti", "coreli", "corelum", "corelior", "coretus",
-                        "coreatis", "shadow", "core admiral", "core lord",
-                        "pleasure hub", "pleasure garden"],
+                        "coreatis", "shadow serpentis", "core admiral",
+                        "core lord"],
      ["therm", "kin"], ["kin", "therm"], "damp"),
     ("Blood Raiders",  ["corpus", "corpii", "corpior", "corpum", "corpatis",
                         "corpse", "blood raider", "blood clone", "dark blood"],
@@ -208,8 +214,12 @@ FACTIONS = [
     ("Sansha",         ["sansha", "centii", "centus", "centior", "centum",
                         "centatis", "true sansha"],
      ["em", "therm"], ["em", "therm"], "td"),
+    # "angel cartel" verlangte beide Woerter und verfehlte damit "Tower Sentry
+    # Angel III" (128.386 Zeilen), "Angel Viper", "Angel Assault Cruiser" und
+    # weitere. Das kurze "angel" ist geprueft: ueber alle 115 NPC-Namen im SDE,
+    # die "angel" enthalten, gehoert JEDER zum Angel Cartel.
     ("Angel Cartel",   ["gistii", "gistum", "gistatis", "gistior", "gist ",
-                        "arch gist", "angel cartel", "domination"],
+                        "arch gist", "angel", "domination"],
      ["exp", "kin"], ["exp", "kin"], "web"),
     ("Mordu's Legion", ["mordu"],
      ["kin", "therm"], ["kin", "em"], "scram"),
@@ -248,7 +258,22 @@ FACTIONS = [
                         "zirnitra", "drekavac", "ikitursa", "nergal",
                         "triglavian"],
      ["omni"], ["exp", "therm"], "web"),
+    # EDENCOM und CONCORD tauchen in echten Logs auf (17.272 Zeilen bei einem
+    # Spender), aber ein geprueftes Schadensprofil habe ich zu ihnen NICHT.
+    # Deshalb nur der Name, ohne Empfehlung: leere Listen, die Oberflaeche
+    # laesst die Zeilen "schiesse"/"tanke" dann weg. Lieber die Fraktion
+    # benennen und zum Schaden schweigen als etwas zu behaupten.
+    ("EDENCOM",        ["edencom"], [], [], None),
+    ("CONCORD",        ["concord "], [], [], None),
 ]
+
+
+# NPC-Name -> Fraktion, aus CCPs SDE erzeugt (Skript baue_npc_fraktionen.py).
+# Quelle je Eintrag: invTypes.factionID, sonst der Gruppenname ("Deadspace
+# Serpentis Battleship"). Was beides nicht hergab, steht NICHT drin.
+# Der exakte Name schlaegt die Teilwort-Schluessel oben, denn die sind unscharf:
+# an 9.161 gespendeten Logs lagen sie bei 42.026 Zeilen nachweislich daneben.
+NPC_FACTIONS = load_json("npc_factions.json", {})
 
 
 def faction_info(enemies):
@@ -258,6 +283,11 @@ def faction_info(enemies):
     scores = {}
     for name, cnt in (enemies or []):
         low = (name or "").lower()
+        # 1. exakter Name aus CCPs Tabelle, 2. die unscharfen Schluessel
+        fac = NPC_FACTIONS.get(low)
+        if fac:
+            scores[fac] = scores.get(fac, 0) + (cnt or 1)
+            continue
         for fac, keys, _deal, _shoot, _ew in FACTIONS:
             if any(k in low for k in keys):
                 scores[fac] = scores.get(fac, 0) + (cnt or 1)
@@ -301,12 +331,26 @@ HINT_RE = re.compile(r'hint="([^"]+)"')
 STRIP_RE = re.compile(r"<[^>]+>")
 # NBSP (\xa0) mit aufnehmen: manche Client-Sprachen (z.B. RU) nutzen ein
 # geschuetztes Leerzeichen als Tausendertrenner — sonst wird "1<NBSP>234" zu "1".
-NUM_RE = re.compile("([\\d][\\d.,\xa0 ]*)")
+# APOSTROPH ebenso: manche Clients schreiben "131'250 ISK". An 9.161 gespendeten
+# Logs gemessen, dort betraf es 99,9% aller Bounty-Zeilen und machte aus
+# 695 Mrd ISK ganze 79 Mio. Der Apostroph zaehlt NUR, wenn direkt eine Ziffer
+# folgt, sonst frisst das Muster Namen wie "Tyrre'loh" an.
+NUM_RE = re.compile("([\\d](?:[\\d.,\xa0 ]|['’](?=[\\d]))*)")
 CHAR_FILE_RE = re.compile(r"^\d{8}_\d{6}_(\d+)\.txt$")
 CHAT_LINE_RE = re.compile(r"^\[ [\d. :]+ \] ([^>]+?) > (.*)$")
 CHAT_TS_RE = re.compile(r"^\[ (\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2}):(\d{2}) \]")
 OUT_COLOR = "0xff00ffff"
 IN_COLOR = "0xffcc0000"
+# Cap-Kriegsfuehrung hat eigene, blassere Varianten der beiden Schadensfarben.
+# An 9.161 gespendeten Logs gemessen: 217.004 Zeilen rein, 4.494 raus, in jedem
+# der acht Jahre. Bisher wurden sie nur ueber das WORT erkannt (EWAR_TEXTS, nur
+# DE/EN), ein russischer Client verlor alle 217.004 still. Genau der Fehler,
+# den es bei LOGI_COLOR schon einmal gab.
+# Und die Richtung war falsch: die Gewinn-Zeile ("+43 GJ energy drained from X
+# - Medium Rudimentary Energy Nosferatu") zaehlte als EWAR GEGEN dich, weil
+# "Nosferatu" im Modulnamen steht. Es ist aber dein eigener Nosferatu.
+NEUT_IN_COLOR = "0xffe57f7f"    # dein Kondensator wird geleert
+NEUT_OUT_COLOR = "0xff7fffff"   # du saugst den Gegner leer
 # Fernunterstuetzung (Logi): eigene Farbe, weder Schaden aus noch Schaden ein.
 # "298 remote capacitor transmitted to Guardian [PR.BL] [C.H.P] [Jarrod Sands]
 #  - - Large Inductive Compact Remote Capacitor Transmitter"
@@ -341,8 +385,29 @@ MINE_WASTE_COLOR = "#ffff454b"
 # eine Namensliste kann es nicht sein, weil Missionen ihre Rats frei umbenennen
 # ("Shadow's Grunt", "Roden Shipyard Interceptor" stehen in keiner ESI-Kategorie).
 PLAYER_RE = re.compile(r"\[[^\[\]]{1,10}\]\s*\([^()]+\)")
+# Wurmloch-Systeme heissen J######, im Overview mit selbstgewaehltem Zusatz.
+WH_SYS_RE = re.compile(r"^J\d{6}\b")
+
+
+def not_a_pilot(name):
+    """Traegt die Form "Name[TICKER](Typ)", ist aber kein Mensch.
+
+    Drohnen, Wracks, Mobile Tractor Units, Kontrolltuerme und Zollbueros
+    gehoeren einem Spieler und sehen im Log deshalb genauso aus wie ein Pilot.
+    Erkennung ueber die schon mitgelieferte Typtabelle statt ueber eine
+    Namensliste: was handelbar ist, ist ein Gegenstand und kein Pilot."""
+    if not name:
+        return True
+    n = name.strip()
+    if n in MARKET_TYPES or n.rstrip("*").strip() in MARKET_TYPES:
+        return True
+    if WH_SYS_RE.match(n):
+        return True
+    if " Wreck" in n or n.startswith("Customs Office"):
+        return True
+    return n.lower() in NPC_FACTIONS
 # Fuehrende Schadenszahl (auch mit Tausender-Trennung) am Zeilenanfang
-DMG_HEAD_RE = re.compile(r"^\d[\d.,  ]*")
+DMG_HEAD_RE = re.compile(r"^\d(?:[\d.,  ]|['’](?=\d))*")
 # Sprachabhängige Signale. ALLES ANDERE (Erz, Schaden, Gegner, Bounties, Module)
 # ist sprachunabhängig über hint-Tags, Farbcodes und Zahlen — nur diese vier
 # Meldungen stehen als reiner Fließtext im Log und brauchen pro Sprache ein Muster.
@@ -409,8 +474,156 @@ def note_unknown(text):
     UNKNOWN_NOTIFY.append(t)
 
 
+# ---------------------------------------------------------------------------
+# Alltagslaerm: erkannt, aber stumm.
+#
+# An 9.161 gespendeten Logs (24 Mio Zeilen, sieben Jahre) gemessen: 1,16 Mio
+# Zeilen fielen bisher durch, davon sind rund 98% Prozessgeplapper. Beispiele
+# mit ihrer Haeufigkeit JE SITZUNG: "Drones engaging" 70,5, "Modul deaktiviert,
+# Ziel weg" 71,0, "Nachladen" 22,6. Als Meldung waere das jedes Mal Laerm.
+#
+# Der Gewinn ist deshalb nicht die Quote, sondern die Diagnose: vorher
+# ertranken die echt unbekannten Meldungen eines fremdsprachigen Clients in
+# diesen 1,16 Mio Zeilen. Jetzt steht in UNKNOWN_NOTIFY nur noch, was Canary
+# wirklich nicht kennt. Die Klassennamen sind absichtlich sprechend, damit ein
+# spaeteres Feature eine Klasse einfach hochstufen kann.
+#
+# Muster haengen an Satzfragmenten ohne Eigennamen und Zahlen, damit sie ueber
+# Client-Versionen stabil bleiben. Deutsche Entsprechungen stehen dort, wo sie
+# belegt sind. Wo nicht, bleibt es beim englischen Muster: eine geratene
+# Uebersetzung greift still nicht und taeuscht dann Abdeckung vor.
+NOISE_PATTERNS = [
+    # Module: Ziel weg, nicht gelockt, explodiert
+    (r"deactivates as the item it was targeted at is no longer present", "modul_ziel_weg"),
+    (r"deactivates because its target,.*is not locked", "modul_ziel_ungelockt"),
+    (r"deactivates as .* begins to explode", "modul_ziel_explodiert"),
+    (r"cannot activate that module as the target is no longer present", "modul_ziel_weg"),
+    (r"deaktiviert.*Ziel.*nicht mehr (vorhanden|da)", "modul_ziel_weg"),
+    # Module: leer, blockiert, keine Ziele
+    (r"has run out of charges", "modul_leer"),
+    (r"hat keine Ladungen mehr", "modul_leer"),
+    (r"has no suitable targets within range", "modul_keine_ziele"),
+    (r"External factors are preventing your .* from responding", "modul_blockiert"),
+    (r"cannot load or unload .* while it is active", "modul_blockiert"),
+    (r"cannot be manually deactivated in the middle of an operation", "modul_blockiert"),
+    (r"requires [\d.,'’]+ units of charge\. The capacitor has only", "modul_kein_cap"),
+    (r"cannot engage a tractor beam on that object as it is already", "modul_blockiert"),
+    (r"You do not have the required skill", "modul_blockiert"),
+    # Drohnen
+    (r"^Drones engaging", "drohnen_angriff"),
+    (r"^All drones returning to drone bay", "drohnen_rueckruf"),
+    (r"^Regrouping", "drohnen_sammeln"),
+    (r"don't have enough bandwidth to launch", "drohnen_bandbreite"),
+    (r"cannot be commanded to work on a target that is no longer present", "drohnen_ziel_weg"),
+    (r"drones fail to execute your commands", "drohnen_ziel_weg"),
+    (r"because you are already controlling \d+ drones", "drohnen_limit"),
+    (r"To give this command to a drone requires that you have an active target",
+     "drohnen_kein_ziel"),
+    (r"Drohnen.*(greifen an|kehren zurueck|kehren zurück)", "drohnen_angriff"),
+    # Nachladen
+    (r"^Loading the .* into the .*; this will take approximately", "nachladen"),
+    (r"^Lade .* in .*; dies dauert", "nachladen"),
+    # Zielerfassung
+    (r"Targeting attempt failed", "ziel_fehlgeschlagen"),
+    (r"Your attempt to target .* failed", "ziel_fehlgeschlagen"),
+    (r"^Target lock unsuccessful", "ziel_fehlgeschlagen"),
+    (r"Invalid target, the .* can only be activated on", "ziel_fehlgeschlagen"),
+    (r"You are already managing \d+ targets", "ziel_limit"),
+    (r"is too far away\. It must be within", "ziel_zu_weit"),
+    (r"Interference from .* prevents your sensors from locking", "ziel_stoerung"),
+    (r"Interference from .* preventing your sensors from getting a target lock", "ziel_stoerung"),
+    (r"Interference from .* preventing your systems from functioning", "ziel_stoerung"),
+    (r"Unknown local interference is preventing normal sensor operation", "ziel_stoerung"),
+    (r"You have lost your target lock on", "ziel_verloren"),
+    (r"^Target is invulnerable", "ziel_unverwundbar"),
+    # Bewegung
+    (r"^Ship stopping", "bewegung"),
+    (r"^Speed changed to", "bewegung"),
+    (r"You cannot do that while warping", "bewegung"),
+    (r"is on automatic approach", "bewegung"),
+    (r"unable to align or warp to the selected object", "bewegung"),
+    (r"^Schiff haelt an|^Schiff hält an", "bewegung"),
+    # Docking
+    (r"docking request has been accepted", "docking"),
+    (r"^Requested to dock at", "docking"),
+    (r"station services processes your undocking request", "docking"),
+    (r"^Docking operation already in progress", "docking"),
+    (r"Can't do that while undocking", "docking"),
+    (r"Andockanfrage", "docking"),
+    # Reichweite und Fracht
+    (r"is too far away to use your .* on, it needs to be closer", "zu_weit_weg"),
+    (r"You must be within [\d.,'’]+ meters of the container", "zu_weit_weg"),
+    (r"The item is no longer within your reach", "zu_weit_weg"),
+    (r"^Cargo is too far away", "zu_weit_weg"),
+    (r"Item was added to the hold but will not be included in the fitting", "fracht_hinweis"),
+    (r"cargo units would be required to complete this operation", "fracht_hinweis"),
+    (r"item(s)? (was|were) moved to your hangar", "fracht_hinweis"),
+    (r"rigs in the saved fitting were not fitted", "fitting"),
+    (r"These charges cannot be fitted", "fitting"),
+    # Tarnung
+    (r"[Cc]loak deactivates due to proximity", "tarnung_aus"),
+    (r"Interference from the cloaking you are doing", "tarnung_stoerung"),
+    (r"cloaking device .* recalibrat", "tarnung_stoerung"),
+    # Bedienung
+    (r"^Please wait\.\.\.", "bedienung"),
+    (r"^Session change already in progress", "bedienung"),
+    (r"^Attempting to join a channel", "bedienung"),
+    (r"scanner is recalibrating", "bedienung"),
+    (r"systems are still recalibrating", "bedienung"),
+    (r"^Bitte warten", "bedienung"),
+    # Flotten-Boost. Inhaltlich interessant (belegt Booster-Rolle und
+    # Flottengroesse), aber 241 Zeilen je betroffener Sitzung. Erst einmal stumm.
+    (r"has applied bonuses to \d+ fleet member", "flotten_boost"),
+    # Sondieren, Sites, Markt, Kleinkram
+    (r"^No scan signatures detected", "sondieren"),
+    (r"You need \d+ probes to launch this formation", "sondieren"),
+    (r"^This gate is locked", "tor_verschlossen"),
+    (r"Local spatial phenomena may cause strange effects", "site_effekt"),
+    (r"LP Store purchase completed", "markt"),
+    (r"The price you have chosen is .* (above|below) regional average", "markt_warnung"),
+    (r"You already have a license for this SKIN", "kleinkram"),
+    (r"is inviting you to a conversation", "einladung"),
+    (r"invites you to join|wants you to join their fleet", "einladung"),
+    (r"You are about to throw away", "abfrage"),
+    (r"^Starting clone jumping", "klonsprung"),
+    (r"^Disembarking from ship", "schiffswechsel"),
+]
+NOISE_RE = [(re.compile(p, re.I), k) for p, k in NOISE_PATTERNS]
+# Ganze Tags, die strukturell immer dasselbe sind. Das ist keine Rateleistung:
+# eine (question)-Zeile IST eine Rueckfrage des Clients, eine (slash)-Zeile IST
+# die Quittung auf einen getippten Slash-Befehl.
+TAG_NOISE = {"question": "abfrage", "slash": "slash_quittung"}
+# Rueckstand beim Bergbau. Bis 2025 stand der Verschnitt im Ertragssatz, seither
+# in einer eigenen Zeile. Echte Zahl, kein Laerm.
+RESIDUE_RE = re.compile(
+    r"Additional\s+([\d][\d.,\xa0 '’]*)\s+units depleted from asteroid as residue", re.I)
+# Erfolgreiches Hacken benennt den Behaelter und damit den Site-Typ.
+HACK_RE = re.compile(r"You successfully access the\s+(.+?)\s*\.?\s*$", re.I)
+# Zusatz, den der englische Client seit 2022 an die Ertragszeile haengt. Muss
+# vom Erznamen abgeschnitten werden, sonst ist der Schluessel unbrauchbar.
+RESIDUE_SUFFIX_RE = re.compile(r"\s+with a lost residue of\b.*$", re.I)
+
+
+def classify_rest(base, tag, text):
+    """Faellt eine Zeile durch alle Regeln: kennen wir sie trotzdem?
+    Liefert ein Ereignis oder None. None heisst echt unbekannt."""
+    m = RESIDUE_RE.search(text)
+    if m:
+        return {**base, "kind": "residue", "key": "Rueckstand", "value": num(m.group(1))}
+    m = HACK_RE.search(text)
+    if m and len(m.group(1)) < 60:
+        return {**base, "kind": "hack", "key": m.group(1).strip(), "value": 1}
+    for rx, klasse in NOISE_RE:
+        if rx.search(text):
+            return {**base, "kind": "noise", "key": klasse, "value": 1}
+    k = TAG_NOISE.get(tag)
+    if k:
+        return {**base, "kind": "noise", "key": k, "value": 1}
+    return None
+
+
 def num(s):
-    return int(re.sub("[.,\xa0 ]", "", s) or 0)
+    return int(re.sub("[.,\xa0 '’]", "", s) or 0)
 
 
 def parse_line(raw):
@@ -430,11 +643,15 @@ def parse_line(raw):
     day = f"{y}-{mo}-{d}"
     base = {"ts": ts, "day": day}
     if tag == "mining":
-        # Rueckstaende sind Verlust, kein Ertrag: verwerfen, bevor irgendetwas
-        # gezaehlt wird. Erkennung ueber die Farbe, damit es in jeder Sprache
-        # greift (siehe MINE_WASTE_COLOR).
+        # Rueckstaende sind Verlust, kein Ertrag: nie als Ausbeute zaehlen.
+        # Erkennung ueber die Farbe, damit es in jeder Sprache greift
+        # (siehe MINE_WASTE_COLOR). Seit 2025 steht der Rueckstand in einer
+        # EIGENEN Zeile ("Additional N units depleted from asteroid as
+        # residue"), die traegt dieselbe Farbe. Die wird jetzt als kind
+        # "residue" erkannt statt still verworfen, damit die Verschnittquote
+        # eines Trips ausweisbar ist.
         if MINE_WASTE_COLOR in body:
-            return None
+            return classify_rest(base, tag, STRIP_RE.sub("", body))
         text = STRIP_RE.sub("", body)
         n = NUM_RE.search(text)
         hint = HINT_RE.search(body)
@@ -446,11 +663,26 @@ def parse_line(raw):
             me = re.search(r"units of\s+(.+?)\s*$", text)
             if me:
                 ore = me.group(1).strip().rstrip("*").strip()
+                # Seit 2022 haengt der englische Client " with a lost residue of
+                # N units" an den Satz. Ohne diesen Schnitt wandert der Zusatz in
+                # den Erznamen: an 9.161 gespendeten Logs waren dadurch 43.068 von
+                # 175.440 Erz-Ereignissen (24,5%) falsch verschluesselt, aus 72
+                # echten Sorten wurden 984, und 21 Sorten gab es NUR kaputt. Die
+                # trafen ore_types.json nie und fehlten in Preis, Refine und
+                # Fleet Power.
+                ore = RESIDUE_SUFFIX_RE.split(ore)[0].strip()
         if ore and n:
             return {**base, "kind": "ore", "key": ore, "value": num(n.group(1))}
     elif tag == "combat":
         low = body.lower()
-        # ---- Fernunterstuetzung zuerst: eigene Farbe, kein Schaden ----------
+        # ---- Cap-Kriegsfuehrung: eigene Farben, sprachunabhaengig -----------
+        if NEUT_IN_COLOR in low:
+            return {**base, "kind": "ewar", "key": "neut", "value": 1}
+        if NEUT_OUT_COLOR in low:
+            # Eigener Nosferatu oder Neut. Kein Angriff gegen dich, deshalb
+            # ausdruecklich KEIN ewar. Erkannt, aber vorerst stumm.
+            return {**base, "kind": "noise", "key": "cap_gewinn", "value": 1}
+        # ---- Fernunterstuetzung: eigene Farbe, kein Schaden -----------------
         if LOGI_COLOR in low:
             plain = STRIP_RE.sub("", body).strip()
             n = NUM_RE.search(plain)
@@ -471,10 +703,23 @@ def parse_line(raw):
                     break
             # Reihenfolge der Klammern ist [Corp] [Allianz] [Pilot], die
             # Allianz fehlt manchmal. Der Pilot steht immer zuletzt.
+            # ABER: das gilt nur fuer ein bestimmtes Overview-Layout. An zwei
+            # fremden Log-Spenden geprueft: beim einen 10 echte Pilotennamen und
+            # 100% Treffer, beim anderen 96,3% ohne jede Klammer und der Rest
+            # ein ALLIANZKUERZEL ("LAWN", "ANGEL"), das dann als Pilot angezeigt
+            # wurde. Kuerzel bestehen nur aus Grossbuchstaben, Ziffern und
+            # Bindestrichen; ein Pilotenname hat immer Kleinbuchstaben. Sieht es
+            # nach Kuerzel aus, lieber "?" als ein falscher Name.
             klammern = re.findall(r"\[([^\[\]]+)\]", plain)
+            pilot = klammern[-1].strip() if klammern else ""
+            if not pilot or not any(c.islower() for c in pilot):
+                pilot = "?"
+            # Das Schiff endet vor dem Modulnamen, sonst schleppt es ihn mit.
+            if " - " in schiff:
+                schiff = schiff.rsplit(" - ", 1)[0].strip()
             return {**base, "kind": "logi_" + richtung, "art": art,
-                    "key": (klammern[-1].strip() if klammern else "?"),
-                    "ship": schiff, "weapon": modul, "value": num(n.group(1))}
+                    "key": pilot, "ship": schiff, "weapon": modul,
+                    "value": num(n.group(1))}
         direction = "dmg_out" if OUT_COLOR in low else ("dmg_in" if IN_COLOR in low else None)
         if direction:
             plain = STRIP_RE.sub("", body).strip()
@@ -485,7 +730,8 @@ def parse_line(raw):
                 # Der ENGLISCHE Client setzt keine hint-Tags, dort ist das die
                 # einzige Quelle fuer den Gegnernamen (sonst blieb er "?").
                 who = weapon = None
-                m = re.match(r"^\d[\d.,  ]*\s+(?:from|to)\s+(.+)$", plain)
+                m = re.match(r"^\d(?:[\d.,\xa0  ]|['’](?=\d))*\s+(?:from|to)\s+(.+)$",
+                             plain)
                 if m:
                     parts = [p.strip() for p in m.group(1).split(" - ")]
                     who = parts[0] or None
@@ -494,13 +740,21 @@ def parse_line(raw):
                 # Spieler? Dann steht "[TICKER](Schiff)" drin — Pilotenname ist
                 # alles davor, ohne Schadenszahl und Richtungswort.
                 mp = PLAYER_RE.search(plain)
+                spieler = bool(mp)
                 if mp:
                     head = DMG_HEAD_RE.sub("", plain[:mp.start()]).strip()
                     who = (head.split(" ", 1)[1] if " " in head else head).strip() or who
+                    # "[TICKER](Typ)" heisst nur "gehoert einem Spieler", nicht
+                    # "ist ein Pilot". Drohnen, Wracks, Mobile Tractor Units,
+                    # Kontrolltuerme und Zollbueros tragen dieselbe Form. An
+                    # 9.161 gespendeten Logs standen dadurch Wracks, Warrior II
+                    # und sogar Wurmloch-Systemnamen in der PvP-Liste.
+                    if not_a_pilot(who):
+                        spieler = False
                 elif hints:
                     who = hints[0]   # lokalisierter Client: NPC-Name aus dem hint
                 ev = {**base, "kind": direction, "key": who or "?",
-                      "value": num(n.group(1)), "player": bool(mp)}
+                      "value": num(n.group(1)), "player": spieler}
                 if direction == "dmg_out":
                     if len(hints) > 1:
                         ev["weapon"] = hints[1]
@@ -533,7 +787,7 @@ def parse_line(raw):
                 return {**base, "kind": "compressed", "key": comp,
                         "raw": raw_ore, "value": num(n.group(1))}
         # Englischer Client (kein hint): "Successfully compressed Coesite into 41 Compressed Coesite."
-        mc = re.search(r"compressed (.+?) into (\d[\d.,]*) (Compressed .+?)\.?\s*$", text)
+        mc = re.search(r"compressed (.+?) into (\d(?:[\d.,]|['’](?=\d))*) (Compressed .+?)\.?\s*$", text)
         if mc:
             return {**base, "kind": "compressed",
                     "key": mc.group(3).strip().rstrip("*").strip(),
@@ -543,10 +797,10 @@ def parse_line(raw):
         # Flottenpiloten namentlich, der ueber den Kompressionsdienst komprimiert,
         # auch fremde Spieler. "FivaS compressed 1440 Plagioclase II-Grade using
         # your compression services." -> Flotten-Kompression je Pilot.
-        mfc = re.search(r"^(.+?) compressed ([\d.,  ]+?) (.+?) using your compression services",
+        mfc = re.search(r"^(.+?) compressed ([\d.,  '’]+?) (.+?) using your compression services",
                         text)
         if not mfc:   # deutscher Client: "<Name> hat <N> <Erz> mithilfe Ihrer Kompressionsanlage komprimiert."
-            mfc = re.search(r"^(.+?) hat ([\d.,  ]+?) (.+?) mithilfe .+? komprimiert", text)
+            mfc = re.search(r"^(.+?) hat ([\d.,  '’]+?) (.+?) mithilfe .+? komprimiert", text)
         if mfc:
             raw = next((h for h in hints if not h.startswith("Compressed")), None) or mfc.group(3)
             return {**base, "kind": "fleet_compress",
@@ -569,6 +823,16 @@ def parse_line(raw):
             # "Drohnen greifen <Erz> an" (ohne Zahlen — Distanz-Fehler haben immer km-Angaben):
             # Mining-Drohnen wurden neu angesetzt -> Drohnen-Warnung aufheben
             return {**base, "kind": "drone_engage", "key": hints[0], "value": 1}
+        # Derselbe Fall im ENGLISCHEN Client: der setzt keine hint-Tags, der
+        # Erzname steht im Klartext. Deshalb feuerte die Regel oben an 24 Mio
+        # Zeilen KEIN einziges Mal, und die Drohnen-Warnung ging bei englischen
+        # Nutzern nie wieder auf. Gegen ORE_TYPES pruefen, damit Kampfdrohnen
+        # ("Drones engaging Vila Swarmer") nicht mitzaehlen.
+        mde = re.match(r"^Drones engaging\s+(.+?)\s*$", text)
+        if mde:
+            ziel = mde.group(1).strip().rstrip("*").strip()
+            if ziel in ORE_TYPES and not ziel.startswith("Compressed"):
+                return {**base, "kind": "drone_engage", "key": ziel, "value": 1}
         low_t = text.lower()
         if any(t in low_t for t in SALVAGE_OK):
             return {**base, "kind": "salvage", "key": "ok", "value": 1}
@@ -589,6 +853,9 @@ def parse_line(raw):
         if any(t in text for t in WARP_TEXTS):
             LOG_TEXT_HITS["warp"] += 1
             return {**base, "kind": "travel", "key": "warp", "value": 1}
+        ev = classify_rest(base, tag, text)
+        if ev:
+            return ev
         note_unknown(text)
         return None
     elif tag == "None":
@@ -606,9 +873,14 @@ def parse_line(raw):
             or re.search(r"(?:Springt|Springe) von .+? nach (.+)$", text)
         if jm:
             return {**base, "kind": "jump", "key": jm.group(1).strip("* ."), "value": 1}
+        ev = classify_rest(base, tag, text)
+        if ev:
+            return ev
         note_unknown(text)
         return None
-    return None
+    # question, hint, warning, info, slash und alles, was oben durchfaellt:
+    # vielleicht kennen wir die Zeile trotzdem und sie ist nur nicht anzeigbar.
+    return classify_rest(base, tag, STRIP_RE.sub("", body))
 
 
 def read_char_name(file):
@@ -857,7 +1129,7 @@ def meta_get(key, default=None):
 #       Rueckstands-Zeilen zaehlen nicht mehr als Ertrag. Beides muss rueckwirkend
 #       durch alle Logs, sonst bleiben Gas-Ausbeuten auf 0 m3 und der faelschlich
 #       gebuchte Abfall ("Harvestable Cloud") stehen.
-PARSE_VER = "9"
+PARSE_VER = "10"
 
 
 def rebuild_if_needed():
@@ -2011,7 +2283,11 @@ class Ingest(threading.Thread):
                                     head = fh0.read(offset)
                                 for bline in head.split(b"\n"):
                                     ev = parse_line(bline.decode("utf-8", "replace").lstrip("﻿"))
-                                    if ev:
+                                    # "noise" ist verstanden, aber kein Ereignis:
+                                    # sonst zoege "Please wait..." den Zeitstempel
+                                    # der letzten Aktivitaet hoch und ein
+                                    # angedockter Client sae aktiv aus.
+                                    if ev and ev["kind"] != "noise":
                                         sess.feed(ev, live=False)
                             except OSError:
                                 pass
@@ -2043,6 +2319,13 @@ class Ingest(threading.Thread):
                 with self.lock:
                     for bline in data[:cut + 1].split(b"\n"):
                         ev = parse_line(bline.decode("utf-8", "replace").lstrip("﻿"))
+                        # "noise" heisst: die Zeile ist verstanden, aber sie ist
+                        # Alltagsgeplapper (Drohnenmeldungen, Modul-Deaktivierungen,
+                        # Nachladen). Sie darf weder in die Datenbank noch in eine
+                        # Sitzung noch in einen Alarm. Sie zaehlt nur als "erkannt",
+                        # damit die Diagnose nur noch echte Unbekannte zeigt.
+                        if ev and ev["kind"] == "noise":
+                            continue
                         if ev:
                             batch.append(ev)
                             if sess:
@@ -8167,8 +8450,8 @@ function factionHtml(f){
  const ew=f.ewar?(EWAR_LABEL[f.ewar]||f.ewar):'';
  return `<div class="ftag">
    <span class="fbadge">🛡️ ${esc(f.fac)}${mixed}</span>
-   <span class="fshoot">${lang==='en'?'shoot':'schieße'} <b>${dmgList(f.shoot)}</b></span>
-   <span class="ftank">${lang==='en'?'tank':'tanke'} <b>${dmgList(f.deal)}</b></span>
+   ${(f.shoot&&f.shoot.length)?`<span class="fshoot">${lang==='en'?'shoot':'schieße'} <b>${dmgList(f.shoot)}</b></span>`:''}
+   ${(f.deal&&f.deal.length)?`<span class="ftank">${lang==='en'?'tank':'tanke'} <b>${dmgList(f.deal)}</b></span>`:''}
    ${ew?`<span class="fdim">${lang==='en'?'their EWAR':'ihr EWAR'}: ${ew}</span>`:''}
    <span class="falpha" title="${lang==='en'?'Experimental, being verified':'Experimentell, wird noch geprüft'}">Alpha</span>
   </div>`;
