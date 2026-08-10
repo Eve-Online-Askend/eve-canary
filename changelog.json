@@ -1,5 +1,29 @@
 [
  {
+  "v": "1.76.0",
+  "d": "2026-08-10",
+  "de": [
+   "Canary reagiert jetzt sofort. Der Server lauschte nur auf der IPv4-Adresse, Windows fragt bei „localhost“ aber zuerst die IPv6-Adresse, und jede Anfrage wartete erst einmal auf deren Absage. Dazu wurde nach jeder Antwort die Verbindung weggeworfen und für die nächste neu aufgebaut. Im Browser gemessen: 171 Millisekunden je Abruf vorher, 3 Millisekunden jetzt.",
+   "Der deutsche Client siezt, die Muster im Parser duzten. Dadurch fielen Zeilen still durch, die es nur auf Deutsch gibt: die Bergbau-Rückstände, die Fehlschüsse der Gegner auf dich und der misslungene Bergungsversuch. Allein in einem Logbestand kamen dadurch über 800.000 Einheiten Verschnitt und 122 Fehlschüsse wieder dazu.",
+   "Die Warnung „Bergbaudrohnen müssen abladen“ ging bei englischen Clients nie an. Der hinterlegte Satz kommt im Log gar nicht vor, der echte lautet anders. Jetzt greift sie in beiden Sprachen.",
+   "Wallet Buddy und der Intel-Bereich holten jeden Item- und Schiffsnamen einzeln bei CCP, einen nach dem anderen. Der erste Aufruf des Wallets brauchte dadurch 15 Sekunden. Jetzt kommen alle Namen in einer einzigen Abfrage, und Canary merkt sie sich dauerhaft. Aus 15,4 Sekunden wurden 0,3 Sekunden.",
+   "Die Erz-Schatzkammer stand bis zu 10 Sekunden still, wenn der Verwertungs-Berater seine Preise holte, und das alle fünf Minuten neu. Die Preise kommen jetzt im Hintergrund, der Bereich ist sofort da und der Berater erscheint kurz darauf. Solange nicht alle Preise vorliegen, zeigt er lieber gar nichts als eine halbe Rechnung.",
+   "52 weitere harmlose Clientmeldungen sind jetzt als solche einsortiert, die meisten davon deutsche. Sie standen vorher als „unbekannt“ in der Diagnose und haben dort das überdeckt, worum es da eigentlich geht. Dazu waren zwei Beschriftungen im englischen Modus deutsch geblieben.",
+   "Wer einen Charakter noch nicht neu verbunden hat, dem fragte Canary alle zwei Minuten vergeblich Skills und Förderprotokoll ab. Jetzt wartet es nach einem Fehlschlag eine halbe Stunde, wie bei den Planeten auch.",
+   "Hinweis zum ersten Start: weil sich die Log-Auswertung geändert hat, liest Canary einmalig alle Logs neu ein. Je nach Menge dauert der erste Start dadurch etwas länger, danach ist alles wie gewohnt. Deine gesammelten Zahlen bleiben erhalten und werden nur genauer."
+  ],
+  "en": [
+   "Canary now responds instantly. The server only listened on the IPv4 address, but on Windows “localhost” resolves to the IPv6 address first, so every request waited for that refusal before falling back. On top of that the connection was thrown away after each response and rebuilt for the next one. Measured in the browser: 171 milliseconds per fetch before, 3 milliseconds now.",
+   "The German client uses the formal form of address while the parser patterns used the informal one. Lines that only exist in German were therefore dropped without a trace: mining residue, enemy shots that miss you, and the failed salvage attempt. In one set of logs alone that brought back over 800,000 units of residue and 122 misses.",
+   "The “mining drones need to unload” warning never fired on English clients. The phrase stored in the parser does not occur in the log at all, the real one reads differently. It now works in both languages.",
+   "Wallet Buddy and the Intel view fetched every item and ship name from CCP one at a time. That made the first opening of the wallet take 15 seconds. All names now arrive in a single request and Canary remembers them for good. 15.4 seconds became 0.3 seconds.",
+   "The Ore Vault froze for up to 10 seconds while the processing advisor fetched its prices, and again every five minutes. Prices are now fetched in the background, the view appears at once and the advisor follows shortly after. While prices are still missing it shows nothing rather than half a calculation.",
+   "52 more harmless client messages are now filed as such, most of them German. They used to sit in the diagnostics as “unknown” and buried the messages that actually belong there. Two labels also stayed German in English mode.",
+   "If you have not reconnected a character yet, Canary kept asking CCP for skills and the mining ledger every two minutes in vain. It now waits half an hour after a failure, the same as it already did for planets.",
+   "A note about the first start: because the log analysis changed, Canary reads all logs once more. Depending on how many you have, that first start takes a little longer, after that everything is as usual. Your collected figures are kept and only become more accurate."
+  ]
+ },
+ {
   "v": "1.75.2",
   "d": "2026-08-10",
   "de": [

@@ -16,6 +16,7 @@ import math
 import os
 import re
 import shutil
+import socket
 import sqlite3
 import sys
 import threading
@@ -24,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.75.2"
+VERSION = "1.76.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -61,6 +62,7 @@ ERROR_HELP = {
     "CN-UPD-01": "Update fehlgeschlagen",
     "CN-CFG-01": "Einstellungen nicht speicherbar",
     "CN-SRV-01": "Interner Serverfehler",
+    "CN-SRV-02": "IPv6-Lauscher nicht startbar (localhost bleibt langsam, dann 127.0.0.1 nutzen)",
 }
 ERRORS = deque(maxlen=60)
 ERROR_SEEN = {}
@@ -465,7 +467,14 @@ DMG_HEAD_RE = re.compile(r"^\d(?:[\d.,  ]|['’](?=\d))*")
 # Meldungen"), damit hier nichts geraten werden muss.
 CARGO_FULL_TEXTS = ["Frachtraum des Schiffs ist voll", "cargo hold is full",
                     "cargohold is full"]
+# "mining drones must unload" stand hier sechs Versionen lang und hat NIE
+# gegriffen: 0 Treffer in 9.267 Logdateien. Der echte englische Satz lautet
+# "These mining drones need to deposit their current loads of ore before
+# executing new mining commands." Dadurch fiel die Drohnen-Warnung bei jedem
+# englischsprachigen Nutzer komplett aus. Der falsche Satz bleibt drin, er
+# kostet nichts und faengt eine eventuelle aeltere Client-Fassung mit ab.
 DRONE_UNLOAD_TEXTS = ["Bergbaudrohnen müssen ihre aktuellen Erzladungen verladen",
+                      "mining drones need to deposit their current loads",
                       "mining drones must unload"]
 UNDOCK_TEXTS = ["Abdocken", "Undocking"]      # (None)-Zeile beim Abdocken
 TRADE_TEXTS = ["Handel mit", "Trade with"]    # Handel abgeschlossen -> Laderaum unklar
@@ -487,7 +496,10 @@ EWAR_TEXTS = [
 ]
 SALVAGE_OK = ["successfully salvage from"]
 SALVAGE_EMPTY = ["contains nothing of value"]
-SALVAGE_FAIL = ["salvaging attempt failed"]
+# Die deutsche Fassung des Fehlschlags stand nicht drin und fiel damit aus der
+# Bergungs-Statistik. Fuer die beiden anderen Faelle gibt es in den vorliegenden
+# Logs keine deutsche Zeile, deshalb wird dort auch nichts geraten.
+SALVAGE_FAIL = ["salvaging attempt failed", "bergungsversuch schlug"]
 LOG_TEXT_KEYS = {"cargo_full": CARGO_FULL_TEXTS, "drone_unload": DRONE_UNLOAD_TEXTS,
                  "undock": UNDOCK_TEXTS, "trade": TRADE_TEXTS,
                  "dock_approach": DOCK_APPROACH_TEXTS, "warp": WARP_TEXTS}
@@ -635,6 +647,67 @@ NOISE_PATTERNS = [
     (r"You are about to throw away", "abfrage"),
     (r"^Starting clone jumping", "klonsprung"),
     (r"^Disembarking from ship", "schiffswechsel"),
+    # --- Nachtrag aus einem echten DEUTSCHEN Client -----------------------
+    # Alle Muster unten stammen woertlich aus vorliegenden Logzeilen, keins ist
+    # geraten. Vorher fielen sie als "unbekannt" durch und ueberdeckten in der
+    # Diagnose die Meldungen, um die es dort eigentlich geht. Auffaellig oft
+    # war der Grund, dass die deutsche Fassung SIEZT, die Muster aber duzten.
+    (r"Sie (verfolgen|managen) bereits [\d.,]+ Ziele", "ziel_limit"),
+    (r"gewährt [\d.,]+ Flottenmitglied", "flotten_boost"),
+    (r"^Versucht,? einen? Chatkanal", "bedienung"),
+    (r"ist zu weit entfernt, um Ihr .* darauf anwenden zu können", "zu_weit_weg"),
+    (r"ist zu weit entfernt\. Es muss sich innerhalb", "ziel_zu_weit"),
+    (r"^Fracht ist zu weit entfernt", "zu_weit_weg"),
+    (r"^Folge .* in den Warp", "bewegung"),
+    (r"Sie können dies nicht tun, während Sie warpen", "bewegung"),
+    (r"Sie können dies während des Andockvorgangs nicht tun", "docking"),
+    (r"Die Drohnen können Ihre Befehle nicht ausführen", "drohnen_ziel_weg"),
+    # Das alte Muster verlangte "greifen an" am Stueck, im Log steht aber
+    # "Drohnen greifen <Ziel> an" — es hat deshalb nie gegriffen.
+    (r"^Drohnen greifen .* an$", "drohnen_angriff"),
+    (r"nicht verwenden, weil Sie schon [\d.,]+ Drohnen benutzen", "drohnen_limit"),
+    (r"Um einer Drohne diesen Befehl zu geben", "drohnen_kein_ziel"),
+    (r"erfordert, dass das Ziel von Ihnen aufgeschaltet ist", "drohnen_kein_ziel"),
+    (r"Der Versuch der Zielerfassung ist gescheitert", "ziel_fehlgeschlagen"),
+    (r"nicht als Ziel aufschalten, da Ihre Sensoren", "ziel_stoerung"),
+    (r"^Lade .* in .*\. Dies (wird|dauert) ca", "nachladen"),
+    (r"wird sich in .* selbst zerstören", "selbstzerstoerung"),
+    (r"^Ihr Schiff richtet sein magnetisches Feld neu aus", "bedienung"),
+    (r"^Bitte wählen Sie die zu transferierenden Güter", "bedienung"),
+    (r"^Konnte nicht gelesen werden", "bedienung"),
+    (r"Sie sind dabei, .* zu verschrotten", "abfrage"),
+    (r"Sie verfügen bereits über eine Lizenz für diese SKIN", "kleinkram"),
+    (r"Link wird in Ihrem Standardbrowser geöffnet", "kleinkram"),
+    (r"Sie können das Aussehen Ihres Schiffs nicht verändern", "kleinkram"),
+    (r"konnte aus folgendem Grund nicht als Ihre Heimatstation", "kleinkram"),
+    (r"benötigt [\d.,]+ ISK in Unterteilung", "kleinkram"),
+    (r"erfordert [\d.,]+ CPU-Einheiten", "modul_blockiert"),
+    (r"Dieses System ist von einem Aufstand", "site_effekt"),
+    (r"^Warnung! Dieses Sonnensystem wurde von EDENCOM", "site_effekt"),
+    # Planetary Industry: Rueckfragen des Kolonie-Fensters.
+    (r"Keine weitere Struktur vom Typ .* auf diesem Planeten möglich", "pi_hinweis"),
+    (r"Sie können diese Schiffsroute nicht erstellen", "pi_hinweis"),
+    (r"Diese Route kann nicht erstellt werden", "pi_hinweis"),
+    # --- Nachtrag Englisch, ebenfalls aus echten Zeilen -------------------
+    (r"^Autopilot\b", "autopilot"),
+    (r"Some drones were unable to engage", "drohnen_gejammt"),
+    (r"^Drone cannot be commanded", "drohnen_ziel_weg"),
+    (r"^Drone cannot be activated as there is not enough bandwith", "drohnen_bandbreite"),
+    (r"You can't set that as a waypoint", "bewegung"),
+    (r"You cannot do that while docking", "docking"),
+    (r"You cannot compress materials", "modul_blockiert"),
+    (r"cannot be activated unless the ship has an active Industrial Core", "modul_blockiert"),
+    (r"does not support .* compression", "modul_blockiert"),
+    (r"will not activate because its .* is not calibrated", "modul_blockiert"),
+    (r"You are attempting to activate a passive module", "modul_blockiert"),
+    (r"is already active$", "modul_blockiert"),
+    (r"interference prevents modules of that type from being used", "ziel_stoerung"),
+    (r"open orders and your Trade skill level only allows", "markt"),
+    (r"has rejected your invitation to join the fleet", "einladung"),
+    (r"is either not a member of your fleet or not present", "einladung"),
+    (r"You are too far from the facility to modify this job", "zu_weit_weg"),
+    (r"A new cargo container is being moved into the jettison duct", "fracht_hinweis"),
+    (r"You cannot place a Planck generator", "kleinkram"),
 ]
 NOISE_RE = [(re.compile(p, re.I), k) for p, k in NOISE_PATTERNS]
 # Ganze Tags, die strukturell immer dasselbe sind. Das ist keine Rateleistung:
@@ -643,8 +716,12 @@ NOISE_RE = [(re.compile(p, re.I), k) for p, k in NOISE_PATTERNS]
 TAG_NOISE = {"question": "abfrage", "slash": "slash_quittung"}
 # Rueckstand beim Bergbau. Bis 2025 stand der Verschnitt im Ertragssatz, seither
 # in einer eigenen Zeile. Echte Zahl, kein Laerm.
+# Zweite Zeile ist die deutsche Fassung. Sie fehlte, wodurch in den eigenen Logs
+# 2.005 Rueckstandszeilen still verworfen wurden, waehrend die englischen zaehlten.
 RESIDUE_RE = re.compile(
-    r"Additional\s+([\d][\d.,\xa0 '’]*)\s+units depleted from asteroid as residue", re.I)
+    r"(?:Additional\s+([\d][\d.,\xa0 '’]*)\s+units depleted from asteroid as residue"
+    r"|Zusätzliche\s+([\d][\d.,\xa0 '’]*)\s+Einheiten aus Asteroid als Rückstände erschöpft)",
+    re.I)
 # Erfolgreiches Hacken benennt den Behaelter und damit den Site-Typ.
 HACK_RE = re.compile(r"You successfully access the\s+(.+?)\s*\.?\s*$", re.I)
 # Zusatz, den der englische Client seit 2022 an die Ertragszeile haengt. Muss
@@ -657,7 +734,8 @@ def classify_rest(base, tag, text):
     Liefert ein Ereignis oder None. None heisst echt unbekannt."""
     m = RESIDUE_RE.search(text)
     if m:
-        return {**base, "kind": "residue", "key": "Rueckstand", "value": num(m.group(1))}
+        return {**base, "kind": "residue", "key": "Rueckstand",
+                "value": num(m.group(1) or m.group(2))}
     m = HACK_RE.search(text)
     if m and len(m.group(1)) < 60:
         return {**base, "kind": "hack", "key": m.group(1).strip(), "value": 1}
@@ -821,9 +899,17 @@ def parse_line(raw):
         # Nicht-Schaden-Kampfzeilen fuer die PvP/Missions-Ansicht: Fehlschuesse
         # (eigene = Trefferquote, gegnerische = Ausweichen) und EWAR gegen dich.
         pl = STRIP_RE.sub("", body).strip().lower()
-        if "misses you" in pl or "verfehlt dich" in pl or "verfehlen dich" in pl:
+        # Der deutsche Client SIEZT: "Serpentis Initiate verfehlt Sie völlig".
+        # Hier stand nur die geduzte Form, die es im Log gar nicht gibt — in den
+        # eigenen Logs fielen dadurch 122 Fehlschuesse gegen den Spieler durch.
+        # Zuerst klaeren, ob die Zeile vom EIGENEN Schiff handelt: sonst wuerde
+        # "Ihre Drohne verfehlt sie" als Treffer GEGEN einen gezaehlt.
+        eigen = bool(re.match(r"^(your|deine?|ihre?)\b", pl))
+        if not eigen and ("misses you" in pl or "verfehlt dich" in pl
+                          or "verfehlen dich" in pl or "verfehlt sie" in pl
+                          or "verfehlen sie" in pl):
             return {**base, "kind": "miss_in", "key": "", "value": 1}
-        if re.match(r"^(your|deine?|ihr)\b", pl) and ("miss" in pl or "verfehl" in pl):
+        if eigen and ("miss" in pl or "verfehl" in pl):
             return {**base, "kind": "miss_out", "key": "", "value": 1}
         for etype, pats in EWAR_TEXTS:
             if any(p in pl for p in pats):
@@ -1116,6 +1202,11 @@ CREATE TABLE IF NOT EXISTS trades(tx_id INTEGER, char TEXT, ts REAL,
 CREATE TABLE IF NOT EXISTS wbook(id INTEGER, char TEXT, ts REAL,
     ref_type TEXT, amount REAL, PRIMARY KEY(id, char));
 CREATE TABLE IF NOT EXISTS item_ids(name TEXT PRIMARY KEY COLLATE NOCASE, type_id INTEGER);
+-- Typnamen dauerhaft merken. Vorher lag der Cache nur im Arbeitsspeicher und war
+-- nach jedem Start leer: das Wallet-Panel loeste dann 70 Typen einzeln bei ESI
+-- auf und stand dabei gemessene 15,4 Sekunden. Namen von Item-Typen aendern
+-- sich praktisch nie, sie duerfen also dauerhaft liegen bleiben.
+CREATE TABLE IF NOT EXISTS type_names(type_id INTEGER PRIMARY KEY, name TEXT);
 CREATE TABLE IF NOT EXISTS missions(mid TEXT PRIMARY KEY, char_id TEXT, char TEXT,
     start_ts REAL, end_ts REAL, system TEXT, dmg_out INTEGER, dmg_in INTEGER,
     kills INTEGER, bounty REAL, hits INTEGER, miss_out INTEGER, miss_in INTEGER,
@@ -1196,7 +1287,13 @@ def meta_get(key, default=None):
 #       eigener Nosferatu zaehlte als EWAR gegen dich, Wracks und Drohnen
 #       zaehlten als Spieler. Dazu die neue Art "residue" und die stummen
 #       "noise"-Zeilen, die absichtlich NICHT in die Datenbank wandern.
-PARSE_VER = "10"
+# v11: der deutsche Client siezt. "verfehlt Sie völlig" (Fehlschuesse gegen
+#      einen), "Zusätzliche N Einheiten ... als Rückstände erschöpft" und
+#      "Ihr Bergungsversuch schlug fehl" wurden deshalb still verworfen, obwohl
+#      die englischen Fassungen zaehlten. Dazu die englische Drohnen-Meldung
+#      "need to deposit their current loads", die es sechs Versionen lang nur
+#      in einer Fassung gab, die im Log gar nicht vorkommt.
+PARSE_VER = "11"
 
 
 def rebuild_if_needed():
@@ -3051,6 +3148,7 @@ class Esi(threading.Thread):
         self.pending = {}     # state -> code_verifier laufender Logins
         self.status = {}      # char -> Klartext-Status fuer die Optionen-Seite
         self.type_cache = {}  # type_id -> Name (Schiffstypen, öffentlicher Endpunkt)
+        self.type_miss = {}   # type_id -> ts des letzten Fehlschlags (Negativ-Cache)
         self.vol_cache = {}   # type_id -> Volumen je Einheit (fuer Mining-Ledger-m³)
         self.loc_cache = {}   # location_id -> Name (Stationen/Strukturen, fuer die Erz-Schatzkammer)
         self.planet_cache = {} # planet_id -> Name (Planetary Industry, langlebig)
@@ -3207,16 +3305,75 @@ class Esi(threading.Thread):
         n = self.type_cache.get(tid)
         if n:
             return n
+        # Negativ-Cache: ohne ihn kostete ein nicht aufloesbarer Typ bei JEDEM
+        # Aufruf erneut bis zu 15 Sekunden Timeout, also bei jedem 2s-Tick.
+        if time.time() - self.type_miss.get(tid, 0) < 600:
+            return None
         try:
             req = urllib.request.Request(f"{ESI_BASE}/universe/types/{tid}/",
                                          headers={"User-Agent": ESI_UA})
             with urllib.request.urlopen(req, timeout=15) as r:
                 n = json.loads(r.read()).get("name")
         except Exception:
+            self.type_miss[tid] = time.time()
             return None
         if n:
-            self.type_cache[tid] = n
+            self.remember_type(tid, n)
+        else:
+            self.type_miss[tid] = time.time()
         return n
+
+    def remember_type(self, tid, name):
+        """Typnamen im Speicher und dauerhaft in der Datenbank ablegen."""
+        self.type_cache[int(tid)] = name
+        try:
+            with DB_LOCK:
+                DB.execute("INSERT OR REPLACE INTO type_names VALUES(?,?)", (int(tid), name))
+                DB.commit()
+        except Exception as e:
+            log_error("CN-DB-01", "remember_type", e)
+
+    def load_type_cache(self):
+        """Beim Start die gemerkten Typnamen einlesen, damit das Wallet- und das
+        Intel-Panel nicht wieder bei null anfangen."""
+        try:
+            with DB_LOCK:
+                rows = DB.execute("SELECT type_id, name FROM type_names").fetchall()
+            self.type_cache.update({int(t): n for t, n in rows if n})
+        except Exception as e:
+            log_error("CN-DB-01", "load_type_cache", e)
+
+    def type_names_bulk(self, tids):
+        """Mehrere Typnamen in EINEM Abruf holen (/universe/names/, bis 1000 IDs).
+
+        Vorher loeste jede Ansicht ihre Namen einzeln auf: das Wallet-Panel
+        brauchte fuer 70 Typen gemessene 15,4 Sekunden, waehrend derer die
+        gesamte Antwort stand. Ein Sammelabruf kostet einen Bruchteil davon.
+        Fehler sind hier ungefaehrlich: was fehlt, holt type_name spaeter
+        einzeln nach, und die Anzeige faellt auf die reine Typnummer zurueck."""
+        offen = [int(t) for t in {int(x) for x in tids if x}
+                 if int(t) not in self.type_cache
+                 and time.time() - self.type_miss.get(int(t), 0) >= 600]
+        if not offen:
+            return
+        for i in range(0, len(offen), 1000):
+            block = offen[i:i + 1000]
+            try:
+                req = urllib.request.Request(
+                    ESI_BASE + "/universe/names/", data=json.dumps(block).encode(),
+                    headers={"Content-Type": "application/json", "User-Agent": ESI_UA})
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    gefunden = {e["id"]: e["name"] for e in json.loads(r.read())
+                                if e.get("category") == "inventory_type"}
+            except Exception:
+                # Ein einziger unbekannter Typ laesst ESI den GANZEN Block mit 404
+                # abweisen. Dann nichts merken, die Einzelabfrage klaert es spaeter.
+                continue
+            for tid, name in gefunden.items():
+                self.remember_type(tid, name)
+            for tid in block:
+                if tid not in gefunden:
+                    self.type_miss[tid] = time.time()
 
     def type_volume(self, tid):
         """Volumen je Einheit fuer einen typeID. Erst aus der lokalen Erz-Tabelle,
@@ -3825,17 +3982,23 @@ class Esi(threading.Thread):
                 # Skills + Mining Ledger (neue Scopes). Fehlt der Scope (Char noch
                 # nicht neu verbunden), kommt 403 -> still ueberspringen, dann bleibt
                 # die MFP "geschaetzt" statt "ESI-verifiziert".
+                # Die *_next-Marke wird erst NACH einem Erfolg gesetzt. Ohne eine
+                # eigene Pause im Fehlerfall fragte Canary bei fehlendem Scope
+                # alle 120 s erneut und erzeugte dauerhaft 403er bei CCP. Wie bei
+                # den Planeten daher eine halbe Stunde Ruhe.
                 try:
                     if time.time() >= c.get("skills_next", 0):
                         self.sync_skills(name, c)
                 except Exception:
                     c.pop("skill_bonus", None)
+                    c["skills_next"] = time.time() + 1800
                 try:
                     if time.time() >= c.get("mining_next", 0):
                         self.sync_mining(name, c)
                 except Exception:
                     c.pop("esi_mining", None)
                     c.pop("mined_30d", None)
+                    c["mining_next"] = time.time() + 1800
                 # Planetary Industry (neuer Scope). Fehlt er (Char noch nicht neu
                 # verbunden), kommt 403 -> als "neu verbinden" markieren, nicht
                 # dauernd nachfragen. Andere Fehler lassen die alten Daten stehen.
@@ -4734,6 +4897,13 @@ class PackIntel(threading.Thread):
                "packs": [], "roster": [], "maps": [], "kills": []}
         if not self.enabled():
             return out
+        # Schiffsnamen vorab in EINEM Abruf holen. Einzeln aufgeloest kostete das
+        # Intel-Panel nach einem Neustart gemessene 3,9 Sekunden, weil jeder
+        # unbekannte Typ eine eigene ESI-Anfrage im Antwortpfad ausloeste.
+        with self.lock:
+            vorab = {t for p in self.packs.values() for t in (p.get("ships") or [])}
+            vorab |= {v for _, _, v, _, _ in self.recent if v}
+        esi.type_names_bulk(vorab)
         with self.lock:
             for pid, p in self.packs.items():
                 st = self._status(p, now)
@@ -5108,6 +5278,7 @@ ingest = Ingest()
 chatwatch = ChatWatch()
 prices = Prices()
 esi = Esi()
+esi.load_type_cache()   # gemerkte Typnamen: sonst faengt jede Ansicht bei null an
 threat = ThreatIntel()
 clipwatch = ClipWatch()
 serverstatus = ServerStatus()
@@ -5179,7 +5350,12 @@ def query_ore_advisor(region):
     for o_ in ((ORE_REFINE.get("refine") or {}).values()):
         for m in o_.get("out", []):
             tids.add(m["tid"])
-    pm = hub_prices(str(region), tids, prefer_esi=True) if tids else {}
+    pm = hub_prices_bg(str(region), tids) if tids else {}
+    # Erst rechnen, wenn JEDER benoetigte Preis da ist. Mit halbem Cache stand
+    # sonst kurzzeitig "Raffinieren: 0 ISK" auf dem Schirm, weil die Mineralpreise
+    # noch fehlten — eine falsche Zahl ist schlimmer als eine fehlende Anzeige.
+    if not tids <= set(pm):
+        return None
     rows = []
     t_raw = t_comp = t_ref = 0.0
     for ore, u in units.items():
@@ -5521,6 +5697,9 @@ CALC_LOCK = threading.Lock()
 
 ESI_PRICE_CACHE = {}   # (region, tid) -> {"ts", "buy", "sell"}
 ESI_PRICE_LOCK = threading.Lock()
+# Regionen, fuer die gerade im Hintergrund Preise geholt werden (siehe hub_prices_bg).
+BG_PRICE_RUNS = set()
+BG_PRICE_LOCK = threading.Lock()
 # Zuletzt genutzte Preisquelle je Region, fuer die Anzeige "Preise: ESI/Jita" bzw.
 # den Fuzzwork-Fallback. "esi" = frisches CCP-Orderbuch, "fuzzwork" = Ausweichquelle.
 PRICE_SOURCE = {}
@@ -5568,6 +5747,39 @@ def esi_orderbook(region, ids):
             ESI_PRICE_CACHE[key] = {"ts": now, "buy": buy, "sell": sell}
         out[int(tid)] = (buy, sell)
     return out
+
+
+def hub_prices_bg(region, ids):
+    """Preise ohne Wartezeit: liefert sofort, was im Cache liegt (auch wenn es
+    alt ist), und holt den Rest im Hintergrund.
+
+    Grund: esi_orderbook fragt JEDEN Typ einzeln ab, mit bis zu zehn Seiten. Fuer
+    den Verwertungs-Berater sind das rund vierzig Abrufe hintereinander, gemessene
+    10,4 Sekunden, in denen die gesamte Erz-Schatzkammer stand. Und weil der
+    ESI-Preis-Cache nur fuenf Minuten haelt, waere das im Betrieb immer wieder
+    passiert. Beim allerersten Mal kommt hier nichts zurueck, dann zeigt die
+    Oberflaeche den Berater einfach noch nicht an und holt ihn beim naechsten
+    Durchlauf nach."""
+    with CALC_LOCK:
+        e = CALC_CACHE.get(region)
+        vorhanden = dict(e["prices"]) if e else {}
+    frisch = bool(e) and time.time() - e["ts"] < PRICE_REFRESH and ids <= set(vorhanden)
+    if not frisch:
+        with BG_PRICE_LOCK:
+            starten = region not in BG_PRICE_RUNS
+            if starten:
+                BG_PRICE_RUNS.add(region)
+        if starten:
+            def lauf():
+                try:
+                    hub_prices(region, ids, prefer_esi=True)
+                except Exception as ex:
+                    log_error("CN-NET-01", f"hub_prices_bg(region={region})", ex)
+                finally:
+                    with BG_PRICE_LOCK:
+                        BG_PRICE_RUNS.discard(region)
+            threading.Thread(target=lauf, daemon=True).start()
+    return vorhanden
 
 
 def fuzzwork_prices(region, ids):
@@ -6368,6 +6580,13 @@ def query_wallet(days=30):
                 if los[0] == 0:
                     lager[tid].pop(0)
 
+    # Alle benoetigten Typnamen in EINEM Abruf holen. Einzeln aufgeloest kostete
+    # das nach jedem Neustart gemessene 15,4 Sekunden, in denen die Ansicht stand.
+    esi.type_names_bulk([t for t in stat if t in rund]
+                        + [o["type_id"] for n, c in
+                           ((CONFIG.get("esi") or {}).get("chars") or {}).items()
+                           for o in (c.get("orders") or [])])
+
     posten = []
     for tid, s in stat.items():
         if tid not in rund or not s["matched"]:
@@ -6675,6 +6894,16 @@ def _origin_ok(headers):
 
 
 class Handler(BaseHTTPRequestHandler):
+    # HTTP/1.1 statt der Vorgabe 1.0. Mit 1.0 schliesst der Server nach JEDER
+    # Antwort die Verbindung, der Browser baut also fuer jeden 2s-Tick eine neue
+    # auf. Zusammen mit dem localhost/IPv6-Umweg (siehe Serverstart unten) waren
+    # das gemessene 171 ms je Abruf, obwohl der Server die Antwort in 1 bis 2 ms
+    # fertig hat. Erlaubt ist HTTP/1.1 nur, weil _send und _deny IMMER ein
+    # Content-Length mitschicken — sonst wuerde der Browser ewig weiterlesen.
+    protocol_version = "HTTP/1.1"
+    # Offene Keep-Alive-Verbindungen sollen keinen Thread dauerhaft binden.
+    timeout = 30
+
     def _send(self, body, ctype="application/json", download=None):
         if isinstance(body, str):
             body = body.encode()
@@ -6802,7 +7031,12 @@ class Handler(BaseHTTPRequestHandler):
         elif action == "clear_baseline":
             clear_baseline()
         elif action == "idle_warn":
-            CONFIG["idle_warn"] = max(0, int(body.get("seconds") or 0))
+            # Zahl absichern: ein unerwarteter Wert wuerde die ganze Anfrage mit
+            # HTTP 500 beenden statt die Einstellung einfach zu ignorieren.
+            try:
+                CONFIG["idle_warn"] = max(0, int(body.get("seconds") or 0))
+            except (TypeError, ValueError):
+                pass
         elif action == "set_role":
             char = str(body.get("char") or "")
             role = body.get("role") if body.get("role") in ("mining", "mission", "pvp") else ""
@@ -6959,13 +7193,17 @@ class Handler(BaseHTTPRequestHandler):
         elif action == "heavy_water":
             char = str(body.get("char") or "")
             units = body.get("units")
+            # Wie oben: eine unbrauchbare Zahl darf die Anfrage nicht sprengen.
+            try:
+                menge = max(0.0, float(units)) if units is not None else None
+            except (TypeError, ValueError):
+                menge = None
             with CONFIG_LOCK:
                 hw = CONFIG.setdefault("heavy_water", {})
-                if char and units is None:
+                if char and menge is None:
                     hw.pop(char, None)
                 elif char:
-                    hw[char] = {"units": max(0.0, float(units)),
-                                "fill": max(0.0, float(units)),
+                    hw[char] = {"units": menge, "fill": menge,
                                 "core": "t2" if body.get("core") == "t2" else "t1",
                                 "ts": time.time(), "warned": False, "ck": 0}
         elif action == "laser_ok":
@@ -10049,6 +10287,8 @@ const EN = {
 'Asteroiden leergebaggert · Preise':'asteroids depleted · prices',
 'per ⛽ setzen':'set via ⛽',
 'noch keine Kompression, Verbrauch pausiert':'no compression yet, consumption paused',
+'Keine Kompression im Zeitraum.':'No compression in this period.',
+'Nach Charakter (gesamt)':'By character (total)',
 'Bestand im Laderaum setzen':'Set amount in cargo hold','Spielzeit':'Played time',
 'Waffen-Bilanz':'Weapon balance','Noch keine Kampfdaten':'No combat data yet',
 'Nicht zuzuordnen':'Unassigned','Nicht erkannt':'Not recognised',
@@ -10563,6 +10803,23 @@ if __name__ == "__main__":
         except EOFError:
             pass  # ohne Konsole (Autostart) einfach still beenden
         sys.exit(1)
+
+    # Zweiter Lauscher auf dem IPv6-Loopback. Grund: "localhost" loest unter
+    # Windows ZUERST auf ::1 auf. Lauscht dort niemand, wartet der Client auf
+    # die Abweisung — gemessen 2.037 ms bei Python/curl, 192 ms in Chrome, und
+    # das bei JEDER Verbindung. Mit diesem Lauscher ist localhost genauso schnell
+    # wie 127.0.0.1 (gemessen 6 ms). ::1 ist Loopback wie 127.0.0.1, es wird also
+    # nichts nach aussen geoeffnet, und _host_ok laesst ::1 ohnehin schon zu.
+    # Scheitert der Bind (kein IPv6 im System), laeuft Canary einfach ohne ihn.
+    srv6 = None
+    try:
+        class Server6(Server):
+            address_family = socket.AF_INET6
+
+        srv6 = Server6(("::1", port), Handler)
+        threading.Thread(target=srv6.serve_forever, daemon=True).start()
+    except OSError as e:
+        log_error("CN-SRV-02", "IPv6-Lauscher", e)
     if DB_PATH.exists():
         try:
             do_backup()
