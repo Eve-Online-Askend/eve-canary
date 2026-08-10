@@ -1,5 +1,21 @@
 [
  {
+  "v": "1.75.0",
+  "d": "2026-08-10",
+  "de": [
+   "Die Altersangabe im Planeten-Tab war falsch, und zwar deutlich. Sie zeigte, wie alt die Antwort der Schnittstelle ist, nicht wie alt deine Lagerstände sind. An echten Daten gemessen: angezeigt wurden 3 Minuten, tatsächlich waren die Bestände 4,5 Stunden alt. EVE rechnet eine Kolonie nämlich erst dann, wenn du sie im Client öffnest. Jetzt steht dort der echte Stand, und der Vorbehalt hängt nur noch an den Lagerständen. Ablaufzeiten und Programme kommen vom Server und stimmen ohnehin immer.",
+   "Beim Extraktor stand die Fördermenge des ganzen Programms, direkt neben dem Countdown bis zum Ablauf. Das liest sich als \"so viel kommt noch\", war aber die Summe seit dem Einbau. Bei laufenden Programmen lag die Zahl dadurch um die Hälfte zu hoch, bei fast abgelaufenen um ein Vielfaches. Jetzt steht dort der Restertrag ab jetzt, die Gesamtzahl findest du im Tooltip.",
+   "Neu: was dich Planetary Industry wirklich kostet. Exportsteuer, Importsteuer und Baukosten der letzten 30 Tage, direkt aus deinem Wallet-Journal. Aus einem reinen Bestandswert wird damit eine Bilanz.",
+   "Kleinigkeit: je Kolonie steht jetzt die Zahl der Fabriken neben der Zahl der Pins. Sie wurde vorher berechnet und nie angezeigt."
+  ],
+  "en": [
+   "The age shown in the planets tab was wrong, and by a wide margin. It showed how old the API response was, not how old your stock levels are. Measured against real data: it said 3 minutes while the stock was 4.5 hours old. EVE only recalculates a colony when you open it in the client. It now shows the real state, and the caveat applies only to stock levels. Expiry times and programs come from the server and are always correct anyway.",
+   "The extractor row showed the yield of the entire program, right next to the countdown to expiry. That reads as \"this much is still coming\" but it was the total since installation. For running programs the figure was half again too high, for nearly finished ones several times too high. It now shows the remaining yield from now on, with the full program total in the tooltip.",
+   "New: what Planetary Industry actually costs you. Export tax, import tax and construction costs of the last 30 days, straight from your wallet journal. That turns a pure stock value into a balance.",
+   "Small one: each colony now shows its number of factories next to the number of pins. It was being calculated and never displayed."
+  ]
+ },
+ {
   "v": "1.74.0",
   "d": "2026-08-10",
   "de": [

@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.74.0"
+VERSION = "1.75.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -3006,17 +3006,32 @@ def _is_booster(s):
 PI_GROUP_TIER = {1042: "P1", 1034: "P2", 1040: "P3", 1041: "P4"}
 
 
-def extractor_total(install, expiry, cycle, qty):
-    """Gesamt-Extraktion eines Extractor-Programms ueber die ganze Laufzeit.
-    Exakt nach der offiziellen EVE-Formel (developers.eveonline.com, PI-Guide):
-    abklingender Grundwert mal Rausch-Oszillation. Liefert die erwartete
-    Gesamtmenge in Einheiten (das, was der Client beim Programmieren anzeigt)."""
+def extractor_total(install, expiry, cycle, qty, ab=None):
+    """Extraktionsmenge eines Extractor-Programms in Einheiten.
+
+    Nach der offiziellen EVE-Formel (developers.eveonline.com, PI-Guide):
+    abklingender Grundwert mal Rausch-Oszillation, je Zyklus aufsummiert.
+    Gegen CCPs eigenen Referenzvektor geprueft: qty 6965, Zyklus 1800 s,
+    Dauer 171.000 s ergibt 789.314, und genau das liefert diese Funktion.
+
+    Die Konstanten decay und noise stehen in EVE als Dogma-Attribute (1683
+    und 1687) und koennten sich mit einem Patch aendern. Hier sind sie fest.
+
+    ab: Zeitpunkt, ab dem gezaehlt wird. Ohne Angabe das ganze Programm ab
+    install. Mit ab=jetzt bekommt man den RESTertrag, also das, was noch
+    kommt. Genau den will man neben einem Countdown sehen, denn die
+    Gesamtmenge liest sich dort faelschlich als "so viel kommt noch"."""
     if not (install and expiry and cycle and qty) or expiry <= install:
         return 0
     decay, noise = 0.012, 0.8
     bar_width = cycle / 900.0
+    # Erster Zyklus, der noch KOMPLETT aussteht. Zyklus c startet bei
+    # install + c*cycle, gesucht ist also das kleinste c mit Start >= ab.
+    # Ein bereits angebrochener Zyklus zaehlt nicht mit, das entspricht der
+    # Ganzzahl-Zyklenzahl der Originalformel.
+    erst = 0 if ab is None else max(0, math.ceil((ab - install) / cycle))
     total = 0
-    for c in range(int((expiry - install) // cycle)):
+    for c in range(erst, int((expiry - install) // cycle)):
         t = (c + 0.5) * bar_width
         decay_value = qty / (1 + t * decay)
         ph = pow(qty, 0.7)
@@ -3399,6 +3414,11 @@ class Esi(threading.Thread):
                         "tier": self.pi_tier(ptid),
                         "heads": len(ed.get("heads") or []),
                         "cycle": cyc,
+                        # qty_per_cycle mitnehmen, sonst laesst sich der
+                        # RESTertrag spaeter nicht mehr rechnen. Der muss bei
+                        # jeder Abfrage neu bestimmt werden, weil er mit der
+                        # Zeit faellt, waehrend "total" konstant bleibt.
+                        "qty": qty,
                         "install": inst,
                         "expiry": exp_t,
                         "total": extractor_total(inst, exp_t, cyc, qty)})
@@ -3431,6 +3451,13 @@ class Esi(threading.Thread):
                 "system": self.system_name(col.get("solar_system_id")),
                 "upgrade": col.get("upgrade_level"),
                 "pins": col.get("num_pins"),
+                # Wann EVE diese Kolonie zuletzt wirklich gerechnet hat. NICHT
+                # dasselbe wie der Cache-Zeitstempel der ESI-Antwort: EVE
+                # simuliert eine Kolonie erst, wenn sie im Client geoeffnet
+                # wird. An echten Daten gemessen lag der Cache-Header bei
+                # 3 Minuten, waehrend die Lagerstaende 4,5 STUNDEN alt waren.
+                # Nur dieser Wert taugt als Altersangabe fuer Lager und Wert.
+                "updated": _ts(col.get("last_update")),
                 "factories": factories,
                 "products": products,
                 "extractors": extractors,
@@ -3447,6 +3474,11 @@ class Esi(threading.Thread):
             col["ext_units"] = sum(e.get("total") or 0 for e in col["extractors"])
             col["ext_isk"] = round(sum((e.get("total") or 0) * pm.get(e["product_id"], (0, 0))[0]
                                        for e in col["extractors"] if e.get("product_id")))
+            # Stueckpreis je Extraktor merken. Der Restertrag wird erst bei der
+            # Abfrage gerechnet (er faellt mit der Zeit), und ohne Stueckpreis
+            # muesste man ihn anteilig schaetzen statt exakt zu bewerten.
+            for e in col["extractors"]:
+                e["px"] = pm.get(e.get("product_id"), (0, 0))[0]
         with CONFIG_LOCK:
             c["planets"] = {"as_of": int(asof), "next": int(exp) + 10, "cols": out}
         c["planets_next"] = exp + 10
@@ -6441,9 +6473,12 @@ def query_planeten():
     now = time.time()
     chars, extractors, reconnect = [], [], []
     n_col = n_ex = n_soon = n_exp = 0
-    total_isk = total_ext_isk = 0
+    total_isk = total_ext_isk = total_rest_isk = 0
     prodagg = {}
     oldest = soonest = None
+    # Aeltester echter Kolonie-Stand ueber alle Chars. Das ist die ehrliche
+    # Altersangabe fuer Lagerwerte, nicht der Cache-Zeitstempel der Antwort.
+    stale = None
     for nm, c in ((CONFIG.get("esi") or {}).get("chars", {})).items():
         if c.get("planets_scope") is False:
             reconnect.append(nm)
@@ -6457,9 +6492,20 @@ def query_planeten():
             soonest = p["next"] if soonest is None else min(soonest, p["next"])
         for col in cols:
             n_col += 1
+            if col.get("updated"):
+                stale = col["updated"] if stale is None else min(stale, col["updated"])
+            col_rest = col_rest_isk = 0
             for e in (col.get("extractors") or []):
                 n_ex += 1
                 exp = e.get("expiry")
+                # RESTertrag jetzt rechnen, nicht beim Abruf: er faellt mit
+                # jeder Minute. Die gespeicherte Gesamtmenge bleibt daneben
+                # stehen, aber sie ist NICHT das, was noch kommt.
+                rest = extractor_total(e.get("install"), exp, e.get("cycle"),
+                                       e.get("qty"), ab=now)
+                rest_isk = round(rest * (e.get("px") or 0))
+                col_rest += rest
+                col_rest_isk += rest_isk
                 if not exp:
                     continue
                 if exp <= now:
@@ -6471,7 +6517,9 @@ def query_planeten():
                                    "product": e.get("product"),
                                    "product_id": e.get("product_id"), "tier": e.get("tier"),
                                    "heads": e.get("heads"), "total": e.get("total"),
+                                   "rest": rest, "cycle": e.get("cycle"),
                                    "expiry": exp})
+            col["rest_units"], col["rest_isk"] = col_rest, col_rest_isk
             # Fabrik-Produkte flottenweit aufsummieren (fuer den Gesamtausstoss)
             for pr in (col.get("products") or []):
                 a = prodagg.setdefault(pr["name"], {"name": pr["name"], "tier": pr.get("tier"),
@@ -6479,18 +6527,46 @@ def query_planeten():
                 a["count"] += pr.get("count", 1)
         cisk = sum(col.get("isk", 0) for col in cols)
         cext = sum(col.get("ext_isk", 0) for col in cols)
+        crest = sum(col.get("rest_isk", 0) for col in cols)
         total_isk += cisk
         total_ext_isk += cext
+        total_rest_isk += crest
         chars.append({"name": nm, "cols": cols, "isk": cisk, "ext_isk": cext,
+                      "rest_isk": crest,
                       "as_of": p.get("as_of"), "next": p.get("next")})
     extractors.sort(key=lambda x: x.get("expiry") or 9e18)
     chars.sort(key=lambda x: x["name"])
     order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "P4": 4}
     products = sorted(prodagg.values(), key=lambda p: (order.get(p.get("tier"), 9), p["name"]))
+    # Was PI wirklich gekostet hat. Steht laengst im Wallet-Journal, das Canary
+    # ohnehin vollstaendig mitschreibt: kein neuer Scope, kein neuer Abruf.
+    # ESI gibt nur 30 Tage zurueck, die lokale Tabelle sammelt darueber hinaus,
+    # deshalb wird das Fenster hier offen ausgewiesen.
+    kosten = {"export": 0, "import": 0, "bau": 0, "tage": 30, "seit": None}
+    cut = now - 30 * 86400
+    try:
+        with DB_LOCK:
+            rows = DB.execute(
+                "SELECT ref_type, sum(amount), min(ts) FROM wbook "
+                "WHERE ts>=? AND ref_type LIKE 'planetary%' GROUP BY ref_type",
+                (cut,)).fetchall()
+            frueh = DB.execute("SELECT min(ts) FROM wbook").fetchone()
+        for rt, summe, _mn in rows:
+            k = ("export" if "export" in rt else
+                 "import" if "import" in rt else "bau")
+            kosten[k] += abs(summe or 0)
+        # Wie weit reicht die eigene Aufzeichnung ueberhaupt zurueck? Wer Canary
+        # erst seit einer Woche laufen laesst, sieht keine 30 Tage.
+        if frueh and frueh[0]:
+            kosten["seit"] = int(max(frueh[0], cut))
+    except Exception as e:
+        log_error("CN-SRV-01", "query_planeten/kosten", e)
+    kosten["summe"] = round(kosten["export"] + kosten["import"] + kosten["bau"])
     return {"chars": chars, "extractors": extractors, "reconnect": reconnect,
-            "as_of": oldest, "next": soonest, "n_char": len(chars),
+            "as_of": oldest, "next": soonest, "stale": stale, "n_char": len(chars),
             "n_col": n_col, "n_ex": n_ex, "n_soon": n_soon, "n_exp": n_exp,
-            "total_isk": total_isk, "total_ext_isk": total_ext_isk, "products": products}
+            "total_isk": total_isk, "total_ext_isk": total_ext_isk,
+            "total_rest_isk": total_rest_isk, "kosten": kosten, "products": products}
 
 
 def query_missions():
@@ -7233,6 +7309,7 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .sbrow{font-size:13px;margin:3px 0;color:var(--txt)}
 .sbfresh{margin-top:8px}
 /* Planetary Industry: Dringlichkeitszeilen + einklappbare Char-Bloecke. */
+.pistale{display:inline-block;margin-top:3px;color:var(--gold);opacity:.85}
 .pirow{display:grid;grid-template-columns:12px 130px 1fr 150px 140px;align-items:center;gap:10px;padding:6px 2px;border-top:1px solid var(--line);font-size:13px}
 .pirow:first-of-type{border-top:none}
 .pichar{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -9514,19 +9591,36 @@ function renderPlaneten(pl){
   $('#grid').innerHTML=`<div class="card" style="grid-column:1/-1"><b>🪐 Planetary Industry</b><div class="sub" style="margin-top:6px">${msg}</div></div>`;
   return;
  }
- const asof=pl.as_of?((en?'as of ':'Stand vor ')+Math.max(0,Math.round((now-pl.as_of)/60))+(en?' min ago':' min')):'';
+ const asof=pl.as_of?((en?'synced ':'Abgleich vor ')+Math.max(0,Math.round((now-pl.as_of)/60))+(en?' min ago':' min')):'';
  const nxt=pl.next?(()=>{const z=Math.round((pl.next-now)/60);return z>0?(en?'next sync in '+z+' min':'nächster Abgleich in '+z+' min'):(en?'syncing now':'Abgleich läuft gerade');})():'';
- const fresh=`🛰 ${[asof,nxt].filter(Boolean).join(' · ')}${asof||nxt?' · ':''}${en?'only as fresh as last opened in client':'so aktuell wie zuletzt im Client geöffnet'}`;
+ // Zwei verschiedene Wahrheiten, deshalb zwei Zeilen. Ablaufzeiten und
+ // Programme kommen vom Server und sind sofort richtig. Lagerstaende friert
+ // EVE ein, bis die Kolonie im Client geoeffnet wird: an echten Daten
+ // gemessen war der Cache 3 Minuten alt und der Lagerstand 4,5 Stunden.
+ const staleTxt=pl.stale?(()=>{const h=(now-pl.stale)/3600;
+   const t=h.toFixed(1);
+   return h<1?Math.max(1,Math.round(h*60))+' min':(en?t:t.replace('.',','))+' h';})():'';
+ const fresh=`🛰 ${[asof,nxt].filter(Boolean).join(' · ')}`
+  +(staleTxt?`<br><span class="pistale">${en?'Stock levels are '+staleTxt+' old: EVE only recalculates a colony when you open it in the client. Expiry times and programs come from the server and are always current.':'Lagerstände sind '+staleTxt+' alt: EVE rechnet eine Kolonie erst, wenn du sie im Client öffnest. Ablaufzeiten und Programme kommen vom Server und stimmen immer.'}</span>`:'');
  const stored=(pl.total_isk?` · <span class="isk">≈ ${fmtM(pl.total_isk)} ISK ${en?'stored':'gelagert'}</span>`:'')
-   +(pl.total_ext_isk?` · <span class="sub">~${fmtM(pl.total_ext_isk)} ISK ${en?'raw extraction':'Extraktion roh'}</span>`:'');
+   +(pl.total_rest_isk?` · <span class="sub" title="${en?'Remaining yield of the running programs, valued at Jita buy. Not the same as the stored value on the left.':'Restertrag der laufenden Programme, bewertet zu Jita-Ankauf. Nicht mit dem gelagerten Wert links verrechnen.'}">~${fmtM(pl.total_rest_isk)} ISK ${en?'still to come':'kommt noch'}</span>`:'');
  const urg=(pl.n_exp||pl.n_soon)
   ?`<span style="color:var(--${pl.n_exp?'red':'gold'})">⚠ ${pl.n_exp?pl.n_exp+(en?' expired · ':' abgelaufen · '):''}${pl.n_soon}${en?' expiring < 6h':' laufen in < 6h ab'}</span>`
   :`<span style="color:var(--green)">${en?'all running':'alles läuft'}</span>`;
+ // Was PI tatsaechlich gekostet hat. Steht im Wallet-Journal, das Canary
+ // ohnehin vollstaendig mitschreibt: kein neuer Scope, kein neuer Abruf.
+ const k=pl.kosten||{};
+ const costline=k.summe?`<div class="piprodline">💸 <span class="sub">${en?'Costs, last 30 days':'Kosten, letzte 30 Tage'}:</span> `
+   +[k.export?`${fmtM(k.export)} ${en?'export tax':'Exportsteuer'}`:'',
+      k.import?`${fmtM(k.import)} ${en?'import tax':'Importsteuer'}`:'',
+      k.bau?`${fmtM(k.bau)} ${en?'construction':'Bau'}`:''].filter(Boolean).join(' · ')
+   +` <b>= ${fmtM(k.summe)} ISK</b></div>`:'';
  const prodline=pl.products&&pl.products.length?`<div class="piprodline">🏭 <span class="sub">${en?'Produces':'Produziert'}:</span> ${piProdList(pl.products)}</div>`:'';
  let html=`<div class="card mfp" style="grid-column:1/-1"><div class="mfphead"><span class="mfptitle">🪐 Planetary Industry</span></div>
    <div class="mfpmain"><span class="mfpval gold">${pl.n_col}</span><span class="mfpunit">${en?'colonies':'Kolonien'}</span>
     <span class="mfpsub">${pl.n_char} ${pl.n_char===1?'Char':'Chars'} · ${pl.n_ex}${en?' extractors':' Extraktoren'} · ${urg}${stored}</span></div>
    ${prodline}
+   ${costline}
    <div class="sub" style="margin-top:8px">${fresh}</div></div>`;
  // Was zuerst nachfüllen (char-übergreifend, nach Ablauf sortiert)
  html+=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">${en?'What to reload first':'Was zuerst nachfüllen'}</span> <span class="sub">· ${en?'sorted by expiry':'nach Ablauf sortiert'}</span></div>`;
@@ -9536,7 +9630,7 @@ function renderPlaneten(pl){
   html+=`<div class="pirow"><span class="pidot ${L.cls}"></span>
     <span class="pichar">${esc(e.char)}</span>
     <span class="piplanet">${piGlobe(e.type_id,'piglobe')}<span class="pinm">${esc(e.planet)}</span> <span class="sub">${piTypeName(e.type,en)}</span></span>
-    <span class="piprod">${esc(e.product||'?')}${piTierBadge(e.tier)}</span>
+    <span class="piprod">${esc(e.product||'?')}${piTierBadge(e.tier)}${e.rest?` <span class="sub">· ${en?'still':'noch'} ~${fmtC(e.rest)}</span>`:''}</span>
     <span class="piexp ${L.cls}">${L.txt}</span></div>`;});
  if((pl.extractors||[]).length>board.length)html+=`<div class="sub" style="padding-top:6px">… ${pl.extractors.length-board.length} ${en?'more':'weitere'}</div>`;
  html+=`</div>`;
@@ -9548,10 +9642,10 @@ function renderPlaneten(pl){
   html+=`<div class="picol"><div class="chead pihead" data-pi="${esc(c.name)}" style="cursor:pointer">
     <span class="char">${isc?'▸':'▾'} ${esc(c.name)} <span class="sub">· ${c.cols.length} ${c.cols.length===1?(en?'colony':'Kolonie'):(en?'colonies':'Kolonien')}</span></span>${esiBadge(c.name)}${c.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(c.isk)} ISK</span>`:''}</div>`;
   if(!isc)c.cols.forEach(col=>{
-   let body=`<div class="picolhead"><b>${esc(col.planet)}</b> <span class="sub">${piTypeName(col.type,en)} · ${esc(col.system||'')} · ${en?'level':'Stufe'} ${col.upgrade||0} · ${col.pins||0} Pins</span>${col.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(col.isk)} ISK ${en?'stored':'gelagert'}</span>`:''}</div>`;
+   let body=`<div class="picolhead"><b>${esc(col.planet)}</b> <span class="sub">${piTypeName(col.type,en)} · ${esc(col.system||'')} · ${en?'level':'Stufe'} ${col.upgrade||0} · ${col.pins||0} Pins${col.factories?' · '+col.factories+(en?' factories':' Fabriken'):''}</span>${col.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(col.isk)} ISK ${en?'stored':'gelagert'}</span>`:''}</div>`;
    if((col.products||[]).length)body+=`<div class="piprodline">🏭 <span class="sub">${en?'Produces':'Produziert'}:</span> ${piProdList(col.products)}</div>`;
    (col.extractors||[]).forEach(e=>{const L=piLeft(e.expiry,en);
-    body+=`<div class="piexrow"><span class="pidot ${L.cls}"></span>${e.product_id?`<img class="piicon" src="https://images.evetech.net/types/${e.product_id}/icon?size=32" onerror="this.style.visibility='hidden'">`:`<span class="piicon"></span>`}<span class="piname">${esc(e.product||'?')}${piTierBadge(e.tier)} <span class="sub">· ${e.heads} ${en?'heads':'Köpfe'}${e.total?' · ~'+fmtC(e.total)+(en?' units':' Stk'):''}</span></span><span class="piexp ${L.cls}">${L.txt}</span></div>`;});
+    body+=`<div class="piexrow"><span class="pidot ${L.cls}"></span>${e.product_id?`<img class="piicon" src="https://images.evetech.net/types/${e.product_id}/icon?size=32" onerror="this.style.visibility='hidden'">`:`<span class="piicon"></span>`}<span class="piname">${esc(e.product||'?')}${piTierBadge(e.tier)} <span class="sub" title="${en?'Remaining yield from now until expiry. The full program would be ':'Restertrag ab jetzt bis zum Ablauf. Das ganze Programm ergäbe '}${e.total?fmtC(e.total):'?'}${en?' units.':' Stück.'}">· ${e.heads} ${en?'heads':'Köpfe'}${e.rest?' · '+(en?'still ':'noch ')+'~'+fmtC(e.rest)+(en?' units':' Stk'):''}</span></span><span class="piexp ${L.cls}">${L.txt}</span></div>`;});
    if(!(col.extractors||[]).length)body+=`<div class="sub">${en?'No active extractors':'Keine aktiven Extraktoren'}</div>`;
    html+=`<div class="picolrow">${col.type_id?`<img class="piplanetimg" src="https://images.evetech.net/types/${col.type_id}/icon?size=128" onerror="this.style.visibility='hidden'">`:`<span class="piplanetimg"></span>`}<div class="picolbody">${body}</div></div>`;});
   html+=`</div>`;});
