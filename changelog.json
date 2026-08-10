@@ -1,5 +1,17 @@
 [
  {
+  "v": "1.73.1",
+  "d": "2026-08-10",
+  "de": [
+   "Ein Missionsname war falsch. Die Signatur für \"The Rogue Slave Trader\" hing am Wort \"Slave Pen\", und das steckt auch in \"Kruul's Slave Pens\", die zu \"The Damsel in Distress\" gehören. Wer die Damsel auf Stufe 2 flog, bekam die falsche Mission angezeigt. Behoben, an einem gespendeten Logbestand waren 9 Einsätze betroffen.",
+   "Die Damsel wird jetzt auch dann erkannt, wenn nur ihre Wachen da sind. Pleasure Hub Guardian und Pleasure Hub Sentinel gehören zu dieser Mission, das war vorher nicht hinterlegt. Zusammen mit dem Punkt oben bekommen dadurch 67 weitere Einsätze zum ersten Mal einen Namen."
+  ],
+  "en": [
+   "One mission name was wrong. The signature for \"The Rogue Slave Trader\" keyed on the words \"Slave Pen\", which also occur in \"Kruul's Slave Pens\", and those belong to \"The Damsel in Distress\". Anyone flying the Damsel at level 2 was shown the wrong mission. Fixed; in a donated log archive 9 runs were affected.",
+   "The Damsel is now recognised even when only its guards are present. Pleasure Hub Guardian and Pleasure Hub Sentinel belong to that mission, which was not recorded before. Together with the fix above, 67 further runs get a name for the first time."
+  ]
+ },
+ {
   "v": "1.73.0",
   "d": "2026-08-10",
   "de": [
