@@ -751,11 +751,15 @@ const THX_ICON = {
 const THX_LABEL = { twitch: 'Twitch', youtube: 'YouTube', x: 'X', discord: 'Discord',
                     github: 'GitHub', web: 'Website' };
 
-// Text kann ein einfacher String sein oder {de,en,fr,ru}. Fehlt die Sprache,
-// faellt es auf Englisch zurueck, wie ueberall sonst auf dieser Seite auch.
+// Text kann ein einfacher String sein oder {de,en,fr,ru}.
+// Rueckfall in dieser Reihenfolge: gewaehlte Sprache, Englisch, Deutsch, und
+// zur Not die erste Sprache, die ueberhaupt gefuellt ist. Lieber ein Satz in
+// der falschen Sprache als eine Karte, auf der nur ein Name steht. Wer alle
+// vier Felder fuellt, sieht von diesem Rueckfall ohnehin nie etwas.
 function thxText(v) {
   if (!v) return '';
-  return typeof v === 'string' ? v : (v[curLang] || v.en || '');
+  if (typeof v === 'string') return v;
+  return v[curLang] || v.en || v.de || Object.values(v).find(x => x) || '';
 }
 function renderThanks() {
   const box = document.getElementById('thanks');
