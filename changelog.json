@@ -1,5 +1,19 @@
 [
  {
+  "v": "1.74.0",
+  "d": "2026-08-10",
+  "de": [
+   "Canary merkt jetzt, wenn du in den Abyss gehst, und zwar auf die Sekunde. Der Eintritt steht nicht im Gamelog, sondern im Local-Kanal: dort gibt es im Abyss kein System mehr, EVE schreibt stattdessen einen Platzhalter. Statt \"Unknown\" steht bei dir ab jetzt \"Abyssal Deadspace\".",
+   "Dazu läuft eine Uhr. Der Abyss hat eine harte Grenze von 20 Minuten, danach ist das Schiff verloren. Ab 15 Minuten wird die Zahl rot. Wer im Abyss ausloggt, lässt keine ewig laufende Uhr zurück, nach 25 Minuten verfällt sie.",
+   "Erkannt wird das ohne ein einziges englisches Wort: Canary prüft, ob der Name aus dem Local-Kanal in der mitgelieferten Sternenkarte steht. An 65 echten Local-Namen standen 64 drin, nur der Abyss-Platzhalter nicht. Damit funktioniert es in jeder Client-Sprache. Wurmlöcher (J-Systeme) sind ausgenommen, die sind echte Systeme."
+  ],
+  "en": [
+   "Canary now notices when you enter the Abyss, to the second. The entry is not in the game log but in the Local channel: inside the Abyss there is no system any more, so EVE writes a placeholder instead. Where it used to say \"Unknown\" it now says \"Abyssal Deadspace\".",
+   "A clock runs alongside it. The Abyss has a hard limit of 20 minutes, after which the ship is lost. From 15 minutes the number turns red. Logging off inside the Abyss does not leave a clock running forever, it expires after 25 minutes.",
+   "Detection uses no English word at all: Canary checks whether the name from the Local channel exists in the bundled star map. Out of 65 real Local names, 64 were in the map and only the Abyss placeholder was not. So it works in every client language. Wormholes (J systems) are excluded, those are real systems."
+  ]
+ },
+ {
   "v": "1.73.1",
   "d": "2026-08-10",
   "de": [

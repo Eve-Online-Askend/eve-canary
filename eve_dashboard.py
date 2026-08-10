@@ -24,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.73.1"
+VERSION = "1.74.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -153,6 +153,26 @@ MISSION_SIGS = {k.lower(): v for k, v in load_json("mission_sigs.json", {}).item
 # (baue_npc_fraktionen.py), nicht von Hand gepflegt.
 SITE_SIGS = {k.lower(): v for k, v in load_json("site_sigs.json", {}).items()
              if not k.startswith("_")}
+# So heisst der Abyss bei uns. EVE selbst schreibt dort einen Platzhalter in
+# den Local-Kanal ("Unknown" im englischen Client), der uebersetzt wird.
+ABYSS_ORT = "Abyssal Deadspace"
+_SYS_NAMES = None
+
+
+def sys_names():
+    """Alle Systemnamen der mitgelieferten Karte, einmal geladen.
+
+    Dient als Gegenprobe fuer den Local-Kanal: der Abyss hat kein Local, EVE
+    schreibt beim Eintritt einen Platzhalter statt eines Systemnamens. Statt
+    das Wort zu vergleichen (das waere sprachabhaengig) wird gegen die Karte
+    geprueft. An 65 echten Local-Namen aus einem Chatlog-Bestand standen 64
+    in der Karte, nur der Abyss-Platzhalter nicht."""
+    global _SYS_NAMES
+    if _SYS_NAMES is None:
+        m = load_json("eve_map.json", None) or {}
+        _SYS_NAMES = {v[0] for v in (m.get("systems") or {}).values()
+                      if isinstance(v, list) and v}
+    return _SYS_NAMES
 # Alle handelbaren Item-Namen -> typeID, fuer die Autovervollstaendigung der
 # Marktpreis-Suche. Liegt als Datei bei; der Server haelt sie im Speicher und
 # liefert nur die passenden Vorschlaege, damit die Oberflaeche leicht bleibt.
@@ -2510,6 +2530,12 @@ class ChatWatch(threading.Thread):
     def __init__(self):
         super().__init__()
         self.systems = {}      # char_id -> System
+        # char_id -> Zeitstempel des Abyss-Eintritts. Der Abyss hat eine harte
+        # Zeitgrenze (20 min), danach stirbt das Schiff. Die verstrichene Zeit
+        # ist damit die nuetzlichste Zahl, die sich aus dem Eintritt ableiten
+        # laesst. Steht der Charakter wieder in einem echten System, fliegt der
+        # Eintrag raus.
+        self.abyss_seit = {}
         self.npc = {}          # char_id -> deque[(ts, text)] NPC-/Missions-Funk (Absender "Message")
         self.offsets = {}      # file -> offset
         self.started_full = False
@@ -2520,6 +2546,56 @@ class ChatWatch(threading.Thread):
         # Schuetzt self.npc: dialogue() (HTTP-/Ingest-Thread) liest, waehrend
         # tick()/backfill() (Chat-Thread) anhaengen -> sonst "deque mutated".
         self.lock = threading.Lock()
+
+    def setz_ort(self, cid, roh, line):
+        """Systemwechsel aus dem Local-Kanal verbuchen.
+
+        Der Abyss hat KEIN Local. Beim Eintritt schreibt EVE deshalb einen
+        Platzhalter statt eines Systemnamens ("Channel changed to Local :
+        Unknown"). Erkannt wird das nicht am Wort, sondern daran, dass die
+        mitgelieferte Karte den Namen nicht kennt: an 65 echten Local-Namen
+        standen 64 in der Karte, nur der Platzhalter nicht. So greift es auch
+        im deutschen oder russischen Client.
+
+        Wurmloch-Systeme (J######) stehen ebenfalls nicht in der Karte, die
+        sind aber echte Systeme und werden am Namensmuster durchgelassen."""
+        nm = (roh or "").strip().rstrip("*").strip()
+        if not nm:
+            return
+        if nm in sys_names() or WH_SYS_RE.match(nm):
+            self.systems[cid] = nm
+            self.abyss_seit.pop(cid, None)
+            return
+        self.systems[cid] = ABYSS_ORT
+        if cid not in self.abyss_seit:
+            m = CHAT_TS_RE.match(line or "")
+            if m:
+                try:
+                    self.abyss_seit[cid] = datetime(
+                        *(int(x) for x in m.groups()), tzinfo=timezone.utc).timestamp()
+                except (ValueError, OverflowError):
+                    self.abyss_seit[cid] = time.time()
+            else:
+                self.abyss_seit[cid] = time.time()
+
+    # Harte Zeitgrenze im Abyss. Wer sie reisst, verliert das Schiff.
+    ABYSS_LIMIT_MIN = 20
+
+    def abyss_minuten(self, cid):
+        """Wie lange laeuft der Abyss-Durchgang schon? None, wenn nicht drin.
+
+        Wer im Abyss ausloggt oder stirbt, hinterlaesst einen Eintritt ohne
+        Ausstieg: dann steht im Local nie wieder ein echtes System und der
+        Zaehler liefe ewig weiter. Alles jenseits der Zeitgrenze plus etwas
+        Luft gilt deshalb als veraltet und wird verworfen."""
+        t = self.abyss_seit.get(cid)
+        if t is None:
+            return None
+        min_ = max(0, (time.time() - t) / 60.0)
+        if min_ > self.ABYSS_LIMIT_MIN + 5:
+            self.abyss_seit.pop(cid, None)
+            return None
+        return min_
 
     def dialogue(self, cid, t0, t1=None):
         """NPC-Funk eines Zeitfensters als Liste von Texten (fuer Missionserkennung
@@ -2577,7 +2653,7 @@ class ChatWatch(threading.Thread):
                     continue
                 sender, msg = cm.group(1).strip(), cm.group(2).strip()
                 if "EVE" in sender and ":" in msg:
-                    self.systems[cid] = msg.rsplit(":", 1)[1].strip().rstrip("*")
+                    self.setz_ort(cid, msg.rsplit(":", 1)[1], line)
                 elif sender == "Message":
                     n = self._npc_line(line)
                     if n:
@@ -2628,7 +2704,7 @@ class ChatWatch(threading.Thread):
                         continue
                     sender, msg = cm.group(1).strip(), cm.group(2).strip()
                     if "EVE" in sender and ":" in msg:
-                        self.systems[cid] = msg.rsplit(":", 1)[1].strip().rstrip("*")
+                        self.setz_ort(cid, msg.rsplit(":", 1)[1], line)
                     elif sender == "Message":
                         # NPC-/Missions-Funk (kein Pilot!) — fuer die Missionserkennung
                         tm = CHAT_TS_RE.match(line)
@@ -5354,6 +5430,9 @@ def snapshot_live():
             "idle_thr": round(s.idle_threshold(int(CONFIG.get("idle_warn", 240) or 0))),
             "name": s.name, "session_min": round(mins),
             "system": s.system or chatwatch.systems.get(s.char_id, "?"),
+            # Abyss laeuft gegen eine harte Zeitgrenze von 20 Minuten. Steht
+            # hier eine Zahl, ist der Charakter gerade drin.
+            "abyss_min": chatwatch.abyss_minuten(s.char_id),
             "danger": danger.for_system(s.system or chatwatch.systems.get(s.char_id)),
             "ores": ores, "m3": round(m3), "ore_isk": round(ore_isk),
             # Tatsaechlicher Stillstand-Verlust dieser Session (kumuliert), zum
@@ -8147,6 +8226,14 @@ function missionHtml(m){
 // und kein Prozentwert: die Gegnernamen dort gibt es nirgendwo sonst, das ist
 // keine Schaetzung. Ohne Prozent sieht man auch sofort den Unterschied zur
 // Missionserkennung, die immer eine Genauigkeit mitfuehrt.
+// Verstrichene Zeit im Abyss. Dort laeuft eine harte Grenze von 20 Minuten,
+// danach ist das Schiff verloren. Ab 15 Minuten wird die Zahl rot.
+function abyssUhr(c){
+ if(c.abyss_min==null)return '';
+ const m=Math.floor(c.abyss_min), sek=Math.floor((c.abyss_min-m)*60);
+ const rot=c.abyss_min>=15?' style="color:var(--red)"':'';
+ return ` <b${rot}>${m}:${String(sek).padStart(2,'0')}</b>`;
+}
 function siteHtml(s){
  if(!s||!s.name)return '';
  return `🌀 ${esc(s.name)}`;
@@ -8381,7 +8468,7 @@ function miningCardHtml(c){
     <span class="arr">▼</span>
     ${c.portrait?`<img class="pf" src="${c.portrait}" alt="">`
       :(!c.esi_linked?`<span class="pf pf-none" data-esihint="1" title="Noch nicht mit EVE-Login verbunden. Klick für Portrait, Schiff, Wallet und automatisches Heavy Water.">👤</span>`:'')}
-    <span class="char">${esc(c.name)} <span class="sys">· ${esc(c.system)}${c.ship?' · '+esc(c.ship):''}</span></span>
+    <span class="char">${esc(c.name)} <span class="sys">· ${esc(c.system)}${abyssUhr(c)}${c.ship?' · '+esc(c.ship):''}</span></span>
     <select class="rolesel" data-c="${esc(c.name)}" title="Rolle zuweisen (für die Filter oben)">
      <option value=""${c.role?'':' selected'}>Rolle …</option>
      <option value="mining"${c.role==='mining'?' selected':''}>⛏ Mining</option>
@@ -8575,7 +8662,7 @@ function combatCardHtml(c){
    <div class="chead" data-c="${esc(c.name)}">
     <span class="arr">▼</span>
     ${c.portrait?`<img class="pf" src="${c.portrait}" alt="">`:''}
-    <span class="char">${esc(c.name)} <span class="sys">· ${esc(c.system)}${c.ship?' · '+esc(c.ship):''}</span></span>
+    <span class="char">${esc(c.name)} <span class="sys">· ${esc(c.system)}${abyssUhr(c)}${c.ship?' · '+esc(c.ship):''}</span></span>
     <select class="rolesel pill" data-c="${esc(c.name)}" title="Rolle zuweisen (für die Filter oben)">
      <option value=""${c.role?'':' selected'}>Rolle …</option>
      <option value="mining"${c.role==='mining'?' selected':''}>⛏ Mining</option>
