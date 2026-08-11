@@ -1,5 +1,21 @@
 [
  {
+  "v": "1.81.1",
+  "d": "2026-08-11",
+  "de": [
+   "Der Knopf „Mission abschließen“ sitzt jetzt rechts in der Zeile der laufenden Session, die Laufzeit steht direkt links daneben. Dort sucht man ihn, vorher klebte er mitten im Text.",
+   "Die Rueckmeldung nach dem Klick sagt jetzt, was gespeichert wurde und was als naechstes dran ist: „Mission abgeschlossen · 16 min · 9,4 M Bounty · Loot unten eintragen“.",
+   "Bewusst NICHT eingebaut: die Unterscheidung, ob remote oder in der Station abgeschlossen wurde. Die Meldung „Your docking request has been accepted“ steht zwar 13.749 mal in einem englischen Logbestand, in echten deutschen Logs kommt sie aber kein einziges Mal vor. Canary muesste den Zustand fuer alle nicht-englischen Clients raten, und dann steht dort lieber nichts.",
+   "Danke an Nirahse fuer den Vorschlag zur Platzierung."
+  ],
+  "en": [
+   "The “Finish mission” button now sits on the right of the running session row, with the elapsed time directly to its left. That is where people look for it, before it was stuck in the middle of the text.",
+   "The confirmation after clicking now says what was stored and what comes next: “Mission completed · 16 min · 9.4 M bounty · enter the loot below”.",
+   "Deliberately left out: telling whether the mission was handed in remotely or at a station. The message “Your docking request has been accepted” appears 13,749 times in one English set of logs, but not once in real German ones. Canary would have to guess that state for every non-English client, and then it is better to say nothing.",
+   "Thanks to Nirahse for the placement suggestion."
+  ]
+ },
+ {
   "v": "1.81.0",
   "d": "2026-08-11",
   "de": [

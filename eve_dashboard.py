@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.81.0"
+VERSION = "1.81.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -10421,10 +10421,12 @@ function renderMissions(d){
   ${(m.mine_systems&&m.mine_systems.length)?`<div class="sub" style="margin-top:8px">Bounties aus deinen Mining-Systemen (${m.mine_systems.join(', ')}) zählen hier nicht mit, das sind Belt-Ratten.</div>`:''}
   ${m.linked?'':'<div class="cardwarn" style="margin-top:10px">⚠ Kein EVE-Login verbunden. Belohnungen und Boni kommen aus dem Wallet-Journal (ESI), einzurichten unter ⚙ Optionen.</div>'}
   ${live.length?'<div class="sect">Live-Session (aus den Gamelogs)</div>'+live.map(c=>
-   `<div class="sub" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-     <span>⚔ <b>${esc(c.name)}</b>${c.ship?' · '+esc(c.ship):''} · ${c.kills} Kills · ${fmtM(c.bounty)} Bounties · DPS ${c.dps_out} raus / ${c.dps_in} rein · Session ${c.session_min} min</span>
-     <button class="btn mclose" data-char="${esc(c.name)}" title="Mission jetzt abschließen, damit du den Loot eintragen und den Laderaum leeren kannst, bevor du abdockst">${lang==='en'?'Finish mission now':'Mission abschließen'}</button>
-     <span class="sub mclosestat" data-char="${esc(c.name)}"></span>
+   // Knopf nach RECHTS, Laufzeit links daneben: dort sucht man ihn.
+   `<div class="sub" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:6px">
+     <span>⚔ <b>${esc(c.name)}</b>${c.ship?' · '+esc(c.ship):''} · ${c.kills} Kills · ${fmtM(c.bounty)} Bounties · DPS ${c.dps_out} raus / ${c.dps_in} rein</span>
+     <span class="sub mclosestat" data-char="${esc(c.name)}" style="margin-left:auto"></span>
+     <span class="sys">${lang==='en'?'running':'läuft seit'} ${c.session_min} min</span>
+     <button class="btn mclose" data-char="${esc(c.name)}" title="${lang==='en'?'Close this mission now so you can enter the loot and empty your hold before undocking':'Mission jetzt abschließen, damit du den Loot eintragen und den Laderaum leeren kannst, bevor du abdockst'}">${lang==='en'?'Finish mission':'Mission abschließen'}</button>
     </div>`).join(''):''}
  </div>
  <div class="card" style="grid-column:1/-1">
@@ -10517,7 +10519,13 @@ function renderMissions(d){
   let r;try{r=await post({action:'mission_close',char});}catch(e){r=null;}
   if(!r||!r.ok){setz(en2?'Server not reachable':'Server nicht erreichbar');return;}
   if(r.saved){
-   setz(en2?`Saved: ${r.min} min, ${r.kills} kills`:`Gespeichert: ${r.min} min, ${r.kills} Kills`);
+   // Sagt, was tatsaechlich gespeichert wurde, und nennt gleich den naechsten
+   // Schritt. Ob dabei angedockt war oder nicht, behauptet Canary bewusst
+   // nicht: die Andock-Meldung steht nur im englischen Client zuverlaessig im
+   // Log, in echten deutschen Logs kommt sie gar nicht vor.
+   setz(en2
+     ? `✅ Mission completed · ${r.min} min · ${fmtM(r.bounty)} bounty · enter the loot below`
+     : `✅ Mission abgeschlossen · ${r.min} min · ${fmtM(r.bounty)} Bounty · Loot unten eintragen`);
    setTimeout(tick,600);
   }else setz(r.msg||(en2?'Nothing to save':'Nichts zu speichern'));
  });
