@@ -17,6 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Volle Historie: die Wiederhol-Schleife setzt einen Commit zurueck
+          # und rebased. Mit dem flachen Standard-Klon gaebe es dafuer keine
+          # Basis. Das Repo ist 6,5 MB gross, das faellt nicht ins Gewicht.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -28,6 +33,10 @@ jobs:
         run: python .github/scripts/build_stats.py
 
       - name: Committen und pushen, falls geaendert
+        env:
+          # Wird fuer das Neurechnen im Wiederholungsfall gebraucht. Ohne Token
+          # laeuft build_stats.py anonym ins Rate-Limit und liefert Muell.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if git diff --quiet -- stats.json; then
             echo "unveraendert, nichts zu pushen."
@@ -37,4 +46,26 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git add stats.json
           git commit -m "Zahlen aktualisiert (automatisch)"
-          git push
+          # Ein Release pusht waehrenddessen ebenfalls auf main. Ohne diese
+          # Schleife scheitert der Lauf dann am "remote rejected" und die Zahlen
+          # bleiben alt, obwohl sie fertig berechnet sind. Bei jedem Versuch neu
+          # rechnen: sonst wuerde ein Stand von vor dem Rebase hochgeschoben.
+          for versuch in 1 2 3; do
+            if git push; then
+              echo "gepusht im Versuch $versuch."
+              exit 0
+            fi
+            echo "Push abgelehnt, jemand war schneller. Neu aufsetzen und rechnen."
+            git reset --hard HEAD~1
+            git pull --rebase --quiet
+            python .github/scripts/build_stats.py
+            if git diff --quiet -- stats.json; then
+              echo "nach dem Rebase identisch, nichts mehr zu tun."
+              exit 0
+            fi
+            git add stats.json
+            git commit -m "Zahlen aktualisiert (automatisch)"
+            sleep 5
+          done
+          echo "Dreimal abgelehnt. Der naechste Lauf holt es nach."
+          exit 1
