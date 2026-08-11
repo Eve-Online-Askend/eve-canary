@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.80.0"
+VERSION = "1.80.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -8756,8 +8756,13 @@ $('#beltGo').onclick=async()=>{
  const gesISK=rows.reduce((s,x)=>s+x.isk,0);
  // Wie lange braeuchte die Flotte dafuer? Nur zeigen, wenn gerade wirklich
  // gemint wird, sonst waere es eine erfundene Zahl.
- const rate=(lastChars||[]).filter(c=>c.active&&autoRole(c)==='mining')
-   .reduce((s,c)=>s+sustainedRate(c),0);
+ // Woher die Rate kommt, gehoert in die Anzeige selbst. Genau danach wurde
+ // gefragt: es sind die AKTIVEN Mining-Chars, und gerechnet wird mit ihren
+ // fuenf besten Minuten der letzten Stunde, nicht mit dem Schnitt. Sonst
+ // zoege jedes Andocken und jeder Anflug die Rate nach unten und der Belt
+ // saehe kuenstlich langwierig aus.
+ const miner=(lastChars||[]).filter(c=>c.active&&autoRole(c)==='mining');
+ const rate=miner.reduce((s,c)=>s+sustainedRate(c),0);
  const dauer=rate>0?(r.m3/rate):0;
  const h=Math.floor(dauer/60), m=Math.round(dauer%60);
  $('#beltOut').innerHTML=`
@@ -8767,8 +8772,15 @@ $('#beltGo').onclick=async()=>{
    <div class="stat"><div class="l">${en?'Ore types':'Erzsorten'}</div><div class="v">${rows.length}</div></div>
   </div>
   ${rate>0?`<div class="sub" style="margin-top:6px">${en
-    ? `At your current rate of ${fmt(Math.round(rate))} m³/min that is about ${h?h+' h ':''}${m} min of mining.`
-    : `Bei deiner aktuellen Rate von ${fmt(Math.round(rate))} m³/min sind das etwa ${h?h+' Std ':''}${m} min Abbau.`}</div>`:''}
+    ? `At ${fmt(Math.round(rate))} m³/min from ${miner.length} active mining ${miner.length===1?'character':'characters'}
+       (${miner.map(c=>esc(c.name)).join(', ')}) that is about <b>${h?h+' h ':''}${m} min</b> of actual lasering.
+       Based on your five best minutes of the last hour, so approach and docking come on top.`
+    : `Bei ${fmt(Math.round(rate))} m³/min aus ${miner.length} aktiven Mining-${miner.length===1?'Char':'Chars'}
+       (${miner.map(c=>esc(c.name)).join(', ')}) sind das etwa <b>${h?h+' Std ':''}${m} min</b> reines Lasern.
+       Gerechnet mit euren fünf besten Minuten der letzten Stunde, Anflug und Andocken kommen also noch dazu.`}</div>`
+   :`<div class="sub" style="margin-top:6px">${en
+    ? 'No mining character active right now, so there is no rate to estimate the time from.'
+    : 'Gerade ist kein Mining-Char aktiv, deshalb steht hier keine Zeitschätzung.'}</div>`}
   <table style="margin-top:8px"><tr><th>${en?'Ore':'Erz'}</th><th class="r">${en?'Units':'Einheiten'}</th>
    <th class="r">m³</th><th class="r">ISK</th></tr>`
   +rows.map(x=>`<tr><td>${esc(x.name)}</td><td class="r">${fmt(x.qty)}</td>

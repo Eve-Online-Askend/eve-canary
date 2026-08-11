@@ -1,5 +1,19 @@
 [
  {
+  "v": "1.80.1",
+  "d": "2026-08-11",
+  "de": [
+   "Die Zeitschaetzung in der Belt-Auswertung sagt jetzt selbst, woher sie kommt. Statt nur „bei deiner aktuellen Rate“ steht dort, aus wie vielen aktiven Mining-Chars die Rate stammt und welche das sind. Dazu der Hinweis, dass mit den fuenf besten Minuten der letzten Stunde gerechnet wird und nicht mit dem Schnitt: sonst zoege jedes Andocken und jeder Anflug die Rate nach unten. Die genannte Zeit meint also reines Lasern, Fliegen und Abladen kommen obendrauf.",
+   "Ist gerade kein Mining-Char aktiv, steht das jetzt ausdruecklich da, statt die Zeile einfach wegzulassen.",
+   "Danke an Savox76 fuer die Nachfrage. Wenn jemand fragt, woher eine Zahl kommt, gehoert die Antwort an die Zahl und nicht in den Chat."
+  ],
+  "en": [
+   "The time estimate in the belt breakdown now says where it comes from. Instead of just “at your current rate” it names how many active mining characters the rate is based on, and which ones. Plus a note that it uses your five best minutes of the last hour rather than the average: otherwise every dock and every approach would drag the rate down. So the time given means actual lasering, flying and unloading come on top.",
+   "If no mining character is active, it now says so explicitly instead of quietly leaving the line out.",
+   "Thanks to Savox76 for asking. When someone asks where a number comes from, the answer belongs next to the number, not in the chat."
+  ]
+ },
+ {
   "v": "1.80.0",
   "d": "2026-08-11",
   "de": [
