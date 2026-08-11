@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.83.0"
+VERSION = "1.84.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -2217,6 +2217,31 @@ class CharSession:
             self.dmg_min.append([minute, {"out": 0, "in": 0}])
         self.dmg_min[-1][1][side] += val
 
+    def wieder_aufnehmen(self, m):
+        """Eine bereits abgeschlossene Mission fortsetzen.
+
+        Nirahses Fall: mitten in der Mission raus, andocken, reparieren,
+        weiter. Das Andocken ist kein sicherer Abschluss, und im Gamelog gibt
+        es dafuer kein Signal. An 1.010 Logdateien gesucht: kein Reparatur-
+        Eintrag, keine Abgabe-Meldung, kein Schiffswechsel. Also wird nicht
+        geraten, sondern zurueckgenommen, sobald sich zeigt, dass es weiterging.
+
+        Die Werte der gespeicherten Mission wandern zurueck in die Sitzung, der
+        weitere Kampf zaehlt oben drauf. Der Datenbank-Eintrag wird geloescht,
+        damit beim naechsten Abschluss ein einziger daraus wird."""
+        self.dmg_out = m.get("dmg_out") or 0
+        self.dmg_in = m.get("dmg_in") or 0
+        self.kills = m.get("kills") or 0
+        self.bounty = m.get("bounty") or 0
+        self.hits_out = m.get("hits") or 0
+        self.miss_out = m.get("miss_out") or 0
+        self.miss_in = m.get("miss_in") or 0
+        self.weapons = dict(m.get("weapons") or [])
+        self.targets = dict(m.get("enemies") or [])
+        self.mission_system = m.get("system") or self.mission_system
+        self.first_ts = m.get("start_ts") or self.first_ts
+        self.dock_ts = None
+
     def reset_combat(self, ts=None):
         """Kampfzaehler auf null und einen neuen Einsatz beginnen.
 
@@ -2540,6 +2565,7 @@ class Ingest(threading.Thread):
                 catch_up = not self.started_full
                 batch = []
                 missions_done = []   # beim Undock abgeschlossene Missionen
+                drop_mid = []        # zurueckgenommene Abschluesse (Zwischenstopp)
                 lost_done = []       # beim Undock festgehaltener Stillstand-Verlust (Tag, ISK)
                 mine_done = []       # Mining-Trip-Episoden fuer die Zeitachse (char_id, char, ts, detail)
                 with open(f, "rb") as fh:
@@ -2567,6 +2593,34 @@ class Ingest(threading.Thread):
                         if ev:
                             batch.append(ev)
                             if sess:
+                                # Geht der Kampf kurz nach dem Anflug im selben
+                                # System weiter, war das Andocken kein Abschluss
+                                # sondern ein Zwischenstopp, etwa zum Reparieren.
+                                # Dann wird der Eintrag zurueckgeholt statt ein
+                                # zweiter angelegt.
+                                #
+                                # FUENF Minuten, nicht zehn. Der einzige echte
+                                # Reparatur-Fall in 2.142 gemessenen Anfluegen
+                                # ging nach 3,2 Minuten weiter. Mit zehn
+                                # Minuten verschluckte die Regel dagegen einen
+                                # echten Missionswechsel im Prueflauf: dort
+                                # lagen zwischen Anflug und neuem Kampf genau
+                                # 600 Sekunden. Wer eine neue Mission annimmt
+                                # und hinfliegt, braucht laenger als wer nur
+                                # das Schild flickt.
+                                if (ev["kind"] in ("dmg_out", "dmg_in", "bounty")
+                                        and getattr(sess, "zuletzt_zu", None)):
+                                    a_md, a_ts = sess.zuletzt_zu
+                                    gleich = (a_md.get("system") in (None, "?", sess.system)
+                                              or sess.system in (None, "?"))
+                                    if ev["ts"] - a_ts <= 300 and gleich:
+                                        sess.wieder_aufnehmen(a_md)
+                                        drop_mid.append(
+                                            f"{a_md['char_id']}:{int(a_md['start_ts'])}")
+                                        missions_done[:] = [
+                                            x for x in missions_done
+                                            if x is not a_md]
+                                    sess.zuletzt_zu = None
                                 # Anflug zur Station beendet den Einsatz, ohne dass
                                 # man erst wieder abdocken muss. Damit steht die
                                 # Mission sofort in der Liste und der Loot laesst
@@ -2582,6 +2636,8 @@ class Ingest(threading.Thread):
                                             cid, md["start_ts"], ev["ts"]))[:2000] or None
                                         missions_done.append(md)
                                         sess.reset_combat(ev["ts"])
+                                        # Fuer eine mögliche Ruecknahme merken
+                                        sess.zuletzt_zu = (md, ev["ts"])
                                         # Ohne Hinweis waere nur zu sehen, dass die
                                         # Live-Zahlen ploetzlich auf null stehen.
                                         # Der Hinweis sagt, wohin sie gewandert sind
@@ -2646,6 +2702,11 @@ class Ingest(threading.Thread):
                                 db_add(ev["day"], cid, cname, "weapon", ev["weapon"], ev["value"])
                             if ev["kind"] == "dmg_in" and ev.get("player"):
                                 db_add(ev["day"], cid, cname, "pvp_in", ev["key"], ev["value"])
+                        # Erst die zurueckgenommenen loeschen, dann speichern:
+                        # sonst schriebe ein spaeterer Abschluss denselben
+                        # Eintrag neu und der geloeschte waere wieder da.
+                        for mid_weg in drop_mid:
+                            DB.execute("DELETE FROM missions WHERE mid=?", (mid_weg,))
                         for md in missions_done:
                             save_mission(md)
                         for lday, li in lost_done:
@@ -7434,6 +7495,38 @@ class Handler(BaseHTTPRequestHandler):
                 ok = packintel.recenter(str(body.get("center")).strip())
             self._send(json.dumps({"ok": ok}))
             return
+        elif action == "mission_reopen":
+            # Notausgang fuer alles, was die Automatik nicht erwischt: der
+            # Nutzer sagt selbst, dass die Mission noch laeuft. Die Werte
+            # wandern zurueck in die laufende Sitzung, der Eintrag verschwindet
+            # und entsteht beim naechsten Abschluss neu, dann vollstaendig.
+            mid = str(body.get("mid") or "")
+            with DB_LOCK:
+                row = DB.execute(
+                    "SELECT char_id,char,start_ts,system,dmg_out,dmg_in,kills,bounty,"
+                    "hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text "
+                    "FROM missions WHERE mid=?", (mid,)).fetchone()
+            if not row:
+                self._send(json.dumps({"ok": False, "error": "Eintrag nicht gefunden"}))
+                return
+            m = {"char_id": row[0], "char": row[1], "start_ts": row[2], "system": row[3],
+                 "dmg_out": row[4], "dmg_in": row[5], "kills": row[6], "bounty": row[7],
+                 "hits": row[8], "miss_out": row[9], "miss_in": row[10],
+                 "weapons": json.loads(row[11] or "[]"), "enemies": json.loads(row[12] or "[]")}
+            with ingest.lock:
+                s = ingest.sessions.get(str(row[0]))
+                if s:
+                    s.wieder_aufnehmen(m)
+                    s.zuletzt_zu = None
+            with DB_LOCK:
+                DB.execute("DELETE FROM missions WHERE mid=?", (mid,))
+                DB.commit()
+            # Ob die Sitzung noch laeuft, entscheidet ob die Werte wirklich
+            # weitergezaehlt werden. Eingetragener Loot geht verloren, denn der
+            # Eintrag entsteht spaeter neu: beides gehoert in die Rueckmeldung.
+            self._send(json.dumps({"ok": True, "sitzung_aktiv": bool(s),
+                                   "loot_war_da": bool(row[13] or row[14])}))
+            return
         elif action == "pack_sim_run" and CONFIG.get("sim_mode"):
             # Anflug-Demo starten (nur lokal, wie der Missions-Simulator).
             threading.Thread(target=packintel.sim_run, daemon=True).start()
@@ -7689,7 +7782,15 @@ html[data-skin=photon] ::-webkit-scrollbar{width:9px;height:9px}
 html[data-skin=photon] ::-webkit-scrollbar-thumb{background:#2b3236;border:2px solid #0b0e10}
 html[data-skin=photon] ::-webkit-scrollbar-track{background:transparent}
 *{margin:0;box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif}
-body{background:var(--bg);color:var(--txt);padding:18px;transition:background .2s}
+/* KEINE transition auf der Flaeche. Wenn der Hintergrund aus einer Variablen
+   kommt und die Variable sich aendert (Themen- oder Skin-Wechsel), friert der
+   Browser den alten Wert ein, statt auf den neuen zu blenden. Gemessen: nach
+   dem Umschalten auf Hell stand --bg auf #f2f4f8, der Body blieb aber auf
+   rgb(11,14,20), also wurden die Karten hell und der Grund dahinter blieb
+   dunkel. Mit transition:none folgt der Wert sofort korrekt, mit
+   background-color statt background aendert sich nichts. Ein harter Wechsel
+   ist der Preis, ein halb umgeschaltetes Fenster war der Fehler. */
+body{background:var(--bg);color:var(--txt);padding:18px}
 html[data-fs="2"] body{zoom:1.15}
 html[data-fs="3"] body{zoom:1.3}
 header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
@@ -7950,6 +8051,444 @@ td.r{text-align:right;color:var(--dim);white-space:nowrap}
 .pwatch{background:var(--red);color:#fff;border-radius:4px;padding:1px 6px;
  font-size:11px;font-weight:700;letter-spacing:.4px;white-space:nowrap}
 html[data-skin=photon] .pwatch{border-radius:1px}
+
+/* ===================================================== Cockpit-Skin (Auswahl)
+   Der dritte Skin, bewusst NICHT der Standard. Jede Regel haengt an
+   html[data-skin=cockpit], damit "Klassisch" Zeichen fuer Zeichen bleibt wie
+   es ist und ein Umschalten nichts kaputtmachen kann.
+
+   Am HTML wird NICHTS geaendert. Die Seitenleiste entsteht allein daraus, dass
+   das vorhandene <nav> fest an den linken Rand gestellt wird und der Body
+   entsprechend einrueckt. Das ist robuster als ein Raster-Umbau, weil laufend
+   Elemente per JS in den Body nachwachsen und ein Raster die dann in die
+   falsche Spalte setzen wuerde.
+
+   Drei Messungen aus der laufenden Oberflaeche haben den Ausschlag gegeben:
+   1. --dim kam auf 3,31:1 Kontrast, verlangt sind 4,5:1. Betroffen war
+      ausgerechnet der Kleintext und die Zahlenspalten.
+   2. Zellpolster 3px und Zeilenhoehe "normal" ergaben die Tabellenwand.
+   3. Segoe UI Variable liegt auf Windows 11 bereit, hat aber UNGLEICH breite
+      Ziffern ("111111" 31,8px gegen "888888" 45,3px). Ohne tabular-nums
+      wuerde jede Zahlenspalte zappeln, deshalb steht es hier verbindlich. */
+html[data-skin=cockpit]{
+ --bg:#0a0f17;--card:#121a26;--inset:#0f1826;--line:#22304a;
+ --txt:#e6edf7;--dim:#93a3bd;--cyan:#4cd9f5;--red:#ff8b80;--green:#5fe08f;
+ --gold:#f5c451;--violet:#b39bff;--blue:#7cb2ff;--white:#fff;
+ /* Kachelflaechen je Bedeutung. Der erste Anlauf tuepfelte alles mit 6 Prozent
+    Tuerkis ein, das ergab auf Weiss #F2FAFD und war schlicht unsichtbar. Hier
+    stehen deshalb ausgerechnete Flaechen statt Beimischungen. */
+ --t-cyan:#0e2430;--t-gold:#241e0f;--t-red:#2a1615;
+ --t-green:#0e2419;--t-violet:#1c1733;
+ /* Eigene Groessen des Skins, damit die Klassik-Werte unberuehrt bleiben */
+ --seite:236px;      /* Breite der Seitenleiste */
+ --rund:12px;
+ /* Abstands-Skala. Vorher standen dort gemessene 4, 10, 10, 12, 14, 16 und
+    18 Pixel ohne erkennbare Ordnung, jeder Wert einzeln gewachsen. Ab hier
+    ist jeder Abstand ein Vielfaches von 8, und es gibt nur drei Stufen:
+    8 innerhalb einer Gruppe, 16 zwischen Gruppen, 24 zwischen Bloecken. */
+ --s1:8px;
+ --s2:16px;
+ --s3:24px;
+ --luft:var(--s3);
+}
+/* Im hellen Thema muss der Grund deutlich grauer sein als die Karte, sonst
+   verschwimmt alles zu einer weissen Flaeche. Gemessen lagen #eef1f6 und #fff
+   so dicht beieinander, dass keine Karte mehr als Karte zu erkennen war. */
+/* Getoente Neutrale statt reinem Grau: eine Karte in #FFF liest sich als
+   Blatt Papier, nicht als Oberflaeche. Die Farbwerte sind gegen ihre eigene
+   Flaeche durchgerechnet, der schlechteste Fall liegt bei 4,9:1. */
+html[data-skin=cockpit][data-theme=light]{
+ --bg:#e8ecf3;--card:#fbfcfe;--inset:#edf1f7;--line:#cfd8e6;
+ /* #4e5d75 kam auf der Kartenflaeche auf 4,47:1, knapp unter der Norm.
+    Zwei Stufen dunkler reichen fuer 4,7:1, ohne dass der Ton grau wirkt. */
+ --txt:#0f1723;--dim:#485670;--cyan:#0a6280;--red:#b32318;--green:#0f6b3f;
+ --gold:#8a5a00;--violet:#5b31b0;--blue:#1d4ed8;--white:#0c1119;
+ --t-cyan:#e3f1f7;--t-gold:#fbf1d9;--t-red:#fcebe8;
+ --t-green:#e4f2ea;--t-violet:#eee9fb;
+}
+html[data-skin=cockpit] body,
+html[data-skin=cockpit] dialog,
+html[data-skin=cockpit] .btn,
+html[data-skin=cockpit] input,
+html[data-skin=cockpit] select,
+html[data-skin=cockpit] textarea{
+ /* Segoe UI Variable ist die moderne Variante und liegt auf Windows 11
+    bereit. Faellt sie aus (Linux, aeltere Systeme), greift die Kette
+    lueckenlos weiter, geladen wird nichts. */
+ font-family:"Segoe UI Variable Text","Segoe UI Variable","Segoe UI",
+   system-ui,-apple-system,"Noto Sans","Liberation Sans",sans-serif;
+ font-variant-numeric:tabular-nums;
+ -webkit-font-feature-settings:"tnum" 1;font-feature-settings:"tnum" 1;
+}
+/* Jeder Hauptblock haelt denselben Abstand zum naechsten. Vorher hatte jeder
+   Block seinen eigenen gewachsenen Wert, deshalb gab es keinen Rhythmus. */
+html[data-skin=cockpit] body>header,
+html[data-skin=cockpit] body>#loadtxt,
+html[data-skin=cockpit] body>#viewinfo,
+html[data-skin=cockpit] body>#alerts,
+html[data-skin=cockpit] body>#hero,
+html[data-skin=cockpit] body>#setup,
+html[data-skin=cockpit] body>#updBanner,
+html[data-skin=cockpit] body>#grid{margin:0 0 var(--s3)}
+html[data-skin=cockpit] body>#loadtxt{margin-bottom:var(--s1)}
+/* margin-top ausdruecklich auf null: sonst addiert sich der eigene obere
+   Abstand des naechsten Blocks dazu und aus 8 werden 10. */
+html[data-skin=cockpit] body>*{margin-top:0}
+html[data-skin=cockpit] body{
+ padding:0 var(--s3) 40px calc(var(--seite) + var(--s3));
+ line-height:1.5;
+ /* Kein flacher Grundton. Ein weiter radialer Verlauf von oben gibt der Seite
+    eine Lichtrichtung, und erst dadurch koennen Karten darauf als Ebene
+    liegen statt als Umriss auf Papier. */
+ background:radial-gradient(120% 78% at 50% -8%,
+   color-mix(in srgb,var(--card) 78%,var(--bg)), var(--bg) 62%) fixed;
+ min-height:100vh;
+}
+/* --------------------------------------------------- Seitenleiste aus <nav> */
+html[data-skin=cockpit] nav{
+ position:fixed;left:0;top:0;bottom:0;width:var(--seite);z-index:40;
+ display:flex;flex-direction:column;gap:2px;align-items:stretch;
+ padding:64px 10px 14px;margin:0;overflow-y:auto;overflow-x:hidden;
+ background:var(--card);border:none;border-right:1px solid var(--line);
+}
+html[data-skin=cockpit] nav span{
+ flex:none;font-size:13px;padding:9px 12px;border-radius:8px;
+ border-bottom:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+ /* Nur der Hintergrund wird weich, NICHT die Schriftfarbe. Beim Umschalten
+    des Skins aendert sich --dim, und eine laufende Farb-Transition haelt dann
+    den alten Wert fest: gemessen blieb der Reiter auf dem alten #5d6b80 mit
+    3,36:1 stehen, bis die Seite neu geladen wurde. */
+ transition:background .12s;
+}
+html[data-skin=cockpit] nav span:hover{background:var(--inset);color:var(--txt)}
+html[data-skin=cockpit] nav span.on{
+ background:color-mix(in srgb,var(--cyan) 16%,transparent);
+ color:var(--cyan);border-bottom:none;font-weight:600;
+ /* Der Balken sitzt links statt unten: in einer Spalte liest sich die
+    Markierung dort als "hier stehst du", unten wuerde sie wie ein Trenner
+    zwischen zwei Eintraegen wirken. */
+ box-shadow:inset 3px 0 0 var(--cyan);
+}
+/* Der Name oben in der Leiste, damit die Kopfzeile ihn nicht doppelt traegt */
+html[data-skin=cockpit] nav::before{
+ content:"EVE CANARY";position:absolute;top:0;left:0;right:0;
+ padding:20px 14px 12px;font-size:12px;font-weight:700;letter-spacing:2.4px;
+ color:var(--cyan);background:var(--card);
+}
+/* ------------------------------------------------------------- Kopfleiste */
+html[data-skin=cockpit] header{
+ position:sticky;top:0;z-index:30;gap:8px;
+ padding:12px 0 10px;margin-bottom:4px;
+ background:linear-gradient(var(--bg) 78%,transparent);
+ border-bottom:1px solid var(--line);
+}
+html[data-skin=cockpit] header h1{font-size:0;margin:0;padding:0}
+/* Form fuer alle Pillen, Farbe aber NUR fuer die inaktiven. Die aktive
+   bekommt von der Grundregel cyan als Flaeche mit dunklem Text darauf, und das
+   ist gut lesbar. Ohne das :not(.on) gewinnt diese Regel nach Spezifitaet
+   gegen .pill.on und faerbt den Text hell auf hell: gemessen 1,42:1. */
+html[data-skin=cockpit] .pill{border-radius:8px;font-size:12px;padding:5px 11px}
+html[data-skin=cockpit] .pill:not(.on){color:var(--dim)}
+/* --------------------------------------------------------------- Flaechen */
+/* Zwoelf Spalten statt auto-fit. Vorher bekam jede Karte dieselbe Breite, egal
+   ob sie vierzig Tabellenzeilen oder drei Zahlen enthaelt. Die Breite sagt
+   jetzt etwas aus, und dense fuellt die Loecher, die unterschiedlich hohe
+   Karten sonst unten stehen lassen. Die Hoechstbreite verhindert, dass auf
+   einem breiten Schirm alles in die Laenge gezogen wird statt Spalten zu
+   bilden. */
+html[data-skin=cockpit] #grid{
+ grid-template-columns:repeat(12,minmax(0,1fr));
+ grid-auto-flow:row dense;
+ gap:var(--s2);max-width:1780px;
+}
+html[data-skin=cockpit] #grid>.card{grid-column:span 4;min-width:0}
+html[data-skin=cockpit] #grid>.card:has(table){grid-column:span 8}
+/* Reine Kennzahlenkarten bleiben schmal, damit ihre Kacheln nicht aufblasen.
+   Vier statt drei Spalten: mit span 3 neben einer span 8 blieben 137 Pixel
+   uebrig, also eine leere Spalte am rechten Rand. 4 und 8 ergeben genau 12. */
+html[data-skin=cockpit] #grid>.card:has(.stats):not(:has(table)):not(:has(.spark)):not(:has(.chead img)){
+ grid-column:span 4;
+}
+/* Charakterkarten tragen Portrait, viele Kacheln und Abschnitte. Bei span 3
+   wurden daraus gemessene 235 Pixel Breite auf 970 Pixel Hoehe, also eine
+   Saeule. Sie brauchen die halbe Reihe. */
+html[data-skin=cockpit] #grid>.card:has(.chead img){grid-column:span 6}
+html[data-skin=cockpit] #grid>.card:has(svg),
+html[data-skin=cockpit] #grid>.card:has(.spark),
+html[data-skin=cockpit] #grid>.card.mlive{grid-column:1/-1}
+/* Wenige Karten fuellen die Reihe. Mit nur einem aktiven Charakter stand die
+   einzige Karte mit 814 Pixeln in einem 1644 Pixel breiten Raster, die rechte
+   Haelfte blieb leer. Ein Raster, das nichts zu verteilen hat, darf nicht so
+   tun als ob. */
+html[data-skin=cockpit] #grid:has(>.card:only-child)>.card{grid-column:1/-1}
+html[data-skin=cockpit] #grid:has(>.card:nth-child(2):last-child)>.card{grid-column:span 6}
+html[data-skin=cockpit] #grid:has(>.card:nth-child(3):last-child)>.card{grid-column:span 4}
+/* Die Ausnahmen brauchen dieselbe Zahl an Pseudoklassen wie die Grundregeln,
+   sonst gewinnt trotz spaeterer Position die spezifischere Regel von oben:
+   genau daran hing die 235-Pixel-Saeule bei 1280px Fensterbreite. */
+@media(max-width:1480px){
+ html[data-skin=cockpit] #grid>.card{grid-column:span 6}
+ html[data-skin=cockpit] #grid>.card:has(table){grid-column:1/-1}
+ html[data-skin=cockpit] #grid>.card:has(.stats):not(:has(table)):not(:has(.spark)):not(:has(.chead img)){
+  grid-column:span 4;
+ }
+ html[data-skin=cockpit] #grid>.card:has(.chead img){grid-column:1/-1}
+}
+@media(max-width:1000px){
+ html[data-skin=cockpit] #grid>.card,
+ html[data-skin=cockpit] #grid>.card:has(.stats):not(:has(table)):not(:has(.spark)):not(:has(.chead img)){
+  grid-column:1/-1;
+ }
+}
+/* Drei Ebenen statt einer: Grund, Karte, Innenflaeche. Der erste Anlauf legte
+   alles auf dieselbe Hoehe mit derselben Kantenstaerke, deshalb fand das Auge
+   keinen Einstieg und die Seite wirkte gleich laut ueberall. Die Karte traegt
+   jetzt einen eigenen Verlauf, eine Lichtkante oben und einen gestaffelten
+   Schatten. Das ist der Unterschied zwischen Umriss und Material. */
+html[data-skin=cockpit] .card{
+ position:relative;isolation:isolate;
+ border-radius:var(--rund);padding:var(--s2);
+ border:1px solid color-mix(in srgb,var(--txt) 9%,transparent);
+ background:
+   linear-gradient(168deg,color-mix(in srgb,var(--txt) 4%,transparent),transparent 44%),
+   var(--card);
+ box-shadow:
+   inset 0 1px 0 color-mix(in srgb,var(--white) 12%,transparent),
+   0 1px 2px rgba(0,0,0,.22),
+   0 6px 16px -8px rgba(0,0,0,.28),
+   0 22px 48px -30px rgba(0,0,0,.55);
+}
+/* Jede Karte bekommt eine echte Kopfzeile: der bisherige fette Titel wird zur
+   gesperrten Versalzeile mit Akzentkante darunter. Das ist der eine Griff, der
+   aus einer Liste von Kaesten eine gegliederte Ansicht macht. */
+/* Die Titel heissen je nach Ansicht <b>, div.char oder div.chead. Alle drei
+   nur als erstes Element der Karte. Das :not(:has(img)) haelt die
+   Charakterzeile der Live-Seite heraus: die ist ebenfalls .chead, traegt aber
+   ein Portrait und soll ein Name in Lesegroesse bleiben, keine Versalzeile. */
+/* Nur Karten MIT Kopfzeile verzichten oben auf den Innenabstand, weil die
+   Kopfzeile selbst bis an den Rand laeuft und ihren Abstand mitbringt. Vorher
+   galt padding-top:0 pauschal, dadurch klebten die Kacheln einer Karte ohne
+   Kopfzeile direkt an der Oberkante. */
+/* ACHTUNG: :has() darf kein weiteres :has() enthalten. Ein ungueltiger
+   Selektor macht die GANZE Gruppe unwirksam, auch die gueltigen Zeilen
+   daneben. Genau daran ist der erste Versuch gescheitert, ohne Fehlermeldung.
+   Die Charakterkarte wird deshalb ueber :not(:has(...)) an der Karte selbst
+   ausgeschlossen, das ist erlaubt. */
+html[data-skin=cockpit] .card:has(>.char:first-child),
+html[data-skin=cockpit] .card:has(>b:first-child){padding-top:0}
+html[data-skin=cockpit] .card:has(>.chead:first-child):not(:has(.chead img)){padding-top:0}
+html[data-skin=cockpit] .card>.char:first-child,
+html[data-skin=cockpit] .card>.chead:first-child:not(:has(img)),
+html[data-skin=cockpit] .card>b:first-child{
+ display:block;margin:0 calc(var(--s2) * -1) var(--s2);padding:var(--s2) var(--s2) var(--s1);
+ font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+ color:var(--txt);
+ border-bottom:1px solid var(--line);
+ border-radius:var(--rund) var(--rund) 0 0;
+}
+/* Der Akzentstrich NUR auf den breiten Karten. Zwanzig gleiche tuerkise
+   Striche sind kein Akzent mehr, sondern Tapete. Und die 6-Prozent-Toenung
+   war auf Weiss ohnehin unsichtbar (#F2FAFD), also lieber ganz weg. */
+html[data-skin=cockpit] #grid>.card:has(table)>b:first-child,
+html[data-skin=cockpit] #grid>.card:has(table)>.char:first-child,
+html[data-skin=cockpit] #grid>.card:has(table)>.chead:first-child:not(:has(img)){
+ box-shadow:inset 0 2px 0 var(--cyan);
+ background:color-mix(in srgb,var(--cyan) 14%,transparent);
+}
+html[data-skin=cockpit] .sub{font-size:12.5px;line-height:1.6;margin-bottom:var(--s2)}
+/* -------------------------------------------------- Kennzahlen als Kacheln */
+/* auto-fill mit Obergrenze statt auto-fit mit 1fr. Das war die eine Zeile, die
+   die leeren Rechtecke erzeugt hat: 1fr verteilt die gesamte Restbreite auf
+   die verbliebenen Kacheln, in einer breiten Karte wurden aus 158px Mindest-
+   breite ueber 600px, und darin stand dann eine einzelne Null. */
+html[data-skin=cockpit] .stats{
+ grid-template-columns:repeat(auto-fill,minmax(148px,206px));
+ justify-content:start;gap:var(--s1);margin-bottom:var(--s2);
+}
+/* Kein Rahmen mehr, nur Flaeche mit Akzentkante links. Die Zahl ist der Held
+   der Kachel: vorher stand eine 24px-Zahl in einer 89px hohen Box, das war
+   viel Rand um wenig Aussage. */
+/* Flacher und dichter: 95px Hoehe fuer eine einzelne Null war ein leeres
+   Rechteck. Die Innenflaeche liegt als dritte Ebene ueber der Karte, mit
+   eigener Lichtkante. */
+html[data-skin=cockpit] .stat{
+ border-radius:8px;padding:var(--s1) 12px;border:none;
+ background:var(--inset);
+ border-left:3px solid color-mix(in srgb,var(--dim) 34%,transparent);
+ box-shadow:inset 0 1px 0 color-mix(in srgb,var(--white) 7%,transparent);
+}
+/* Farbe wird Information statt Schmuck: die Kante nimmt die Bedeutung der
+   Zahl an, die in der Kachel steht. Vorher trug jede Kachel dieselbe
+   tuerkise Kante, damit markierte sie nichts. */
+html[data-skin=cockpit] .stat:has(.v.isk){
+ border-left-color:var(--gold);background:var(--t-gold);
+}
+html[data-skin=cockpit] .stat:has(.v.grn){
+ border-left-color:var(--green);background:var(--t-green);
+}
+html[data-skin=cockpit] .stat:has(.v.out){
+ border-left-color:var(--cyan);background:var(--t-cyan);
+}
+html[data-skin=cockpit] .stat:has(.v.red),
+html[data-skin=cockpit] .stat:has(.v.inn){
+ border-left-color:var(--red);background:var(--t-red);
+}
+html[data-skin=cockpit] .stat .l{
+ font-size:9.5px;letter-spacing:1.1px;color:var(--dim);line-height:1.3;
+ text-transform:uppercase;
+}
+html[data-skin=cockpit] .stat .v{
+ font-size:clamp(19px,1.35vw,24px);font-weight:700;margin-top:1px;line-height:1.2;
+ letter-spacing:-.3px;
+ /* NICHT break-word: das zerlegte "12.062.213 m³" mitten in der Zahl zu
+    "12.062.2" und "13 m³", was sich wie zwei Zahlen liest. Ohne die Regel
+    bricht es nur am Leerzeichen, die Zahl bleibt also am Stueck und nur die
+    Einheit rutscht notfalls in die zweite Zeile. */
+ overflow-wrap:normal;word-break:keep-all;
+}
+/* Die wichtigsten Kacheln (Bounty, Loot, Session, Tagesertrag) tragen im
+   Markup ein festes style="font-size:24px". Inline schlaegt jede Regel, ohne
+   !important bliebe genau der Blickfang der kleinste Wert der Seite. Statt
+   ihn nur einzufangen bekommt er hier den ersten Rang: groesser als die
+   uebrigen Kacheln, damit eine Rangfolge entsteht statt einer Reihe gleich
+   lauter Zahlen. */
+html[data-skin=cockpit] .stat .v[style]{
+ font-size:clamp(26px,2.1vw,36px) !important;letter-spacing:-.5px;
+ overflow-wrap:normal;word-break:keep-all;
+}
+/* Die Leitzahl nimmt zwei Spalten. Rangfolge muss in der FLAECHE sichtbar
+   sein, nicht nur im Schriftgrad: gemessen waren vorher alle Kacheln exakt
+   310x91 Pixel gross, deshalb las sich alles als gleichfoermiges Raster. */
+html[data-skin=cockpit] .stats>.stat:has(.v[style]){grid-column:span 2}
+/* Die oberste Kennzahlenreihe traegt repeat(3,1fr) INLINE im Markup. Inline
+   schlaegt jede Regel, deshalb wurden ihre Kacheln bei 1920px Fensterbreite
+   525 Pixel breit fuer eine einzelne Null. Sie darf drei Spalten behalten,
+   aber nicht beliebig weit. */
+/* Eine Zeile, so viele Spalten wie Kacheln, jede gedeckelt. Mit auto-fill
+   legte der Browser Spuren fuer die ganze Breite an und liess die
+   ueberzaehligen leer stehen, gemessen 683 Pixel weisse Flaeche neben drei
+   Kacheln. Mit fest gezaehlten Spalten stimmt auch die Breite der Karte
+   darum, die sonst auf eine einzige Spalte zusammenfiel. */
+html[data-skin=cockpit] .stats[style]{
+ grid-template-columns:none !important;
+ grid-auto-flow:column;
+ grid-auto-columns:minmax(190px,296px);
+ justify-content:start;
+}
+html[data-skin=cockpit] .stats[style]>.stat:has(.v[style]){grid-column:auto}
+/* Und die Karte darum schrumpft auf ihren Inhalt. Sie traegt im Markup
+   grid-column:1/-1, also die volle Reihe. Bei drei Kacheln zu je 296 Pixeln
+   blieben davon 683 Pixel leere weisse Flaeche rechts stehen: gemessen fuenf
+   angelegte Spuren, drei davon gefuellt. Eine Flaeche, die nichts traegt,
+   darf nicht so aussehen als gehoerte sie dazu. */
+html[data-skin=cockpit] #hero>.card:has(>.stats[style]){
+ width:fit-content;max-width:100%;
+}
+/* Das zweite Label unter dem Wert ist eine Fussnote, keine Ueberschrift */
+html[data-skin=cockpit] .stat .v+.l{font-size:9.5px;letter-spacing:.9px;margin-top:3px}
+html[data-skin=cockpit] .stat .v.isk,
+html[data-skin=cockpit] .stat .v.out{color:var(--cyan)}
+/* --------------------------------------------------------------- Tabellen */
+html[data-skin=cockpit] table{font-size:13px}
+html[data-skin=cockpit] td,
+html[data-skin=cockpit] th{padding:var(--s1) 12px;vertical-align:baseline}
+html[data-skin=cockpit] td:first-child,
+html[data-skin=cockpit] th:first-child{padding-left:0}
+html[data-skin=cockpit] td:last-child,
+html[data-skin=cockpit] th:last-child{padding-right:0}
+html[data-skin=cockpit] th{
+ font-size:10.5px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);
+ font-weight:600;padding-bottom:6px;
+}
+/* Zebra statt Linie in jeder Zeile: das Auge folgt der Flaeche leichter als
+   einem Gitter, und es nimmt der Tabelle genau das Tabellenkalkulations-
+   Aussehen. Die Trennlinien bleiben trotzdem fuer den Fall, dass jemand
+   Transparenz abgeschaltet hat. */
+html[data-skin=cockpit] tbody tr:nth-child(odd) td,
+html[data-skin=cockpit] table tr:nth-child(even) td{
+ background:color-mix(in srgb,var(--txt) 3.5%,transparent);
+}
+html[data-skin=cockpit] td{border-top-color:color-mix(in srgb,var(--line) 55%,transparent)}
+html[data-skin=cockpit] td.r{color:var(--txt);font-weight:500}
+/* Abschnittsmarken bekommen eine Linie, die bis zum Rand laeuft. Sie sind die
+   einzige Gliederung innerhalb einer Karte und waren vorher nur grauer Text. */
+html[data-skin=cockpit] .sect{
+ font-size:10px;letter-spacing:1.4px;color:var(--dim);
+ margin:var(--s3) 0 var(--s1);padding-bottom:var(--s1);font-weight:600;
+}
+/* Steht ein Abschnitt ganz oben in einer Karte, addiert sich sein Abstand auf
+   den Innenrand der Karte: gemessen 41 statt 17 Pixel. Der erste braucht ihn
+   nicht, die Karte polstert bereits. */
+html[data-skin=cockpit] .card>.sect:first-child{margin-top:0}
+html[data-skin=cockpit] .sect+.sect{margin-top:var(--s2)
+ border-bottom:1px solid color-mix(in srgb,var(--line) 70%,transparent);
+}
+/* Der Charaktername ist die Ueberschrift seiner Karte und muss als solche
+   lesbar sein, nicht als eine Zeile unter vielen. */
+html[data-skin=cockpit] .chead b,
+html[data-skin=cockpit] .cname,
+html[data-skin=cockpit] .chead>span:first-of-type{
+ font-size:16px;font-weight:700;letter-spacing:-.2px;
+}
+html[data-skin=cockpit] .chead{
+ padding:var(--s2) 0 var(--s1);gap:var(--s1);
+ border-bottom:1px solid var(--line);margin-bottom:var(--s2);
+}
+/* Zahlenspalten in Tabellen sind der Grund, warum jemand herschaut. Etwas
+   mehr Gewicht, damit sie sich vom Beschriftungstext daneben abheben. */
+html[data-skin=cockpit] td.r{font-weight:550;letter-spacing:-.2px}
+/* Hier stand .isk{color:var(--cyan)}. Das hat die Grundregel ueberschrieben,
+   in der ISK-Betraege Gold tragen, und damit die zweite Farbe der Oberflaeche
+   geloescht: ISK und Volumen sahen danach gleich aus, obwohl das die beiden
+   wichtigsten Groessen sind. Gold bleibt Gold. */
+/* ------------------------------------------------------- Barrierefreiheit */
+/* Ohne sichtbaren Fokus weiss niemand, der mit der Tastatur bedient, wo er
+   steht. Im Klassik-Skin steht dort outline:none, das ist ein echter Mangel
+   und keine Geschmacksfrage. */
+html[data-skin=cockpit] :focus-visible{
+ outline:2px solid var(--cyan);outline-offset:2px;border-radius:6px;
+}
+html[data-skin=cockpit] .btn{border-radius:8px;font-size:12.5px;padding:6px 13px}
+/* Modale Fenster mittig. Der globale Reset *{margin:0} nimmt dem Browser das
+   margin:auto, mit dem er sie sonst zentriert, deshalb kleben sie oben links.
+   Gemessen bei 1280px Fensterbreite: Dialog 620px breit, linker Rand 0 statt
+   330. Im Cockpit stuende er damit auch noch auf der Seitenleiste. */
+html[data-skin=cockpit] dialog{margin:auto}
+/* ------------------------------------------------------------ Sternenkarte */
+/* Die Karte der Blutspur traegt inline width:100%;height:auto und ein
+   viewBox von 1000x700. Auf einem breiten Monitor waechst sie damit
+   ungebremst mit: bei 2000px Fensterbreite waeren das rund 1400px Hoehe, also
+   zwei Bildschirmhoehen fuer eine Uebersicht. Sie wird deshalb nach der HOEHE
+   begrenzt und mittig gestellt, das Seitenverhaeltnis behaelt das SVG selbst.
+   Das !important ist noetig, weil die Breite inline im Markup steht. */
+html[data-skin=cockpit] #packBox svg{
+ width:auto !important;max-width:100%;
+ /* 520px waren zu knapp, die Systemnamen ruecken dann ineinander. 78vh laesst
+    die Karte gross wirken und passt trotzdem mit Kopfzeile auf einen Schirm. */
+ max-height:min(78vh,760px);
+ display:block;margin:0 auto;
+ border-radius:10px;
+}
+@media (prefers-reduced-motion:reduce){
+ html[data-skin=cockpit] *{
+  animation-duration:.001ms !important;animation-iteration-count:1 !important;
+  transition-duration:.001ms !important;
+ }
+}
+/* Schmales Fenster: die Leiste kostet dort mehr als sie bringt, also zurueck
+   in die Zeile. Genau die Breite, ab der zwei Karten nicht mehr nebeneinander
+   passen, sonst bliebe fuer den Inhalt kaum Platz. */
+@media (max-width:1000px){
+ html[data-skin=cockpit] body{padding:0 12px 30px}
+ html[data-skin=cockpit] nav{
+  position:sticky;top:0;left:auto;bottom:auto;width:auto;height:auto;
+  flex-direction:row;padding:6px 0;border-right:none;
+  border-bottom:1px solid var(--line);overflow-x:auto;
+ }
+ html[data-skin=cockpit] nav::before{display:none}
+ html[data-skin=cockpit] nav span.on{box-shadow:inset 0 -3px 0 var(--cyan)}
+}
+
 .pinear{display:flex;align-items:baseline;gap:10px;padding:4px 0;flex-wrap:wrap}
 .pinearmid{min-width:200px}
 .pitier{display:inline-block;font-size:9px;font-weight:700;line-height:1;padding:2px 4px;border-radius:4px;margin-left:4px;vertical-align:middle;border:1px solid currentColor;opacity:.9}
@@ -8111,6 +8650,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   <div class="sect">🎨 Darstellung</div>
   <label><input type="radio" name="skin" value=""> Klassisch (das gewohnte Canary-Design)</label>
   <label><input type="radio" name="skin" value="photon"> Photon (angelehnt ans EVE-Interface: dunkel, kantig, Gold-Akzente)</label>
+  <label><input type="radio" name="skin" value="cockpit"> Cockpit (neu, in Erprobung: Seitenleiste statt Reiterzeile, größere Schrift, mehr Luft, höhere Kontraste)</label>
   <div class="btnrow"><button class="btn" id="ovBtn">◱ Mini-Overlay öffnen/schließen</button></div>
   <div class="hint">Das Overlay ist ein schwebendes Always-on-top-Fenster mit Status und Alarmen,
   bleibt über dem EVE-Client (Fenstermodus/randlos). In Chrome und Edge klickbar, in Firefox als Bild. Start nur per Klick.</div>
@@ -9906,29 +10446,64 @@ function packAge(sec,en){
  const t=m<90?m+' min':Math.round(m/60)+' h';
  return en?(t+' ago'):('vor '+t);
 }
+// Sicherheitsfarben wie im Spiel: EVE faerbt den Status in festen Stufen, und
+// jeder Spieler liest sie im Schlaf. Eine eigene Skala waere hier nur
+// Eigensinn, deshalb genau diese Werte.
+function secFarbe(s){
+ if(s==null)return '#8a99ab';
+ if(s>=0.95)return '#2fefef';
+ if(s>=0.85)return '#48f0c0';
+ if(s>=0.75)return '#00ef47';
+ if(s>=0.65)return '#00f000';
+ if(s>=0.55)return '#8fef2f';
+ if(s>=0.45)return '#efef00';
+ if(s>=0.35)return '#d77700';
+ if(s>=0.25)return '#f06000';
+ if(s>=0.15)return '#f04800';
+ if(s>0)     return '#d73000';
+ return '#f00000';
+}
 function packMapSvg(mp,en){
  const S=mp.systems||[];
+ // Die Karte bleibt schwarz, auch im hellen Thema. Eine Sternenkarte ist im
+ // Spiel schwarz, und der Sicherheitsstatus ist nur auf dunklem Grund zu
+ // lesen: 0.5-Gelb auf Weiss kaeme auf keinen brauchbaren Kontrast.
+ const grund=`<rect x="0" y="0" width="1000" height="700" fill="#04070c"/>`;
  const edges=(mp.edges||[]).map(e=>{const a=S[e[0]],b=S[e[1]];
-  return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" style="stroke:var(--line)" stroke-width="1.2"/>`;}).join('');
+  return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#2b7f96" stroke-width="1" stroke-opacity=".85"/>`;}).join('');
  // Kill-Spur je Rudel: verbundene Segmente, aeltere Abschnitte blasser.
  const trails=(mp.trails||[]).map(t=>{
   let seg='';
   for(let i=1;i<t.pts.length;i++){const a=t.pts[i-1],b=t.pts[i];
    const op=Math.max(0.25,1-(a.age/7200));
-   seg+=`<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" style="stroke:var(--red)" stroke-width="2.5" stroke-opacity="${op.toFixed(2)}"/>`;}
+   // Feste Rotwerte statt var(--red): auf dem schwarzen Kartengrund muss die
+   // Spur in beiden Themen gleich kraeftig stehen.
+   seg+=`<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#ff4136" stroke-width="2.2" stroke-opacity="${op.toFixed(2)}"/>`;}
   if(t.pts.length){const last=t.pts[t.pts.length-1];
-   seg+=`<circle cx="${last.x}" cy="${last.y}" r="7" fill="none" style="stroke:var(--red)" stroke-width="2.5"><title>${esc(t.label)}</title></circle>`;}
+   seg+=`<circle cx="${last.x}" cy="${last.y}" r="7" fill="none" stroke="#ff4136" stroke-width="2.2"><title>${esc(t.label)}</title></circle>`;}
   return seg;}).join('');
  const arrows=(mp.arrows||[]).map(a=>
-  `<line x1="${a.x1}" y1="${a.y1}" x2="${a.x2}" y2="${a.y2}" style="stroke:var(--red)" stroke-width="2" stroke-dasharray="6 4"><title>${en?'estimated from kill order':'aus Kill-Reihenfolge geschätzt'}</title></line>`).join('');
+  `<line x1="${a.x1}" y1="${a.y1}" x2="${a.x2}" y2="${a.y2}" stroke="#ff4136" stroke-width="1.8" stroke-dasharray="6 4"><title>${en?'estimated from kill order':'aus Kill-Reihenfolge geschätzt'}</title></line>`).join('');
  const dots=S.map(s=>{
-  const sec=s.sec>=0.45?'var(--green)':(s.sec>0?'var(--gold)':'var(--red)');
-  const heat=s.heat?`<circle cx="${s.x}" cy="${s.y}" r="${Math.min(9+s.heat*2,20)}" style="fill:var(--red)" fill-opacity="0.16"/>`:'';
-  const own=s.own?`<circle cx="${s.x}" cy="${s.y}" r="11" fill="none" style="stroke:var(--cyan)" stroke-width="2.5"/>`:'';
-  const pk=(s.packs&&s.packs.length)?`<text x="${s.x}" y="${s.y-13}" text-anchor="middle" style="font-size:13px">🩸</text>`:'';
-  return heat+own+`<circle cx="${s.x}" cy="${s.y}" r="4.5" style="fill:${sec}"><title>${esc(s.name||'')} · Sec ${s.sec!=null?s.sec:'?'}${s.jumps!=null?` · ${s.jumps} ${en?'jumps':'Sprünge'}`:''}${s.heat?` · ${s.heat} Kills/2h`:''}</title></circle>`+pk
-   +`<text x="${s.x}" y="${s.y+19}" text-anchor="middle" style="fill:var(--${s.own?'cyan':'dim'});font-size:10px">${esc(s.name||'')}</text>`;}).join('');
- return `<div style="overflow-x:auto"><svg viewBox="0 0 1000 700" style="width:100%;height:auto">${edges}${trails}${arrows}${dots}</svg></div>`
+  const sf=secFarbe(s.sec);
+  const heat=s.heat?`<circle cx="${s.x}" cy="${s.y}" r="${Math.min(9+s.heat*2,20)}" fill="#ff3b30" fill-opacity="0.18"/>`:'';
+  // Eigener Standort wie im Spiel: heller Punkt mit Hof, nicht nur ein Ring.
+  const own=s.own?`<circle cx="${s.x}" cy="${s.y}" r="13" fill="#7fd8ff" fill-opacity=".14"/>`
+    +`<circle cx="${s.x}" cy="${s.y}" r="8" fill="none" stroke="#cfefff" stroke-width="1.6"/>`:'';
+  // fill ausdruecklich setzen: auf dem schwarzen Kartengrund erbte das Zeichen
+  // sonst Schwarz und war unsichtbar, gemessen rgb(0,0,0).
+  const pk=(s.packs&&s.packs.length)?`<text x="${s.x}" y="${s.y-11}" text-anchor="middle" fill="#ff4136" style="font-size:13px">🩸</text>`:'';
+  const nm=esc(s.name||'');
+  // Name und Sicherheitsstatus nebeneinander, der Status in seiner Farbe:
+  // genau die Anordnung, die man aus der Sternenkarte kennt.
+  const beschriftung=`<text x="${s.x+8}" y="${s.y+4}" style="font-size:11px;`
+   +`font-family:Consolas,'Cascadia Mono',monospace;fill:${s.own?'#eaf6ff':'#b9c9d6'}">`
+   +`${nm}${s.sec!=null?` <tspan fill="${sf}">${(+s.sec).toFixed(1)}</tspan>`:''}</text>`;
+  return heat+own
+   +`<circle cx="${s.x}" cy="${s.y}" r="3.2" fill="${sf}"><title>${nm} · Sec ${s.sec!=null?s.sec:'?'}`
+   +`${s.jumps!=null?` · ${s.jumps} ${en?'jumps':'Sprünge'}`:''}${s.heat?` · ${s.heat} Kills/2h`:''}</title></circle>`
+   +pk+beschriftung;}).join('');
+ return `<div style="overflow-x:auto"><svg viewBox="0 0 1000 700" style="width:100%;height:auto">${grund}${edges}${trails}${arrows}${dots}</svg></div>`
   +`<div class="sub">${en?'dot = system (colour = sec) · red halo = kills last 2h · cyan ring = you · red line = pack kill trail · 🩸 = pack last seen here':'Punkt = System (Farbe = Sec) · roter Halo = Kills der letzten 2h · Cyan-Ring = du · rote Linie = Kill-Spur des Rudels · 🩸 = Rudel zuletzt hier'}</div>`;
 }
 function renderBlutspur(bs){
@@ -10617,7 +11192,8 @@ function renderMissions(d){
     ${(x.logi_out||x.logi_in)?`<div class="sub">🔗 ${lang==='en'?'Remote assistance':'Fernunterstützung'}: ${fmt(x.logi_out||0)} ${lang==='en'?'given':'gegeben'} · ${fmt(x.logi_in||0)} ${lang==='en'?'received':'bekommen'}</div>`:''}
     ${(x.npc&&x.npc.length)?`<div class="npc">${x.npc.map(l=>`<div>💬 ${esc(l)}</div>`).join('')}</div>`:''}
     <div class="sub" style="margin-top:6px">${x.loot_isk!=null?'Loot: <b class="isk">'+fmtM(x.loot_isk)+'</b>':''}
-     <span class="mloottoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px">${x.loot_isk!=null?'✎ Loot ändern':'＋ Loot eintragen'}</span></div>
+     <span class="mloottoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px">${x.loot_isk!=null?'✎ Loot ändern':'＋ Loot eintragen'}</span>
+     <span class="mreopen" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--dim);font-size:11px;margin-left:10px" title="Andocken ist kein sicherer Abschluss. Wer nur kurz zum Reparieren reingeflogen ist, holt die Mission hiermit zurück und der weitere Kampf zählt dazu.">↩ Läuft doch noch</span></div>
     <div class="mlootedit" data-mid="${esc(x.mid)}" hidden>
      <textarea class="mlootin" data-mid="${esc(x.mid)}" rows="2" style="width:100%;margin-top:4px" placeholder="Frachtraum-Loot dieser Mission hier einfügen (im Spiel Strg+A, Strg+C)">${esc(x.loot_text)}</textarea>
      <div class="btnrow" style="margin-top:4px"><button class="btn mlootgo" data-mid="${esc(x.mid)}">Loot bewerten</button> <span class="mlootstat sub" data-mid="${esc(x.mid)}"></span></div>
@@ -10698,6 +11274,24 @@ function renderMissions(d){
         +(en2?'enter the loot below':'Loot unten eintragen'));
    setTimeout(tick,600);
   }else setz(r.msg||(en2?'Nothing to save':'Nichts zu speichern'));
+ });
+ document.querySelectorAll('.mreopen').forEach(t=>t.onclick=async()=>{
+  const en3=lang==='en';
+  // Vorher fragen: der Eintrag verschwindet aus der Liste, und ein bereits
+  // eingetragener Loot geht mit. Das ist keine Kleinigkeit, die man
+  // versehentlich anklickt.
+  if(!confirm(en3
+   ?'Take this run back into the current session? The entry disappears from the list and reappears when the run really ends. Loot you already entered is lost.'
+   :'Diesen Einsatz zurück in die laufende Sitzung holen? Der Eintrag verschwindet aus der Liste und entsteht neu, wenn der Einsatz wirklich endet. Bereits eingetragener Loot geht dabei verloren.'))return;
+  t.textContent=en3?'Taking back …':'Hole zurück …';
+  let r;try{r=await post({action:'mission_reopen',mid:t.dataset.mid});}catch(e){r=null;}
+  if(r&&r.ok){
+   t.textContent=r.sitzung_aktiv
+    ?(en3?'✓ back in the session':'✓ zurück in der Sitzung')
+    :(en3?'✓ removed (character offline, no session to continue)'
+         :'✓ entfernt (Char offline, es läuft keine Sitzung mehr)');
+   setTimeout(()=>tick(),1200);
+  }else t.textContent=en3?'failed':'hat nicht geklappt';
  });
  document.querySelectorAll('.mloottoggle').forEach(t=>t.onclick=()=>{
   const box=[...document.querySelectorAll('.mlootedit')].find(e=>e.dataset.mid===t.dataset.mid);
