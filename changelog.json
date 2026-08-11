@@ -1,5 +1,21 @@
 [
  {
+  "v": "1.82.0",
+  "d": "2026-08-11",
+  "de": [
+   "Der Abschluss einer Mission sagt jetzt, ob sie an der Station oder aus der Ferne abgegeben wurde: „Mission abgeschlossen“ gegen „Mission remote abgeschlossen“.",
+   "Erkannt wird das am Anflug zum Andock-Perimeter. Das ist das einzige Andock-Signal, das in beiden Sprachen wirklich im Log steht. Die englische Bestaetigung „Your docking request has been accepted“ kommt in einem englischen Logbestand 13.749 mal vor, in 13 echten deutschen Logdateien dagegen kein einziges Mal. Der Anflug dagegen steht in beiden: „Setting course to docking perimeter“ und „Setze Kurs zum Andock-Perimeter“.",
+   "Damit das nicht danebenliegt, verfaellt der Zustand wieder, sobald Erz oder Schaden im Log auftaucht. Wer den Anflug abbricht und weiterkaempft, gilt also korrekt als draussen. An sechs Faellen geprueft, darunter beide Sprachen, abgebrochener Anflug und Anflug mit anschliessendem Abdocken.",
+   "Danke an Nirahse fuer die Idee und an butze fuers Nachhaken, ob es die deutsche Meldung nicht doch gibt. Genau deshalb wurde nachgemessen statt geraten."
+  ],
+  "en": [
+   "Finishing a mission now says whether it was handed in at a station or remotely: “Mission completed” versus “Mission completed remotely”.",
+   "This is detected from the approach to the docking perimeter, the only docking signal that actually appears in the log in both languages. The English confirmation “Your docking request has been accepted” shows up 13,749 times in one English set of logs, but not once in 13 real German log files. The approach line exists in both.",
+   "To keep it honest the state expires as soon as ore or damage shows up in the log again, so anyone who aborts the approach and keeps fighting counts as being outside. Verified across six cases, including both languages, an aborted approach and an approach followed by undocking.",
+   "Thanks to Nirahse for the idea and to butze for pushing back on whether the German message exists after all. That is exactly why it was measured instead of guessed."
+  ]
+ },
+ {
   "v": "1.81.1",
   "d": "2026-08-11",
   "de": [

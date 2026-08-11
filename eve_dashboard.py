@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.81.1"
+VERSION = "1.82.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -1837,6 +1837,7 @@ class CharSession:
         self.lost_m3 = 0.0        # in dieser Session durch Stillstand/Drosselung entgangenes Erz-Volumen
         self._lost_ts = None      # letzter Verrechnungs-Zeitpunkt des Verlustzaehlers
         self.traveling = None     # ts des letzten Dock-/Warp-Signals -> Verlust pausiert
+        self.dock_ts = None       # ts des letzten Anflugs zur Station (siehe feed)
         self.gaps = deque(maxlen=40)  # letzte Abstaende zwischen Erz-Events (lernt Drohnen-Zyklen)
         # Drohnen-Erkennung: Mining-Drohnen liefern mehrere kleine Erz-Portionen
         # dicht beieinander (ein Zyklus = alle Drohnen fast gleichzeitig). Bleiben
@@ -1884,10 +1885,20 @@ class CharSession:
             self.traveling = ev["ts"]
             if ev["key"] == "dock":
                 self.core_break = ev["ts"]   # an der Station laeuft kein Kern
+                # Anflug zur Station gemerkt. Das ist das EINZIGE Andock-Signal,
+                # das in beiden Sprachen belegt ist: "Setting course to docking
+                # perimeter" bzw. "Setze Kurs zum Andock-Perimeter". Die
+                # eigentliche Bestaetigung ("docking request has been accepted")
+                # schreibt nur der englische Client, in 13 deutschen Logdateien
+                # kommt sie kein einziges Mal vor. Daran haengt die Unterscheidung,
+                # ob eine Mission an der Station oder aus der Ferne abgeschlossen
+                # wurde.
+                self.dock_ts = ev["ts"]
             return
         if k == "ore":
             self.cargo_full = False
             self.traveling = None   # es kommt Erz -> wieder aktiv am Guertel
+            self.dock_ts = None     # und damit nachweislich nicht in der Station
             if self.last_ore_ts:
                 gap = ev["ts"] - self.last_ore_ts
                 if 0 < gap < 900:
@@ -1930,6 +1941,9 @@ class CharSession:
         elif k == "dmg_out":
             self.dmg_out += ev["value"]
             self.hits_out += 1
+            # Wer schiesst, steht nicht in der Station: ein zuvor begonnener
+            # Anflug wurde also abgebrochen.
+            self.dock_ts = None
             if self.mission_system is None:   # Ort des ersten Kampfes = Missionsort
                 self.mission_system = self.system
             self.targets[ev["key"]] = self.targets.get(ev["key"], 0) + ev["value"]
@@ -1996,6 +2010,7 @@ class CharSession:
             self.cargo_full = False  # angedockt/gehandelt -> Frachtraum-Warnung hinfaellig
             self.lasers_off = {}     # an der Station sind alle Module ohnehin aus
             self.traveling = None    # Undock/Trade -> Reise-Zustand zuruecksetzen
+            self.dock_ts = None      # abgedockt: ab jetzt wieder draussen
             if ev["key"] == "dock":
                 # Station-Stopp: Karte beginnt einen neuen Trip, sonst zeigen
                 # ISK/Erz-Werte laengst abgeladene Ladung an. Historie (DB)
@@ -7385,9 +7400,14 @@ class Handler(BaseHTTPRequestHandler):
             char = str(body.get("char") or "")
             jetzt = time.time()
             gespeichert = None
+            an_station = False
             with ingest.lock:
                 s = next((x for x in ingest.sessions.values() if x.name == char), None)
                 if s:
+                    # Anflug zur Station gesehen und seither weder Erz noch
+                    # Schaden? Dann steht der Pilot dort, die Mission wird also
+                    # nicht aus der Ferne abgegeben.
+                    an_station = s.dock_ts is not None
                     md = s.mission_dict(jetzt)
                     if md:
                         md["dialog"] = " ".join(chatwatch.dialogue(
@@ -7403,7 +7423,8 @@ class Handler(BaseHTTPRequestHandler):
                 mins = max(1, round((gespeichert["end_ts"] - gespeichert["start_ts"]) / 60))
                 self._send(json.dumps({
                     "ok": True, "saved": True, "mid": f"{gespeichert['char_id']}:{int(gespeichert['start_ts'])}",
-                    "min": mins, "bounty": gespeichert["bounty"], "kills": gespeichert["kills"]}))
+                    "min": mins, "bounty": gespeichert["bounty"], "kills": gespeichert["kills"],
+                    "docked": an_station}))
             else:
                 self._send(json.dumps({"ok": True, "saved": False,
                                        "msg": "Kein Kampf seit dem letzten Abdocken."
@@ -10519,13 +10540,14 @@ function renderMissions(d){
   let r;try{r=await post({action:'mission_close',char});}catch(e){r=null;}
   if(!r||!r.ok){setz(en2?'Server not reachable':'Server nicht erreichbar');return;}
   if(r.saved){
-   // Sagt, was tatsaechlich gespeichert wurde, und nennt gleich den naechsten
-   // Schritt. Ob dabei angedockt war oder nicht, behauptet Canary bewusst
-   // nicht: die Andock-Meldung steht nur im englischen Client zuverlaessig im
-   // Log, in echten deutschen Logs kommt sie gar nicht vor.
-   setz(en2
-     ? `✅ Mission completed · ${r.min} min · ${fmtM(r.bounty)} bounty · enter the loot below`
-     : `✅ Mission abgeschlossen · ${r.min} min · ${fmtM(r.bounty)} Bounty · Loot unten eintragen`);
+   // Ob an der Station oder aus der Ferne, erkannt am Anflug zum Andock-
+   // Perimeter. Das ist das einzige Andock-Signal, das in beiden Sprachen im
+   // Log steht, die englische Bestaetigung gibt es auf Deutsch nicht.
+   const wo=r.docked
+     ? (en2?'Mission completed':'Mission abgeschlossen')
+     : (en2?'Mission completed remotely':'Mission remote abgeschlossen');
+   setz(`✅ ${wo} · ${r.min} min · ${fmtM(r.bounty)} ${en2?'bounty':'Bounty'} · `
+        +(en2?'enter the loot below':'Loot unten eintragen'));
    setTimeout(tick,600);
   }else setz(r.msg||(en2?'Nothing to save':'Nichts zu speichern'));
  });
