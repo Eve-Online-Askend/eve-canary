@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.82.0"
+VERSION = "1.83.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -2217,6 +2217,29 @@ class CharSession:
             self.dmg_min.append([minute, {"out": 0, "in": 0}])
         self.dmg_min[-1][1][side] += val
 
+    def reset_combat(self, ts=None):
+        """Kampfzaehler auf null und einen neuen Einsatz beginnen.
+
+        Wird beim Anflug zur Station und bei der Rueckkehr aus dem Abyss
+        gebraucht. Ohne das Zuruecksetzen wuerde der naechste Einsatz die Werte
+        des vorigen mitschleppen.
+
+        ts ist der Zeitstempel AUS DEM LOG, nicht die aktuelle Uhrzeit. Beim
+        einmaligen Neueinlesen alter Logs wuerde sonst jeder Einsatz auf heute
+        datiert."""
+        self.weapons = {}
+        self.targets = {}
+        self.attackers = {}
+        self.bounty = 0
+        self.kills = 0
+        self.dmg_out = self.dmg_in = 0
+        self.hits_out = self.miss_out = self.miss_in = 0
+        self.ewar = {}
+        self.logi_out = {}
+        self.logi_in = {}
+        self.mission_system = None
+        self.first_ts = ts if ts is not None else time.time()
+
     def mission_dict(self, end_ts):
         """Die gerade abgeschlossene Mission als Datensatz — oder None, wenn
         seit dem letzten Undock kein Kampf stattfand (z.B. reiner Mining-Trip).
@@ -2241,6 +2264,17 @@ class CharSession:
                 "ewar": sorted(self.ewar.items(), key=lambda x: -x[1]),
                 "logi_out": sum(self.logi_out.values()),
                 "logi_in": sum(self.logi_in.values())}
+
+
+def mission_hinweis(cname, md):
+    """Text des Hinweises, wenn ein Einsatz von selbst abgeschlossen wurde.
+
+    Ohne ihn saehe man nur, dass die Live-Zahlen ploetzlich auf null stehen,
+    und wuesste nicht, dass sie im Verlauf gelandet sind."""
+    isk = f"{round(md['bounty']):,}".replace(",", ".")
+    k = md["kills"]
+    return (f"{cname}: Einsatz abgeschlossen ({k} Kill{'' if k == 1 else 's'}, "
+            f"{isk} ISK Kopfgeld). Loot lässt sich jetzt eintragen.")
 
 
 # ---------------------------------------------------------------- Ingest
@@ -2410,6 +2444,31 @@ class Ingest(threading.Thread):
                     self.last_scan = 0  # Datei weg? Beim nächsten Tick voll scannen
                     return
             newest = {cid: f for f, cid in self.live_files}
+        # Rueckkehr aus dem Abyss abarbeiten, die der Chat-Thread vorgemerkt hat.
+        # Hier ist der richtige Ort: dieser Thread haelt die Sperren ohnehin in
+        # fester Reihenfolge, und er laeuft im selben Takt wie die Kampfzeilen.
+        # Der Abyss endet nicht mit einem Andocken, sondern mit dem Ruecksprung
+        # ins normale All, deshalb gaebe es sonst nie einen Abschluss.
+        with chatwatch.lock:
+            abyss_fertig, chatwatch.abyss_ende = chatwatch.abyss_ende, []
+        for a_cid, a_ts in abyss_fertig:
+            with self.lock:
+                a_sess = self.sessions.get(a_cid)
+            if not a_sess:
+                continue
+            a_md = a_sess.mission_dict(a_ts)
+            if a_md:
+                a_md["dialog"] = " ".join(chatwatch.dialogue(
+                    a_cid, a_md["start_ts"], a_ts))[:2000] or None
+                save_mission(a_md)
+                a_sess.reset_combat(a_ts)
+                # Nur bei frischer Rueckkehr melden, nicht beim einmaligen
+                # Nachlesen alter Logs: sonst prasseln beim Neuaufbau hunderte
+                # Hinweise auf einmal herein.
+                if time.time() - a_ts < 300 and (a_md["bounty"] or a_md["kills"]):
+                    alerts.push("mission", a_sess.name,
+                                mission_hinweis(a_sess.name, a_md))
+
         done = 0
         for f, cid, st in sorted(files, key=lambda x: x[2].st_mtime):
             # Fertig gelesene Alt-Dateien ohne Datenbank-Zugriff überspringen.
@@ -2508,6 +2567,32 @@ class Ingest(threading.Thread):
                         if ev:
                             batch.append(ev)
                             if sess:
+                                # Anflug zur Station beendet den Einsatz, ohne dass
+                                # man erst wieder abdocken muss. Damit steht die
+                                # Mission sofort in der Liste und der Loot laesst
+                                # sich eintragen, solange man noch drin steht.
+                                # An echten Logs geprueft: nach 53 von 53 eigenen
+                                # und 1.740 von 1.743 fremden Anfluegen kam kein
+                                # Kampf mehr. Die drei Ausnahmen lagen alle mehr
+                                # als zwei Minuten spaeter.
+                                if ev["kind"] == "travel" and ev["key"] == "dock":
+                                    md = sess.mission_dict(ev["ts"])
+                                    if md:
+                                        md["dialog"] = " ".join(chatwatch.dialogue(
+                                            cid, md["start_ts"], ev["ts"]))[:2000] or None
+                                        missions_done.append(md)
+                                        sess.reset_combat(ev["ts"])
+                                        # Ohne Hinweis waere nur zu sehen, dass die
+                                        # Live-Zahlen ploetzlich auf null stehen.
+                                        # Der Hinweis sagt, wohin sie gewandert sind
+                                        # und dass jetzt der Loot dazu passt.
+                                        # Nicht beim Nachlesen alter Logs melden:
+                                        # sonst prasseln beim einmaligen Neuaufbau
+                                        # hunderte Hinweise auf einmal herein.
+                                        if (not catch_up and now - ev["ts"] < 600
+                                                and (md["bounty"] or md["kills"])):
+                                            alerts.push("mission", cname,
+                                                        mission_hinweis(cname, md))
                                 # Undock schliesst die vorige Mission ab -> erfassen,
                                 # BEVOR feed() die Kampfwerte der Session zuruecksetzt.
                                 if ev["kind"] == "hold_reset" and ev["key"] == "dock":
@@ -2648,6 +2733,9 @@ class ChatWatch(threading.Thread):
         # laesst. Steht der Charakter wieder in einem echten System, fliegt der
         # Eintrag raus.
         self.abyss_seit = {}
+        # Rueckkehr aus dem Abyss, vorgemerkt fuer den Log-Thread: [(char_id, ts)].
+        # Der arbeitet die Liste ab und schliesst den Durchgang als Einsatz ab.
+        self.abyss_ende = []
         self.npc = {}          # char_id -> deque[(ts, text)] NPC-/Missions-Funk (Absender "Message")
         self.offsets = {}      # file -> offset
         self.started_full = False
@@ -2676,7 +2764,15 @@ class ChatWatch(threading.Thread):
             return
         if nm in sys_names() or WH_SYS_RE.match(nm):
             self.systems[cid] = nm
-            self.abyss_seit.pop(cid, None)
+            # Rueckkehr aus dem Abyss: das ist das Ende des Durchgangs. Der Lauf
+            # wird hier NICHT selbst abgeschlossen, sondern nur vorgemerkt. Grund
+            # ist die Sperrenreihenfolge: der Log-Thread haelt beim Verarbeiten
+            # seine eigene Sperre und greift dabei auf die Chat-Daten zu. Wuerde
+            # dieser Thread umgekehrt nach der Log-Sperre greifen, koennten sich
+            # beide gegenseitig blockieren, ausgerechnet im Moment der Rueckkehr.
+            if self.abyss_seit.pop(cid, None) is not None:
+                with self.lock:
+                    self.abyss_ende.append((cid, time.time()))
             return
         self.systems[cid] = ABYSS_ORT
         if cid not in self.abyss_seit:
@@ -5910,10 +6006,36 @@ def parse_calc_text(text):
 
 
 def calc_hubs(text):
+    """Belt-Auswertung, roh und komprimiert nebeneinander.
+
+    Komprimieren ist in STUECK 1:1, der Gewinn steckt allein im Stueckvolumen.
+    An 92 Tagespaaren aus echten Daten nachgemessen: alle 92 lagen bei 1:1.
+    Der Faktor beim Volumen ist aber NICHT ueberall 100, 39 Sorten schrumpfen
+    nur auf ein Zehntel. Deshalb wird das echte Volumen des komprimierten Typs
+    genommen und nicht durch eine feste Zahl geteilt.
+
+    26 Sorten (Eis, Mutanite, Polygypsum) haben gar keine komprimierte Form.
+    Fuer die gelten weiter die Rohwerte, gekennzeichnet mit comp=False."""
     items, unknown = parse_calc_text(text)
     if not items:
         return {"ok": True, "items": [], "unknown": unknown}
+
+    def comp_of(n):
+        return ORE_TYPES.get("Compressed " + n)
+
     ids = {ORE_TYPES[n]["typeID"] for n in items}
+    ids |= {c["typeID"] for c in (comp_of(n) for n in items) if c}
+
+    def preis(pm, n, idx, komprimiert):
+        """Preis je Stueck. Fehlt der komprimierte Preis, gilt der rohe: lieber
+        die zweitbeste belegte Zahl als eine erfundene."""
+        c = comp_of(n) if komprimiert else None
+        if c:
+            p = pm.get(c["typeID"])
+            if p and p[idx]:
+                return p[idx]
+        return pm.get(ORE_TYPES[n]["typeID"], (0, 0))[idx]
+
     hubs, jita = {}, {}
     for rid, rname in REGIONS.items():
         try:
@@ -5924,17 +6046,30 @@ def calc_hubs(text):
         if rid == "10000002":
             jita = pm
         hubs[rid] = {"name": rname,
-                     "buy": round(sum(q * pm.get(ORE_TYPES[n]["typeID"], (0, 0))[0]
+                     "buy": round(sum(q * preis(pm, n, 0, False)
                                       for n, q in items.items())),
-                     "sell": round(sum(q * pm.get(ORE_TYPES[n]["typeID"], (0, 0))[1]
-                                       for n, q in items.items()))}
-    rows = [{"name": n, "qty": q,
-             "m3": round(q * ORE_TYPES[n].get("volume", 0)),
-             "isk": round(q * jita.get(ORE_TYPES[n]["typeID"], (0, 0))[0])}
-            for n, q in items.items()]
-    rows.sort(key=lambda r: -r["isk"])
+                     "sell": round(sum(q * preis(pm, n, 1, False)
+                                       for n, q in items.items())),
+                     "cbuy": round(sum(q * preis(pm, n, 0, True)
+                                       for n, q in items.items())),
+                     "csell": round(sum(q * preis(pm, n, 1, True)
+                                        for n, q in items.items()))}
+    rows = []
+    for n, q in items.items():
+        c = comp_of(n)
+        vol = ORE_TYPES[n].get("volume", 0)
+        cvol = c.get("volume", 0) if c else vol
+        rows.append({"name": n, "qty": q,
+                     "m3": round(q * vol),
+                     "cm3": round(q * cvol, 1),
+                     "isk": round(q * preis(jita, n, 0, False)),
+                     "cisk": round(q * preis(jita, n, 0, True)),
+                     "comp": bool(c)})
+    rows.sort(key=lambda r: -r["cisk"])
     return {"ok": True, "items": rows, "hubs": hubs, "unknown": unknown,
-            "m3": round(sum(r["m3"] for r in rows))}
+            "m3": round(sum(r["m3"] for r in rows)),
+            "cm3": round(sum(r["cm3"] for r in rows), 1),
+            "ohne_comp": [r["name"] for r in rows if not r["comp"]]}
 
 
 def resolve_item_ids(names):
@@ -7650,6 +7785,7 @@ nav span.on{color:var(--cyan);border-bottom:2px solid var(--cyan)}
 .alert.pi{border-color:var(--gold);color:var(--gold);font-weight:600}
 .alert.pack{border-color:var(--red);color:var(--red);font-weight:600}
 .alert.packinfo{border-color:var(--gold);color:var(--gold)}
+.alert.mission{border-color:var(--green);color:var(--green)}
 .cardwarn{border:1px solid var(--gold);color:var(--gold);border-radius:7px;
 padding:7px 10px;font-size:12px;font-weight:600;margin-bottom:8px;overflow:hidden}
 .cardwarn.drone{border-color:var(--red);color:var(--red)}
@@ -8792,6 +8928,10 @@ $('#beltGo').onclick=async()=>{
  }
  setz('');
  const gesISK=rows.reduce((s,x)=>s+x.isk,0);
+ const gesCISK=rows.reduce((s,x)=>s+(x.cisk||0),0);
+ // Wieviel kleiner wird die Fuhre? Nur zeigen, wenn es ueberhaupt etwas zu
+ // komprimieren gibt, sonst stuende da ein sinnloses "1x".
+ const schrumpf=(r.cm3>0)?(r.m3/r.cm3):0;
  // Wie lange braeuchte die Flotte dafuer? Nur zeigen, wenn gerade wirklich
  // gemint wird, sonst waere es eine erfundene Zahl.
  // Woher die Rate kommt, gehoert in die Anzeige selbst. Genau danach wurde
@@ -8804,9 +8944,12 @@ $('#beltGo').onclick=async()=>{
  const dauer=rate>0?(r.m3/rate):0;
  const h=Math.floor(dauer/60), m=Math.round(dauer%60);
  $('#beltOut').innerHTML=`
-  <div class="stats" style="grid-template-columns:repeat(3,1fr)">
-   <div class="stat"><div class="l">${en?'Volume in the belt':'Volumen im Belt'}</div><div class="v">${fmtC(r.m3)} m³</div></div>
-   <div class="stat"><div class="l">${en?'Worth (Jita, instant sell)':'Wert (Jita, Sofortverkauf)'}</div><div class="v isk">${fmtM(gesISK)}</div></div>
+  <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+   <div class="stat"><div class="l">${en?'Volume, raw':'Volumen roh'}</div><div class="v">${fmtC(r.m3)} m³</div></div>
+   <div class="stat"><div class="l">${en?'Volume, compressed':'Volumen komprimiert'}</div><div class="v">${fmtC(r.cm3)} m³</div>
+    ${schrumpf>1.5?`<div class="sub">${en?'fits in':'passt in'} 1/${Math.round(schrumpf)}</div>`:''}</div>
+   <div class="stat"><div class="l">${en?'Worth (Jita, instant sell)':'Wert (Jita, Sofortverkauf)'}</div><div class="v isk">${fmtM(gesCISK)}</div>
+    ${Math.abs(gesCISK-gesISK)>gesISK*0.005?`<div class="sub">${en?'raw':'roh'}: ${fmtM(gesISK)}</div>`:''}</div>
    <div class="stat"><div class="l">${en?'Ore types':'Erzsorten'}</div><div class="v">${rows.length}</div></div>
   </div>
   ${rate>0?`<div class="sub" style="margin-top:6px">${en
@@ -8820,13 +8963,18 @@ $('#beltGo').onclick=async()=>{
     ? 'No mining character active right now, so there is no rate to estimate the time from.'
     : 'Gerade ist kein Mining-Char aktiv, deshalb steht hier keine Zeitschätzung.'}</div>`}
   <table style="margin-top:8px"><tr><th>${en?'Ore':'Erz'}</th><th class="r">${en?'Units':'Einheiten'}</th>
-   <th class="r">m³</th><th class="r">ISK</th></tr>`
-  +rows.map(x=>`<tr><td>${esc(x.name)}</td><td class="r">${fmt(x.qty)}</td>
-    <td class="r">${fmt(x.m3)}</td><td class="r isk">${fmtM(x.isk)}</td></tr>`).join('')
+   <th class="r">${en?'m³ raw':'m³ roh'}</th><th class="r">${en?'m³ compr.':'m³ kompr.'}</th><th class="r">ISK</th></tr>`
+  +rows.map(x=>`<tr><td>${esc(x.name)}${x.comp?'':` <span class="sub">${en?'(not compressible)':'(nicht komprimierbar)'}</span>`}</td>
+    <td class="r">${fmt(x.qty)}</td>
+    <td class="r">${fmt(x.m3)}</td><td class="r">${fmt(Math.round(x.cm3))}</td>
+    <td class="r isk">${fmtM(x.cisk)}</td></tr>`).join('')
   +`</table>
   <div class="sub" style="margin-top:8px">${en
-    ? 'Valued at the current Jita buy offer, so what you would get selling it right away. EVE shows its own estimated price in the survey window, which is why the totals differ a little. And of course: the ore is still in the rocks.'
-    : 'Bewertet zum aktuellen Jita-Ankaufsgebot, also was du beim Sofortverkauf bekämst. EVE rechnet im Vermesser-Fenster mit seinem eigenen Schätzpreis, deshalb weichen die Summen etwas ab. Und natürlich: das Erz steckt noch im Fels.'}</div>
+    ? 'Valued at the current Jita buy offer for the COMPRESSED ore, because that is how anyone actually hauls it. Compression is one to one in units, the whole gain sits in the volume per unit, and that factor is not the same for every ore. EVE shows its own estimated price in the survey window, which is why the totals differ a little. And of course: the ore is still in the rocks.'
+    : 'Bewertet zum aktuellen Jita-Ankaufsgebot der KOMPRIMIERTEN Variante, weil so auch wirklich transportiert wird. Komprimieren ist in Stück eins zu eins, der ganze Gewinn steckt im Volumen je Stück, und der Faktor ist nicht bei jedem Erz gleich. EVE rechnet im Vermesser-Fenster mit seinem eigenen Schätzpreis, deshalb weichen die Summen etwas ab. Und natürlich: das Erz steckt noch im Fels.'}</div>
+  ${(r.ohne_comp&&r.ohne_comp.length)?`<div class="sub" style="margin-top:6px">${en
+    ? 'No compressed form exists for: ':'Keine komprimierte Form gibt es für: '}${r.ohne_comp.map(esc).join(', ')}. ${en
+    ? 'Those keep their raw values.':'Für die stehen oben die Rohwerte.'}</div>`:''}
   ${(r.unknown&&r.unknown.length)?`<div class="sub" style="margin-top:6px">${en?'Not recognised':'Nicht erkannt'}: ${r.unknown.map(esc).join(', ')}</div>`:''}`;
  if(en)tr($('#beltOut'));
 };

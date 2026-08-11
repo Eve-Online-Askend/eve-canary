@@ -1,5 +1,33 @@
 [
  {
+  "v": "1.83.0",
+  "d": "2026-08-11",
+  "de": [
+   "Ein Einsatz schliesst sich jetzt von selbst ab, sobald man den Anflug zur Station beginnt. Man muss nicht mehr erst abdocken, damit die Mission in der Liste steht und der Loot eingetragen werden kann.",
+   "Vorher gemessen statt geraten: nach 53 von 53 eigenen und 1.740 von 1.743 fremden Anfluegen kam kein Kampf mehr. Die drei Ausnahmen lagen alle mehr als zwei Minuten spaeter. Wer den Anflug abbricht und weiterkaempft, bekommt einen zweiten Eintrag statt eines verfaelschten.",
+   "Der Abyss schliesst sich beim Ruecksprung ins normale All ab, nicht erst beim Andocken. Danke an Nirahse fuer den Hinweis, dass Andocken dort ein unnoetiger Umweg ist. Zwei Laeufe hintereinander bleiben sauber getrennt, an einem echten Ingest-Durchlauf nachgewiesen.",
+   "Ein kurzer Hinweis meldet den Abschluss mit Kills und Kopfgeld, damit die Live-Zahlen nicht wortlos auf null springen. Beim einmaligen Neueinlesen alter Logs bleibt er still.",
+   "Transportfluege, reine Mining-Trips und Anfluege ohne Kampf erzeugen weiterhin keinen Eintrag. An zwanzig Anfluegen am Stueck geprueft: null Eintraege.",
+   "Die Belt-Auswertung zeigt jetzt beides: Volumen roh und Volumen komprimiert, dazu wie stark die Fuhre schrumpft. Bewertet wird ab sofort zum Preis der komprimierten Variante, denn so transportiert das ohnehin jeder. Vorschlag von MelvinMafia.",
+   "Der Unterschied ist kein Rundungsfehler: bei Gneiss liegt das Jita-Ankaufsgebot fuer die komprimierte Form 63 Prozent ueber dem rohen, bei Bistot 88 Prozent, bei Veldspar dagegen praktisch gleich. Rohes Erz wird schlicht kaum gehandelt. Der rohe Wert steht weiter klein daneben, damit der Vergleich sichtbar bleibt.",
+   "Gerechnet wird mit dem echten Stueckvolumen der komprimierten Sorte, nicht mit einem festen Teiler. Das ist noetig, weil 39 Erzsorten nur auf ein Zehntel schrumpfen und nicht auf ein Hundertstel.",
+   "Dass Komprimieren in Stueck eins zu eins arbeitet, ist an 92 Tagespaaren aus echten Foerder- und Kompressionsdaten nachgemessen. Alle 92 lagen bei eins zu eins, der ganze Gewinn steckt also im Volumen je Stueck.",
+   "26 Sorten wie Eis, Mutanite und Polygypsum haben gar keine komprimierte Form. Die werden in der Liste als nicht komprimierbar gekennzeichnet und behalten ihre Rohwerte, statt stillschweigend falsch bewertet zu werden."
+  ],
+  "en": [
+   "A run now closes by itself the moment you start the approach to a station. No more undocking first just to get the mission into the list and enter its loot.",
+   "Measured rather than assumed: after 53 of 53 of my own approaches and 1,740 of 1,743 donated ones, no combat followed. The three exceptions were all more than two minutes later. Abort the approach and keep fighting and you get a second entry instead of a distorted one.",
+   "Abyss runs close on the jump back into normal space instead of waiting for a docking. Thanks to Nirahse for pointing out that docking is an unnecessary detour there. Two runs back to back stay cleanly separated, proven on a real ingest run.",
+   "A short notice reports the completion with kills and bounty so the live numbers do not drop to zero without explanation. It stays quiet during the one-off re-read of old logs.",
+   "Transport flights, pure mining trips and approaches without combat still produce no entry. Checked across twenty approaches in a row: zero entries.",
+   "The belt breakdown now shows both: raw volume and compressed volume, plus how much smaller the load gets. Values are now based on the compressed price, because that is how everyone hauls it anyway. Suggested by MelvinMafia.",
+   "The difference is not a rounding error: for Gneiss the Jita buy offer for the compressed form sits 63 percent above the raw one, for Bistot 88 percent, while for Veldspar the two are practically identical. Raw ore simply barely trades. The raw value still shows underneath so the comparison stays visible.",
+   "The calculation uses the real per-unit volume of the compressed type instead of a fixed divisor. That matters because 39 ore types shrink only to a tenth, not to a hundredth.",
+   "That compression works one to one in units was measured across 92 day pairs of real mining and compression data. All 92 came out at one to one, so the entire gain sits in the volume per unit.",
+   "26 types such as ice, mutanite and polygypsum have no compressed form at all. Those are marked as not compressible and keep their raw values instead of being silently valued wrong."
+  ]
+ },
+ {
   "v": "1.82.0",
   "d": "2026-08-11",
   "de": [
