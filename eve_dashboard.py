@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.79.0"
+VERSION = "1.80.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -7357,6 +7357,41 @@ class Handler(BaseHTTPRequestHandler):
                     hw[char] = {"units": menge, "fill": menge,
                                 "core": "t2" if body.get("core") == "t2" else "t1",
                                 "ts": time.time(), "warned": False, "ck": 0}
+        elif action == "mission_close":
+            # Mission von Hand abschliessen, bevor abgedockt wird. Wunsch aus der
+            # Praxis: erst Loot eintragen und den Laderaum leeren, dann weiter.
+            # Es wird GENAU derselbe Weg gegangen wie beim Abdocken, damit es
+            # keine zweite Wahrheit gibt: Mission sichern, dann die Session ueber
+            # ein Abdock-Ereignis frisch machen. Dockt der Spieler danach wirklich
+            # ab, entsteht keine zweite Mission, weil dann keine Kampfdaten mehr
+            # da sind.
+            char = str(body.get("char") or "")
+            jetzt = time.time()
+            gespeichert = None
+            with ingest.lock:
+                s = next((x for x in ingest.sessions.values() if x.name == char), None)
+                if s:
+                    md = s.mission_dict(jetzt)
+                    if md:
+                        md["dialog"] = " ".join(chatwatch.dialogue(
+                            s.char_id, md["start_ts"], jetzt))[:2000] or None
+                        gespeichert = md
+                    # live=False: das ist kein frisch gelesenes Log-Ereignis,
+                    # es soll also keine Alarme und keine Toene ausloesen.
+                    s.feed({"kind": "hold_reset", "key": "dock", "ts": jetzt,
+                            "char_id": s.char_id, "day": time.strftime("%Y-%m-%d"),
+                            "value": 1}, live=False)
+            if gespeichert:
+                save_mission(gespeichert)
+                mins = max(1, round((gespeichert["end_ts"] - gespeichert["start_ts"]) / 60))
+                self._send(json.dumps({
+                    "ok": True, "saved": True, "mid": f"{gespeichert['char_id']}:{int(gespeichert['start_ts'])}",
+                    "min": mins, "bounty": gespeichert["bounty"], "kills": gespeichert["kills"]}))
+            else:
+                self._send(json.dumps({"ok": True, "saved": False,
+                                       "msg": "Kein Kampf seit dem letzten Abdocken."
+                                              if s else "Charakter gerade nicht aktiv."}))
+            return
         elif action == "laser_ok":
             with ingest.lock:
                 for s in ingest.sessions.values():
@@ -10357,7 +10392,11 @@ function renderMissions(d){
   ${(m.mine_systems&&m.mine_systems.length)?`<div class="sub" style="margin-top:8px">Bounties aus deinen Mining-Systemen (${m.mine_systems.join(', ')}) zählen hier nicht mit, das sind Belt-Ratten.</div>`:''}
   ${m.linked?'':'<div class="cardwarn" style="margin-top:10px">⚠ Kein EVE-Login verbunden. Belohnungen und Boni kommen aus dem Wallet-Journal (ESI), einzurichten unter ⚙ Optionen.</div>'}
   ${live.length?'<div class="sect">Live-Session (aus den Gamelogs)</div>'+live.map(c=>
-   `<div class="sub">⚔ <b>${esc(c.name)}</b>${c.ship?' · '+esc(c.ship):''} · ${c.kills} Kills · ${fmtM(c.bounty)} Bounties · DPS ${c.dps_out} raus / ${c.dps_in} rein · Session ${c.session_min} min</div>`).join(''):''}
+   `<div class="sub" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+     <span>⚔ <b>${esc(c.name)}</b>${c.ship?' · '+esc(c.ship):''} · ${c.kills} Kills · ${fmtM(c.bounty)} Bounties · DPS ${c.dps_out} raus / ${c.dps_in} rein · Session ${c.session_min} min</span>
+     <button class="btn mclose" data-char="${esc(c.name)}" title="Mission jetzt abschließen, damit du den Loot eintragen und den Laderaum leeren kannst, bevor du abdockst">${lang==='en'?'Finish mission now':'Mission abschließen'}</button>
+     <span class="sub mclosestat" data-char="${esc(c.name)}"></span>
+    </div>`).join(''):''}
  </div>
  <div class="card" style="grid-column:1/-1">
   <div class="sect">Missionen einzeln (aus den Gamelogs)</div>
@@ -10423,6 +10462,20 @@ function renderMissions(d){
   const st=[...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===mid);
   if(st&&z.status)st.textContent=z.status;
  });
+ // Mission von Hand abschliessen. Danach steht sie sofort unten in der Liste
+ // und der Loot laesst sich eintragen, ohne dass man abdocken muss.
+ document.querySelectorAll('.mclose').forEach(b=>b.onclick=async()=>{
+  const char=b.dataset.char, en2=lang==='en';
+  const finde=()=>[...document.querySelectorAll('.mclosestat')].find(s=>s.dataset.char===char);
+  const setz=t=>{const el=finde(); if(el)el.textContent=t;};
+  setz(en2?'Finishing …':'Schließe ab …');
+  let r;try{r=await post({action:'mission_close',char});}catch(e){r=null;}
+  if(!r||!r.ok){setz(en2?'Server not reachable':'Server nicht erreichbar');return;}
+  if(r.saved){
+   setz(en2?`Saved: ${r.min} min, ${r.kills} kills`:`Gespeichert: ${r.min} min, ${r.kills} Kills`);
+   setTimeout(tick,600);
+  }else setz(r.msg||(en2?'Nothing to save':'Nichts zu speichern'));
+ });
  document.querySelectorAll('.mloottoggle').forEach(t=>t.onclick=()=>{
   const box=[...document.querySelectorAll('.mlootedit')].find(e=>e.dataset.mid===t.dataset.mid);
   if(box){box.hidden=!box.hidden; if(!box.hidden){const ta=box.querySelector('.mlootin'); if(ta)ta.focus();}}
@@ -10445,6 +10498,10 @@ function renderMissions(d){
   if(r&&r.ok){
    setzStatus('Loot: '+fmtM(r.isk)
     +(r.unknown&&r.unknown.length?(en2?' · not recognised: ':' · nicht erkannt: ')+r.unknown.join(', '):''));
+   // Nach dem Bewerten zuklappen. Seit das Feld den 2s-Takt uebersteht, blieb
+   // es sonst offen stehen, und wer mehrere Missionen nacheinander eintraegt,
+   // hatte am Ende einen Stapel offener Kaesten untereinander.
+   const box=finde('.mlootedit'); if(box)box.hidden=true;
    setTimeout(tick,600);
   }else setzStatus(r?(en2?'Error':'Fehler')
                     :(en2?'Server not reachable':'Server nicht erreichbar'));

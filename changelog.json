@@ -1,5 +1,21 @@
 [
  {
+  "v": "1.80.0",
+  "d": "2026-08-11",
+  "de": [
+   "Neuer Knopf „Mission abschließen“ in der Missions-Ansicht, direkt bei der laufenden Live-Session. Damit kannst du eine Mission beenden, solange du noch draußen bist: Loot eintragen, Laderaum leeren, weiterfliegen. Bisher ging das erst beim Abdocken, und dann war der Laderaum schon eine Frage der Erinnerung.",
+   "Dahinter laeuft genau derselbe Weg wie beim echten Abdocken, damit es keine zweite Wahrheit gibt. Geprueft: die Mission wird mit Dauer, Bounty, Kills, Schaden und Ort gespeichert, die Zaehler stehen danach auf null, beim spaeteren Abdocken entsteht keine zweite leere Mission, und die naechste Mission zaehlt wieder bei null los.",
+   "Behoben: die Loot-Eingabefelder klappten nach dem Bewerten nicht mehr zu. Wer mehrere Missionen nacheinander eintrug, hatte am Ende einen Stapel offener Kaesten untereinander. Das war ein Nebeneffekt der Korrektur von gestern, die das Feld gegen den Zwei-Sekunden-Takt absichert.",
+   "Danke an Nirahse fuer beide Meldungen."
+  ],
+  "en": [
+   "New button “Finish mission now” in the missions view, right at the running live session. It lets you close a mission while you are still out there: enter the loot, empty the hold, move on. Until now that only happened when you docked, by which point the cargo hold was a matter of memory.",
+   "Under the hood it takes exactly the same path as a real undock, so there is no second version of the truth. Verified: the mission is stored with duration, bounty, kills, damage and location, the counters are zero afterwards, docking later does not create a second empty mission, and the next mission starts from zero again.",
+   "Fixed: the loot input boxes no longer closed after evaluating. Anyone entering several missions in a row ended up with a stack of open boxes. That was a side effect of yesterday’s fix which protects the box against the two second refresh.",
+   "Thanks to Nirahse for both reports."
+  ]
+ },
+ {
   "v": "1.79.0",
   "d": "2026-08-10",
   "de": [
