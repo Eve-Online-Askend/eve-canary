@@ -1,5 +1,21 @@
 [
  {
+  "v": "1.81.0",
+  "d": "2026-08-11",
+  "de": [
+   "Agenten-Auszahlungen, die zu keiner Mission passen, verschwinden nicht mehr stillschweigend. Unter der Missionsliste steht jetzt, wie viele es sind, wie viel ISK zusammenkommt und wann sie kamen. Der Grund steht dabei: bei Auftraegen ganz ohne Kampf (Kurierfluege, Transporte, reine Dialog-Schritte, viele Stationen der Epic Arcs) steht im Gamelog nichts, Canary sieht also gar keine Mission, der die Belohnung gehoeren koennte.",
+   "In einem echten Wallet waren das 8 Buchungen ueber 2,56 Mio ISK. In den Tagessummen stecken die ISK weiterhin drin, ihnen fehlen nur die Kampfdaten.",
+   "Nachgemessen wurde dabei auch die Zuordnung selbst: von 32 Belohnungen liegen 16 innerhalb eines Missionszeitraums, und davon wird keine einzige faelschlich abgelehnt. Ein groesseres Zeitfenster wuerde also nichts verbessern, die uebrigen haben schlicht keine Mission im Log.",
+   "Danke an Nirahse fuer den Hinweis."
+  ],
+  "en": [
+   "Agent payouts that match no mission no longer vanish silently. Below the mission list you now see how many there are, how much ISK they add up to and when they arrived, together with the reason: missions with no combat at all (courier runs, transports, pure dialogue steps, many stages of the epic arcs) leave nothing in the game log, so Canary never sees a mission the reward could belong to.",
+   "In a real wallet that was 8 entries worth 2.56 million ISK. The ISK is still part of the daily totals, it just has no combat data attached.",
+   "The matching itself was measured too: of 32 rewards, 16 fall inside a mission window and not a single one of those is wrongly rejected. A wider time window would therefore change nothing, the rest simply have no mission in the log.",
+   "Thanks to Nirahse for the report."
+  ]
+ },
+ {
   "v": "1.80.1",
   "d": "2026-08-11",
   "de": [

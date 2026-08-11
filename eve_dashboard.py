@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.80.1"
+VERSION = "1.81.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -6308,6 +6308,14 @@ def query_mission_history(limit=40):
     # (mid, char, start, end) je Missionszeile fuer die Zuordnung unten.
     cand = [(x[0], x[1], x[2] or 0, x[3] or 0) for x in rows]
     verified = {}
+    # Belohnungen, zu denen es keine Mission gibt. Die entstehen bei Auftraegen
+    # ganz OHNE Kampf (Kurier, Transport, reine Dialog-Missionen, viele Schritte
+    # der Epic Arcs): im Gamelog steht dann nichts, also kennt Canary die Mission
+    # nicht. An echten Daten gemessen lagen solche Buchungen 11 bis 23 Stunden von
+    # jeder erfassten Mission entfernt, eine groessere Zeittoleranz wuerde davon
+    # KEINE EINZIGE retten. Statt sie stumm zu verschlucken, werden sie unten
+    # ausgewiesen: dann sieht man, dass die ISK da sind und nur kein Kampf dazu.
+    offen = []
     for jchar, jts, jref, jamt in jrows:
         best_mid, best_gap = None, None
         for mid_, mchar, mst, met in cand:
@@ -6317,12 +6325,21 @@ def query_mission_history(limit=40):
             if -300 <= gap <= 3600 and (best_gap is None or abs(gap) < best_gap):
                 best_gap, best_mid = abs(gap), mid_
         if best_mid is None:
+            offen.append({"char": jchar, "ts": int(jts), "isk": jamt or 0})
             continue
         v = verified.setdefault(best_mid, {"reward": 0, "bonus": 0})
         if jref == "agent_mission_reward":
             v["reward"] += jamt or 0
         else:
             v["bonus"] += jamt or 0
+    # Buchungen desselben Augenblicks zusammenfassen (Belohnung + Zeitbonus).
+    zus = {}
+    for o in offen:
+        k = (o["char"], o["ts"])
+        zus[k] = zus.get(k, 0) + o["isk"]
+    ohne_mission = sorted(({"char": c, "ts": t, "isk": round(i)}
+                           for (c, t), i in zus.items()), key=lambda x: -x["ts"])[:10]
+    ohne_summe = round(sum(o["isk"] for o in offen))
     out = []
     for r in rows:
         if len(out) >= limit:
@@ -6368,7 +6385,7 @@ def query_mission_history(limit=40):
             "weapons": json.loads(wj or "[]"), "enemies": enemies,
             "loot_isk": round(loot) if loot else None, "loot_text": loot_text or "",
             "total": round((bounty or 0) + (loot or 0) + (vreward or 0) + (vbonus or 0))})
-    return out
+    return out, {"liste": ohne_mission, "summe": ohne_summe, "n": len(offen)}
 
 
 def query_timelines():
@@ -7111,7 +7128,7 @@ class Handler(BaseHTTPRequestHandler):
                 data["blutspur"] = packintel.snapshot()
             elif view == "missionen":
                 data["missions"] = query_missions()
-                data["mission_log"] = query_mission_history()
+                data["mission_log"], data["mission_offen"] = query_mission_history()
                 data["chars"] = snapshot_live()
             elif view == "vault":
                 data["vault"] = query_vault()
@@ -10435,6 +10452,22 @@ function renderMissions(d){
      <div class="btnrow" style="margin-top:4px"><button class="btn mlootgo" data-mid="${esc(x.mid)}">Loot bewerten</button> <span class="mlootstat sub" data-mid="${esc(x.mid)}"></span></div>
     </div>
    </div>`).join(''):'<div class="sub">Noch keine abgeschlossenen Missionen erfasst. Eine Mission gilt als abgeschlossen, sobald du fürs nächste Mal wieder abdockst.</div>'}
+  ${(()=>{const o=d.mission_offen; if(!o||!o.n)return '';
+    const en3=lang==='en';
+    return `<div class="sub" style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">
+      ${en3
+        ? `<b>${o.n} agent payouts could not be matched to a mission</b>, together ${fmtM(o.summe)} ISK.
+           That happens with missions that involve no combat at all: courier runs, transports, pure dialogue steps,
+           and many stages of the epic arcs. Nothing appears in the game log for those, so Canary never sees a mission.
+           The ISK is counted in the daily totals above, it just has no combat data attached.`
+        : `<b>${o.n} Agenten-Auszahlungen ließen sich keiner Mission zuordnen</b>, zusammen ${fmtM(o.summe)} ISK.
+           Das passiert bei Aufträgen ganz ohne Kampf: Kurierflüge, Transporte, reine Dialog-Schritte und viele
+           Stationen der Epic Arcs. Dazu steht nichts im Gamelog, Canary sieht also gar keine Mission.
+           In den Tagessummen oben stecken die ISK trotzdem drin, sie haben nur keine Kampfdaten dabei.`}
+      <div style="margin-top:6px">${(o.liste||[]).map(x=>
+        `${new Date(x.ts*1000).toLocaleString().slice(0,16)} · ${esc(x.char)} · <span class="isk">${fmtM(x.isk)}</span>`
+       ).join('<br>')}</div>
+     </div>`;})()}
  </div>
  <div class="card" style="grid-column:1/-1">
   <div class="sect">Letzte 30 Tage</div>
