@@ -2,7 +2,12 @@ name: Stats aktualisieren
 
 on:
   schedule:
-    - cron: "17 */3 * * *"   # alle 3 Stunden, Minute 17 um GitHubs volle-Stunde-Stau zu meiden
+    # Stuendlich, Minute 17 um GitHubs volle-Stunde-Stau zu meiden. Das ist die
+    # EINZIGE regelmaessige Quelle fuer stats.json: der lokale Task auf dem
+    # Rechner ist abgeschaltet, weil zwei Schreiber sich nur gegenseitig die
+    # Pushes wegnehmen. release.py rechnet weiter mit, aber nur einmalig beim
+    # Veroeffentlichen, nicht nach der Uhr.
+    - cron: "17 * * * *"
   workflow_dispatch: {}       # manuell ausloesbar unter Actions
 
 permissions:
