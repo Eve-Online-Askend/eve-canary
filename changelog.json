@@ -1,5 +1,23 @@
 [
  {
+  "v": "1.86.4",
+  "d": "2026-08-12",
+  "de": [
+   "Auch die Analyse hat jetzt Spaltenkoepfe: Erz-Effizienz, Waffen-Bilanz, Spielzeit, Sicherheit und die aufgeklappten Kompressions-Tabellen.",
+   "Bei der Erz-Effizienz steht jetzt dabei, welche Spalte entscheidet. ISK je m3 sagt, was sich lohnt, die beiden anderen zeigen nur, wie viel du davon bisher gefoerdert hast. Nebeneinander sahen die drei Zahlen gleichrangig aus.",
+   "Jede Karte der Analyse hat einen Satz bekommen, was sie zeigt und woher die Zahlen kommen. Bei Sicherheit zum Beispiel, dass dort nur Spieler stehen und keine NPCs.",
+   "In der Sicherheits-Tabelle faellt das \"auf\" vor dem Charakternamen weg, das sagt jetzt der Spaltenkopf.",
+   "Behoben: in der englischen Fassung stand in der Ziel-Zeile \"1.59 bn / 2.50 Mrd\". Die Ersetzung der Einheit griff nur beim ersten Vorkommen einer Zeile."
+  ],
+  "en": [
+   "The analysis view now has column headers too: ore efficiency, weapons, playtime, safety and the expanded compression tables.",
+   "Ore efficiency now says which column is the one that decides. ISK per m3 tells you what pays, the other two only show how much of it you have mined so far. Side by side, the three numbers looked equally important.",
+   "Every card in the analysis view has gained a sentence on what it shows and where the numbers come from. On safety, for instance, that it lists players only and no NPCs.",
+   "In the safety table the \"auf\" before the character name is gone, the column header says it now.",
+   "Fixed: the English goal line read \"1.59 bn / 2.50 Mrd\". The unit replacement only caught the first occurrence in a line."
+  ]
+ },
+ {
   "v": "1.86.3",
   "d": "2026-08-12",
   "de": [

@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.86.3"
+VERSION = "1.86.4"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -10611,7 +10611,8 @@ function compCard(comp){
  const p=comp[compPeriod]||{total:{units:0,m3:0,isk:0,types:[]},chars:{}};
  const pills=Object.entries(PERIODS).map(([k,l])=>
   `<span class="pill ${k===compPeriod?'on':''}" data-p="${k}">${l}</span>`).join('');
- const tbl=rows=>rows.map(k=>
+ const tbl=rows=>'<thead><tr><th>Typ</th><th class="r">Menge</th>'
+  +'<th class="r">Volumen</th><th class="r">Wert</th></tr></thead>'+rows.map(k=>
   `<tr><td>${k.type}</td><td class="r">${fmt(k.units)} Stk</td><td class="r">${fmt(k.m3)} m³</td><td class="r isk">${fmtM(k.isk)}</td></tr>`).join('');
  const row=(key,label,d)=>{
   const open=compOpen.has(key);
@@ -10623,6 +10624,7 @@ function compCard(comp){
  };
  return `<div class="card" style="grid-column:1/-1"><div class="chead" style="cursor:default">
    <span class="char">Kompression</span><span class="mini" style="display:flex;gap:4px">${pills}</span></div>
+  <div class="sub">Alles, was ueber die Schiffs-Kompression gelaufen ist. Das Volumen ist das der komprimierten Bloecke, nicht das des Roherzes.</div>
   <div class="sub">${PERIODS[compPeriod]} gesamt: ${fmt(p.total.units)} Stk · ${fmt(p.total.m3)} m³ · <span class="isk">${fmtM(p.total.isk)} ISK</span></div>
   ${p.total.types.length?row('__total__','Gesamt nach Typ',p.total):'<div class="sub">Keine Kompression im Zeitraum.</div>'}
   ${Object.entries(p.chars).map(([n,c])=>row(n,n,c)).join('')}
@@ -10643,19 +10645,27 @@ function renderAnalyse(a){
  const maxP=Math.max(1,...a.playtime.map(p=>p.minutes));
  $('#grid').innerHTML=goalHtml+compCard(a.compression||{})+
   `<div class="card"><div class="char">Erz-Effizienz (ISK/m³)</div>
-   <div class="sub">Was lohnt sich am meisten pro Laderaum?</div><table>${a.efficiency.map(e=>
+   <div class="sub">Was lohnt sich am meisten pro Laderaum? Die erste Spalte entscheidet, die beiden anderen zeigen, wie viel du davon bisher gefoerdert hast.</div>
+   <table><thead><tr><th>Erz</th><th class="r">ISK je m³</th>
+    <th class="r">bisher gefoerdert</th><th class="r">Wert davon</th></tr></thead>${a.efficiency.map(e=>
    `<tr><td>${e.ore}</td><td class="r">${e.isk_per_m3} ISK/m³</td><td class="r">${fmt(e.m3)} m³</td><td class="r isk">${fmtM(e.isk)}</td></tr>`).join('')}</table></div>
   <div class="card"><div class="char">Stillstand-Verlust</div>
    <div class="sub">Geschätzt entgangenes ISK, weil Laser oder Drohnen standen oder die Rate einbrach (je Trip beim Docken erfasst).</div>
    <div class="v isk" style="font-size:22px">${fmtM(a.lost_isk||0)}</div></div>
-  <div class="card"><div class="char">Waffen-Bilanz</div><table>${a.weapons.length?a.weapons.map(w=>
+  <div class="card"><div class="char">Waffen-Bilanz</div>
+   <div class="sub">Womit du deinen Schaden gemacht hast, aus dem Kampflog.</div>
+   <table>${a.weapons.length?'<thead><tr><th>Waffe</th><th class="r">Schaden</th></tr></thead>'+a.weapons.map(w=>
    `<tr><td>${esc(w[0])}</td><td class="r out">${fmt(w[1])} dmg</td></tr>`).join(''):'<tr><td class="r">Noch keine Kampfdaten</td></tr>'}</table></div>
-  <div class="card"><div class="char">Spielzeit</div><table>${a.playtime.slice(-14).reverse().map(p=>
+  <div class="card"><div class="char">Spielzeit</div>
+   <div class="sub">Die letzten 14 Tage, gerechnet aus den Zeiten in deinen Logdateien.</div>
+   <table><thead><tr><th>Tag</th><th class="r">Zeit</th></tr></thead>${a.playtime.slice(-14).reverse().map(p=>
    `<tr><td>${p.day}<div class="bar" style="width:${100*p.minutes/maxP}%"></div></td>
     <td class="r">${Math.floor(p.minutes/60)}h ${p.minutes%60}m</td></tr>`).join('')}</table></div>
   <div class="card"><div class="char">Sicherheit</div>
-   <div class="sub">Spieler-Angriffe (gesamt)</div><table>${a.pvp.length?a.pvp.map(p=>
-   `<tr><td class="in">${p.attacker}</td><td class="r">auf ${p.char}</td><td class="r">${fmt(p.dmg)} dmg</td><td class="r">${p.days[p.days.length-1]}</td></tr>`).join(''):'<tr><td>Keine Spieler-Angriffe erkannt ✓</td></tr>'}</table></div>`;
+   <div class="sub">Wer dich als Spieler angegriffen hat, ueber den gesamten Zeitraum. NPCs stehen hier nicht.</div>
+   <table>${a.pvp.length?'<thead><tr><th>Angreifer</th><th class="r">Dein Charakter</th>'
+    +'<th class="r">Schaden</th><th class="r">Zuletzt</th></tr></thead>'+a.pvp.map(p=>
+   `<tr><td class="in">${p.attacker}</td><td class="r">${p.char}</td><td class="r">${fmt(p.dmg)} dmg</td><td class="r">${p.days[p.days.length-1]}</td></tr>`).join(''):'<tr><td>Keine Spieler-Angriffe erkannt ✓</td></tr>'}</table></div>`;
  document.querySelectorAll('[data-p]').forEach(el=>el.onclick=()=>{
   compPeriod=el.dataset.p;localStorage.setItem('compPeriod',compPeriod);
   if(lastAnalyse)renderAnalyse(lastAnalyse);});
@@ -12102,6 +12112,20 @@ const EN = {
 'EVE: Heavy Water fast leer!':'EVE: Heavy Water almost empty!','EVE: Watchlist':'EVE: Watchlist',
 'Speichern':'Save','nicht gefunden!':'not found!',
 'Erz-Bilanz (nach Wert)':'Ore balance (by value)','Gegner (letzte 30 Tage)':'Enemies (last 30 days)',
+// Spaltenkoepfe und Erklaerungen der Analyse
+'Waffe':'Weapon','Schaden':'Damage','Tag':'Day','Zeit':'Time',
+'Angreifer':'Attacker','Zuletzt':'Last seen','Dein Charakter':'Your character',
+'ISK je m³':'ISK per m³','bisher gefoerdert':'mined so far','Wert davon':'Value of that',
+'Alles, was ueber die Schiffs-Kompression gelaufen ist. Das Volumen ist das der komprimierten Bloecke, nicht das des Roherzes.':
+ 'Everything run through ship compression. The volume is that of the compressed blocks, not of the raw ore.',
+'Was lohnt sich am meisten pro Laderaum? Die erste Spalte entscheidet, die beiden anderen zeigen, wie viel du davon bisher gefoerdert hast.':
+ 'What pays best per unit of cargo space? The first column is the one that decides, the other two show how much of it you have mined so far.',
+'Womit du deinen Schaden gemacht hast, aus dem Kampflog.':
+ 'What you dealt your damage with, taken from the combat log.',
+'Die letzten 14 Tage, gerechnet aus den Zeiten in deinen Logdateien.':
+ 'The last 14 days, worked out from the timestamps in your log files.',
+'Wer dich als Spieler angegriffen hat, ueber den gesamten Zeitraum. NPCs stehen hier nicht.':
+ 'Which players have attacked you, over the whole period. NPCs are not listed here.',
 // Spaltenkoepfe und Erklaerungen der Gesamt-Ansicht
 'Volumen':'Volume','Wert':'Value','Charakter':'Character','Bounties':'Bounties',
 'ISK gesamt = Erz-Wert + Bounties. Der Erz-Wert rechnet mit den heutigen Marktpreisen, nicht mit denen von damals. Beim Zeigen auf eine Kachel steht, was genau dahintersteckt.':
@@ -12259,8 +12283,12 @@ const EN_PATTERNS = [
  [/abgeschaltet, Ziel prüfen/, 'switched off, check target'],
  [/Seit ([0-9]+) Minuten kein Erz/, 'No ore for $1 minutes'],
  [/Kein Erz seit/, 'No ore for'],
- [/^Ziel: /, 'Goal: '], [/ Mrd/, ' bn'],
- [/ Stk/, ' units'], [/seit Abdocken/, 'since undocking'], [/Preise:/, 'Prices:'],
+ [/^Ziel: /, 'Goal: '],
+ // Einheiten mit g: sie stehen oft mehrfach in EINEM Textknoten, etwa
+ // "1.59 Mrd / 2.50 Mrd (63.7%)" in der Ziel-Zeile. Ohne g wurde nur die
+ // erste ersetzt und es stand "1.59 bn / 2.50 Mrd" da.
+ [/ Mrd/g, ' bn'], [/ Stk/g, ' units'],
+ [/seit Abdocken/, 'since undocking'], [/Preise:/, 'Prices:'],
  [/Bewertung: aktuelle ([A-Za-z]+)-Preise/, 'valued at current $1 prices'],
  // Alarmtexte: die entstehen im Python-Teil und kommen fertig vom Server,
  // deshalb hier beim Anzeigen uebersetzen statt an der Quelle.
