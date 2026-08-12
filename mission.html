@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mission melden · EVE Canary</title>
+<title>Report a mission · EVE Canary</title>
 <meta name="description" content="Melde deine EVE-Missionen an Canary: Missionsname und Local-Chat einfügen, fertig. Pilotennamen werden vorher automatisch entfernt.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🐤</text></svg>">
 <style>
@@ -19,7 +19,11 @@ h1 b{color:var(--cyan);font-weight:700}
 h2{font-size:24px;margin:26px 0 8px;color:var(--white)}
 a{color:var(--cyan)}
 .tiny{font-size:13px;color:var(--dim)}
-.zurueck{margin-left:auto;font-size:13px}
+.zurueck{font-size:13px}
+.lang{margin-left:auto;display:flex;gap:4px}
+.lang button{background:transparent;border:1px solid var(--line);color:var(--dim);
+ border-radius:6px;padding:3px 9px;font:inherit;font-size:12px;cursor:pointer}
+.lang button[aria-current=true]{color:var(--cyan);border-color:var(--cyan)}
 .karte{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin:18px 0}
 label{display:block;margin:14px 0 5px;font-size:13px;color:var(--dim)}
 input,select,textarea{width:100%;background:#0b111a;color:var(--white);border:1px solid var(--line);
@@ -44,67 +48,56 @@ footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-si
 <div class="wrap">
 <header>
   <h1>EVE <b>CANARY</b></h1>
-  <a class="zurueck" href="./">← zurück zur Übersicht</a>
+  <div id="lang" class="lang"></div>
+  <a class="zurueck" href="./" data-i18n="back">← back to overview</a>
 </header>
 
-<h2>Bring Canary deine Missionen bei</h2>
-<p class="tiny">Canary erkennt eine Mission an den Gegnern im Log. Das scheitert bei Missionen,
-die man ohne einen einzigen Schuss abschließen kann, und bei Missionen mit völlig generischen
-Gegnern. Der NPC-Funk im Local ist das fehlende Stück: er ist je Mission einmalig, und er sagt
-sogar, wann eine Mission fertig ist. Genau diese Zeile gibt es im Gamelog nicht.</p>
+<h2 data-i18n="h1">Teach Canary your missions</h2>
+<p class="tiny" data-i18n="p.intro">Canary recognises a mission from the enemies in the log. That fails for missions you can finish without a single shot, and for missions with completely generic enemies. The NPC chatter in local is the missing piece: it is unique per mission, and it even says when a mission is done. That line does not exist in the game log.</p>
 
-<div class="hinweis">
-  <b>Pilotennamen bleiben hier.</b> Du fügst deinen ganzen Local ein, und alles außer den
-  NPC-Zeilen wird schon in deinem Browser entfernt, bevor irgendetwas abgeschickt wird.
-  In der Vorschau siehst du vorher genau, was rausgeht.
-</div>
+<div class="hinweis" data-i18n="p.privacy"><b>Pilot names stay here.</b> You paste your whole local, and everything except the NPC lines is stripped in your browser before anything is sent. The preview shows you exactly what goes out.</div>
 
 <div class="karte">
-  <label for="mfName">Missionsname, genau so wie der Agent sie nennt</label>
+  <label for="mfName" data-i18n="l.name">Mission name, exactly as the agent calls it</label>
   <input id="mfName" type="text" placeholder="Recon (1 of 3)" autocomplete="off">
 
   <div class="reihe">
     <div>
-      <label for="mfLvl">Stufe</label>
+      <label for="mfLvl" data-i18n="l.lvl">Level</label>
       <select id="mfLvl">
         <option>1</option><option>2</option><option>3</option>
         <option selected>4</option><option>5</option>
       </select>
     </div>
     <div>
-      <label for="mfFac">Gegner-Fraktion</label>
+      <label for="mfFac" data-i18n="l.fac">Enemy faction</label>
       <input id="mfFac" type="text" placeholder="Sansha, Blood Raiders, Angel Cartel …" autocomplete="off">
     </div>
   </div>
 
-  <label for="mfLog">Local-Chat einfügen</label>
-  <textarea id="mfLog" rows="9" placeholder="Im Spiel ins Local-Fenster klicken, Strg+A, Strg+C, hier einfügen."></textarea>
+  <label for="mfLog" data-i18n="l.log">Paste your local chat</label>
+  <textarea id="mfLog" rows="9" placeholder="In game click into the local window, Ctrl+A, Ctrl+C, paste here." data-ph="ph.log"></textarea>
 
-  <label for="mfNote">Was ist dir aufgefallen? (freiwillig)</label>
-  <input id="mfNote" type="text" placeholder="Wurde nicht erkannt, ich musste keinen Gegner abschießen." autocomplete="off">
+  <label for="mfNote" data-i18n="l.note">Anything you noticed? (optional)</label>
+  <input id="mfNote" type="text" placeholder="Not recognised, I did not have to shoot a single enemy." data-ph="ph.note" autocomplete="off">
 
   <div id="mfPrev" class="vorschau" hidden></div>
 
   <div class="knoepfe">
-    <a id="mfIssue" class="btn" href="#" target="_blank" rel="noopener" aria-disabled="true">Als GitHub-Ticket senden</a>
-    <button id="mfCopy" class="btn geist" type="button">Lieber Text kopieren</button>
+    <a id="mfIssue" class="btn" href="#" target="_blank" rel="noopener" aria-disabled="true" data-i18n="b.send">Send as GitHub ticket</a>
+    <button id="mfCopy" class="btn geist" type="button" data-i18n="b.copy">Copy the text instead</button>
     <span id="mfStat" class="tiny"></span>
   </div>
 </div>
 
-<h2>So geht es am schnellsten</h2>
-<ol class="tiny">
-  <li>Mission fliegen und dabei das Local-Fenster offen lassen.</li>
-  <li>Danach ins Local klicken, <code>Strg+A</code>, <code>Strg+C</code>.</li>
-  <li>Hier einfügen, Missionsnamen dazu, absenden. Fertig.</li>
-</ol>
-<p class="tiny">Besonders wertvoll sind Missionen, die Canary <b>nicht</b> erkennt, und solche,
-die sich ohne Kampf abschließen lassen. Genau die fallen heute durch.</p>
+<h2 data-i18n="h2">The quickest way</h2>
+<ol class="tiny" data-i18n="p.steps"><li>Run the mission and keep the local window open.</li><li>Afterwards click into local, <code>Ctrl+A</code>, <code>Ctrl+C</code>.</li><li>Paste here, add the mission name, send. Done.</li></ol>
+<p class="tiny" data-i18n="p.best">The most valuable ones are missions Canary does <b>not</b> recognise, and those you can finish without combat. Exactly those fall through today.</p>
 
 <footer>
-  <a href="./">Übersicht</a> ·
-  <a href="https://github.com/Eve-Online-Askend/eve-canary/issues?q=label%3Amission-daten">bereits gemeldete Missionen</a> ·
-  <a href="https://github.com/Eve-Online-Askend/eve-canary">Quelltext</a>
+  <a href="./" data-i18n="f.home">Overview</a> ·
+  <a href="https://github.com/Eve-Online-Askend/eve-canary/issues?q=label%3Amission-daten" data-i18n="f.list">missions already reported</a> ·
+  <a href="https://github.com/Eve-Online-Askend/eve-canary" data-i18n="f.src">Source</a>
 </footer>
 </div>
 
@@ -175,6 +168,88 @@ die sich ohne Kampf abschließen lassen. Genau die fallen heute durch.</p>
     setTimeout(() => { $('#mfStat').textContent = ''; }, 2600);
   });
   frisch();
+})();
+</script>
+
+<script>
+/* Vier Sprachen wie auf der Startseite. Die Wahl wird geteilt: wer dort
+   Deutsch gewaehlt hat, landet hier ebenfalls auf Deutsch. Englisch steht im
+   HTML und ist die Rueckfallebene, falls ein Schluessel fehlt. */
+const L = {
+ de:{_t:'Mission melden · EVE Canary',
+  back:'← zurück zur Übersicht', h1:'Bring Canary deine Missionen bei',
+  'p.intro':'Canary erkennt eine Mission an den Gegnern im Log. Das scheitert bei Missionen, die man ohne einen einzigen Schuss abschließen kann, und bei Missionen mit völlig generischen Gegnern. Der NPC-Funk im Local ist das fehlende Stück: er ist je Mission einmalig, und er sagt sogar, wann eine Mission fertig ist. Genau diese Zeile gibt es im Gamelog nicht.',
+  'p.privacy':'<b>Pilotennamen bleiben hier.</b> Du fügst deinen ganzen Local ein, und alles außer den NPC-Zeilen wird schon in deinem Browser entfernt, bevor irgendetwas abgeschickt wird. In der Vorschau siehst du vorher genau, was rausgeht.',
+  'l.name':'Missionsname, genau so wie der Agent sie nennt', 'l.lvl':'Stufe',
+  'l.fac':'Gegner-Fraktion', 'l.log':'Local-Chat einfügen',
+  'l.note':'Was ist dir aufgefallen? (freiwillig)',
+  'b.send':'Als GitHub-Ticket senden', 'b.copy':'Lieber Text kopieren',
+  h2:'So geht es am schnellsten',
+  'p.steps':'<li>Mission fliegen und dabei das Local-Fenster offen lassen.</li><li>Danach ins Local klicken, <code>Strg+A</code>, <code>Strg+C</code>.</li><li>Hier einfügen, Missionsnamen dazu, absenden. Fertig.</li>',
+  'p.best':'Besonders wertvoll sind Missionen, die Canary <b>nicht</b> erkennt, und solche, die sich ohne Kampf abschließen lassen. Genau die fallen heute durch.',
+  'f.home':'Übersicht', 'f.list':'bereits gemeldete Missionen', 'f.src':'Quelltext',
+  'ph.log':'Im Spiel ins Local-Fenster klicken, Strg+A, Strg+C, hier einfügen.',
+  'ph.note':'Wurde nicht erkannt, ich musste keinen Gegner abschießen.'},
+ fr:{_t:'Signaler une mission · EVE Canary',
+  back:'← retour à l\'aperçu', h1:'Apprends tes missions à Canary',
+  'p.intro':'Canary reconnaît une mission grâce aux ennemis du journal. Cela échoue pour les missions terminables sans tirer et pour celles aux ennemis génériques. Le dialogue PNJ dans local est la pièce manquante : il est unique par mission et indique même la fin.',
+  'p.privacy':'<b>Les noms de pilotes restent ici.</b> Tu colles tout ton local, et tout sauf les lignes PNJ est retiré dans ton navigateur avant tout envoi.',
+  'l.name':'Nom de la mission', 'l.lvl':'Niveau', 'l.fac':'Faction ennemie',
+  'l.log':'Colle ton chat local', 'l.note':'Quelque chose à signaler ? (facultatif)',
+  'b.send':'Envoyer comme ticket GitHub', 'b.copy':'Copier le texte',
+  h2:'La méthode la plus rapide',
+  'p.steps':'<li>Fais la mission en gardant local ouvert.</li><li>Clique dans local, <code>Ctrl+A</code>, <code>Ctrl+C</code>.</li><li>Colle ici, ajoute le nom, envoie.</li>',
+  'p.best':'Les plus utiles sont les missions que Canary ne reconnaît <b>pas</b>, et celles sans combat.',
+  'f.home':'Aperçu', 'f.list':'missions déjà signalées', 'f.src':'Code source',
+  'ph.log':'En jeu, clique dans local, Ctrl+A, Ctrl+C, colle ici.',
+  'ph.note':'Non reconnue, aucun ennemi à abattre.'},
+ ru:{_t:'Сообщить о миссии · EVE Canary',
+  back:'← назад к обзору', h1:'Научите Canary своим миссиям',
+  'p.intro':'Canary распознаёт миссию по врагам в логе. Это не работает для миссий без боя и для миссий с обычными врагами. Реплики NPC в локале решают задачу: они уникальны для каждой миссии и даже сообщают о завершении.',
+  'p.privacy':'<b>Имена пилотов остаются здесь.</b> Вы вставляете весь локал, и всё кроме строк NPC удаляется в браузере до отправки.',
+  'l.name':'Название миссии', 'l.lvl':'Уровень', 'l.fac':'Фракция врага',
+  'l.log':'Вставьте локальный чат', 'l.note':'Что вы заметили? (необязательно)',
+  'b.send':'Отправить как тикет GitHub', 'b.copy':'Скопировать текст',
+  h2:'Самый быстрый способ',
+  'p.steps':'<li>Пройдите миссию с открытым локалом.</li><li>Щёлкните в локал, <code>Ctrl+A</code>, <code>Ctrl+C</code>.</li><li>Вставьте сюда, добавьте название, отправьте.</li>',
+  'p.best':'Особенно ценны миссии, которые Canary <b>не</b> распознаёт, и те, что проходятся без боя.',
+  'f.home':'Обзор', 'f.list':'уже сообщённые миссии', 'f.src':'Исходный код',
+  'ph.log':'В игре щёлкните в локал, Ctrl+A, Ctrl+C, вставьте сюда.',
+  'ph.note':'Не распознана, стрелять не пришлось.'}
+};
+const EN_HTML = {};
+document.querySelectorAll('[data-i18n]').forEach(e => EN_HTML[e.dataset.i18n] = e.innerHTML);
+const EN_PH = {};
+document.querySelectorAll('[data-ph]').forEach(e => EN_PH[e.dataset.ph] = e.placeholder);
+const EN_TITLE = document.title;
+
+function setzeSprache(code) {
+  const d = L[code];
+  document.querySelectorAll('[data-i18n]').forEach(e => {
+    e.innerHTML = (d && d[e.dataset.i18n] !== undefined) ? d[e.dataset.i18n] : EN_HTML[e.dataset.i18n];
+  });
+  document.querySelectorAll('[data-ph]').forEach(e => {
+    e.placeholder = (d && d[e.dataset.ph] !== undefined) ? d[e.dataset.ph] : EN_PH[e.dataset.ph];
+  });
+  document.title = (d && d._t) || EN_TITLE;
+  document.documentElement.lang = code;
+  try { localStorage.setItem('lang', code); } catch (e) {}
+  document.querySelectorAll('#lang button').forEach(b =>
+    b.setAttribute('aria-current', b.dataset.code === code));
+}
+
+(function () {
+  const box = document.getElementById('lang');
+  for (const [code, txt] of [['en', 'EN'], ['de', 'DE'], ['fr', 'FR'], ['ru', 'RU']]) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = txt; b.dataset.code = code;
+    b.onclick = () => setzeSprache(code);
+    box.appendChild(b);
+  }
+  let start = '';
+  try { start = localStorage.getItem('lang') || ''; } catch (e) {}
+  if (!L[start] && start !== 'en') start = (navigator.language || 'en').slice(0, 2);
+  setzeSprache(L[start] ? start : 'en');
 })();
 </script>
 </body>
