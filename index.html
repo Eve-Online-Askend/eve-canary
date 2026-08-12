@@ -34,8 +34,7 @@ header .stream span.other{color:var(--cyan)}
   80%{opacity:.32}
   100%{opacity:0;transform:translateY(-112px)}}
 @media (prefers-reduced-motion:reduce){header .stream{display:none}}
-header .logo{font-size:52px;line-height:1;display:inline-block;transform-origin:50% 85%;
-  animation:canaryBob 3.4s ease-in-out infinite;will-change:transform;cursor:pointer;user-select:none}
+header .logo{display:block;margin:0 auto 6px;width:84px;height:84px}
 header .logo:hover{animation:canaryHop 0.6s ease-in-out}
 @keyframes canaryBob{
   0%,100%{transform:translateY(0) rotate(0deg)}
@@ -187,7 +186,7 @@ li{margin:5px 0}
 
 <header>
   <div class="stream" id="stream" aria-hidden="true"></div>
-  <div class="logo">🐤</div>
+  <img class="logo" src="logo/canary-256.png" width="84" height="84" alt="">
   <h1>EVE <b>CANARY</b></h1>
   <div class="by">by Askend</div>
   <p class="tag" data-i18n="tag">The canary in the coal mine. Canary reads your EVE Online
