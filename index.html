@@ -24,30 +24,30 @@ h2{font-size:22px;margin:52px 0 14px;padding-bottom:8px;border-bottom:1px solid 
 h3{font-size:15px;margin:0 0 6px}
 header{text-align:center;padding:52px 0 42px;position:relative;overflow:hidden}
 header>*:not(.stream){position:relative;z-index:1}
-header .stream{position:absolute;left:0;right:0;top:44px;height:120px;z-index:0;pointer-events:none;overflow:hidden}
-header .stream span{position:absolute;bottom:-8px;font-weight:600;color:var(--gold);opacity:0;
-  white-space:nowrap;animation:streamUp linear forwards;text-shadow:0 0 8px rgba(0,0,0,.45)}
+/* Die Werte sind Hintergrund, kein Inhalt. Sie liefen vorher zu hell und zu
+   nah an Logo und Ueberschrift, dadurch las man sie mit, statt sie nur zu
+   ahnen. Jetzt: weiter aussen, kleiner, blasser, und an den Aussenkanten
+   ausgeblendet, damit nichts abrupt auftaucht. */
+header .stream{position:absolute;left:0;right:0;top:52px;height:150px;z-index:0;
+  pointer-events:none;overflow:hidden;
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)}
+header .stream span{position:absolute;bottom:-8px;font-weight:500;color:var(--gold);opacity:0;
+  letter-spacing:.3px;white-space:nowrap;animation:streamUp linear forwards}
 header .stream span.other{color:var(--cyan)}
 @keyframes streamUp{
   0%{opacity:0;transform:translateY(0)}
-  16%{opacity:.5}
-  80%{opacity:.32}
-  100%{opacity:0;transform:translateY(-112px)}}
+  22%{opacity:.26}
+  78%{opacity:.16}
+  100%{opacity:0;transform:translateY(-142px)}}
+/* Schmale Fenster: dort reicht die Mitte fast bis zum Rand, die Werte wuerden
+   zwangslaeufig im Text landen. */
+@media (max-width:900px){header .stream{display:none}}
 @media (prefers-reduced-motion:reduce){header .stream{display:none}}
+/* Der Vogel huepft nicht mehr. Das war aus der Zeit vor dem gezeichneten
+   Logo, und neben dem Auge, das dem Mauszeiger folgt, waren es zwei
+   Bewegungen an derselben Stelle. Eine reicht, und das Auge ist die bessere. */
 header .logo{display:block;margin:0 auto 6px;width:84px;height:84px}
-header .logo:hover{animation:canaryHop 0.6s ease-in-out}
-@keyframes canaryBob{
-  0%,100%{transform:translateY(0) rotate(0deg)}
-  25%{transform:translateY(-7px) rotate(-6deg)}
-  50%{transform:translateY(0) rotate(0deg)}
-  70%{transform:translateY(-3px) rotate(5deg)}
-  85%{transform:translateY(0) rotate(0deg)}}
-@keyframes canaryHop{
-  0%,100%{transform:translateY(0) rotate(0deg) scale(1)}
-  30%{transform:translateY(-16px) rotate(-12deg) scale(1.12)}
-  60%{transform:translateY(0) rotate(10deg) scale(1)}}
-@media (prefers-reduced-motion:reduce){
-  header .logo,header .logo:hover{animation:none}}
 header h1{font-size:34px;margin:14px 0 4px;letter-spacing:2px}
 header h1 b{color:var(--gold);font-weight:400}
 header .by{color:var(--dim);font-size:12px;letter-spacing:2px;text-transform:uppercase}
@@ -192,13 +192,16 @@ header .logo{margin:0}
 @media (prefers-reduced-motion:reduce){.glanz{transition:none}}
 
 /* ------------------------------------------------ Kopf bleibt oben stehen */
-header{position:sticky;top:0;z-index:60;
- background:linear-gradient(#0a0d0f 86%,rgba(10,13,15,0));
- transition:padding .22s ease}
+/* KEIN eigener Hintergrund im Ruhezustand. Der Koerper traegt oben einen
+   weichen cyanfarbenen Schimmer, und ein undurchsichtiger Kopf stanzt da ein
+   Rechteck hinein: genau das sah aus wie ein Rahmen um den Block. Gebraucht
+   wird die Deckung erst beim Scrollen, und die steht unten bei header.eng. */
+header{position:sticky;top:0;z-index:60;transition:padding .22s ease}
 /* Beim Scrollen faellt alles weg, was nicht gebraucht wird, und der Rest
    rueckt in eine Zeile. Ohne das Schrumpfen wuerde der Kopf zwei Drittel
    des Bildschirms belegen. */
 header.eng{padding-top:8px;padding-bottom:8px;
+ background:rgba(10,13,15,.78);
  border-bottom:1px solid rgba(130,150,158,.16);
  backdrop-filter:blur(10px) saturate(150%)}
 header.eng .tag,
@@ -1142,10 +1145,27 @@ applyLang(start);
   const box = document.getElementById('stream');
   if (!box) return;
   try { if (matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (e) {}
+  // Alles hier kommt so oder so aehnlich wirklich in Canary vor. Erfundene
+  // Fantasiezahlen waeren als Deko erkennbar, echte Vokabeln erzaehlen dagegen
+  // nebenbei, was das Werkzeug ueberhaupt zeigt.
   const isk = ['+10.0 M ISK', '+2.4 M ISK', '+540 K ISK', '+1.8 M ISK', '+320 K ISK',
-    '+6.1 M ISK', '+12.5 M ISK', 'Bounty +3.2 M', '+780 K ISK', 'Loot +4.2 M'];
-  const other = ['Veldspar', 'Scordite', 'Plagioclase', '+1 Kill', '108k m³/h',
-    '⛏ Mining', 'Strip Miner', '⚔ 340 DPS', 'Gisleres', '1.686 m³'];
+    '+6.1 M ISK', '+12.5 M ISK', '+94 M ISK', '+780 K ISK', '+1.13 Mrd ISK',
+    'Bounty +3.2 M', 'Loot +4.2 M', 'Belohnung +8.3 M', 'Zeitbonus +2.1 M',
+    'Erz-Wert 159.3 M', 'Trip 42.8 M', 'Heute 215.5 M', 'Ø 4.3 M/Tag',
+    '157.4 M ISK/h', '72.1 M ISK/h', 'Frachtraum 88.6 M', 'Refine +12 %'];
+  const other = ['Veldspar', 'Scordite', 'Plagioclase', 'Kernite', 'Omber',
+    'Pyroxeres', 'Hemorphite', 'Jaspet', 'Gneiss', 'Dark Ochre', 'Spodumain',
+    'Crokite', 'Bistot', 'Arkonor', 'Mercoxit', 'Moissanite X-Grade',
+    'Hulk', 'Covetor', 'Skiff', 'Mackinaw', 'Orca', 'Porpoise', 'Rorqual',
+    '⛏ Mining', '🎯 Mission', '⚔ PvP', '🌀 Abyss',
+    '294.159 m³/h', '108k m³/h', '1.686 m³', '748,1 K m³', '12.062.213 m³',
+    'Strip Miner II', 'Modulated Laser', '⚔ 340 DPS', '+1 Kill',
+    'Trefferquote 87 %', '9 Runs', '1.247 Zyklen', '5 Piloten',
+    'Gisleres', 'Vullat', 'J152827', 'Jita', 'Amarr',
+    'Guristas', 'Serpentis', 'Angel Cartel', 'Blood Raiders', 'Sansha',
+    'Recon 2 of 3', 'Gone Berserk', 'Kruul\'s Pleasure Hub',
+    '⚠ Frachtraum voll', '⚠ Rudel 4 Sprünge', '⚠ Strip Miner aus',
+    'Downtime in 42 min', 'Planet IV: 6 Std'];
   function spawn() {
     if (document.hidden) return;
     const s = document.createElement('span');
@@ -1153,14 +1173,25 @@ applyLang(start);
     const pool = gold ? isk : other;
     s.textContent = pool[Math.floor(Math.random() * pool.length)];
     if (!gold) s.className = 'other';
+    // Die Mitte gehoert Logo, Titel und Fliesstext. Nur "left" zu setzen
+    // reichte dafuer NICHT: das ist die linke Kante, und eine lange
+    // Beschriftung wie "Kruul's Pleasure Hub" waechst von dort nach rechts
+    // mitten hinein. Gemessen liefen so drei von neun quer durch den Text.
+    // Deshalb wird die linke Seite an ihrer RECHTEN Kante verankert und
+    // waechst nach aussen. Damit kann nichts die 26/74-Grenze ueberschreiten.
     const rightSide = Math.random() < 0.5;
-    s.style.left = (rightSide ? 70 + Math.random() * 24 : 6 + Math.random() * 24) + '%';
-    s.style.fontSize = (11 + Math.random() * 6).toFixed(0) + 'px';
-    s.style.animationDuration = (3.8 + Math.random() * 2.6).toFixed(1) + 's';
+    if (rightSide) {
+      s.style.left = (74 + Math.random() * 12) + '%';
+    } else {
+      s.style.right = (74 + Math.random() * 12) + '%';
+    }
+    s.style.fontSize = (11 + Math.random() * 3).toFixed(0) + 'px';
+    s.style.animationDuration = (5.2 + Math.random() * 3.2).toFixed(1) + 's';
     box.appendChild(s);
     s.addEventListener('animationend', () => s.remove());
   }
-  setInterval(spawn, 950);
+  // Seltener als vorher. Es soll ein Rauschen im Hintergrund sein, kein Regen.
+  setInterval(spawn, 1500);
   spawn();
 })();
 
