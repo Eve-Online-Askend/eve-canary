@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # EVE Canary Installer fuer Linux und macOS (Gegenstueck zu install.ps1).
-# macOS ist EXPERIMENTELL: Logsuche und Dashboard laufen, aber es gibt
-# keinen Autostart und keine Zwischenablage-Erkennung. Siehe Issue 1.
+# macOS ist EXPERIMENTELL. Autostart (launchd) und Zwischenablage (pbpaste)
+# stammen von NetManDE, siehe Pull Request 1.
 # Aufruf:  curl -fsSL <repo>/install.sh | sh
 set -eu
 
@@ -13,7 +13,12 @@ DIR="${CANARY_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/eve-canary}"
 # ueberall vorhanden.
 SYS="$(uname -s 2>/dev/null || echo unbekannt)"
 MAC=""
-[ "$SYS" = "Darwin" ] && MAC=1
+if [ "$SYS" = "Darwin" ]; then
+  MAC=1
+  # Auf dem Mac gehoert so etwas nach Library/Application Support, nicht in
+  # einen XDG-Ordner. Wer CANARY_DIR selbst setzt, behaelt seine Wahl.
+  [ -n "${CANARY_DIR:-}" ] || DIR="$HOME/Library/Application Support/EVE-Canary"
+fi
 
 echo ""
 echo "  EVE Canary wird installiert"
@@ -29,9 +34,10 @@ done
 if [ -z "$PY" ]; then
   echo "  Python 3 wurde nicht gefunden."
   if [ -n "$MAC" ]; then
-    echo "  Auf dem Mac zum Beispiel so:"
-    echo "    mit Homebrew:   brew install python"
-    echo "    oder direkt:    https://www.python.org/downloads/"
+    echo "  Am schnellsten mit den Kommandozeilen-Tools von Apple:"
+    echo "    xcode-select --install"
+    echo "  Alternativ mit Homebrew (brew install python3) oder direkt von"
+    echo "    https://www.python.org/downloads/macos/"
   else
     echo "  Bitte ueber die Paketverwaltung installieren, zum Beispiel:"
     echo "    Ubuntu/Debian:  sudo apt install python3"
@@ -124,12 +130,14 @@ fi
 echo ""
 echo "  Fertig. Canary liegt in: $DIR"
 if [ -n "$MAC" ]; then
-  echo "  Start ueber 'EVE Canary.command' auf dem Schreibtisch oder:"
+  echo "  Start ueber 'EVE Canary' auf dem Schreibtisch, per Doppelklick oder"
+  echo "  ueber Spotlight (cmd+Leertaste, Namen tippen), oder:"
   echo "    $DIR/start_dashboard.sh"
   echo ""
-  echo "  macOS ist EXPERIMENTELL. Dashboard und Logsuche laufen, aber es gibt"
-  echo "  keinen Autostart. Beim ersten Doppelklick fragt der Mac, ob die Datei"
-  echo "  ausgefuehrt werden darf, das ist normal."
+  echo "  macOS ist EXPERIMENTELL. Autostart und Zwischenablage-Erkennung sind"
+  echo "  vorhanden, den Autostart schaltest du in den Optionen ein."
+  echo "  Beim ersten Doppelklick fragt der Mac, ob die Datei ausgefuehrt"
+  echo "  werden darf, das ist normal."
   echo "  Canary sucht die Logs unter ~/Documents/EVE/logs/Gamelogs. Wird dort"
   echo "  nichts gefunden, den Pfad in den Optionen eintragen."
   echo "  Laeuft etwas schief: bitte melden, dann wird es besser."

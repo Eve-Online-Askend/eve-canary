@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.90.1"
+VERSION = "1.91.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -1429,14 +1429,19 @@ def fetch_url(url, timeout=15):
         return r.read()
 
 
-AUTOSTART_OK = os.name == "nt" or sys.platform.startswith("linux")
-CLIPBOARD_OK = sys.platform == "win32"
+AUTOSTART_OK = (os.name == "nt" or sys.platform.startswith("linux")
+                or sys.platform == "darwin")
+CLIPBOARD_OK = sys.platform in ("win32", "darwin")
 
 
 def autostart_path():
     if os.name == "nt":
         return (Path(os.environ.get("APPDATA", "")) / "Microsoft" / "Windows"
                 / "Start Menu" / "Programs" / "Startup" / "EVE-Canary-Autostart.vbs")
+    if sys.platform == "darwin":
+        # launchd liest beim Login alles aus diesem Ordner. Der Dateiname muss
+        # zum Label im plist passen, sonst meckert launchctl.
+        return Path.home() / "Library" / "LaunchAgents" / "io.evecanary.autostart.plist"
     base = os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")
     return Path(base) / "autostart" / "eve-canary.desktop"
 
@@ -1444,7 +1449,8 @@ def autostart_path():
 def set_autostart(on):
     """Startet Canary beim Login still im Hintergrund.
     Windows: VBS im Autostart-Ordner (unterdrueckt das Konsolenfenster).
-    Linux: .desktop-Datei nach XDG-Standard, greift in GNOME/KDE/XFCE gleich."""
+    Linux: .desktop-Datei nach XDG-Standard, greift in GNOME/KDE/XFCE gleich.
+    macOS: LaunchAgent-plist, das launchd beim naechsten Login startet."""
     if not AUTOSTART_OK:
         return
     p = autostart_path()
@@ -1463,6 +1469,25 @@ def set_autostart(on):
         # --no-browser: beim Login still starten, ohne Browser-Tab aufzupoppen
         p.write_text('CreateObject("WScript.Shell").Run '
                      f'"""{runner}"" ""{script}"" --no-browser", 0\n', encoding="utf-8")
+    elif sys.platform == "darwin":
+        # Pfade maskieren: ein & oder < im Benutzernamen wuerde die Datei sonst
+        # zerlegen, und launchd meldet das nicht, es startet dann einfach nicht.
+        def x(v):
+            return (str(v).replace("&", "&amp;").replace("<", "&lt;")
+                    .replace(">", "&gt;"))
+        p.write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+            '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+            '<plist version="1.0"><dict>\n'
+            '  <key>Label</key><string>io.evecanary.autostart</string>\n'
+            '  <key>ProgramArguments</key><array>\n'
+            f'    <string>{x(sys.executable)}</string>\n'
+            f'    <string>{x(script)}</string>\n'
+            '    <string>--no-browser</string>\n'
+            '  </array>\n'
+            '  <key>RunAtLoad</key><true/>\n'
+            '</dict></plist>\n', encoding="utf-8")
     else:
         p.write_text("[Desktop Entry]\nType=Application\nName=EVE Canary\n"
                      f'Exec="{sys.executable}" "{script}" --no-browser\n'
@@ -4607,6 +4632,20 @@ class ClipWatch(threading.Thread):
 
     @staticmethod
     def read_clipboard():
+        if sys.platform == "darwin":
+            # pbpaste liegt auf jedem Mac. Als Liste aufgerufen, ohne Shell,
+            # mit Zeitgrenze: haengt das Programm, haengt Canary nicht mit.
+            # Import lokal wie beim Neustart weiter oben: subprocess steht
+            # nicht oben in der Datei, und auf Windows wird der Zweig nie
+            # betreten.
+            import subprocess
+            try:
+                r = subprocess.run(["pbpaste"], capture_output=True, timeout=2)
+            except (OSError, subprocess.SubprocessError):
+                return None
+            if r.returncode != 0:
+                return None
+            return r.stdout.decode("utf-8", errors="replace")
         import ctypes
         from ctypes import wintypes
         u32, k32 = ctypes.windll.user32, ctypes.windll.kernel32
@@ -4649,7 +4688,7 @@ class ClipWatch(threading.Thread):
         threat.request(self.names, alert="red")
 
     def run(self):
-        while sys.platform == "win32":
+        while CLIPBOARD_OK:
             time.sleep(2)
             try:
                 if CONFIG.get("clip_watch"):

@@ -261,9 +261,9 @@ needed, then Canary starts by itself and creates a shortcut.</p>
 <pre><code>curl -fsSL https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main/install.sh | sh</code></pre>
 
 <div class="os" data-i18n="os.mac">macOS <span class="alpha">experimental</span></div>
-<p class="tiny" data-i18n="install.mac.hint">Same command in the Terminal. Dashboard and log
-detection work, but there is no autostart and no clipboard scan yet. It puts an "EVE Canary.command"
-on your desktop to start it. If something breaks, please say so.</p>
+<p class="tiny" data-i18n="install.mac.hint">Same command in the Terminal. It installs to Library/Application Support and puts an
+"EVE Canary" launcher on your desktop, findable through Spotlight too. Autostart and the
+clipboard scan work, thanks to NetManDE. Still experimental, so if something breaks, please say so.</p>
 <pre><code>curl -fsSL https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main/install.sh | sh</code></pre>
 
 <p class="note" data-i18n="install.note">Canary finds the log folder on its own, including
@@ -493,7 +493,7 @@ const LANGS = {
     'install.win.hint': 'Windows-Taste drücken, „PowerShell“ tippen, öffnen, einfügen:',
     'os.linux': 'Linux (EVE über Steam/Proton oder Wine)',
   'os.mac': 'macOS <span class="alpha">experimentell</span>',
-  'install.mac.hint': 'Derselbe Befehl im Terminal. Dashboard und Logsuche laufen, Autostart und Zwischenablage-Erkennung fehlen noch. Zum Starten landet eine Datei "EVE Canary.command" auf dem Schreibtisch. Wenn etwas klemmt, sag Bescheid.',
+  'install.mac.hint': 'Derselbe Befehl im Terminal. Installiert wird nach Library/Application Support, zum Starten landet "EVE Canary" auf dem Schreibtisch und ist auch über Spotlight zu finden. Autostart und Zwischenablage-Erkennung laufen, dank NetManDE. Weiterhin experimentell: wenn etwas klemmt, sag Bescheid.',
     'install.linux.hint': 'Terminal öffnen und einfügen:',
     'install.note': 'Canary findet den Log-Ordner selbst, auch im Wine-Präfix unter Linux. Klappt das nicht, fragt es beim ersten Start einfach danach. Im EVE-Client muss das Spielprotokoll aktiv sein, das ist die Standardeinstellung.',
     'h.features': 'Was es kann',
@@ -588,7 +588,7 @@ const LANGS = {
     'install.win.hint': 'Appuyez sur la touche Windows, tapez « PowerShell », ouvrez-le et collez :',
     'os.linux': 'Linux (EVE via Steam/Proton ou Wine)',
   'os.mac': 'macOS <span class="alpha">expérimental</span>',
-  'install.mac.hint': 'La même commande dans le Terminal. Le tableau de bord et la détection des logs fonctionnent, il manque le démarrage automatique. Un fichier "EVE Canary.command" est déposé sur le bureau.',
+  'install.mac.hint': 'La même commande dans le Terminal. Installation dans Library/Application Support, un lanceur "EVE Canary" est déposé sur le bureau. Démarrage automatique et lecture du presse-papiers fonctionnent, merci à NetManDE. Toujours expérimental.',
     'install.linux.hint': 'Ouvrez un terminal et collez :',
     'install.note': 'Canary trouve le dossier des journaux tout seul, y compris dans le préfixe Wine sous Linux. Si cela échoue, il vous le demande simplement au premier démarrage. La journalisation doit être activée dans le client EVE, ce qui est le réglage par défaut.',
     'h.features': 'Ce qu\'il fait',
@@ -683,7 +683,7 @@ const LANGS = {
     'install.win.hint': 'Нажмите клавишу Windows, введите «PowerShell», откройте и вставьте:',
     'os.linux': 'Linux (EVE через Steam/Proton или Wine)',
   'os.mac': 'macOS <span class="alpha">экспериментально</span>',
-  'install.mac.hint': 'Та же команда в Терминале. Панель и поиск логов работают, автозапуска пока нет. Для запуска на рабочий стол кладётся файл "EVE Canary.command".',
+  'install.mac.hint': 'Та же команда в Терминале. Установка в Library/Application Support, на рабочий стол кладётся ярлык "EVE Canary". Автозапуск и чтение буфера обмена работают, спасибо NetManDE. Пока экспериментально.',
     'install.linux.hint': 'Откройте терминал и вставьте:',
     'install.note': 'Canary находит папку с логами сам, в том числе внутри префикса Wine на Linux. Если не получится, он просто спросит путь при первом запуске. В клиенте EVE должно быть включено ведение журнала, это настройка по умолчанию.',
     'h.features': 'Что он умеет',

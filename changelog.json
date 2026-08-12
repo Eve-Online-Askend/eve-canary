@@ -1,5 +1,21 @@
 [
  {
+  "v": "1.91.0",
+  "d": "2026-08-12",
+  "de": [
+   "macOS bekommt echten Autostart und Zwischenablage-Erkennung. Der Autostart laeuft ueber einen LaunchAgent, den launchd beim Login startet, die Zwischenablage ueber pbpaste. Damit kann der Mac jetzt dasselbe wie Windows.",
+   "Beides stammt von NetManDE, der es schon Ende Juli gebaut und an einer echten EVE-Installation geprueft hat. Sein Beitrag lag 17 Tage unbeachtet, das war unser Fehler. Sein Zweig liess sich nach 40 Versionen nicht mehr zusammenfuehren, deshalb wurde alles von Hand auf den heutigen Stand uebertragen.",
+   "Nebenbei ein Fehler, den er gefunden hat: die Schleife des Zwischenablage-Waechters lief hart auf Windows statt auf der Faehigkeitspruefung. Auf jedem anderen System waere sie nie angelaufen.",
+   "Der Mac-Installer legt Canary jetzt nach Library/Application Support statt in einen Linux-Ordner, nennt bei fehlendem Python zuerst xcode-select, und der Starter auf dem Schreibtisch ist auch ueber Spotlight zu finden."
+  ],
+  "en": [
+   "macOS gains real autostart and clipboard detection. Autostart runs through a LaunchAgent that launchd starts at login, the clipboard through pbpaste. The Mac can now do what Windows does.",
+   "Both come from NetManDE, who built and verified them against a real EVE install back in late July. His contribution sat unnoticed for 17 days, which was our mistake. His branch could no longer be merged after 40 versions, so everything was ported by hand onto the current code.",
+   "A bug he found along the way: the clipboard watcher loop tested for Windows directly instead of the capability flag. On any other system it would never have started.",
+   "The Mac installer now puts Canary into Library/Application Support rather than a Linux folder, points at xcode-select first when Python is missing, and the desktop launcher can be found through Spotlight."
+  ]
+ },
+ {
   "v": "1.90.1",
   "d": "2026-08-12",
   "de": [

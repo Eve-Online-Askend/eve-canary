@@ -48,5 +48,26 @@
     "u": "https://www.twitch.tv/switchhitgames"
    }
   ]
+ },
+ {
+  "name": "NetManDE",
+  "role": {
+   "de": "Beitrag",
+   "en": "Contributor",
+   "fr": "Contributeur",
+   "ru": "Участник"
+  },
+  "note": {
+   "de": "Hat die macOS-Unterstützung gebaut: Autostart über launchd und Zwischenablage-Erkennung über pbpaste, geprüft an einer echten EVE-Installation.",
+   "en": "Built the macOS support: autostart through launchd and clipboard detection through pbpaste, verified against a real EVE install.",
+   "fr": "A construit la prise en charge de macOS : démarrage automatique via launchd et lecture du presse-papiers via pbpaste.",
+   "ru": "Сделал поддержку macOS: автозапуск через launchd и чтение буфера обмена через pbpaste."
+  },
+  "links": [
+   {
+    "k": "github",
+    "u": "https://github.com/NetManDE"
+   }
+  ]
  }
 ]
