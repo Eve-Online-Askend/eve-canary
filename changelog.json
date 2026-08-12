@@ -1,5 +1,17 @@
 [
  {
+  "v": "1.92.0",
+  "d": "2026-08-12",
+  "de": [
+   "The Right Hand Of Zazzmatazz (Mercenaries, Stufe 4) wird erkannt, gemeldet von Nirahse. Erkannt an der Struktur Zazzmatazz's Bunker: null Treffer in der Gegnertabelle, also voellig eindeutig.",
+   "Die drei gemeldeten Gegnernamen habe ich dafuer NICHT genommen. Zor steckt in 16 Gegnernamen, Seven Macleari und Outpost Headquarters tauchen auch in fremden Runs auf. Den Bunker habe ich in den eigenen Logs gefunden, im selben Run wie Nirahses drei Namen."
+  ],
+  "en": [
+   "The Right Hand Of Zazzmatazz (Mercenaries, level 4) is now recognised, reported by Nirahse. Identified by the structure Zazzmatazz's Bunker: zero hits in the enemy table, so entirely unambiguous.",
+   "The three reported enemy names were deliberately NOT used. Zor sits inside 16 enemy names, and Seven Macleari and Outpost Headquarters turn up in unrelated runs too. The bunker was found in our own logs, in the same run as Nirahse's three names."
+  ]
+ },
+ {
   "v": "1.91.1",
   "d": "2026-08-12",
   "de": [
