@@ -177,6 +177,15 @@ li{margin:5px 0}
 .missionCta .cta{display:inline-block;background:var(--cyan);color:#06222a;border-radius:9px;
  padding:11px 20px;font-weight:700;text-decoration:none;font-size:15px}
 .missionCta .cta:hover{filter:brightness(1.08)}
+
+.logowrap{position:relative;display:block;width:84px;height:84px;margin:0 auto 6px}
+header .logo{margin:0}
+.auge{position:absolute;left:55.6%;top:35.4%;width:9%;height:9%;
+ transform:translate(-50%,-50%);border-radius:50%;background:#0b1017;pointer-events:none}
+.glanz{position:absolute;left:50%;top:50%;width:42%;height:42%;border-radius:50%;
+ background:#eaf6ff;transform:translate(-50%,-50%);
+ transition:transform .12s cubic-bezier(.2,.7,.3,1)}
+@media (prefers-reduced-motion:reduce){.glanz{transition:none}}
 </style>
 </head>
 <body>
@@ -186,12 +195,10 @@ li{margin:5px 0}
 
 <header>
   <div class="stream" id="stream" aria-hidden="true"></div>
-  <img class="logo" src="logo/canary-256.png" width="84" height="84" alt="">
+  <span class="logowrap"><img class="logo" src="logo/canary-256.png" width="84" height="84" alt=""><span class="auge" id="auge"><span class="glanz" id="glanz"></span></span></span>
   <h1>EVE <b>CANARY</b></h1>
   <div class="by">by Askend</div>
-  <p class="tag" data-i18n="tag">The canary in the coal mine. Canary reads your EVE Online
-  logs and warns you before a gank pack finds you, while tracking mining, ISK and missions
-  live in your browser. Everything runs on your own machine, no login, no account.</p>
+  <p class="tag" data-i18n="tag">Miners took a canary down the shaft with them. When it dropped off its perch, it was time to leave. Canary does the same for you: it reads your EVE logs and raises the alarm while the gank pack is still jumps away. Plus mining, ISK and missions live in your browser. Everything on your own machine, no login, no account.</p>
   <div class="badges">
     <span class="badge"><span data-i18n="b.version">Version</span> <b id="ver">…</b></span>
     <span class="badge" data-i18n="b.os">Windows &amp; Linux</span>
@@ -434,7 +441,7 @@ const LANGS = {
   de: {
     _title: 'EVE Canary: Mining- und Missions-Dashboard für EVE Online',
     _desc: 'EVE Canary liest deine EVE-Online-Logs und zeigt Mining, ISK, Missionen und Sicherheitsalarme live im Browser. Läuft komplett lokal, ohne Anmeldung.',
-    tag: 'Der Kanarienvogel im Bergwerk. Canary liest deine EVE-Online-Logs und warnt dich, bevor ein Gank-Rudel dich findet, und zeigt dabei Mining, ISK und Missionen live im Browser. Alles läuft auf deinem Rechner, ohne Anmeldung, ohne Konto.',
+    tag: 'Bergleute nahmen einen Kanarienvogel mit unter Tage. Fiel er von der Stange, war es Zeit zu gehen. Canary tut dasselbe für dich: es liest deine EVE-Logs und schlägt Alarm, während das Gank-Rudel noch Sprünge entfernt ist. Dazu Mining, ISK und Missionen live im Browser. Alles auf deinem Rechner, ohne Anmeldung, ohne Konto.',
     'b.version': 'Version', 'b.os': 'Windows &amp; Linux', 'b.free': 'Kostenlos',
     'b.eula': 'EULA-konform', 'b.dl': 'Downloads',
     'h.install': 'Installation',
@@ -527,7 +534,7 @@ const LANGS = {
   fr: {
     _title: 'EVE Canary : tableau de bord minage et missions pour EVE Online',
     _desc: 'EVE Canary lit vos journaux EVE Online et affiche minage, ISK, missions et alertes de sécurité en direct dans votre navigateur. Fonctionne entièrement en local, sans compte.',
-    tag: 'Le canari dans la mine. Canary lit vos journaux EVE Online et vous prévient avant qu\'une meute de gankers ne vous trouve, tout en suivant le minage, l\'ISK et les missions en direct dans votre navigateur. Tout tourne sur votre machine, sans connexion, sans compte.',
+    tag: 'Les mineurs descendaient avec un canari. Quand il tombait de son perchoir, il était temps de partir. Canary fait pareil pour toi : il lit tes journaux EVE et donne l\'alerte pendant que la meute est encore à plusieurs sauts. Plus le minage, les ISK et les missions en direct dans ton navigateur. Tout sur ta machine, sans compte.',
     'b.version': 'Version', 'b.os': 'Windows et Linux', 'b.free': 'Gratuit',
     'b.eula': 'Conforme au CLUF', 'b.dl': 'Téléchargements',
     'h.install': 'Installation',
@@ -620,7 +627,7 @@ const LANGS = {
   ru: {
     _title: 'EVE Canary: панель добычи и миссий для EVE Online',
     _desc: 'EVE Canary читает ваши логи EVE Online и показывает добычу, ISK, миссии и предупреждения об опасности прямо в браузере. Работает полностью на вашем компьютере, без учётной записи.',
-    tag: 'Канарейка в шахте. Canary читает ваши логи EVE Online и предупреждает вас до того, как банда ганкеров вас найдёт, одновременно показывая добычу, ISK и миссии прямо в браузере. Всё работает на вашем компьютере, без входа и без учётной записи.',
+    tag: 'Шахтёры брали с собой канарейку. Упала с жёрдочки, значит пора уходить. Canary делает то же самое для вас: читает ваши логи EVE и поднимает тревогу, пока стая ещё в нескольких прыжках. Плюс добыча, ISK и миссии вживую в браузере. Всё на вашем компьютере, без входа и аккаунта.',
     'b.version': 'Версия', 'b.os': 'Windows и Linux', 'b.free': 'Бесплатно',
     'b.eula': 'Не нарушает EULA', 'b.dl': 'Загрузок',
     'h.install': 'Установка',
@@ -1172,6 +1179,49 @@ applyLang(start);
   } catch (e) {}   // keine Datei, kein Bereich. Der Rest der Seite bleibt heil.
 })();
 
+</script>
+
+<script>
+/* Der Lichtpunkt im Auge folgt dem Zeiger. Nur er bewegt sich, die Pupille
+   bleibt an ihrem Platz: ein wanderndes Auge saehe krank aus, ein wandernder
+   Glanz liest sich als Blickrichtung. Der Ausschlag ist auf ein knappes
+   Drittel des Pupillenradius begrenzt, sonst klebt der Punkt am Rand. */
+(function () {
+  const auge = document.getElementById('auge');
+  const glanz = document.getElementById('glanz');
+  if (!auge || !glanz) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  let ziel = null, laeuft = false;
+
+  function zeichne() {
+    laeuft = false;
+    if (!ziel) return;
+    const b = auge.getBoundingClientRect();
+    const cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+    const dx = ziel.x - cx, dy = ziel.y - cy;
+    const w = Math.hypot(dx, dy);
+    if (!w) return;
+    // Weiter weg heisst nicht weiter aussen: ab einer Handbreit ist der
+    // Ausschlag voll, sonst zuckt der Punkt bei jeder kleinen Bewegung.
+    const staerke = Math.min(1, w / 260);
+    const max = b.width * 0.3 * staerke;
+    glanz.style.transform =
+      'translate(calc(-50% + ' + (dx / w * max).toFixed(2) + 'px), ' +
+      'calc(-50% + ' + (dy / w * max).toFixed(2) + 'px))';
+  }
+
+  addEventListener('mousemove', (e) => {
+    ziel = { x: e.clientX, y: e.clientY };
+    if (!laeuft) { laeuft = true; requestAnimationFrame(zeichne); }
+  }, { passive: true });
+
+  // Verlaesst der Zeiger das Fenster, schaut der Vogel wieder geradeaus
+  addEventListener('mouseleave', () => {
+    ziel = null;
+    glanz.style.transform = 'translate(-50%, -50%)';
+  });
+})();
 </script>
 </body>
 </html>
