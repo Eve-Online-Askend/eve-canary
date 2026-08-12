@@ -1,5 +1,23 @@
 [
  {
+  "v": "1.85.0",
+  "d": "2026-08-12",
+  "de": [
+   "Das Overlay zeigt jetzt, welches Schiff jeder Charakter fliegt. Eigene Zeile statt hinter dem System, weil im Stream jede Zeile schmal ist und ein Hulk sonst umbricht.",
+   "Dazu eine Flottensumme im Overlay: wieviel insgesamt gefoerdert wurde und was es wert ist. Im Stream ist das die Zahl, nach der im Chat gefragt wird. Sie erscheint nur, wenn wirklich gefoerdert wurde, statt eine Null herumstehen zu lassen.",
+   "Sechs neue Missionen werden erkannt, gemeldet von Nirahse: Recon 1, 2 und 3 von 3, Cargo Delivery, The Mordus Headhunters und Smuggler Interception. Recon 2 und 3 lassen sich ohne einen einzigen Schuss abschliessen und haben deshalb gar keine Gegner, sie werden allein am NPC-Funk erkannt.",
+   "Canary hat ein eigenes Logo statt des Kueken-Emojis: ein gezeichneter Kanarienkopf, der in jedem System gleich aussieht.",
+   "Neu auf der Seite: eine eigene Seite zum Melden von Missionen. Missionsnamen eintippen, Local einfuegen, fertig. Alles ausser den NPC-Zeilen wird im Browser entfernt, bevor etwas abgeschickt wird."
+  ],
+  "en": [
+   "The overlay now shows which ship each character is flying. Its own line rather than trailing the system name, because every overlay line is narrow on stream and a Hulk would otherwise wrap.",
+   "Plus a fleet total in the overlay: how much has been mined altogether and what it is worth. On stream that is the number chat asks about. It only appears once something has actually been mined, instead of leaving a zero sitting there.",
+   "Six more missions are recognised, reported by Nirahse: Recon 1, 2 and 3 of 3, Cargo Delivery, The Mordus Headhunters and Smuggler Interception. Recon 2 and 3 can be completed without firing a single shot and therefore have no enemies at all, they are identified purely from the NPC chatter.",
+   "Canary has its own logo instead of the chick emoji: a drawn canary head that looks the same on every system.",
+   "New on the website: a dedicated page for reporting missions. Type the mission name, paste your local, done. Everything except the NPC lines is stripped in your browser before anything is sent."
+  ]
+ },
+ {
   "v": "1.84.1",
   "d": "2026-08-12",
   "de": [

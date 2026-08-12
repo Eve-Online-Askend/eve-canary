@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.84.1"
+VERSION = "1.85.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -7690,7 +7690,7 @@ class Handler(BaseHTTPRequestHandler):
 PAGE = """<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>EVE Canary</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐤</text></svg>">
+<link rel="icon" href="data:image/png;base64,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"><text y=%22.9em%22 font-size=%2290%22>🐤</text></svg>">
 <style>
 :root{--bg:#0b0e14;--card:#121722;--inset:#0e1320;--line:#1e2636;--txt:#c9d4e3;
 --dim:#5d6b80;--cyan:#35c8e8;--red:#e8564f;--green:#4fd47f;--gold:#e8c645;--white:#fff}
@@ -10232,6 +10232,18 @@ border-radius:8px;padding:6px 10px;margin-bottom:5px}
 @keyframes p{50%{opacity:.25}}
 .nm{font-weight:600;color:#fff;font-size:12px;line-height:1.2}
 .sys{color:#35c8e8;font-size:9px;font-weight:400}
+/* Schiffsname im Overlay. Eigene Zeile statt hinter dem System, weil im
+   Stream jede Zeile schmal ist und ein Hulk sonst umbricht. Gedaempft, damit
+   Name und ISK die Blicke behalten. */
+.shp{font-size:9px;color:#8a97a8;line-height:1.3;margin-top:1px}
+/* Flottensumme, abgesetzt durch eine Linie statt durch einen weiteren Kasten:
+   im Overlay ist jeder Rahmen ein Stueck Hoehe, das im Stream fehlt. */
+.sum{display:flex;align-items:center;justify-content:space-between;
+ margin-top:6px;padding-top:6px;border-top:1px solid #1e2636;
+ font-size:9px;letter-spacing:1.2px;color:#5d6b80;text-transform:uppercase}
+.sv{text-align:right;font-size:12px;color:#35c8e8;font-weight:700;
+ letter-spacing:0;text-transform:none;line-height:1.2}
+.sv small{display:block;font-size:9px;color:#e8c645;font-weight:600}
 .st{font-size:9px;color:#e8c645}
 .st.bad{color:#e8564f;background:none;animation:none}
 .val{margin-left:auto;text-align:right;font-size:11px;color:#e8c645;font-weight:600;line-height:1.25}
@@ -10359,8 +10371,18 @@ async function overlayTick(){
    d.chars.map(c=>{const [cls,txt]=ovStatus(c,d.state);
     return `<div class="row"><span class="dot ${cls}"></span>
      <span><div class="nm">${esc(c.name)} <span class="sys">· ${esc(c.system)}</span></div>
+     ${c.ship?`<div class="shp">${esc(c.ship)}</div>`:''}
      ${txt?`<div class="st ${cls==='bad'?'bad':''}">${txt}</div>`:''}</span>
      <span class="val">${fmtM(c.total_isk)}<small>${fmt(c.m3h)} m³/h</small></span></div>`;}).join('')+
+   // Flottensumme. Im Stream ist das die Zahl, nach der im Chat gefragt wird:
+   // was hat die Truppe zusammen geholt. Einzelwerte stehen darueber, hier
+   // zaehlt nur das Ergebnis. Nur zeigen, wenn wirklich gefoerdert wurde,
+   // sonst steht dort eine leere Null herum.
+   (()=>{const m3=d.chars.reduce((s,c)=>s+(c.m3||0),0);
+     const isk=d.chars.reduce((s,c)=>s+(c.ore_isk||0),0);
+     if(!m3)return '';
+     return `<div class="sum"><span>${d.chars.length} ${d.chars.length===1?'Char':'Chars'}</span>
+      <span class="sv">${fmtC(m3)} m³<small>${fmtM(isk)} ISK</small></span></div>`;})()+
    alerts.map(a=>`<div class="al ${a.kind}">[${new Date(a.ts*1000).toLocaleTimeString()}] ${esc(a.text)}</div>`).join('');
   // Das Overlay ist ein EIGENES Dokument, tr(document.body) erreicht es nicht.
   if(lang!=='de')tr(doc.body);
