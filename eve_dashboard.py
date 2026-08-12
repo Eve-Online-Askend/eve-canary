@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.86.6"
+VERSION = "1.87.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -60,6 +60,7 @@ ERROR_HELP = {
     "CN-INTEL-01": "Bedrohungs-Abfrage fehlgeschlagen",
     "CN-CLIP-01": "Zwischenablage nicht lesbar",
     "CN-UPD-01": "Update fehlgeschlagen",
+    "CN-DATA-01": "Datendatei fehlt oder ist unbrauchbar und liess sich nicht nachladen",
     "CN-CFG-01": "Einstellungen nicht speicherbar",
     "CN-SRV-01": "Interner Serverfehler",
     "CN-SRV-02": "IPv6-Lauscher nicht startbar (localhost bleibt langsam, dann 127.0.0.1 nutzen)",
@@ -1680,6 +1681,132 @@ def _ver(v):
         m = re.match(r"\d+", seg)
         out.append(int(m.group()) if m else 0)
     return tuple(out)
+
+
+# ------------------------------------------------------- Selbstpruefung Daten
+# Was eine vollstaendige Installation haben MUSS, mit einer Mindestpruefung je
+# Datei. Geprueft wird nicht nur "existiert", sondern auch "ist brauchbar": ein
+# abgebrochener Download hinterlaesst eine Datei, die es zwar gibt, die aber
+# kein gueltiges JSON enthaelt, und ein leeres {} sieht fuer load_json genauso
+# aus wie eine fehlende Datei.
+#
+# Die Schwellen sind bewusst niedrig angesetzt. Sie sollen "kaputt oder leer"
+# von "da" trennen, nicht den Inhalt bewerten: sonst schlaegt die Pruefung an,
+# sobald eine Liste mal kuerzer wird.
+DATEN_PRUEFUNG = {
+    "ore_types.json": lambda d: isinstance(d, dict) and len(d) > 100,
+    "ore_refine.json": lambda d: isinstance(d, dict) and bool(d.get("refine")),
+    "eve_map.json": lambda d: isinstance(d, dict) and len(d.get("systems") or {}) > 1000,
+    "npc_factions.json": lambda d: isinstance(d, dict) and len(d) > 20,
+    "site_sigs.json": lambda d: isinstance(d, dict) and len(d) > 2,
+    "mining_tools.json": lambda d: isinstance(d, list) and len(d) > 5,
+    "mission_sigs.json": lambda d: isinstance(d, dict) and len(d) > 5,
+    "market_types.json": lambda d: isinstance(d, dict) and len(d) > 100,
+    "gank_groups.json": lambda d: isinstance(d, dict)
+    and bool((d.get("highsec") or {}).get("allianzen")),
+}
+DATEN_STATUS = {"geprueft": False, "repariert": [], "offen": []}
+
+
+def daten_uebernehmen(name):
+    """Abgeleitete Strukturen nach einer Reparatur neu bauen.
+
+    Ohne das laege die frisch geholte Datei zwar auf der Platte, wuerde aber
+    erst nach einem Neustart wirken. Die Ableitungen stehen hier absichtlich
+    ausgeschrieben und nicht ueber eine Automatik: das ist die eine Stelle, die
+    mitgezogen werden muss, wenn oben eine neue Datei dazukommt."""
+    global ORE_TYPES, ORE_BY_TID, ORE_REFINE, MINING_TOOLS, GANK_GROUPS
+    global GANK_IDX, MISSION_SIGS, SITE_SIGS, MARKET_TYPES, _MARKET_INDEX
+    global NPC_FACTIONS, _SYS_NAMES
+    if name == "ore_types.json":
+        ORE_TYPES = load_json(name, {})
+        ORE_BY_TID = {v["typeID"]: (n, v.get("volume", 0.0))
+                      for n, v in ORE_TYPES.items()}
+    elif name == "ore_refine.json":
+        ORE_REFINE = load_json(name, {"refine": {}, "minerals": {}})
+    elif name == "mining_tools.json":
+        MINING_TOOLS = sorted(load_json(name, []), key=len, reverse=True)
+    elif name == "gank_groups.json":
+        GANK_GROUPS = load_json(name, {})
+        GANK_IDX = gank_index(GANK_GROUPS)
+    elif name == "mission_sigs.json":
+        MISSION_SIGS = {k.lower(): v for k, v in load_json(name, {}).items()
+                        if not k.startswith("_")}
+    elif name == "site_sigs.json":
+        SITE_SIGS = {k.lower(): v for k, v in load_json(name, {}).items()
+                     if not k.startswith("_")}
+    elif name == "market_types.json":
+        MARKET_TYPES = load_json(name, {})
+        _MARKET_INDEX = sorted(((n.lower(), n) for n in MARKET_TYPES),
+                               key=lambda x: len(x[0]))
+    elif name == "npc_factions.json":
+        NPC_FACTIONS = load_json(name, {})
+    elif name == "eve_map.json":
+        _SYS_NAMES = None          # wird beim naechsten Zugriff neu geladen
+
+
+def pruefe_daten():
+    """Fehlende oder unbrauchbare Datendateien einmalig nachladen.
+
+    Laeuft beim Start in einem eigenen Thread, damit das Dashboard sofort da
+    ist. Ohne Netz passiert nichts Schlimmes: es bleibt beim bisherigen Stand,
+    und die Diagnose sagt, welche Datei fehlt."""
+    # Erst pruefen, dann erst ans Netz. Bei einer vollstaendigen Installation
+    # ist das der Normalfall, und die soll nicht bei jedem Start eine Abfrage
+    # ausloesen, die nichts findet.
+    kaputt = []
+    for name, ok in DATEN_PRUEFUNG.items():
+        try:
+            if ok(load_json(name, None)):
+                continue
+        except Exception:
+            pass                   # unbrauchbar zaehlt wie fehlend
+        kaputt.append(name)
+    DATEN_STATUS["geprueft"] = True
+    if not kaputt:
+        print("Selbstpruefung: alle Datendateien vollstaendig.", flush=True)
+        return
+
+    base = (CONFIG.get("update_url") or "").rstrip("/")
+    if not base.startswith("https://"):
+        DATEN_STATUS["offen"] = list(kaputt)
+        return
+    rel = None
+    try:
+        info = json.loads(fetch_url(f"{base}/version.json", timeout=20).decode("utf-8"))
+        repo, tag = info.get("repo"), info.get("tag")
+        if repo and tag and re.fullmatch(r"[\w.-]+/[\w.-]+", repo) \
+                and re.fullmatch(r"[\w.-]+", tag):
+            rel = f"https://github.com/{repo}/releases/download/{tag}"
+    except Exception:
+        pass                       # dann eben ueber raw, siehe unten
+    for name in kaputt:
+        ok = DATEN_PRUEFUNG[name]
+        daten = None
+        for url in ([f"{rel}/{name}"] if rel else []) + [f"{base}/{name}"]:
+            try:
+                roh = fetch_url(url, timeout=60)
+                geprueft = json.loads(roh.decode("utf-8"))
+                if not ok(geprueft):
+                    continue       # kaputte Quelle darf nichts ueberschreiben
+                daten = roh
+                break
+            except Exception:
+                continue
+        if daten is None:
+            DATEN_STATUS["offen"].append(name)
+            log_error("CN-DATA-01", "pruefe_daten", Exception(name))
+            continue
+        try:
+            (APP_DIR / (name + ".neu")).write_bytes(daten)
+            os.replace(APP_DIR / (name + ".neu"), APP_DIR / name)
+        except Exception as e:
+            DATEN_STATUS["offen"].append(name)
+            log_error("CN-DATA-01", "pruefe_daten/schreiben", e)
+            continue
+        daten_uebernehmen(name)
+        DATEN_STATUS["repariert"].append(name)
+        print(f"Selbstpruefung: {name} fehlte und wurde nachgeladen.", flush=True)
 
 
 def check_update():
@@ -12547,6 +12674,10 @@ if __name__ == "__main__":
 
     # Bis zu 12s auf den Port warten: nach einem Auto-Update startet der neue
     # Prozess evtl., bevor der alte den Socket (TIME_WAIT) freigegeben hat.
+    # Einmal nachsehen, ob die Installation vollstaendig ist, und
+    # nachholen was fehlt. Im Hintergrund, damit der Start nicht wartet.
+    threading.Thread(target=pruefe_daten, daemon=True,
+                     name="DatenPruefung").start()
     srv = None
     for attempt in range(24):
         try:

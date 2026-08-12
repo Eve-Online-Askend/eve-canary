@@ -1,5 +1,21 @@
 [
  {
+  "v": "1.87.0",
+  "d": "2026-08-12",
+  "de": [
+   "Canary prueft sich beim Start jetzt selbst. Fehlt eine Datendatei oder ist sie unbrauchbar, holt Canary sie im Hintergrund nach und nimmt sie sofort in Betrieb, ohne Neustart.",
+   "Damit landen alle auf demselben Stand, auch wer seit der fehlerhaften Installation nie aktualisiert hat. Bis 1.86.6 haben beide Installer drei Datendateien nicht mitgeladen, und wer nicht aktualisiert, bekommt die Korrektur sonst nie zu sehen.",
+   "Geprueft wird nicht nur, ob eine Datei da ist, sondern ob ihr Inhalt taugt. Ein abgebrochener Download hinterlaesst eine Datei, die es zwar gibt, die aber nichts Brauchbares enthaelt, und die faellt einer reinen Existenzpruefung durch.",
+   "Ist alles vollstaendig, passiert nichts und es geht keine einzige Abfrage raus. Ohne Internet bleibt es beim bisherigen Stand, und die Diagnose sagt unter CN-DATA-01, welche Datei fehlt."
+  ],
+  "en": [
+   "Canary now checks itself at startup. If a data file is missing or unusable, it is fetched in the background and put to use straight away, without a restart.",
+   "That puts everyone on the same footing, including anyone who never updated after the faulty install. Up to 1.86.6 both installers were not fetching three data files, and without updating you would never see the correction.",
+   "The check is not just whether a file exists but whether its contents are any good. An aborted download leaves a file that is present but holds nothing usable, and a mere existence check would wave it through.",
+   "If everything is complete, nothing happens and not a single request goes out. With no internet it stays as it is, and the diagnostics tell you under CN-DATA-01 which file is missing."
+  ]
+ },
+ {
   "v": "1.86.6",
   "d": "2026-08-12",
   "de": [
