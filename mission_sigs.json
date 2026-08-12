@@ -223,5 +223,17 @@
  "draben kuvakei": {
   "m": "Vengeance (Sansha)",
   "c": 95
+ },
+ "how rude of you to waltz in here uninvited": {
+  "m": "Stop the Thief (Mercenaries)",
+  "c": 92
+ },
+ "the thief and his cohorts have warped in": {
+  "m": "Stop the Thief (Mercenaries)",
+  "c": 95
+ },
+ "grab yer guns and get to business": {
+  "m": "Cargo Delivery (Blood Raiders)",
+  "c": 75
  }
 }

@@ -1,5 +1,17 @@
 [
  {
+  "v": "1.90.1",
+  "d": "2026-08-12",
+  "de": [
+   "Stop the Thief (Mercenaries, Stufe 4) wird erkannt, gemeldet von Nirahse ueber das Formular. Erkannt wird sie am NPC-Funk und ausdruecklich NICHT am benannten Gegner \"Shadow\": das Wort steckt in 92 Gegnernamen, von Shadow Serpentis bis Blood Shadow Sage. Als Signatur waere jede zweite Mission ploetzlich Stop the Thief.",
+   "Cargo Delivery wird jetzt auch dann erkannt, wenn man sie ohne einen Schuss abschliesst. Dann faellt im Local nur eine einzige Zeile, und der eindeutige Gegner taucht nie auf. Ebenfalls von Nirahse."
+  ],
+  "en": [
+   "Stop the Thief (Mercenaries, level 4) is now recognised, reported by Nirahse through the form. It is identified from the NPC chatter and explicitly NOT from the named enemy \"Shadow\": that word sits in 92 enemy names, from Shadow Serpentis to Blood Shadow Sage. As a signature it would turn half the missions into Stop the Thief.",
+   "Cargo Delivery is now recognised even when you finish it without firing a shot. Only a single line falls in local then, and the unique enemy never shows up. Also from Nirahse."
+  ]
+ },
+ {
   "v": "1.90.0",
   "d": "2026-08-12",
   "de": [
