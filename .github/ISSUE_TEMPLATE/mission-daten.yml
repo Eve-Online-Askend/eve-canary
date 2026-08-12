@@ -1,0 +1,72 @@
+name: Mission melden
+description: Missionsname, Gegner und NPC-Funk, damit Canary die Mission erkennen lernt
+title: "Mission: "
+labels: ["mission-daten"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke, dass du dir die Zeit nimmst. Am schnellsten geht es über das
+        Formular auf der Seite: dort fügst du deinen Local ein und alles außer
+        den NPC-Zeilen wird automatisch entfernt, bevor irgendetwas hier
+        ankommt. Von Hand geht es genauso, dann achte bitte selbst darauf,
+        keine Pilotennamen mitzuschicken.
+
+  - type: input
+    id: name
+    attributes:
+      label: Missionsname
+      description: Genau so, wie der Agent sie nennt
+      placeholder: Recon (1 of 3)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: level
+    attributes:
+      label: Stufe
+      options: ["1", "2", "3", "4", "5"]
+    validations:
+      required: true
+
+  - type: input
+    id: fraktion
+    attributes:
+      label: Gegner-Fraktion
+      placeholder: Sansha, Blood Raiders, Angel Cartel …
+
+  - type: textarea
+    id: funk
+    attributes:
+      label: NPC-Funk aus dem Local
+      description: >
+        Nur die Zeilen, die mit "Message" beginnen. Die Abschluss-Zeile ist
+        besonders wertvoll, etwa "The mission has been completed".
+      render: text
+      placeholder: |
+        Pirates have emerged from the shadows!
+        Pirate Captain: They've discovered our hideout!
+        The mission has been completed. Report back to your agent.
+    validations:
+      required: true
+
+  - type: textarea
+    id: gegner
+    attributes:
+      label: Gegner (falls bekannt)
+      description: >
+        Die Namen aus dem Kampflog. Bei Missionen ganz ohne Kampf einfach
+        leer lassen, genau die sind besonders interessant.
+      render: text
+      placeholder: |
+        Centus Beast Lord
+        Centior Cannibal
+
+  - type: textarea
+    id: notiz
+    attributes:
+      label: Was ist Canary aufgefallen?
+      description: >
+        Wurde die Mission erkannt, gar nicht erkannt, oder falsch? Gab es
+        Besonderheiten, etwa dass man nicht alle Gegner abschießen muss?
+      placeholder: Wurde nicht erkannt, ich musste keinen einzigen Gegner abschießen.
