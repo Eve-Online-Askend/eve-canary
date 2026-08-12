@@ -1,5 +1,19 @@
 [
  {
+  "v": "1.89.0",
+  "d": "2026-08-12",
+  "de": [
+   "Der Missionen-Tab blaettert jetzt seitenweise, zehn Eintraege je Seite, bei den Runs und bei der Tagesuebersicht. Gemeldet von Nirahse, bei dem die Seite mit vielen Runs sehr lang wurde.",
+   "Dabei ist ein Fehler von gestern aufgefallen: die Tagesuebersicht stand ueber der Liste der einzelnen Runs, also ueber genau dem Teil, mit dem man arbeitet. Sie steht jetzt darunter.",
+   "Und der eigentliche Grund fuer die Laenge: es gab die Tagesuebersicht zweimal. Unter der Liste stand laengst eine Karte \"Letzte 30 Tage\" mit fast denselben Spalten, und ich hatte gestern eine zweite danebengebaut. Die beiden sind jetzt eine. Sie zeigt zusaetzlich Charakter, Runs und Loot, Belohnung und Zeitbonus bleiben getrennt."
+  ],
+  "en": [
+   "The missions tab is now paged, ten entries per page, both for the runs and for the daily overview. Reported by Nirahse, whose page grew very long with a lot of runs.",
+   "That turned up a mistake from yesterday: the daily overview sat above the list of individual runs, above the very part you work with. It now sits below it.",
+   "And the real reason for the length: the daily overview existed twice. A card called \"Last 30 days\" with almost the same columns had been sitting below the list all along, and yesterday I built a second one next to it. The two are now one. It gains character, runs and loot, while rewards and time bonuses stay separate."
+  ]
+ },
+ {
   "v": "1.88.0",
   "d": "2026-08-12",
   "de": [

@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.88.0"
+VERSION = "1.89.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -7159,7 +7159,7 @@ def query_loot_tage(tage=30):
             "SELECT char, start_ts, bounty, loot_isk FROM missions "
             "WHERE start_ts>=?", (cut,)).fetchall()
         jrows = DB.execute(
-            "SELECT char, ts, amount FROM journal "
+            "SELECT char, ts, ref_type, amount FROM journal "
             "WHERE ref_type LIKE 'agent_mission%' AND ts>=?", (cut,)).fetchall()
 
     def tag(ts):
@@ -7171,7 +7171,7 @@ def query_loot_tage(tage=30):
         k = (tag(ts), char or "?")
         return per.setdefault(k, {"tag": k[0], "char": k[1], "runs": 0,
                                   "bounty": 0.0, "loot": 0.0, "reward": 0.0,
-                                  "mit_loot": 0})
+                                  "bonus": 0.0, "mit_loot": 0})
 
     for char, st, bounty, loot in mrows:
         e = eintrag(char, st)
@@ -7180,13 +7180,15 @@ def query_loot_tage(tage=30):
         if loot:
             e["loot"] += loot
             e["mit_loot"] += 1
-    for char, ts, amt in jrows:
-        eintrag(char, ts)["reward"] += amt or 0
+    for char, ts, ref, amt in jrows:
+        # Belohnung und Zeitbonus getrennt, so wie es die alte Karte auch tat.
+        e = eintrag(char, ts)
+        e["reward" if ref == "agent_mission_reward" else "bonus"] += amt or 0
 
     out = []
     for e in per.values():
-        e["total"] = round(e["bounty"] + e["loot"] + e["reward"])
-        for k in ("bounty", "loot", "reward"):
+        e["total"] = round(e["bounty"] + e["loot"] + e["reward"] + e["bonus"])
+        for k in ("bounty", "loot", "reward", "bonus"):
             e[k] = round(e[k])
         out.append(e)
     # Neueste zuerst, innerhalb eines Tages der ertragreichste Charakter oben.
@@ -11781,7 +11783,28 @@ function renderMissionLive(chars){
   </div>`;
  }).join('');
 }
+// Blaetterung. Zwei Listen im Missionen-Tab, beide mit eigenem Zaehler.
+const PRO_SEITE = 10;
+let seiteRuns = 0, seiteTage = 0;
+let letzteMissionen = null;
+
+/* Blaetter-Leiste: nur zeigen, wenn es ueberhaupt mehr als eine Seite gibt.
+   Eine Leiste "Seite 1/1" ist nur Rauschen. */
+function blaettern(id, seite, gesamt){
+ const n = Math.ceil(gesamt / PRO_SEITE);
+ if (n <= 1) return '';
+ return `<div class="sub" style="display:flex;align-items:center;gap:10px;
+   margin-top:10px;padding-top:8px;border-top:1px solid var(--line)">
+   <span class="pill" data-blatt="${id}" data-zu="${Math.max(0, seite - 1)}"
+     style="${seite === 0 ? 'opacity:.35;pointer-events:none' : 'cursor:pointer'}">‹ Zurück</span>
+   <span>Seite ${seite + 1} / ${n}</span>
+   <span class="pill" data-blatt="${id}" data-zu="${Math.min(n - 1, seite + 1)}"
+     style="${seite >= n - 1 ? 'opacity:.35;pointer-events:none' : 'cursor:pointer'}">Weiter ›</span>
+  </div>`;
+}
+
 function renderMissions(d){
+ letzteMissionen = d;
  lastMissionD=d;                         // fuer die lokale Simulation merken
  // Offene Loot-Eingaben ueber den Neubau retten. Diese Ansicht baut das Grid
  // im 2-Sekunden-Takt komplett neu, und dabei war das Eingabefeld wieder
@@ -11848,24 +11871,9 @@ function renderMissions(d){
     </div>`).join(''):''}
  </div>
  <div class="card" style="grid-column:1/-1">
-  <div class="sect">Pro Tag</div>
-  <div class="sub">Was an einem Tag zusammenkam, je Charakter. Bounty kommt aus den Gamelogs, die Belohnung aus dem Wallet-Journal, der Loot ist von dir eingetragen. EVE schreibt beim Pl&uuml;ndern nichts mit, deshalb steht dort nur, was du selbst an den Runs hinterlegt hast.</div>
-  ${(d.loot_tage&&d.loot_tage.length)?`<table>
-   <thead><tr><th>Tag</th><th>Charakter</th><th class="r">Runs</th><th class="r">Bounty</th>
-    <th class="r">Belohnung</th><th class="r">Loot</th><th class="r">Gesamt</th></tr></thead>
-   ${d.loot_tage.map(t=>`<tr>
-     <td>${esc(t.tag)}</td><td>${esc(t.char)}</td>
-     <td class="r">${t.runs}${t.mit_loot<t.runs?`<span title="${t.runs-t.mit_loot} Run(s) ohne eingetragenen Loot" style="color:var(--gold)"> *</span>`:''}</td>
-     <td class="r grn">${t.bounty?fmtM(t.bounty):'&middot;'}</td>
-     <td class="r isk">${t.reward?fmtM(t.reward):'&middot;'}</td>
-     <td class="r isk">${t.loot?fmtM(t.loot):'&middot;'}</td>
-     <td class="r isk"><b>${fmtM(t.total)}</b></td></tr>`).join('')}</table>
-   ${d.loot_tage.some(t=>t.mit_loot<t.runs)?'<div class="sub" style="margin-top:6px">* An diesen Tagen gibt es Runs ohne eingetragenen Loot. Die Summe ist dann niedriger als das, was wirklich rumkam.</div>':''}`
-   :'<div class="sub">Noch nichts erfasst. Sobald ein Run abgeschlossen ist, steht er hier.</div>'}
- </div>
- <div class="card" style="grid-column:1/-1">
   <div class="sect">Missionen einzeln (aus den Gamelogs)</div>
-  ${(d.mission_log&&d.mission_log.length)?d.mission_log.map(x=>`
+  ${(d.mission_log&&d.mission_log.length)?d.mission_log
+     .slice(seiteRuns*PRO_SEITE,(seiteRuns+1)*PRO_SEITE).map(x=>`
    <div style="border-top:1px solid var(--line);padding:10px 0">
     <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:baseline">
      <b>${new Date(x.start*1000).toLocaleString().slice(0,16)}</b>
@@ -11889,6 +11897,7 @@ function renderMissions(d){
      <div class="btnrow" style="margin-top:4px"><button class="btn mlootgo" data-mid="${esc(x.mid)}">Loot bewerten</button> <span class="mlootstat sub" data-mid="${esc(x.mid)}"></span></div>
     </div>
    </div>`).join(''):'<div class="sub">Noch keine abgeschlossenen Missionen erfasst. Eine Mission gilt als abgeschlossen, sobald du fürs nächste Mal wieder abdockst.</div>'}
+  ${blaettern('runs',seiteRuns,(d.mission_log||[]).length)}
   ${(()=>{const o=d.mission_offen; if(!o||!o.n)return '';
     const en3=lang==='en';
     return `<div class="sub" style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">
@@ -11908,10 +11917,26 @@ function renderMissions(d){
  </div>
  <div class="card" style="grid-column:1/-1">
   <div class="sect">Letzte 30 Tage</div>
-  ${(m.days&&m.days.length)?`<div style="overflow-x:auto"><table>
-   <tr><th>Tag</th><th class="r">Missionen</th><th class="r">Belohnung</th><th class="r">Zeitbonus</th><th class="r">Bounties</th><th class="r">Gesamt</th></tr>`+
-   m.days.map(x=>`<tr><td>${x.day}</td><td class="r">${x.missions}</td><td class="r isk">${fmtM(x.reward)}</td><td class="r isk">${fmtM(x.bonus)}</td><td class="r grn">${fmtM(x.bounty)}</td><td class="r isk"><b>${fmtM(x.total)}</b></td></tr>`).join('')+
-   '</table></div>':'<div class="sub">Noch keine Journal-Daten. Nach dem ersten ESI-Abgleich (spätestens in einer Stunde) erscheinen hier die letzten 30 Tage.</div>'}
+  <div class="sub">Je Charakter und Tag. Bounty kommt aus den Gamelogs, Belohnung und Zeitbonus aus dem Wallet-Journal, der Loot ist von dir an den Runs eingetragen. EVE schreibt beim Plündern nichts mit, deshalb steht dort nur, was du selbst hinterlegt hast.</div>
+  ${(d.loot_tage&&d.loot_tage.length)?(()=>{
+    // Standardmaessig nur die letzten Tage: bei Vielfliegern werden das sonst
+    // ueber dreissig Zeilen und die Seite wird endlos.
+    const alle=d.loot_tage;
+    const zeig=alle.slice(seiteTage*PRO_SEITE,(seiteTage+1)*PRO_SEITE);
+    return `<div style="overflow-x:auto"><table>
+   <thead><tr><th>Tag</th><th>Charakter</th><th class="r">Runs</th><th class="r">Bounty</th>
+    <th class="r">Belohnung</th><th class="r">Zeitbonus</th><th class="r">Loot</th><th class="r">Gesamt</th></tr></thead>`+
+   zeig.map(x=>`<tr><td>${esc(x.tag)}</td><td>${esc(x.char)}</td>
+    <td class="r">${x.runs}${x.mit_loot<x.runs?`<span title="${x.runs-x.mit_loot} Run(s) ohne eingetragenen Loot" style="color:var(--gold)"> *</span>`:''}</td>
+    <td class="r grn">${x.bounty?fmtM(x.bounty):'&middot;'}</td>
+    <td class="r isk">${x.reward?fmtM(x.reward):'&middot;'}</td>
+    <td class="r isk">${x.bonus?fmtM(x.bonus):'&middot;'}</td>
+    <td class="r isk">${x.loot?fmtM(x.loot):'&middot;'}</td>
+    <td class="r isk"><b>${fmtM(x.total)}</b></td></tr>`).join('')+
+   '</table></div>'
+   +blaettern('tage',seiteTage,alle.length)
+   +(zeig.some(x=>x.mit_loot<x.runs)?'<div class="sub" style="margin-top:6px">* An diesen Tagen gibt es Runs ohne eingetragenen Loot. Die Summe ist dann niedriger als das, was wirklich rumkam.</div>':'');
+   })():'<div class="sub">Noch nichts erfasst. Sobald ein Run abgeschlossen ist, steht er hier.</div>'}
  </div>
  ${(m.foes&&m.foes.length)?`<div class="card" style="grid-column:1/-1">
   <div class="sect">Gegner (letzte 30 Tage)</div>
@@ -11982,6 +12007,12 @@ function renderMissions(d){
          :'✓ entfernt (Char offline, es läuft keine Sitzung mehr)');
    setTimeout(()=>tick(),1200);
   }else t.textContent=en3?'failed':'hat nicht geklappt';
+ });
+ document.querySelectorAll('[data-blatt]').forEach(el=>el.onclick=()=>{
+  const zu=parseInt(el.dataset.zu,10);
+  if(el.dataset.blatt==='runs') seiteRuns=zu; else seiteTage=zu;
+  if(letzteMissionen) renderMissions(letzteMissionen);
+  if(lang!=='de') tr(document.body);
  });
  document.querySelectorAll('.mloottoggle').forEach(t=>t.onclick=()=>{
   const box=[...document.querySelectorAll('.mlootedit')].find(e=>e.dataset.mid===t.dataset.mid);
@@ -12314,7 +12345,7 @@ const EN = {
 'EVE: Heavy Water fast leer!':'EVE: Heavy Water almost empty!','EVE: Watchlist':'EVE: Watchlist',
 'Speichern':'Save','nicht gefunden!':'not found!',
 'Erz-Bilanz (nach Wert)':'Ore balance (by value)','Gegner (letzte 30 Tage)':'Enemies (last 30 days)',
-// Loot pro Tag
+// Blaetterung\n'‹ Zurück':'‹ Back','Weiter ›':'Next ›',\n'Je Charakter und Tag. Bounty kommt aus den Gamelogs, Belohnung und Zeitbonus aus dem Wallet-Journal, der Loot ist von dir an den Runs eingetragen. EVE schreibt beim Plündern nichts mit, deshalb steht dort nur, was du selbst hinterlegt hast.':\n 'Per character and day. Bounties come from the game logs, rewards and time bonuses from the wallet journal, and the loot is what you entered on the runs. EVE records nothing when you loot, so that column only holds what you put there yourself.',\n// Loot pro Tag
 'Pro Tag':'Per day','Runs':'Runs','Belohnung':'Reward','Loot':'Loot','Gesamt':'Total',
 'Was an einem Tag zusammenkam, je Charakter. Bounty kommt aus den Gamelogs, die Belohnung aus dem Wallet-Journal, der Loot ist von dir eingetragen. EVE schreibt beim Plündern nichts mit, deshalb steht dort nur, was du selbst an den Runs hinterlegt hast.':
  'What a day brought in, per character. Bounties come from the game logs, rewards from the wallet journal, and the loot is what you entered yourself. EVE records nothing when you loot, so that column only holds what you put on the runs.',
