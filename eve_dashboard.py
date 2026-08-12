@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.86.1"
+VERSION = "1.86.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -5527,14 +5527,21 @@ body.quer .wert{margin-left:0;text-align:left}
  margin-bottom:9px;max-width:520px}
 .ct{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#93a3bd;
  font-weight:700;margin-bottom:10px}
-.cg{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:7px}
-.cg label{display:flex;align-items:center;gap:6px;font-size:12px;color:#c9d4e3;cursor:pointer}
+/* 132px zwangen "Chars hoechstens" in zwei Zeilen und machten die Reihen
+   ungleich hoch. Breitere Spalten, mehr Luft dazwischen. */
+.cg{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px 16px}
+.cg label{display:flex;align-items:center;gap:7px;font-size:12px;color:#c9d4e3;
+ cursor:pointer;min-height:22px}
 .cg select,.cg input[type=number]{background:#0b111a;color:#e6edf7;border:1px solid #22304a;
  border-radius:6px;padding:3px 6px;font:inherit;font-size:12px;width:72px}
 /* Feste 72px schnitten "halb durchsichtig" mitten im Wort ab. In einer
    132px-Spalte bleibt neben der Beschriftung zu wenig uebrig, also bekommen
    die beiden Auswahlfelder eine ganze Zeile und das Feld seine Wunschbreite. */
-.cg label:has(select){grid-column:1/-1}
+/* Felder mit Wert bekommen eine ganze Zeile, die Haken bleiben im Raster.
+   Sonst quetscht sich "Chars hoechstens" neben sein Eingabefeld und bricht um,
+   was die Reihe hoeher macht als alle anderen. */
+.cg label:has(select),.cg label:has(input[type=number]){grid-column:1/-1}
+.cg label:has(input[type=number]) input{margin-left:auto}
 .cg select{width:auto;min-width:0;max-width:100%}
 .cu{display:flex;gap:7px;margin-top:11px}
 .cu input{flex:1;background:#0b111a;color:#7fe3ff;border:1px solid #22304a;border-radius:7px;
@@ -5549,6 +5556,12 @@ body.quer .wert{margin-left:0;text-align:left}
 .ch code{background:#0b111a;border:1px solid #22304a;border-radius:4px;
  padding:1px 5px;color:#7fe3ff;font-family:Consolas,monospace;font-size:11px}
 .ch .warnung{color:#f5d873}
+/* Im Dialog des Dashboards: kein zweiter Kasten und keine zweite
+   Ueberschrift, der Dialog bringt beides schon mit. */
+body.imrahmen{padding:18px 20px}
+body.imrahmen #cfg{background:none;border:none;border-radius:0;padding:0;
+ max-width:none;margin-bottom:16px}
+body.imrahmen>#cfg>.ct{display:none}
 #dt{display:flex;align-items:center;justify-content:center;gap:8px;
  padding:4px 11px;margin-bottom:5px;border-radius:9px;font-size:10px;
  letter-spacing:1.2px;text-transform:uppercase;font-weight:700;
@@ -5608,6 +5621,8 @@ Parameter an der Adresse, dort ist sie nie zu sehen.</p></div>
 </div><div id="dt" hidden></div><div id="w"></div><div id="sum" hidden></div><div id="mk" hidden><img alt="" src="data:image/png;base64,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"><span>EVE CANARY</span><em>eve-online-askend.github.io/eve-canary</em></div>
 <script>
 const P = new URLSearchParams(location.search);
+// Steckt die Seite im Dashboard-Dialog? Dann traegt der Dialog den Rahmen.
+if (window.self !== window.top) document.body.classList.add('imrahmen');
 const an = (k, vor) => { const v = P.get(k); return v === null ? vor : v !== '0'; };
 const ZEIG = {
   sys:    an('sys', false),      // Standort standardmaessig AUS
@@ -5717,7 +5732,7 @@ if (!location.search) {
     ['warn', 'Warnungen', 'ja', 1],
     ['brand', 'Markenzeile Eve Canary', 'ja', 1],
     ['dt', 'Downtime-Countdown', 'ja', 1],
-    ['sys', 'Standort zeigen', 'ja', 0],\n    ['idle', 'Hinweis wenn niemand fliegt', 'ja', 1],\n    ['demo', 'Beispielwerte zum Einrichten', 'ja', 0]
+    ['sys', 'Standort zeigen', 'ja', 0],\n    ['idle', 'Hinweis wenn niemand fliegt', 'ja', 1],\n    ['demo', 'Beispielwerte zeigen', 'ja', 0]
   ];
   const box = document.getElementById('cg');
   box.innerHTML = F.map(([k, txt, art, v]) => {
@@ -8976,6 +8991,12 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
    modale Dialoge zentriert — sonst klebt das Popup oben links. Nur hier
    zuruecksetzen, damit die bestehenden Dialoge unveraendert bleiben. */
 #newsGas{margin:auto;max-width:560px}
+#obsDlg{margin:auto;max-width:660px}
+/* Die Einrichtungsseite bringt ihre eigenen Farben mit und ist durchsichtig,
+   damit sie in OBS ueber dem Spiel liegt. Im hellen Thema waere weisse Schrift
+   auf weissem Grund unlesbar, also bekommt der Rahmen einen dunklen Boden. */
+#obsFrame{display:block;width:100%;height:min(70vh,660px);border-radius:10px;
+ border:1px solid var(--line);background:#0b0e14}
 #newsGas p{margin:0 0 10px}
 /* Danksagung an den Melder: bewusst groesser und mit Gold-Akzent, das ist
    die Botschaft, die haengen bleiben soll. */
@@ -9174,6 +9195,15 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 <!-- Belt-Auswertung. Bewusst ein eigener Dialog im festen HTML und NICHT im
      Grid: die Live-Ansicht baut sich alle zwei Sekunden neu auf und wuerde ein
      Eingabefeld darin samt Inhalt wegwerfen. -->
+<dialog id="obsDlg">
+ <h2>🎥 Overlay für OBS einrichten</h2>
+ <iframe id="obsFrame" src="about:blank" title="OBS-Einrichtung"></iframe>
+ <div class="btnrow" style="margin-top:10px">
+  <button class="btn" id="obsTab">In eigenem Tab öffnen</button>
+  <button class="btn" id="obsZu">Schließen</button>
+ </div>
+</dialog>
+
 <dialog id="beltDlg">
  <h2>🪨 Was steckt in diesem Belt?</h2>
  <p class="sub">Im Spiel das Fenster „Ergebnisse der Bergbauvermessung“ öffnen, hineinklicken,
@@ -10797,7 +10827,15 @@ async function overlayTick(){
 }
 setInterval(overlayTick,2000);
 $('#ovToggle').onclick=toggleOverlay;
-$('#obsBtn').onclick=()=>window.open('/obs','_blank','noopener');
+$('#obsBtn').onclick=()=>{
+ const f=$('#obsFrame');
+ if(f.getAttribute('src')!=='/obs') f.setAttribute('src','/obs');
+ $('#obsDlg').showModal();
+};
+$('#obsZu').onclick=()=>$('#obsDlg').close();
+$('#obsTab').onclick=()=>window.open('/obs','_blank','noopener');
+// Beim Schliessen entladen, damit die Abfrage im Hintergrund wirklich aufhoert.
+$('#obsDlg').addEventListener('close',()=>$('#obsFrame').setAttribute('src','about:blank'));
 $('#ovBtn').onclick=toggleOverlay;
 
 let intelNames=lsGet('intelNames',[]),intelSettled=false;

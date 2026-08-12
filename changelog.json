@@ -1,5 +1,19 @@
 [
  {
+  "v": "1.86.2",
+  "d": "2026-08-12",
+  "de": [
+   "Die OBS-Einrichtung oeffnet sich jetzt als Fenster ueber dem Dashboard statt in einem eigenen Tab. Dort stand die Bedienleiste ueber einer leeren Flaeche, das sah nach Baustelle aus.",
+   "Wer die Einrichtung lieber gross hat, kommt mit einem Knopf im Fenster weiterhin in einen eigenen Tab.",
+   "Kleinigkeit am Rand: im Auswahlfeld war \"halb durchsichtig\" mitten im Wort abgeschnitten."
+  ],
+  "en": [
+   "The OBS setup now opens as a window over the dashboard instead of in its own tab, where the controls sat above an empty area and looked unfinished.",
+   "If you prefer it full size, a button inside the window still opens it in its own tab.",
+   "Small one on the side: the dropdown cut \"halb durchsichtig\" off mid-word."
+  ]
+ },
+ {
   "v": "1.86.1",
   "d": "2026-08-12",
   "de": [
