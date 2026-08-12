@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mission melden · EVE Canary</title>
+<meta name="description" content="Melde deine EVE-Missionen an Canary: Missionsname und Local-Chat einfügen, fertig. Pilotennamen werden vorher automatisch entfernt.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🐤</text></svg>">
+<style>
+:root{color-scheme:dark;--bg:#0a0d0f;--card:rgba(13,17,19,.80);--inset:rgba(255,255,255,.04);
+--line:rgba(130,150,158,.16);--txt:#c9d1d4;--dim:#7d888e;--cyan:#5fc1d4;--gold:#d9a33c;--white:#eef1f2}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);line-height:1.6;
+ font-family:'Bahnschrift','Segoe UI',system-ui,sans-serif;padding:0 20px 60px}
+.wrap{max-width:820px;margin:0 auto}
+header{display:flex;align-items:center;gap:14px;padding:22px 0 8px;flex-wrap:wrap}
+h1{font-size:19px;letter-spacing:2px;margin:0;color:var(--white);font-weight:400}
+h1 b{color:var(--cyan);font-weight:700}
+h2{font-size:24px;margin:26px 0 8px;color:var(--white)}
+a{color:var(--cyan)}
+.tiny{font-size:13px;color:var(--dim)}
+.zurueck{margin-left:auto;font-size:13px}
+.karte{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin:18px 0}
+label{display:block;margin:14px 0 5px;font-size:13px;color:var(--dim)}
+input,select,textarea{width:100%;background:#0b111a;color:var(--white);border:1px solid var(--line);
+ border-radius:8px;padding:9px 11px;font:inherit;font-size:15px}
+textarea{font-family:Consolas,'Cascadia Mono',monospace;font-size:13px;line-height:1.55}
+.reihe{display:grid;grid-template-columns:120px 1fr;gap:14px}
+.vorschau{white-space:pre-wrap;background:#0b111a;border-left:3px solid var(--cyan);border-radius:6px;
+ padding:12px 14px;margin-top:14px;max-height:280px;overflow:auto;font-size:13px}
+.knoepfe{display:flex;align-items:center;gap:12px;margin-top:18px;flex-wrap:wrap}
+.btn{display:inline-block;background:var(--cyan);color:#06222a;border:none;border-radius:8px;
+ padding:11px 18px;font:inherit;font-weight:700;font-size:15px;cursor:pointer;text-decoration:none}
+.btn.geist{background:transparent;color:var(--txt);border:1px solid var(--line);font-weight:400}
+.btn[aria-disabled=true]{opacity:.45;pointer-events:none}
+ol{padding-left:20px}ol li{margin:7px 0}
+code{background:var(--inset);padding:1px 5px;border-radius:4px;font-size:13px}
+.hinweis{border-left:3px solid var(--gold);padding:10px 14px;background:var(--inset);
+ border-radius:6px;margin:16px 0;font-size:14px}
+footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-size:13px;color:var(--dim)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>EVE <b>CANARY</b></h1>
+  <a class="zurueck" href="./">← zurück zur Übersicht</a>
+</header>
+
+<h2>Bring Canary deine Missionen bei</h2>
+<p class="tiny">Canary erkennt eine Mission an den Gegnern im Log. Das scheitert bei Missionen,
+die man ohne einen einzigen Schuss abschließen kann, und bei Missionen mit völlig generischen
+Gegnern. Der NPC-Funk im Local ist das fehlende Stück: er ist je Mission einmalig, und er sagt
+sogar, wann eine Mission fertig ist. Genau diese Zeile gibt es im Gamelog nicht.</p>
+
+<div class="hinweis">
+  <b>Pilotennamen bleiben hier.</b> Du fügst deinen ganzen Local ein, und alles außer den
+  NPC-Zeilen wird schon in deinem Browser entfernt, bevor irgendetwas abgeschickt wird.
+  In der Vorschau siehst du vorher genau, was rausgeht.
+</div>
+
+<div class="karte">
+  <label for="mfName">Missionsname, genau so wie der Agent sie nennt</label>
+  <input id="mfName" type="text" placeholder="Recon (1 of 3)" autocomplete="off">
+
+  <div class="reihe">
+    <div>
+      <label for="mfLvl">Stufe</label>
+      <select id="mfLvl">
+        <option>1</option><option>2</option><option>3</option>
+        <option selected>4</option><option>5</option>
+      </select>
+    </div>
+    <div>
+      <label for="mfFac">Gegner-Fraktion</label>
+      <input id="mfFac" type="text" placeholder="Sansha, Blood Raiders, Angel Cartel …" autocomplete="off">
+    </div>
+  </div>
+
+  <label for="mfLog">Local-Chat einfügen</label>
+  <textarea id="mfLog" rows="9" placeholder="Im Spiel ins Local-Fenster klicken, Strg+A, Strg+C, hier einfügen."></textarea>
+
+  <label for="mfNote">Was ist dir aufgefallen? (freiwillig)</label>
+  <input id="mfNote" type="text" placeholder="Wurde nicht erkannt, ich musste keinen Gegner abschießen." autocomplete="off">
+
+  <div id="mfPrev" class="vorschau" hidden></div>
+
+  <div class="knoepfe">
+    <a id="mfIssue" class="btn" href="#" target="_blank" rel="noopener" aria-disabled="true">Als GitHub-Ticket senden</a>
+    <button id="mfCopy" class="btn geist" type="button">Lieber Text kopieren</button>
+    <span id="mfStat" class="tiny"></span>
+  </div>
+</div>
+
+<h2>So geht es am schnellsten</h2>
+<ol class="tiny">
+  <li>Mission fliegen und dabei das Local-Fenster offen lassen.</li>
+  <li>Danach ins Local klicken, <code>Strg+A</code>, <code>Strg+C</code>.</li>
+  <li>Hier einfügen, Missionsnamen dazu, absenden. Fertig.</li>
+</ol>
+<p class="tiny">Besonders wertvoll sind Missionen, die Canary <b>nicht</b> erkennt, und solche,
+die sich ohne Kampf abschließen lassen. Genau die fallen heute durch.</p>
+
+<footer>
+  <a href="./">Übersicht</a> ·
+  <a href="https://github.com/Eve-Online-Askend/eve-canary/issues?q=label%3Amission-daten">bereits gemeldete Missionen</a> ·
+  <a href="https://github.com/Eve-Online-Askend/eve-canary">Quelltext</a>
+</footer>
+</div>
+
+<script>
+/* Der ganze Filter laeuft hier im Browser. Behalten wird nur, was EVE als
+   Absender "Message" schreibt, also NPC-Funk. Jede andere Zeile enthaelt
+   moeglicherweise einen Pilotennamen und faellt weg, bevor etwas verschickt
+   wird. An echten Zeilen samt Piloten-Chat geprueft. */
+(function () {
+  const $ = (s) => document.querySelector(s);
+  const farbeRaus = (s) => s.replace(/<[^>]+>/g, '');
+  const NPC = /^\[?\s*[\d.: ]*\]?\s*Message\s*>\s*(.+)$/i;
+
+  function ernte() {
+    const zeilen = [], verworfen = [];
+    for (const z of ($('#mfLog').value || '').split(/\r?\n/)) {
+      const rein = farbeRaus(z).trim();
+      if (!rein) continue;
+      const m = rein.match(NPC);
+      if (m) {
+        const t = m[1].replace(/\s+/g, ' ').trim();
+        if (t && !zeilen.includes(t)) zeilen.push(t);
+      } else verworfen.push(rein);
+    }
+    return { zeilen, verworfen: verworfen.length };
+  }
+
+  function text() {
+    const { zeilen } = ernte();
+    const notiz = ($('#mfNote').value || '').trim();
+    return 'Mission: ' + (($('#mfName').value || '').trim() || '(ohne Namen)') + '\n'
+      + 'Stufe: ' + $('#mfLvl').value + '\n'
+      + 'Fraktion: ' + (($('#mfFac').value || '').trim() || '?') + '\n\n'
+      + 'NPC-Funk (' + zeilen.length + ' Zeilen):\n'
+      + zeilen.map((z) => '  ' + z).join('\n') + '\n'
+      + (notiz ? '\nNotiz: ' + notiz + '\n' : '')
+      + '\nGemeldet über das Formular auf der Canary-Seite.\n';
+  }
+
+  function frisch() {
+    const { zeilen, verworfen } = ernte();
+    const p = $('#mfPrev'), a = $('#mfIssue');
+    if (!zeilen.length) {
+      p.hidden = true;
+      a.setAttribute('aria-disabled', 'true');
+      a.removeAttribute('href');
+      return;
+    }
+    p.hidden = false;
+    p.textContent = zeilen.length + ' NPC-Zeilen erkannt, ' + verworfen
+      + ' andere Zeilen verworfen. Das hier wird gesendet:\n'
+      + zeilen.map((z) => '· ' + z).join('\n');
+    a.setAttribute('aria-disabled', 'false');
+    a.href = 'https://github.com/Eve-Online-Askend/eve-canary/issues/new'
+      + '?labels=mission-daten'
+      + '&title=' + encodeURIComponent('Mission: ' + (($('#mfName').value || '').trim() || '?'))
+      + '&body=' + encodeURIComponent(text());
+  }
+
+  ['mfLog', 'mfName', 'mfFac', 'mfNote'].forEach((id) =>
+    $('#' + id).addEventListener('input', frisch));
+  $('#mfLvl').addEventListener('change', frisch);
+  $('#mfCopy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(text());
+      $('#mfStat').textContent = 'kopiert';
+    } catch (e) { $('#mfStat').textContent = 'ging nicht, bitte von Hand markieren'; }
+    setTimeout(() => { $('#mfStat').textContent = ''; }, 2600);
+  });
+  frisch();
+})();
+</script>
+</body>
+</html>

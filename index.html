@@ -170,6 +170,11 @@ li{margin:5px 0}
  border-radius:6px;padding:10px 12px;margin-top:12px;max-height:220px;overflow:auto}
 .mbtns{display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap}
 .btn.ghost{background:transparent;border:1px solid #22304a}
+
+.missionCta{margin:16px 0 0}
+.missionCta .cta{display:inline-block;background:var(--cyan);color:#06222a;border-radius:9px;
+ padding:11px 20px;font-weight:700;text-decoration:none;font-size:15px}
+.missionCta .cta:hover{filter:brightness(1.08)}
 </style>
 </head>
 <body>
@@ -192,6 +197,9 @@ li{margin:5px 0}
     <span class="badge" data-i18n="b.eula">EULA compliant</span>
     <button class="badge" id="dlBadge" hidden><span data-i18n="b.dl">Downloads</span> <b id="dl"></b></button>
   </div>
+  <p class="missionCta">
+    <a class="btn cta" href="./mission.html" data-i18n="cta.mission">Mission melden und Canary beibringen</a>
+  </p>
 </header>
 
 <h2 data-i18n="h.install">Installation</h2>
@@ -381,27 +389,6 @@ directly. The report contains no character names and no credentials.</p>
 <p class="tiny" data-i18n="thanks.cta">Helped out and not listed? <a href="https://github.com/Eve-Online-Askend/eve-canary/issues">Get in touch</a> and you go on the list.</p>
 </section>
 
-<h2 data-i18n="h.mission">Help teach Canary your missions</h2>
-<p class="tiny" data-i18n="mission.intro">Canary recognises a mission from the enemies it sees in the log. That fails for missions you can finish without a single shot, and for missions whose enemies are completely generic. The NPC chatter in local is the missing piece: it is unique per mission and it even says when a mission is done. Paste yours here and Canary learns it.</p>
-<div class="mform">
-  <label class="tiny" data-i18n="mission.name">Mission name (exactly as the agent calls it)</label>
-  <input id="mfName" type="text" placeholder="Recon (1 of 3)">
-  <div class="mrow">
-    <div><label class="tiny" data-i18n="mission.lvl">Level</label>
-      <select id="mfLvl"><option>1</option><option>2</option><option>3</option><option selected>4</option><option>5</option></select></div>
-    <div><label class="tiny" data-i18n="mission.fac">Enemy faction</label>
-      <input id="mfFac" type="text" placeholder="Sansha"></div>
-  </div>
-  <label class="tiny" data-i18n="mission.paste">Paste your local chat here. Everything except the NPC lines is dropped before anything is sent, pilot names never leave your browser.</label>
-  <textarea id="mfLog" rows="7" placeholder="[20:13:10] Message &gt; Pirates have emerged from the shadows!"></textarea>
-  <div id="mfPrev" class="tiny mprev" hidden></div>
-  <div class="mbtns">
-    <a id="mfIssue" class="btn" href="#" target="_blank" rel="noopener" data-i18n="mission.send">Send as GitHub ticket</a>
-    <button id="mfCopy" class="btn ghost" data-i18n="mission.copy">Copy text instead</button>
-    <span id="mfStat" class="tiny"></span>
-  </div>
-</div>
-
 <h2 data-i18n="h.changelog">What's new</h2>
 <div id="changelog"><p class="tiny" data-i18n="cl.loading">Loading version history …</p></div>
 
@@ -525,7 +512,7 @@ const LANGS = {
     'h.thanks': 'Danke',
     'thanks.intro': 'Canary ist besser geworden, weil Leute ihre Zeit gegeben haben: Streamer, die es neben dem Spiel gezeigt haben, Spieler, die jahrelange Logbestände herausgerückt haben, Tester, die unbequeme Fehler gemeldet haben statt einfach zu deinstallieren. Hinter jedem Namen hier steckt eine Änderung im Werkzeug.',
     'thanks.cta': 'Du hast geholfen und stehst nicht dabei? <a href="https://github.com/Eve-Online-Askend/eve-canary/issues">Melde dich</a>, dann kommst du auf die Liste.',
-    'h.mission': 'Bring Canary deine Missionen bei', 'mission.intro': 'Canary erkennt eine Mission an den Gegnern im Log. Das scheitert bei Missionen, die man ohne einen einzigen Schuss abschliessen kann, und bei Missionen mit voellig generischen Gegnern. Der NPC-Funk im Local ist das fehlende Stueck: er ist je Mission einmalig und sagt sogar, wann eine Mission fertig ist. Fuege deinen hier ein, dann lernt Canary sie.', 'mission.name': 'Missionsname (genau so, wie der Agent sie nennt)', 'mission.lvl': 'Stufe', 'mission.fac': 'Gegner-Fraktion', 'mission.paste': 'Local-Chat hier einfuegen. Alles ausser den NPC-Zeilen wird vor dem Absenden entfernt, Pilotennamen verlassen deinen Browser nie.', 'mission.send': 'Als GitHub-Ticket senden', 'mission.copy': 'Lieber Text kopieren', 'h.changelog': 'Was ist neu', 'cl.loading': 'Versionsverlauf wird geladen …',
+    'h.mission': 'Bring Canary deine Missionen bei', 'mission.intro': 'Canary erkennt eine Mission an den Gegnern im Log. Das scheitert bei Missionen, die man ohne einen einzigen Schuss abschliessen kann, und bei Missionen mit voellig generischen Gegnern. Der NPC-Funk im Local ist das fehlende Stueck: er ist je Mission einmalig und sagt sogar, wann eine Mission fertig ist. Fuege deinen hier ein, dann lernt Canary sie.', 'mission.name': 'Missionsname (genau so, wie der Agent sie nennt)', 'mission.lvl': 'Stufe', 'mission.fac': 'Gegner-Fraktion', 'mission.paste': 'Local-Chat hier einfuegen. Alles ausser den NPC-Zeilen wird vor dem Absenden entfernt, Pilotennamen verlassen deinen Browser nie.', 'mission.send': 'Als GitHub-Ticket senden', 'mission.copy': 'Lieber Text kopieren', 'cta.mission': 'Mission melden und Canary beibringen', 'h.changelog': 'Was ist neu', 'cl.loading': 'Versionsverlauf wird geladen …',
     r1: 'Windows oder Linux, EVE Online installiert (unter Linux über Steam/Proton oder Wine)',
     r2: 'Python 3, wird unter Windows vom Installer bei Bedarf mitinstalliert',
     r3: 'Im EVE-Client aktiviertes Spielprotokoll, für die Systemanzeige zusätzlich das Chatprotokoll',
@@ -618,7 +605,7 @@ const LANGS = {
     'h.thanks': 'Merci',
     'thanks.intro': 'Canary s\'est amélioré parce que des gens ont donné de leur temps : des streameurs qui l\'ont montré à côté du jeu, des joueurs qui ont confié des années de logs, des testeurs qui ont signalé les bugs gênants au lieu de simplement désinstaller. Derrière chaque nom ici se cache un changement dans l\'outil.',
     'thanks.cta': 'Vous avez aidé et vous n\'êtes pas dans la liste ? <a href="https://github.com/Eve-Online-Askend/eve-canary/issues">Écrivez-moi</a> et vous y serez.',
-    'h.mission': 'Apprends tes missions à Canary', 'mission.intro': 'Canary reconnaît une mission grâce aux ennemis du journal. Cela échoue pour les missions terminables sans tirer, et pour celles aux ennemis génériques. Le dialogue PNJ dans local est la pièce manquante. Colle le tien ici.', 'mission.name': 'Nom de la mission', 'mission.lvl': 'Niveau', 'mission.fac': 'Faction ennemie', 'mission.paste': 'Colle ton chat local ici. Tout sauf les lignes PNJ est supprimé avant envoi, les noms de pilotes ne quittent jamais ton navigateur.', 'mission.send': 'Envoyer comme ticket GitHub', 'mission.copy': 'Copier le texte', 'h.changelog': 'Nouveautés', 'cl.loading': 'Chargement de l\'historique …',
+    'h.mission': 'Apprends tes missions à Canary', 'mission.intro': 'Canary reconnaît une mission grâce aux ennemis du journal. Cela échoue pour les missions terminables sans tirer, et pour celles aux ennemis génériques. Le dialogue PNJ dans local est la pièce manquante. Colle le tien ici.', 'mission.name': 'Nom de la mission', 'mission.lvl': 'Niveau', 'mission.fac': 'Faction ennemie', 'mission.paste': 'Colle ton chat local ici. Tout sauf les lignes PNJ est supprimé avant envoi, les noms de pilotes ne quittent jamais ton navigateur.', 'mission.send': 'Envoyer comme ticket GitHub', 'mission.copy': 'Copier le texte', 'cta.mission': 'Signaler une mission', 'h.changelog': 'Nouveautés', 'cl.loading': 'Chargement de l\'historique …',
     r1: 'Windows ou Linux avec EVE Online installé (sous Linux via Steam/Proton ou Wine)',
     r2: 'Python 3, installé automatiquement par l\'installateur Windows s\'il manque',
     r3: 'Journalisation activée dans le client EVE, plus la journalisation du chat pour l\'affichage du système',
@@ -711,7 +698,7 @@ const LANGS = {
     'h.thanks': 'Спасибо',
     'thanks.intro': 'Canary стал лучше, потому что люди тратили своё время: стримеры показывали его рядом с игрой, игроки передавали логи за годы, тестировщики сообщали о неудобных ошибках вместо того, чтобы просто удалить программу. За каждым именем здесь стоит изменение в инструменте.',
     'thanks.cta': 'Помогли, но вас тут нет? <a href="https://github.com/Eve-Online-Askend/eve-canary/issues">Напишите</a>, и вы попадёте в список.',
-    'h.mission': 'Научите Canary своим миссиям', 'mission.intro': 'Canary распознаёт миссию по врагам в логе. Это не работает для миссий без боя и для миссий с обычными врагами. Реплики NPC в локале решают проблему. Вставьте свои здесь.', 'mission.name': 'Название миссии', 'mission.lvl': 'Уровень', 'mission.fac': 'Фракция врага', 'mission.paste': 'Вставьте локальный чат. Всё кроме строк NPC удаляется до отправки, имена пилотов не покидают браузер.', 'mission.send': 'Отправить как тикет GitHub', 'mission.copy': 'Скопировать текст', 'h.changelog': 'Что нового', 'cl.loading': 'Загрузка истории версий …',
+    'h.mission': 'Научите Canary своим миссиям', 'mission.intro': 'Canary распознаёт миссию по врагам в логе. Это не работает для миссий без боя и для миссий с обычными врагами. Реплики NPC в локале решают проблему. Вставьте свои здесь.', 'mission.name': 'Название миссии', 'mission.lvl': 'Уровень', 'mission.fac': 'Фракция врага', 'mission.paste': 'Вставьте локальный чат. Всё кроме строк NPC удаляется до отправки, имена пилотов не покидают браузер.', 'mission.send': 'Отправить как тикет GitHub', 'mission.copy': 'Скопировать текст', 'cta.mission': 'Сообщить о миссии', 'h.changelog': 'Что нового', 'cl.loading': 'Загрузка истории версий …',
     r1: 'Windows или Linux с установленной EVE Online (на Linux через Steam/Proton или Wine)',
     r2: 'Python 3, установщик для Windows ставит его сам, если он отсутствует',
     r3: 'Включённое ведение журнала в клиенте EVE, а также журнал чата для отображения системы',
@@ -1183,76 +1170,6 @@ applyLang(start);
   } catch (e) {}   // keine Datei, kein Bereich. Der Rest der Seite bleibt heil.
 })();
 
-/* ---------------------------------------------- Missionen beitragen
-   Der Nutzer fuegt seinen Local ein, wir behalten NUR die NPC-Zeilen. Das ist
-   die entscheidende Stelle: eine Local-Kopie enthaelt Pilotennamen, und die
-   haben in einem oeffentlichen Ticket nichts verloren. Gefiltert wird im
-   Browser, bevor irgendetwas verschickt wird. */
-(function () {
-  const $ = (s) => document.querySelector(s);
-  const feld = $('#mfLog'); if (!feld) return;
-  const farbeRaus = (s) => s.replace(/<[^>]+>/g, '');
-  // EVE schreibt NPC-Funk als Absender "Message". Alles andere ist ein Pilot.
-  const NPC = /^\[?\s*[\d.: ]*\]?\s*Message\s*>\s*(.+)$/i;
-
-  function ernte() {
-    const roh = (feld.value || '').split(/\r?\n/);
-    const zeilen = [], verworfen = [];
-    for (const z of roh) {
-      const rein = farbeRaus(z).trim();
-      if (!rein) continue;
-      const m = rein.match(NPC);
-      if (m) {
-        const t = m[1].replace(/\s+/g, ' ').trim();
-        if (t && !zeilen.includes(t)) zeilen.push(t);
-      } else verworfen.push(rein);
-    }
-    return { zeilen, verworfen: verworfen.length };
-  }
-
-  function text() {
-    const { zeilen } = ernte();
-    const name = ($('#mfName').value || '').trim() || '(kein Name angegeben)';
-    const lvl = $('#mfLvl').value, fac = ($('#mfFac').value || '').trim() || '?';
-    return `Mission: ${name}\nLevel: ${lvl}\nFraktion: ${fac}\n\n`
-      + `NPC-Funk (${zeilen.length} Zeilen):\n`
-      + zeilen.map((z) => '  ' + z).join('\n')
-      + '\n\nGemeldet ueber das Formular auf der Canary-Seite.\n';
-  }
-
-  function frisch() {
-    const { zeilen, verworfen } = ernte();
-    const p = $('#mfPrev');
-    if (!zeilen.length) { p.hidden = true; }
-    else {
-      p.hidden = false;
-      const de = (document.documentElement.lang || 'en').startsWith('de');
-      p.textContent = (de
-        ? `${zeilen.length} NPC-Zeilen erkannt, ${verworfen} andere Zeilen verworfen (Pilotennamen bleiben hier):\n`
-        : `${zeilen.length} NPC lines found, ${verworfen} other lines dropped (pilot names stay here):\n`)
-        + zeilen.map((z) => '· ' + z).join('\n');
-    }
-    const name = encodeURIComponent(($('#mfName').value || '').trim() || 'Mission');
-    $('#mfIssue').href = 'https://github.com/Eve-Online-Askend/eve-canary/issues/new'
-      + '?labels=mission-daten&title=' + encodeURIComponent('Mission: ')
-      + name + '&body=' + encodeURIComponent(text());
-  }
-
-  feld.addEventListener('input', frisch);
-  $('#mfName').addEventListener('input', frisch);
-  $('#mfFac').addEventListener('input', frisch);
-  $('#mfLvl').addEventListener('change', frisch);
-  $('#mfCopy').addEventListener('click', async (e) => {
-    e.preventDefault();
-    const de = (document.documentElement.lang || 'en').startsWith('de');
-    try {
-      await navigator.clipboard.writeText(text());
-      $('#mfStat').textContent = de ? 'kopiert' : 'copied';
-    } catch (err) { $('#mfStat').textContent = de ? 'ging nicht' : 'failed'; }
-    setTimeout(() => { $('#mfStat').textContent = ''; }, 2500);
-  });
-  frisch();
-})();
 </script>
 </body>
 </html>
