@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.89.1"
+VERSION = "1.90.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -104,6 +104,22 @@ def log_error(code, where, exc=None):
     # flush: sonst haengt die Meldung im Puffer, sobald die Ausgabe umgeleitet
     # ist (Autostart, nohup) und der Nutzer sieht im Fenster gar nichts.
     print(f"[{code}] {where}: {msg[:300]}", flush=True)
+
+
+# Laufende Stoppuhr. Ueberlebt einen Neustart, weil sie in der meta-Tabelle
+# liegt: wer Canary waehrend eines Trips aktualisiert, soll nicht von vorn
+# anfangen muessen.
+UHR = {"an": False, "pause": False, "label": "", "start": 0.0,
+       "sek": 0.0, "snap_m3": 0.0, "snap_isk": 0.0}
+
+
+def uhr_laufzeit():
+    """Sekunden seit dem Start, Pausen abgezogen."""
+    if not UHR["an"]:
+        return UHR["sek"]
+    if UHR["pause"]:
+        return UHR["sek"]
+    return UHR["sek"] + max(0.0, time.time() - UHR["start"])
 
 
 def load_json(name, default):
@@ -1222,6 +1238,9 @@ CREATE TABLE IF NOT EXISTS missions(mid TEXT PRIMARY KEY, char_id TEXT, char TEX
     start_ts REAL, end_ts REAL, system TEXT, dmg_out INTEGER, dmg_in INTEGER,
     kills INTEGER, bounty REAL, hits INTEGER, miss_out INTEGER, miss_in INTEGER,
     weapons TEXT, enemies TEXT, loot_isk REAL, loot_text TEXT);
+    CREATE TABLE IF NOT EXISTS uhr(id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT, start_ts REAL, end_ts REAL, sek REAL, m3 REAL, isk REAL,
+    unsicher INTEGER);
 """)
 DB.commit()
 try:  # v1.5.1: System-Kontext je Journal-Eintrag (filtert Belt-Bounties aus der Missions-Statistik)
@@ -4083,6 +4102,24 @@ class Esi(threading.Thread):
         """Frachtraum des aktiven Schiffs bewerten (Jita), fuer die Loot-Anzeige."""
         cargo = [i for i in items if i.get("location_flag") == "Cargo"
                  and i.get("location_id") == ship_item_id]
+        # Behaelter im Frachtraum mitnehmen. Ihr Inhalt haengt fuer ESI nicht
+        # am Schiff, sondern am Behaelter, und fiel deshalb komplett raus: eine
+        # randvolle Kiste sah aus wie leerer Laderaum. Gemeldet von Dune2Man,
+        # der seinen Loot immer in eine Kiste packt, weil dann mehr reingeht.
+        #
+        # Die Schleife deckt Kiste-in-Kiste ab. Sie laeuft hoechstens fuenf
+        # Runden, damit ein widerspruechlicher Datensatz sie nicht ewig dreht.
+        # Der Behaelter selbst bleibt in der Liste, der hat ja auch einen Wert,
+        # und doppelt gezaehlt wird nichts: Inhalt sind eigene Eintraege.
+        drin = list(cargo)
+        for _ in range(5):
+            ids = {i["item_id"] for i in drin if "item_id" in i}
+            neu = [i for i in items
+                   if i.get("location_id") in ids and i not in drin]
+            if not neu:
+                break
+            cargo += neu
+            drin = neu
         qty = {}
         for i in cargo:
             qty[i["type_id"]] = qty.get(i["type_id"], 0) + i["quantity"]
@@ -5626,6 +5663,23 @@ body{padding:6px;color:#fff;font-variant-numeric:tabular-nums}
 body.grund{background:#0b0e14}
 #w{display:flex;flex-direction:column;gap:5px}
 body.quer #w{flex-direction:row;flex-wrap:wrap;align-items:stretch}
+/* Taetigkeits-Modus: ein Kasten je Taetigkeit statt einer Zeile je Charakter. */
+.tk{display:flex;align-items:center;gap:11px;padding:7px 12px;border-radius:9px;
+ background:rgba(8,11,16,.78);border:1px solid rgba(255,255,255,.12);
+ box-shadow:0 1px 3px rgba(0,0,0,.75)}
+body.klar .tk{background:rgba(10,14,20,.55)}
+body.grund .tk{background:#121722;border-color:#1e2636;box-shadow:none}
+body.quer .tk{flex-direction:column;align-items:flex-start;gap:2px;min-width:150px}
+.tk .kopf{font-size:11px;font-weight:700;letter-spacing:1.4px;
+ text-shadow:0 1px 3px rgba(0,0,0,.95)}
+.tk.k-mining .kopf{color:#7fe3ff}
+.tk.k-pve .kopf{color:#f5d873}
+.tk.k-pvp .kopf{color:#ff9a94}
+.tk .unter{font-size:9.5px;color:#b6c2d2;text-shadow:0 1px 3px rgba(0,0,0,.9)}
+.tk .zahl{margin-left:auto;text-align:right;font-size:14px;font-weight:700;
+ color:#e8c645;line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,.95)}
+body.quer .tk .zahl{margin-left:0;text-align:left}
+.tk .zahl small{display:block;font-size:9.5px;color:#9fb0c4;font-weight:600}
 .z{display:flex;align-items:center;gap:9px;padding:6px 11px;border-radius:9px;
  background:rgba(10,14,20,.62);border:1px solid rgba(255,255,255,.10);
  box-shadow:0 1px 2px rgba(0,0,0,.5)}
@@ -5689,6 +5743,17 @@ body.imrahmen{padding:18px 20px}
 body.imrahmen #cfg{background:none;border:none;border-radius:0;padding:0;
  max-width:none;margin-bottom:16px}
 body.imrahmen>#cfg>.ct{display:none}
+#uhr{display:flex;align-items:center;justify-content:center;gap:9px;
+ padding:5px 12px;margin-bottom:5px;border-radius:9px;
+ background:rgba(8,11,16,.78);border:1px solid rgba(53,200,232,.35);
+ box-shadow:0 1px 3px rgba(0,0,0,.75)}
+body.klar #uhr{background:rgba(10,14,20,.55)}
+body.grund #uhr{background:#121722;box-shadow:none}
+#uhr b{font-size:17px;color:#35c8e8;font-variant-numeric:tabular-nums;
+ text-shadow:0 1px 3px rgba(0,0,0,.95)}
+#uhr span{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;
+ color:#9fb0c4;text-shadow:0 1px 3px rgba(0,0,0,.95)}
+#uhr.pause b{color:#e8c645}
 #dt{display:flex;align-items:center;justify-content:center;gap:8px;
  padding:4px 11px;margin-bottom:5px;border-radius:9px;font-size:10px;
  letter-spacing:1.2px;text-transform:uppercase;font-weight:700;
@@ -5745,7 +5810,7 @@ Ratte wegschiesst.</li>
 </ol>
 <p style="margin:9px 0 0">Diese Leiste erscheint nur hier. In OBS haengen
 Parameter an der Adresse, dort ist sie nie zu sehen.</p></div>
-</div><div id="dt" hidden></div><div id="w"></div><div id="sum" hidden></div><div id="mk" hidden><img alt="" src="data:image/png;base64,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"><span>EVE CANARY</span><em>eve-online-askend.github.io/eve-canary</em></div>
+</div><div id="uhr" hidden></div><div id="dt" hidden></div><div id="w"></div><div id="sum" hidden></div><div id="mk" hidden><img alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAzASURBVGhD7Zp5dFRFvscv2TqddFaWpPt2hyy9hJAACSRAFkI6CTgP0eeCqIwyvnFGZ8ZzHGUcxccSFUYEBBfwwcuKEQgksgqEJARQlsiMjIo6OqKICQkEgyEICeD4mVPV2dORoOA5vvP++J7bt6ruvd9v1W+rOq14+aufa/2NZ7T+6s8MkvPnitbP+I2XfwheASa8/E09r20Q993bemvvft99XNtvZ+Ocwen4ELR+xnOKUONoMP7MYELrrzb8vwCn8FPR+ujR6oId8NHLth7jfhSupQA/I57agbj30+GueKPx7I93YAg+eis+eov8LdpEnxgjxvZ4x1XjGgjQ+qm4u/ri4epLQGQCll//mfhlxaRurCK99AjpFR9J2HcekW0Jy0vkmMAho3F38ZHPOlbmh3z/xwgIMOLh5ofGPQDTpGkkr9vLxKoakov3ETPrRUKnPIA+ZTID49Ik9Mk3Enrbb4ie9QIpJfuZUFVNUtFuQibfg4ebPx7u/q0Rxsm3esUPFKD1NeCmaBk0KoNxmw5yw6HjRM1YQIAlTooSfWJ2NR4B0mwkPAJwd/WRfWK1/M2xRD/2HJkHjjFu80GCEibgpnjKd/edy1ULMOHpPUiSi3r0L9z4cSPRTz4vZ0583FM7oMt4ja+Kp68ws+7vUdFoB8pnxH3Mk4v5jw/PMPSxBXi4+ODpNaiPq3E1AgJM0vE02gGMyX2DzIPHGBCbiquiwdM7SJpU21hPPyOKhwFdgEmKUDQGFDc9iksrXPXy3k1nROsTjIviId9lr/yQUcvWows2y8jVg0MP9FmAmPkgNJr+JBXtZdzWv+IVECJXovNz3gFG3LxVSXL6jVY+KhzLO/lJlC5J4LW5o1j6SCwz7xvG/bcM4ZZMG3o1RIoRk+OiuBCUNIlbz4LpRuEXfk54dEdfBfgZZPiLf+V1xu94Ty6xRhPYY5kVdwPeviqvzBjGdxVJtJQmwVt2qMqEqgx4O9MB8ftQJp+tT+EXSRYUJRBdWBwT/1aH9XezHQ7dnYNT9EVAq31bfjOTiYfr8R4ULh2yM3lpMv30jBgSRtX/xMPeFL7emkzDpiQaNo6hcVsKLRVpXN6dweU9mVzanUFLRTrsz4SDE3j2dzH4h8RgmHiXJO9wZCdceqAPAoTZBFhHccMHZ9Gn3ixXoo28MBlXLxXFTeW/bo7kzJYkLpcncqp4FPVFI/gyL5K35psozzJy4LkwPv1fK6fWRlNfkkDT9nF8syOFps0JUBnPU9NDURSvHt//fvRBgJviRUL2Vka9tE46bOc+D52RwAEmVs6I5tvto2hYG011no3aPAufLg+jcq6B0lkGymar7MkKZumvQ5l1p5ktjxvYN9/I5ysiqMk2c6ogjCMvD8MaOhTFpT9uPga8nXDpiSsI0HgEyiQ04Z16/MKGo/HsCJPCbPp5qhQ9YeFfGyKpzjbzZY6ZE3kW/vlKOHueNlKRpbJrrsr+Z/S8+sdQPAalkJGRzoO3DKNyThBVz5o4UWChOiccFk+nackTzL1tEv79Q1Dcu4Zk57iCAJF0RjyXz6hlxe0xuw2CfGxUCKdXWanNs1Kda6Um18IXOTbObEmkYUsSX7+RzFcbEjhVEMG2rEj6DUhF8Uzj1syRHF6oUj7LwOHlBpoWJsN90+CRX8Lzj3L0qd9zV3ISimYQ2h6k+yhAVo+BIdj3fIo+7ZYeYU1xVZk3PZzmdTZq8qzUrbJxZOlgTqyL59LudOm0zRVpXKxMp2nrWM4UWljx8FBmTI3l3ZciOV1o4WjeYI4viYGH7uC7B+6CB6fCb++Ax+6DRY8yLSkJxTPICfE+CBCRJjh5MvbKT2QlKQW19rn7GAkYYOTdF6ycftXGyVU23l1s4r2XbVystHOhbHwHdo6nucLO2c1juFAyhEuvW6kvtFJTYOH0ggRO3zuZT27O4L1JKfzj5vF8dnsGdVMn8t2vbqLxoTuJHmzFVdfx7T4LENHG9ocsRufvkOVv5z4Rde5IG8z5dZGcyLfx/pJQdmepNG1PoWVXZwGp7b/FajSXC4znm+2J1BVGUffwGBpuyuDrW+2cuz2dC1PS4e4MGm+3k504ktFqGP37y22jE/JXECCiT9zzhcTMXYZ7p/AmXqZoVIpnmjm3NpLafBtVzxr5ojCOy7vT5Yy3zfyFnamt1/E0l6XRUm6nacsYThZGUZNvoXa1maY/JNEyZQLcPZFv7swkOzmeWDUcxVuPojNIH9DqglpNuLuf9iZA1PguPozJ34H1gf/GvZ93e18/rUqMLYSTBTbq8mycyLNxLNvCmU2JfFuZTnMb4U4QxM9vT+F00TBqcs3U5Fmkz3yRY2Zvlsrh2aHsuN+KbVAYitZBvH3CdMEEmGMx3XC3kwT3PQJERkxau4eIex5urXkcfcJ550wLo3ldJNW5woFt1ORaeXuBiS9fi+NyZTotZWlSRIswmZ2pfL1hJLUFNqpzzZzIt1JbYKU238r+eUbKZus5tFDPpBRR4HUnaJSlt9hHpO38QFa7YgPVNwFu/iSu2U3EvY+0CxDO6xNo5J0lVr4qdEQfGYEKbHz4UijbZwbx0YooWspTubzLzrmtYzn52lBJXMy6IH+iwMrJV228s2gwZbMNHJivsm6Gik5skHy7km8TEPKf95GyscpRrvdJgCDr4sPonG3YHsqSDi3KBkUxcFtqKOeLbFTnWOTMn8izSmJCyJtPG9kxM4i/Ph/BqbUjOLlKtLcSb8WpV4XYMMpnG6jMUvn7QpVpdlF+9yTv4KGTk5i4do+jyOuzAMWLEfNziFuyWgoQ9bs1PJTjxUlcKk3kq6IR1BYIMzJLuxah9L2loZJY2Sw9u+bo+eDFMGkuYoUEeTHm6AqzzM4C+55R2fK4SuBAx+p2Jy8ggkn0E0tkMpV1WJf+7xPQT0fEr2YQv7wERdERHGTiH68lwX4RJkVESeN86TgaNyVQvyZaEv18ZTgVcwyUz9JTNstA6ZN63nrGKEuL2gILx3Ms7HnaRPkclcosI39faOS3v3DMfkft05PH6NxtRP5x3tUJEInLPzQaTfBQfP2CqVo5Fg7aOV/aGtfL02ipsEuHbS4TsT2Zxg0jOfKyhapF4RxaHCFRtTCCtxeFcyw3kneXhEriu7OM7H3KyNaZRvQGo9yZdZBvQ0c1kLb7E4LH3eQo43sV0H7m6Oj0DjDhqgnCzX0Q2xYnwKEMmsvtcuYvlI6jactYaUZnXh/ZKc47IARJlItI5AijZ7eMpa5wKMezzRxbaaa+IIJXfh+K4t71sMu7kwAR+w0ZUxhf+bGDbKdq4IoCNL5GvH1UNi2IhyOZsCuZb7fH07xhOOeKhtBYaKFlcyy8lQb77B3XvSKEtmbg1pwgVqp+zTAa1sdxes0wqrMtNK2xsX2uBVdvR2XblZgDooCMX7GR4fOzcVe03UR2F9DW2Lo5d9EYmDrRRtWyEWyeG8mGJ82UPBHejjfmRbPrxTGUL01oR+niBN7PT5RCHFnYIUT4iohYp1ZHc740RSa/+gIrh1+wSgf2cOLAYssaGJlAxt/q6B+dJI9muo9xIqCrH4jYrHgaHNCqKFoj/bzUVhhRtG19rVd3PTo/I28sSoAqO+d3pkpfadyYwJfZYq9gk+YnCrvaXAvHs63Ywk3yfd3JuSkaElZuZuRLRbKs794vIFaih4DOOyFR91wVZKlhwNNbdYh42y594dTqGGk2Ao0bR9OyK52G4li+KrCQNnKwrK0chNr24FpMk35J5uF6fE1RvZ6jCj/taUI/EiLhuUgRBoeI/anUiJIj10Z1tpXTRSNkeS2EXdwQzT2ZgzscOcAkHddvcAw3vN9A6NQHZR7ofvrRgesgQKBdhK+JkjlDaVkfyYm8SCmiblUUF0odpsWbKcybHoHiamgn790/lIw3jzL8mRUO0+n1SN5hMddFgIAwBxetioeXgaI/W7hYPMSxEjk2zm1NlM5NVTo5j8fKgzAx034h0WTs+ScJIuu6+DgJm91xHQUIyJXwUtHoVNY8ZuZicZQ0ozMlo+SWk31p3J4ZiaL4YcycwqT3TxP7bC7uLr546r5vK9mG6yxAoKsICy3rbJxaPYzv9qbzxfpx6LR+GCbdy+SPzxI+7SG5EuK8tPt7nOMnECAgzEkcgHnoVFb/ycylkig4YGf5n+JQlP6E3DSdAcNTHA7bq807QxcB3TuvLdpO8Ty8hYgIOJBMeqJNnmKLOl8mql6jTW/4iVagLbu3idAFqMy/fwgDg0Pw8HU2471w6SHwmgi48nMiY7bVL0KEKB0UT1Umv74dIfaGayLgynBGsvejkqvBTyTg+uH/jADxZ4+AkPb0fL3R4RM/Hm1/9vhM629qEGp+XpCcj/4bGukW2TGfkL8AAAAASUVORK5CYII="><span>EVE CANARY</span><em>eve-online-askend.github.io/eve-canary</em></div>
 <script>
 const P = new URLSearchParams(location.search);
 // Steckt die Seite im Dashboard-Dialog? Dann traegt der Dialog den Rahmen.
@@ -5759,6 +5824,8 @@ const ZEIG = {
   warn:   an('warn', true),\n  iskh:   an('iskh', true)
 };
 const MAX = parseInt(P.get('max') || '0', 10) || 99;
+// Zwei Ansichten: je Charakter (wie bisher) oder je Taetigkeit.
+const NACH_ART = (P.get('modus') || '') === 'art';
 document.getElementById('mk').hidden = !an('brand', true);
 document.body.classList.toggle('grund', P.get('bg') === 'dark');
 document.body.classList.toggle('klar', P.get('bg') === 'clear');
@@ -5849,6 +5916,7 @@ function zustand(c) {
 if (!location.search) {
   const F = [
     ['dir', 'Ausrichtung', 'wahl', [['v', 'senkrecht'], ['h', 'waagerecht']]],
+    ['modus', 'Aufteilung', 'wahl', [['', 'je Charakter'], ['art', 'je Tätigkeit']]],
     ['bg', 'Hintergrund', 'wahl', [['', 'halb durchsichtig'], ['clear', 'sehr dezent'], ['dark', 'voll']]],
     ['scale', 'Groesse', 'zahl', [1, 0.6, 3, 0.1]],
     ['max', 'Chars hoechstens', 'zahl', [0, 0, 20, 1]],
@@ -5859,6 +5927,7 @@ if (!location.search) {
     ['warn', 'Warnungen', 'ja', 1],
     ['brand', 'Markenzeile Eve Canary', 'ja', 1],
     ['dt', 'Downtime-Countdown', 'ja', 1],
+    ['uhr', 'Stoppuhr zeigen', 'ja', 1],
     ['sys', 'Standort zeigen', 'ja', 0],\n    ['idle', 'Hinweis wenn niemand fliegt', 'ja', 1],\n    ['demo', 'Beispielwerte zeigen', 'ja', 0]
   ];
   const box = document.getElementById('cg');
@@ -5931,10 +6000,78 @@ const DEMO = [
     pvp_out: 22000, pvp_in: 31000, dps_in: 340 }
 ];
 
+/* Nach Taetigkeit zusammenfassen. Die Rolle je Charakter steht schon fest,
+   hier wird nur addiert. ISK pro Stunde ist die Summe der Einzelraten, nicht
+   die Gesamtsumme geteilt durch eine Laufzeit: die Charaktere fliegen
+   unterschiedlich lange, eine gemeinsame Laufzeit gibt es gar nicht. */
+function nachArt(chars) {
+  const arten = {mining: {}, pve: {}, pvp: {}};
+  for (const k of Object.keys(arten))
+    arten[k] = {n: 0, isk: 0, rate: 0, m3: 0, m3h: 0, schaden: 0};
+  for (const c of chars) {
+    const r = rolle(c);
+    if (!r) continue;
+    const a = arten[r[0]];
+    a.n += 1;
+    a.isk += c.total_isk || 0;
+    a.m3 += c.m3 || 0;
+    a.m3h += c.m3h || 0;
+    a.rate += iskH(c) || 0;
+    a.schaden += c.dmg_out || 0;
+  }
+  return arten;
+}
+
+function kaesten(chars) {
+  const a = nachArt(chars);
+  const namen = {mining: 'MINING', pve: 'PVE', pvp: 'PVP'};
+  const teile = [];
+  let summe = 0, rate = 0;
+  for (const k of ['mining', 'pve', 'pvp']) {
+    const d = a[k];
+    if (!d.n) continue;                       // leere Kaesten sind nur Hoehe
+    summe += d.isk; rate += d.rate;
+    const unten = [d.n + (d.n === 1 ? ' Pilot' : ' Piloten')];
+    if (k === 'mining' && d.m3h) unten.push(fmt(d.m3h) + ' m³/h');
+    if (k !== 'mining' && d.schaden) unten.push(fmtC(d.schaden) + ' Schaden');
+    teile.push('<div class="tk k-' + k + '"><span>'
+      + '<div class="kopf">' + namen[k] + '</div>'
+      + '<div class="unter">' + unten.join(' &middot; ') + '</div></span>'
+      + '<span class="zahl">' + fmtM(d.isk)
+      + (d.rate ? '<small>' + fmtM(d.rate) + '/h</small>' : '')
+      + '</span></div>');
+  }
+  if (teile.length > 1 && ZEIG.sum)
+    teile.push('<div class="tk"><span><div class="kopf" style="color:#9fb0c4">GESAMT</div>'
+      + '<div class="unter">' + chars.length
+      + (chars.length === 1 ? ' Charakter' : ' Charaktere') + '</div></span>'
+      + '<span class="zahl">' + fmtM(summe)
+      + (rate ? '<small>' + fmtM(rate) + '/h</small>' : '') + '</span></div>');
+  return teile.join('');
+}
+
+function zeigUhr(u) {
+  const box = document.getElementById('uhr');
+  if (!an('uhr', true) || !u || !u.an) { box.hidden = true; return; }
+  box.hidden = false;
+  box.classList.toggle('pause', !!u.pause);
+  const h = Math.floor(u.sek / 3600), m = Math.floor(u.sek % 3600 / 60),
+        k = Math.floor(u.sek % 60), zz = (n) => String(n).padStart(2, '0');
+  box.innerHTML = '<b>' + (h ? h + ':' : '') + zz(m) + ':' + zz(k) + '</b>'
+    + '<span>' + esc(u.label || 'Trip') + (u.pause ? ' &middot; Pause' : '') + '</span>';
+}
+
 async function tick() {
   downtime();
   if (an('demo', false)) {
-    zeichne({ chars: DEMO });
+    // Beispielwerte fuer die Charaktere, aber der ZUSTAND kommt echt: sonst
+    // fehlt beim Einrichten die Stoppuhr, und genau dabei will man sehen, wo
+    // sie landet. Geht der Abruf schief, laeuft der Demo-Modus trotzdem.
+    let st = {};
+    try {
+      st = (await (await fetch('/data?view=live', { cache: 'no-store' })).json()).state || {};
+    } catch (e) {}
+    zeichne({ chars: DEMO, state: st });
     return;
   }
   let d;
@@ -5944,6 +6081,7 @@ async function tick() {
 }
 
 function zeichne(d) {
+  zeigUhr((d.state || {}).uhr);
   const chars = (d.chars || []).filter((c) => c.active).slice(0, MAX);
   // Niemand aktiv? Fuer OBS ist ein leeres Bild richtig, beim Einrichten
   // sieht es aber aus wie kaputt. Deshalb eine stille Bereitschaftszeile,
@@ -5957,6 +6095,17 @@ function zeichne(d) {
             : 'noch kein Charakter erkannt, EVE starten') + '</div></span></div>'
       : '';
     document.getElementById('sum').hidden = true;
+    return;
+  }
+  if (NACH_ART) {
+    document.getElementById('w').innerHTML = kaesten(chars);
+    document.getElementById('sum').hidden = true;    // steckt im GESAMT-Kasten
+    if (an('demo', false)) {
+      document.getElementById('w').insertAdjacentHTML('beforeend',
+        '<div class="z leer"><span class="pkt warn"></span><span>'
+        + '<div class="sub">Beispielwerte zum Einrichten, nicht aus dem Spiel. '
+        + 'Zum Beenden demo aus der Adresse entfernen.</div></span></div>');
+    }
     return;
   }
   document.getElementById('w').innerHTML = chars.map((c) => {
@@ -7022,6 +7171,9 @@ def state_info():
             "update": {"available": UPDATE_INFO["available"],
                        "latest": UPDATE_INFO["latest"]},
             "version": VERSION,
+            # Handgesetzte Stoppuhr. Dashboard und Overlay lesen denselben
+            # Wert, damit im Stream nicht zwei verschiedene Zeiten stehen.
+            "uhr": uhr_json(),
             "ingesting": not ingest.started_full,
             "progress": ingest.progress, "prices_loaded": bool(prices.get(CONFIG["region"])),
             "price_src": PRICE_SOURCE.get(str(CONFIG["region"]), "fuzzwork"),
@@ -7134,6 +7286,48 @@ def query_mission_history(limit=40):
             "loot_isk": round(loot) if loot else None, "loot_text": loot_text or "",
             "total": round((bounty or 0) + (loot or 0) + (vreward or 0) + (vbonus or 0))})
     return out, {"liste": ohne_mission, "summe": ohne_summe, "n": len(offen)}
+
+
+def uhr_sichern():
+    try:
+        with DB_LOCK:
+            DB.execute("INSERT OR REPLACE INTO meta VALUES('uhr',?)",
+                       (json.dumps(UHR),))
+            DB.commit()
+    except Exception as e:
+        log_error("CN-DB-01", "uhr_sichern", e)
+
+
+def uhr_laden():
+    try:
+        with DB_LOCK:
+            r = DB.execute("SELECT value FROM meta WHERE key='uhr'").fetchone()
+        if r:
+            UHR.update(json.loads(r[0]))
+    except Exception as e:
+        log_error("CN-DB-01", "uhr_laden", e)
+
+
+# Die Momentaufnahme von m3 und ISK kommt aus der Oberflaeche mit. Beide werden
+# in der Live-Ansicht gerechnet und liegen nicht auf der Sitzung; sie hier ein
+# zweites Mal auszurechnen hiesse, zwei Rechenwege zu pflegen, die
+# auseinanderlaufen koennen. Die Oberflaeche zeigt die Summen ohnehin an.
+
+
+def query_uhr_liste(n=20):
+    with DB_LOCK:
+        rows = DB.execute(
+            "SELECT id,label,start_ts,end_ts,sek,m3,isk,unsicher FROM uhr "
+            "ORDER BY end_ts DESC LIMIT ?", (n,)).fetchall()
+    return [{"id": r[0], "label": r[1] or "", "start": int(r[2] or 0),
+             "end": int(r[3] or 0), "sek": int(r[4] or 0),
+             "m3": round(r[5] or 0), "isk": round(r[6] or 0),
+             "unsicher": bool(r[7])} for r in rows]
+
+
+def uhr_json():
+    return {"an": UHR["an"], "pause": UHR["pause"], "label": UHR["label"],
+            "sek": round(uhr_laufzeit())}
 
 
 def query_loot_tage(tage=30):
@@ -7945,6 +8139,8 @@ class Handler(BaseHTTPRequestHandler):
                 data["intel_auto"] = {"ts": clipwatch.ts, "names": clipwatch.names,
                                       "fleets": chatwatch.fleet_groups()}
                 data["blutspur"] = packintel.snapshot()
+            elif view == "uhr":
+                data["uhr_liste"] = query_uhr_liste()
             elif view == "missionen":
                 data["missions"] = query_missions()
                 data["mission_log"], data["mission_offen"] = query_mission_history()
@@ -8165,6 +8361,58 @@ class Handler(BaseHTTPRequestHandler):
             return
         elif action == "loot":
             self._send(json.dumps(calc_loot(body.get("text") or "")))
+            return
+        elif action == "uhr":
+            # Eine Aktion mit Unterbefehl statt vier Endpunkten: die Stoppuhr
+            # hat genau einen Zustand, den soll auch nur eine Stelle aendern.
+            was = str(body.get("was") or "")
+            # m3 und ISK kommen aus der Oberflaeche mit, siehe Kommentar bei
+            # uhr_laden: sie werden in der Live-Ansicht gerechnet.
+            m3 = float(body.get("m3") or 0)
+            isk = float(body.get("isk") or 0)
+            if was == "start":
+                UHR.update({"an": True, "pause": False,
+                            "label": (body.get("label") or "").strip()[:60],
+                            "start": time.time(), "sek": 0.0,
+                            "snap_m3": m3, "snap_isk": isk})
+            elif was == "pause" and UHR["an"] and not UHR["pause"]:
+                UHR["sek"] = uhr_laufzeit()
+                UHR["pause"] = True
+            elif was == "weiter" and UHR["an"] and UHR["pause"]:
+                UHR["start"] = time.time()
+                UHR["pause"] = False
+            elif was == "verwerfen":
+                UHR.update({"an": False, "pause": False, "label": "",
+                            "start": 0.0, "sek": 0.0})
+            elif was == "speichern" and UHR["an"]:
+                sek = uhr_laufzeit()
+                d_m3 = m3 - UHR["snap_m3"]
+                d_isk = isk - UHR["snap_isk"]
+                # Faellt die Summe unter die Momentaufnahme, wurde eine Sitzung
+                # mittendrin zurueckgesetzt (Andocken). Dann ist die Differenz
+                # nicht mehr das, was in diesem Zeitraum passiert ist. Statt
+                # eine falsche Zahl zu speichern, wird der Eintrag markiert.
+                unsicher = d_m3 < 0 or d_isk < 0
+                if unsicher:
+                    d_m3 = max(0.0, m3)
+                    d_isk = max(0.0, isk)
+                with DB_LOCK:
+                    DB.execute(
+                        "INSERT INTO uhr(label,start_ts,end_ts,sek,m3,isk,unsicher) "
+                        "VALUES(?,?,?,?,?,?,?)",
+                        (UHR["label"] or "Trip", time.time() - sek, time.time(),
+                         sek, d_m3, d_isk, 1 if unsicher else 0))
+                    DB.commit()
+                UHR.update({"an": False, "pause": False, "label": "",
+                            "start": 0.0, "sek": 0.0})
+            uhr_sichern()
+            self._send(json.dumps({"ok": True, "uhr": uhr_json()}))
+            return
+        elif action == "uhr_weg":
+            with DB_LOCK:
+                DB.execute("DELETE FROM uhr WHERE id=?", (int(body.get("id") or 0),))
+                DB.commit()
+            self._send(json.dumps({"ok": True}))
             return
         elif action == "mission_loot":
             # Loot einer einzelnen Mission bewerten und dauerhaft an ihr speichern.
@@ -9237,6 +9485,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span class="pill upd" id="updBadge" hidden title="Neue Version verfügbar, Klick installiert sie"></span>
  <span class="pill" id="ovToggle" title="Always-on-top Mini-Overlay (Chrome, Edge, Firefox)">◱ Overlay</span>
  <span class="pill" id="obsBtn" title="Overlay fuer OBS einrichten: Aussehen waehlen, Adresse kopieren, in OBS als Browser-Quelle einfuegen. Mit Anleitung.">🎥 OBS Overlay</span>
+ <span class="pill" id="uhrBtn" title="Stoppuhr fuer eine Aktivitaet: starten, pausieren, am Ende als Trip speichern. Zaehlt mit, wieviel in der Zeit gefoerdert wurde.">⏱ Stoppuhr</span>
  <span class="pill" id="fontsize" title="Schriftgröße (3 Stufen)">A</span>
  <span class="pill" id="theme" title="Dark/Light">◐</span>
  <span class="pill" id="gear">⚙ Optionen</span>
@@ -9389,6 +9638,17 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 <!-- Belt-Auswertung. Bewusst ein eigener Dialog im festen HTML und NICHT im
      Grid: die Live-Ansicht baut sich alle zwei Sekunden neu auf und wuerde ein
      Eingabefeld darin samt Inhalt wegwerfen. -->
+<dialog id="uhrDlg">
+ <h2>⏱ Stoppuhr</h2>
+ <p class="sub">Fuer eine einzelne Aktivitaet: einen Belt, eine Runde Abyss, ein
+ Event. Beim Speichern haelt Canary fest, wie lange es lief und wieviel in der
+ Zeit gefoerdert wurde. Das ist etwas anderes als die Trips, die Canary selbst
+ am Abdocken zaehlt.</p>
+ <div id="uhrAn"></div>
+ <div id="uhrListe" style="margin-top:12px"></div>
+ <div style="text-align:right;margin-top:10px"><button class="btn" id="uhrZu">Schließen</button></div>
+</dialog>
+
 <dialog id="obsDlg">
  <h2>🎥 Overlay für OBS einrichten</h2>
  <iframe id="obsFrame" src="about:blank" title="OBS-Einrichtung"></iframe>
@@ -11034,6 +11294,9 @@ async function overlayTick(){
  }catch(e){}
 }
 setInterval(overlayTick,2000);
+// Nur wenn der Dialog offen ist: sonst baut der Takt staendig HTML, das
+// niemand sieht.
+setInterval(()=>{const d=$('#uhrDlg'); if(d&&d.open)uhrMalen();},1000);
 $('#ovToggle').onclick=toggleOverlay;
 $('#obsBtn').onclick=()=>{
  const f=$('#obsFrame');
@@ -11041,6 +11304,67 @@ $('#obsBtn').onclick=()=>{
  $('#obsDlg').showModal();
 };
 $('#obsZu').onclick=()=>$('#obsDlg').close();
+
+/* Stoppuhr. Die Summen fuer m3 und ISK kommen von hier mit: sie werden in der
+   Live-Ansicht gerechnet, nicht auf der Sitzung gehalten. Beide Seiten aus
+   derselben Quelle zu speisen ist sicherer, als sie im Server ein zweites Mal
+   auszurechnen. */
+function uhrSummen(){
+ const cs=(state && state.chars || []).filter(c=>c.active);
+ return {m3:cs.reduce((a,c)=>a+(c.m3||0),0),
+         isk:cs.reduce((a,c)=>a+(c.ore_isk||0),0)};
+}
+function uhrZeit(sek){
+ const h=Math.floor(sek/3600), m=Math.floor(sek%3600/60), s2=Math.floor(sek%60);
+ return (h?h+':':'')+String(m).padStart(h?2:1,'0')+':'+String(s2).padStart(2,'0');
+}
+async function uhrTun(was,extra){
+ const r=await post({action:'uhr',was,...uhrSummen(),...(extra||{})});
+ if(r&&r.uhr&&state)state.uhr=r.uhr;
+ uhrMalen(); uhrListeMalen();
+}
+function uhrMalen(){
+ const box=$('#uhrAn'); if(!box)return;
+ const u=(state&&state.uhr)||{an:false,sek:0,label:'',pause:false};
+ if(!u.an){
+  box.innerHTML=`<div class="btnrow" style="align-items:center;gap:8px">
+    <input id="uhrLabel" type="text" placeholder="Wofür? z.B. Belt Gisleres, Abyss T4"
+     style="flex:1;min-width:220px">
+    <button class="btn" id="uhrStart">▶ Starten</button></div>`;
+  $('#uhrStart').onclick=()=>uhrTun('start',{label:$('#uhrLabel').value});
+  $('#uhrLabel').onkeydown=(e)=>{if(e.key==='Enter')$('#uhrStart').click();};
+  return;
+ }
+ box.innerHTML=`<div class="btnrow" style="align-items:center;gap:10px">
+   <span style="font-size:26px;font-weight:700;color:var(--cyan);font-variant-numeric:tabular-nums">${uhrZeit(u.sek)}</span>
+   <span class="sub">${esc(u.label||'Trip')}${u.pause?' · pausiert':''}</span>
+   <span style="margin-left:auto"></span>
+   <button class="btn" id="uhrPause">${u.pause?'▶ Weiter':'⏸ Pause'}</button>
+   <button class="btn" id="uhrSpeichern">✔ Trip speichern</button>
+   <button class="btn warn" id="uhrWeg">Verwerfen</button></div>`;
+ $('#uhrPause').onclick=()=>uhrTun(u.pause?'weiter':'pause');
+ $('#uhrSpeichern').onclick=()=>uhrTun('speichern');
+ $('#uhrWeg').onclick=()=>{if(confirm('Stoppuhr verwerfen? Der Trip wird nicht gespeichert.'))uhrTun('verwerfen');};
+}
+async function uhrListeMalen(){
+ const box=$('#uhrListe'); if(!box)return;
+ let d; try{ d=await (await fetch('/data?view=uhr',{cache:'no-store'})).json(); }catch(e){ return; }
+ const l=d.uhr_liste||[];
+ box.innerHTML=l.length?`<div class="sect">Gespeicherte Trips</div><table>
+  <thead><tr><th>Wann</th><th>Wofür</th><th class="r">Dauer</th><th class="r">Erz</th><th class="r">Wert</th><th></th></tr></thead>`
+  +l.map(x=>`<tr><td>${new Date(x.end*1000).toLocaleString().slice(0,16)}</td>
+   <td>${esc(x.label)}${x.unsicher?'<span title="Während des Trips wurde eine Sitzung zurückgesetzt (Andocken). Erz und Wert sind deshalb der Stand am Ende, nicht die Differenz." style="color:var(--gold)"> *</span>':''}</td>
+   <td class="r">${uhrZeit(x.sek)}</td><td class="r">${fmt(x.m3)} m³</td>
+   <td class="r isk">${fmtM(x.isk)}</td>
+   <td class="r"><span class="uhrweg" data-id="${x.id}" style="cursor:pointer;color:var(--dim)">✕</span></td></tr>`).join('')
+  +'</table>'
+  +(l.some(x=>x.unsicher)?'<div class="sub" style="margin-top:6px">* Während dieser Trips wurde eine Sitzung zurückgesetzt. Erz und Wert sind dann der Stand am Ende statt der Differenz.</div>':'')
+  :'<div class="sub">Noch keine Trips gespeichert.</div>';
+ box.querySelectorAll('.uhrweg').forEach(e=>e.onclick=async()=>{
+  await post({action:'uhr_weg',id:parseInt(e.dataset.id,10)}); uhrListeMalen();});
+}
+$('#uhrBtn').onclick=()=>{uhrMalen();uhrListeMalen();$('#uhrDlg').showModal();};
+$('#uhrZu').onclick=()=>$('#uhrDlg').close();
 $('#obsTab').onclick=()=>window.open('/obs','_blank','noopener');
 // Beim Schliessen entladen, damit die Abfrage im Hintergrund wirklich aufhoert.
 $('#obsDlg').addEventListener('close',()=>$('#obsFrame').setAttribute('src','about:blank'));
@@ -12788,6 +13112,9 @@ if __name__ == "__main__":
 
     # Bis zu 12s auf den Port warten: nach einem Auto-Update startet der neue
     # Prozess evtl., bevor der alte den Socket (TIME_WAIT) freigegeben hat.
+    # Eine laufende Stoppuhr ueberlebt den Neustart: wer waehrend eines Trips
+    # aktualisiert, soll nicht von vorn anfangen muessen.
+    uhr_laden()
     # Einmal nachsehen, ob die Installation vollstaendig ist, und
     # nachholen was fehlt. Im Hintergrund, damit der Start nicht wartet.
     threading.Thread(target=pruefe_daten, daemon=True,

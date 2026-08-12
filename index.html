@@ -181,6 +181,10 @@ li{margin:5px 0}
 /* Discord-Blau statt Canary-Cyan: der Knopf soll als Discord erkennbar
    sein, sonst liest man ihn als zweiten Melde-Knopf. */
 .missionCta .cta.dc{background:#5865F2;color:#fff}
+.alpha{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.8px;
+ text-transform:uppercase;vertical-align:middle;margin-left:8px;padding:2px 7px;
+ border-radius:5px;background:rgba(232,198,69,.16);color:#e8c645;
+ border:1px solid rgba(232,198,69,.35)}
 
 .logowrap{position:relative;display:block;width:84px;height:84px;margin:0 auto 6px}
 header .logo{margin:0}
@@ -233,7 +237,7 @@ header.eng .missionCta{margin-left:auto}
   <p class="tag" data-i18n="tag">Miners took a canary down the shaft with them. When it dropped off its perch, it was time to leave. Canary does the same for you: it reads your EVE logs and raises the alarm while the gank pack is still jumps away. Plus mining, ISK and missions live in your browser. Everything on your own machine, no login, no account.</p>
   <div class="badges">
     <span class="badge"><span data-i18n="b.version">Version</span> <b id="ver">…</b></span>
-    <span class="badge" data-i18n="b.os">Windows &amp; Linux</span>
+    <span class="badge" data-i18n="b.os">Windows, Linux &amp; macOS</span>
     <span class="badge" data-i18n="b.free">Free</span>
     <span class="badge" data-i18n="b.eula">EULA compliant</span>
     <button class="badge" id="dlBadge" hidden><span data-i18n="b.dl">Downloads</span> <b id="dl"></b></button>
@@ -254,6 +258,12 @@ needed, then Canary starts by itself and creates a shortcut.</p>
 
 <div class="os" data-i18n="os.linux">Linux (EVE via Steam/Proton or Wine)</div>
 <p class="tiny" data-i18n="install.linux.hint">Open a terminal and paste:</p>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main/install.sh | sh</code></pre>
+
+<div class="os" data-i18n="os.mac">macOS <span class="alpha">experimental</span></div>
+<p class="tiny" data-i18n="install.mac.hint">Same command in the Terminal. Dashboard and log
+detection work, but there is no autostart and no clipboard scan yet. It puts an "EVE Canary.command"
+on your desktop to start it. If something breaks, please say so.</p>
 <pre><code>curl -fsSL https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main/install.sh | sh</code></pre>
 
 <p class="note" data-i18n="install.note">Canary finds the log folder on its own, including
@@ -475,13 +485,15 @@ const LANGS = {
     _title: 'EVE Canary: Mining- und Missions-Dashboard für EVE Online',
     _desc: 'EVE Canary liest deine EVE-Online-Logs und zeigt Mining, ISK, Missionen und Sicherheitsalarme live im Browser. Läuft komplett lokal, ohne Anmeldung.',
     tag: 'Bergleute nahmen einen Kanarienvogel mit unter Tage. Fiel er von der Stange, war es Zeit zu gehen. Canary tut dasselbe für dich: es liest deine EVE-Logs und schlägt Alarm, während das Gank-Rudel noch Sprünge entfernt ist. Dazu Mining, ISK und Missionen live im Browser. Alles auf deinem Rechner, ohne Anmeldung, ohne Konto.',
-    'b.version': 'Version', 'b.os': 'Windows &amp; Linux', 'b.free': 'Kostenlos',
+    'b.version': 'Version', 'b.os': 'Windows, Linux &amp; macOS', 'b.free': 'Kostenlos',
     'b.eula': 'EULA-konform', 'b.dl': 'Downloads',
     'h.install': 'Installation',
     'install.intro': 'Ein Befehl, mehr nicht. Python wird bei Bedarf mitinstalliert, danach startet Canary von selbst und legt eine Verknüpfung an.',
     'os.win': 'Windows',
     'install.win.hint': 'Windows-Taste drücken, „PowerShell“ tippen, öffnen, einfügen:',
     'os.linux': 'Linux (EVE über Steam/Proton oder Wine)',
+  'os.mac': 'macOS <span class="alpha">experimentell</span>',
+  'install.mac.hint': 'Derselbe Befehl im Terminal. Dashboard und Logsuche laufen, Autostart und Zwischenablage-Erkennung fehlen noch. Zum Starten landet eine Datei "EVE Canary.command" auf dem Schreibtisch. Wenn etwas klemmt, sag Bescheid.',
     'install.linux.hint': 'Terminal öffnen und einfügen:',
     'install.note': 'Canary findet den Log-Ordner selbst, auch im Wine-Präfix unter Linux. Klappt das nicht, fragt es beim ersten Start einfach danach. Im EVE-Client muss das Spielprotokoll aktiv sein, das ist die Standardeinstellung.',
     'h.features': 'Was es kann',
@@ -568,13 +580,15 @@ const LANGS = {
     _title: 'EVE Canary : tableau de bord minage et missions pour EVE Online',
     _desc: 'EVE Canary lit vos journaux EVE Online et affiche minage, ISK, missions et alertes de sécurité en direct dans votre navigateur. Fonctionne entièrement en local, sans compte.',
     tag: 'Les mineurs descendaient avec un canari. Quand il tombait de son perchoir, il était temps de partir. Canary fait pareil pour toi : il lit tes journaux EVE et donne l\'alerte pendant que la meute est encore à plusieurs sauts. Plus le minage, les ISK et les missions en direct dans ton navigateur. Tout sur ta machine, sans compte.',
-    'b.version': 'Version', 'b.os': 'Windows et Linux', 'b.free': 'Gratuit',
+    'b.version': 'Version', 'b.os': 'Windows, Linux et macOS', 'b.free': 'Gratuit',
     'b.eula': 'Conforme au CLUF', 'b.dl': 'Téléchargements',
     'h.install': 'Installation',
     'install.intro': 'Une seule commande, rien de plus. Python est installé au besoin, puis Canary démarre tout seul et crée un raccourci.',
     'os.win': 'Windows',
     'install.win.hint': 'Appuyez sur la touche Windows, tapez « PowerShell », ouvrez-le et collez :',
     'os.linux': 'Linux (EVE via Steam/Proton ou Wine)',
+  'os.mac': 'macOS <span class="alpha">expérimental</span>',
+  'install.mac.hint': 'La même commande dans le Terminal. Le tableau de bord et la détection des logs fonctionnent, il manque le démarrage automatique. Un fichier "EVE Canary.command" est déposé sur le bureau.',
     'install.linux.hint': 'Ouvrez un terminal et collez :',
     'install.note': 'Canary trouve le dossier des journaux tout seul, y compris dans le préfixe Wine sous Linux. Si cela échoue, il vous le demande simplement au premier démarrage. La journalisation doit être activée dans le client EVE, ce qui est le réglage par défaut.',
     'h.features': 'Ce qu\'il fait',
@@ -661,13 +675,15 @@ const LANGS = {
     _title: 'EVE Canary: панель добычи и миссий для EVE Online',
     _desc: 'EVE Canary читает ваши логи EVE Online и показывает добычу, ISK, миссии и предупреждения об опасности прямо в браузере. Работает полностью на вашем компьютере, без учётной записи.',
     tag: 'Шахтёры брали с собой канарейку. Упала с жёрдочки, значит пора уходить. Canary делает то же самое для вас: читает ваши логи EVE и поднимает тревогу, пока стая ещё в нескольких прыжках. Плюс добыча, ISK и миссии вживую в браузере. Всё на вашем компьютере, без входа и аккаунта.',
-    'b.version': 'Версия', 'b.os': 'Windows и Linux', 'b.free': 'Бесплатно',
+    'b.version': 'Версия', 'b.os': 'Windows, Linux и macOS', 'b.free': 'Бесплатно',
     'b.eula': 'Не нарушает EULA', 'b.dl': 'Загрузок',
     'h.install': 'Установка',
     'install.intro': 'Одна команда, и всё. Python при необходимости устанавливается автоматически, затем Canary запускается сам и создаёт ярлык.',
     'os.win': 'Windows',
     'install.win.hint': 'Нажмите клавишу Windows, введите «PowerShell», откройте и вставьте:',
     'os.linux': 'Linux (EVE через Steam/Proton или Wine)',
+  'os.mac': 'macOS <span class="alpha">экспериментально</span>',
+  'install.mac.hint': 'Та же команда в Терминале. Панель и поиск логов работают, автозапуска пока нет. Для запуска на рабочий стол кладётся файл "EVE Canary.command".',
     'install.linux.hint': 'Откройте терминал и вставьте:',
     'install.note': 'Canary находит папку с логами сам, в том числе внутри префикса Wine на Linux. Если не получится, он просто спросит путь при первом запуске. В клиенте EVE должно быть включено ведение журнала, это настройка по умолчанию.',
     'h.features': 'Что он умеет',

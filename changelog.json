@@ -1,5 +1,23 @@
 [
  {
+  "v": "1.90.0",
+  "d": "2026-08-12",
+  "de": [
+   "Neue Stoppuhr fuer einzelne Aktivitaeten: starten, pausieren, weiter, am Ende als Trip speichern. Canary haelt dabei fest, wie lange es lief und wieviel in der Zeit gefoerdert wurde. Der Knopf steht oben, die Zeit laeuft auch im OBS-Overlay mit.",
+   "Wird waehrend eines Trips eine Sitzung zurueckgesetzt, etwa durch Andocken, stimmt die Differenz nicht mehr. Canary erkennt das und markiert den Eintrag, statt eine falsche Zahl hinzuschreiben. Eine laufende Stoppuhr ueberlebt auch einen Neustart.",
+   "Der Frachtraum-Wert zaehlt jetzt auch, was in Behaeltern liegt, verschachtelte Kisten eingeschlossen. Bisher fiel der Inhalt komplett raus, weil er fuer ESI an der Kiste haengt und nicht am Schiff: eine randvolle Kiste sah aus wie leerer Laderaum. Gemeldet von Dune2Man.",
+   "Das OBS-Overlay kann jetzt auch nach Taetigkeit aufteilen statt nach Charakter: ein Kasten fuer Mining, PvE und PvP mit Summe, Rate und Anzahl der Piloten, dazu ein Gesamt-Kasten. Bei vielen Charakteren bleibt das Bild damit ruhig.",
+   "macOS wird ab jetzt unterstuetzt, ausdruecklich EXPERIMENTELL. Der Installer erkennt den Mac, legt einen Starter auf dem Schreibtisch ab statt eines Startmenue-Eintrags, und die Logsuche greift dort ohnehin schon. Was fehlt, ist der Autostart. Rueckmeldungen willkommen."
+  ],
+  "en": [
+   "New stopwatch for a single activity: start, pause, resume, save as a trip at the end. Canary records how long it ran and how much was mined in that time. The button sits at the top, and the time also runs in the OBS overlay.",
+   "If a session is reset during a trip, by docking for instance, the difference no longer holds. Canary spots that and marks the entry rather than writing down a wrong number. A running stopwatch also survives a restart.",
+   "The cargo value now counts what sits inside containers, nested ones included. Until now the contents dropped out entirely because ESI attaches them to the container and not to the ship, so a full container looked like an empty hold. Reported by Dune2Man.",
+   "The OBS overlay can now split by activity instead of by character: one box each for mining, PvE and PvP with total, rate and number of pilots, plus a combined box. With a lot of characters that keeps the picture calm.",
+   "macOS is supported from now on, explicitly EXPERIMENTAL. The installer detects the Mac, drops a launcher on the desktop instead of a start menu entry, and log detection already worked there anyway. What is missing is autostart. Feedback welcome."
+  ]
+ },
+ {
   "v": "1.89.1",
   "d": "2026-08-12",
   "de": [

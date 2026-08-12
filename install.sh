@@ -1,10 +1,19 @@
 #!/usr/bin/env sh
-# EVE Canary Installer fuer Linux (Gegenstueck zu install.ps1).
+# EVE Canary Installer fuer Linux und macOS (Gegenstueck zu install.ps1).
+# macOS ist EXPERIMENTELL: Logsuche und Dashboard laufen, aber es gibt
+# keinen Autostart und keine Zwischenablage-Erkennung. Siehe Issue 1.
 # Aufruf:  curl -fsSL <repo>/install.sh | sh
 set -eu
 
 REPO="${CANARY_REPO:-https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main}"
 DIR="${CANARY_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/eve-canary}"
+
+# Linux oder macOS? Danach richtet sich, wohin der Starter kommt und was am
+# Ende auf dem Schirm steht. uname statt einer Umgebungsvariablen, das ist
+# ueberall vorhanden.
+SYS="$(uname -s 2>/dev/null || echo unbekannt)"
+MAC=""
+[ "$SYS" = "Darwin" ] && MAC=1
 
 echo ""
 echo "  EVE Canary wird installiert"
@@ -19,10 +28,16 @@ for c in python3 python; do
 done
 if [ -z "$PY" ]; then
   echo "  Python 3 wurde nicht gefunden."
-  echo "  Bitte ueber die Paketverwaltung installieren, zum Beispiel:"
-  echo "    Ubuntu/Debian:  sudo apt install python3"
-  echo "    Fedora:         sudo dnf install python3"
-  echo "    Arch:           sudo pacman -S python"
+  if [ -n "$MAC" ]; then
+    echo "  Auf dem Mac zum Beispiel so:"
+    echo "    mit Homebrew:   brew install python"
+    echo "    oder direkt:    https://www.python.org/downloads/"
+  else
+    echo "  Bitte ueber die Paketverwaltung installieren, zum Beispiel:"
+    echo "    Ubuntu/Debian:  sudo apt install python3"
+    echo "    Fedora:         sudo dnf install python3"
+    echo "    Arch:           sudo pacman -S python"
+  fi
   echo "  Danach diesen Befehl noch einmal ausfuehren."
   exit 1
 fi
@@ -79,10 +94,21 @@ for f in $FILES; do
 done
 chmod +x "$DIR/start_dashboard.sh"
 
-# Startmenue-Eintrag (XDG). Funktioniert in GNOME, KDE, XFCE gleichermassen.
-APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
-mkdir -p "$APPS"
-cat > "$APPS/eve-canary.desktop" <<EOF
+if [ -n "$MAC" ]; then
+  # Der Mac kennt keine .desktop-Dateien. Eine .command-Datei auf dem
+  # Schreibtisch ist das naechstliegende: doppelklicken oeffnet das Terminal
+  # und startet Canary, ohne dass jemand einen Pfad eintippen muss.
+  START="$HOME/Desktop/EVE Canary.command"
+  cat > "$START" <<EOF
+#!/bin/sh
+cd "$DIR" && ./start_dashboard.sh
+EOF
+  chmod +x "$START"
+else
+  # Startmenue-Eintrag (XDG). Funktioniert in GNOME, KDE, XFCE gleichermassen.
+  APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+  mkdir -p "$APPS"
+  cat > "$APPS/eve-canary.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=EVE Canary
@@ -92,16 +118,29 @@ Path=$DIR
 Terminal=false
 Categories=Game;Utility;
 EOF
-command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APPS" 2>/dev/null || true
+  command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APPS" 2>/dev/null || true
+fi
 
 echo ""
 echo "  Fertig. Canary liegt in: $DIR"
-echo "  Start ueber das Startmenue (EVE Canary) oder:"
-echo "    $DIR/start_dashboard.sh"
-echo ""
-echo "  Hinweis: EVE laeuft unter Linux ueber Proton/Wine. Canary sucht die"
-echo "  Logs in den Steam- und Wine-Praefixen selbst. Wird nichts gefunden,"
-echo "  den Pfad in den Optionen eintragen (Ordner 'Gamelogs')."
+if [ -n "$MAC" ]; then
+  echo "  Start ueber 'EVE Canary.command' auf dem Schreibtisch oder:"
+  echo "    $DIR/start_dashboard.sh"
+  echo ""
+  echo "  macOS ist EXPERIMENTELL. Dashboard und Logsuche laufen, aber es gibt"
+  echo "  keinen Autostart. Beim ersten Doppelklick fragt der Mac, ob die Datei"
+  echo "  ausgefuehrt werden darf, das ist normal."
+  echo "  Canary sucht die Logs unter ~/Documents/EVE/logs/Gamelogs. Wird dort"
+  echo "  nichts gefunden, den Pfad in den Optionen eintragen."
+  echo "  Laeuft etwas schief: bitte melden, dann wird es besser."
+else
+  echo "  Start ueber das Startmenue (EVE Canary) oder:"
+  echo "    $DIR/start_dashboard.sh"
+  echo ""
+  echo "  Hinweis: EVE laeuft unter Linux ueber Proton/Wine. Canary sucht die"
+  echo "  Logs in den Steam- und Wine-Praefixen selbst. Wird nichts gefunden,"
+  echo "  den Pfad in den Optionen eintragen (Ordner 'Gamelogs')."
+fi
 echo ""
 
 cd "$DIR"
