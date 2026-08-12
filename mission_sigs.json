@@ -34,7 +34,7 @@
  },
  "kubi gayar": {
   "m": "Cargo Delivery (Blood Raiders)",
-  "c": 80
+  "c": 93
  },
  "hoborak moon": {
   "m": "Vengeance (Angel Cartel)",
@@ -171,5 +171,45 @@
   "m": "The Damsel in Distress",
   "c": 90,
   "q": "wiki.eveuniversity.org/The_Damsel_in_Distress_(Level_4)"
+ },
+ "pirates have emerged from the shadows": {
+  "m": "Recon (1 of 3) (Sansha)",
+  "c": 88
+ },
+ "discovered our hideout": {
+  "m": "Recon (1 of 3) (Sansha)",
+  "c": 82
+ },
+ "mining foreman": {
+  "m": "Recon (2 of 3) (Mercenaries)",
+  "c": 85
+ },
+ "no one is allowed past this acceleration gate": {
+  "m": "Recon (2 of 3) (Mercenaries)",
+  "c": 92
+ },
+ "toxic cloud environment": {
+  "m": "Recon (3 of 3)",
+  "c": 78
+ },
+ "chemical balance of the toxic waste cloud": {
+  "m": "Recon (3 of 3)",
+  "c": 92
+ },
+ "researcher control center": {
+  "m": "Recon (3 of 3)",
+  "c": 90
+ },
+ "mordus phanti": {
+  "m": "The Mordus Headhunters (Mordus Legion)",
+  "c": 80
+ },
+ "mordus gigamar": {
+  "m": "The Mordus Headhunters (Mordus Legion)",
+  "c": 80
+ },
+ "angel cartel personnel transport": {
+  "m": "Smuggler Interception (Angel Cartel)",
+  "c": 86
  }
 }

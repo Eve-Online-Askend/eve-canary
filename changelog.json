@@ -1,5 +1,23 @@
 [
  {
+  "v": "1.84.1",
+  "d": "2026-08-12",
+  "de": [
+   "Sechs neue Missionen werden erkannt, gemeldet von Nirahse: Recon 1, 2 und 3 von 3, Cargo Delivery, The Mordus Headhunters und Smuggler Interception. Fuenf davon fielen vorher komplett durch.",
+   "Recon 2 und 3 lassen sich ohne einen einzigen Schuss abschliessen und haben deshalb gar keine Gegner. Sie werden jetzt allein am NPC-Funk erkannt, mit 92 Prozent. Bei Recon 3 hilft zusaetzlich, dass die Giftwolke als Angreifer im Kampflog steht.",
+   "Cargo Delivery steigt von 80 auf 93 Prozent, weil der benannte Gegner der zweiten Welle eindeutig ist.",
+   "Buzz Kill wurde bewusst NICHT eingetragen. Die Mission hat nur generische Angel-Gegner und als Funk „Mission Objective Complete“, was in vielen Missionen vorkommt. Eine Signatur daraus haette andere Missionen falsch benannt, und das ist schlechter als keine Erkennung.",
+   "Neu auf der Seite: eine eigene Seite zum Melden von Missionen, verlinkt oben auf der Startseite. Missionsnamen eintippen, Local einfuegen, fertig. Alles ausser den NPC-Zeilen wird im Browser entfernt, bevor etwas abgeschickt wird, Pilotennamen verlassen das Geraet nicht."
+  ],
+  "en": [
+   "Six more missions are recognised, reported by Nirahse: Recon 1, 2 and 3 of 3, Cargo Delivery, The Mordus Headhunters and Smuggler Interception. Five of them were missed entirely before.",
+   "Recon 2 and 3 can be completed without firing a single shot and therefore have no enemies at all. They are now identified purely from the NPC chatter, at 92 percent. For Recon 3 it also helps that the toxic cloud appears as an attacker in the combat log.",
+   "Cargo Delivery rises from 80 to 93 percent because the named enemy of the second wave is unambiguous.",
+   "Buzz Kill was deliberately NOT added. It only has generic Angel enemies and “Mission Objective Complete” as chatter, which appears in many missions. A signature from that would have mislabelled other missions, and that is worse than no recognition.",
+   "New on the website: a dedicated page for reporting missions, linked at the top of the start page. Type the mission name, paste your local, done. Everything except the NPC lines is stripped in your browser before anything is sent, pilot names never leave the machine."
+  ]
+ },
+ {
   "v": "1.84.0",
   "d": "2026-08-11",
   "de": [
