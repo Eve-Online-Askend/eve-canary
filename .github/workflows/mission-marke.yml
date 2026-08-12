@@ -1,0 +1,30 @@
+# Missionsmeldungen automatisch markieren.
+#
+# Das Formular auf der Seite haengt labels=mission-daten an die Adresse, aber
+# GitHub verwirft diesen Parameter bei allen, die kein Schreibrecht am Repo
+# haben. Die erste echte Meldung (Issue 2, von Nirahse) kam deshalb ohne Marke
+# an und waere durch jeden Filter gefallen. Also wird hier markiert, nachdem
+# das Issue angelegt ist, denn da hat der Workflow die noetigen Rechte.
+name: Missionsmeldung markieren
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+jobs:
+  marke:
+    runs-on: ubuntu-latest
+    # Der Titel ist das verlaessliche Merkmal: das Formular setzt "Mission: "
+    # davor, die Issue-Vorlage ebenso.
+    if: startsWith(github.event.issue.title, 'Mission:')
+    steps:
+      - name: Marke setzen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUMMER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh issue edit "$NUMMER" --repo "$REPO" --add-label mission-daten

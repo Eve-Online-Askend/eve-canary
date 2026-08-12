@@ -211,5 +211,13 @@
  "angel cartel personnel transport": {
   "m": "Smuggler Interception (Angel Cartel)",
   "c": 86
+ },
+ "purge the unbelievers": {
+  "m": "Gone Berserk (EoM)",
+  "c": 90
+ },
+ "at the hands of these infidels": {
+  "m": "Gone Berserk (EoM)",
+  "c": 88
  }
 }

@@ -1,5 +1,15 @@
 [
  {
+  "v": "1.86.5",
+  "d": "2026-08-12",
+  "de": [
+   "Gone Berserk wird erkannt, die erste Mission aus dem neuen Meldeformular. Gemeldet von Nirahse. Zwei Signaturen aus dem NPC-Funk, damit es auch reicht, wenn du spaet reinwarpst und nur eine der beiden Zeilen mitbekommst."
+  ],
+  "en": [
+   "Gone Berserk is now recognised, the first mission to come in through the new reporting form. Reported by Nirahse. Two signatures taken from the NPC chatter, so one line is enough if you warp in late and only catch the second."
+  ]
+ },
+ {
   "v": "1.86.4",
   "d": "2026-08-12",
   "de": [
