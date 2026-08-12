@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.87.0"
+VERSION = "1.88.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -7136,6 +7136,64 @@ def query_mission_history(limit=40):
     return out, {"liste": ohne_mission, "summe": ohne_summe, "n": len(offen)}
 
 
+def query_loot_tage(tage=30):
+    """Tagessummen je Charakter: Runs, Bounty, Loot, Agenten-Belohnungen.
+
+    Herkunft der drei Zahlen ist bewusst verschieden, und das steht auch so in
+    der Oberflaeche: Bounty kommt aus dem Gamelog, die Belohnung aus dem
+    Wallet-Journal, der Loot ist von Hand eingetragen. EVE schreibt beim
+    Pluendern nichts mit, es gibt keine Datei, aus der sich das lesen liesse.
+
+    Der Tag ist EVE-Zeit (UTC), wie ueberall sonst in Canary. Ein Run zaehlt zu
+    dem Tag, an dem er begonnen hat, nicht an dem er endete: sonst rutschte ein
+    Run ueber Mitternacht in den Folgetag, obwohl man ihn am Vorabend geflogen
+    ist.
+
+    Die Belohnungen kommen hier direkt aus dem Journal und NICHT ueber die
+    Zuordnung aus query_mission_history. Fuer eine Tagessumme braucht es die
+    gar nicht, und ohne sie zaehlen auch die Auftraege mit, zu denen es keinen
+    Kampf gab (Kurier, Transport), die dort bewusst herausfallen."""
+    cut = time.time() - tage * 86400
+    with DB_LOCK:
+        mrows = DB.execute(
+            "SELECT char, start_ts, bounty, loot_isk FROM missions "
+            "WHERE start_ts>=?", (cut,)).fetchall()
+        jrows = DB.execute(
+            "SELECT char, ts, amount FROM journal "
+            "WHERE ref_type LIKE 'agent_mission%' AND ts>=?", (cut,)).fetchall()
+
+    def tag(ts):
+        return time.strftime("%Y-%m-%d", time.gmtime(ts or 0))
+
+    per = {}
+
+    def eintrag(char, ts):
+        k = (tag(ts), char or "?")
+        return per.setdefault(k, {"tag": k[0], "char": k[1], "runs": 0,
+                                  "bounty": 0.0, "loot": 0.0, "reward": 0.0,
+                                  "mit_loot": 0})
+
+    for char, st, bounty, loot in mrows:
+        e = eintrag(char, st)
+        e["runs"] += 1
+        e["bounty"] += bounty or 0
+        if loot:
+            e["loot"] += loot
+            e["mit_loot"] += 1
+    for char, ts, amt in jrows:
+        eintrag(char, ts)["reward"] += amt or 0
+
+    out = []
+    for e in per.values():
+        e["total"] = round(e["bounty"] + e["loot"] + e["reward"])
+        for k in ("bounty", "loot", "reward"):
+            e[k] = round(e[k])
+        out.append(e)
+    # Neueste zuerst, innerhalb eines Tages der ertragreichste Charakter oben.
+    out.sort(key=lambda x: (x["tag"], x["total"]), reverse=True)
+    return out
+
+
 def query_timelines():
     """Zeitachse/Verlauf je Charakter: chronologischer Strom aus Mining-Trips
     (events-Tabelle), Kampf-Episoden (missions) und ISK-Ereignissen (Wallet-Journal).
@@ -7888,6 +7946,7 @@ class Handler(BaseHTTPRequestHandler):
             elif view == "missionen":
                 data["missions"] = query_missions()
                 data["mission_log"], data["mission_offen"] = query_mission_history()
+                data["loot_tage"] = query_loot_tage()
                 data["chars"] = snapshot_live()
             elif view == "vault":
                 data["vault"] = query_vault()
@@ -11789,6 +11848,22 @@ function renderMissions(d){
     </div>`).join(''):''}
  </div>
  <div class="card" style="grid-column:1/-1">
+  <div class="sect">Pro Tag</div>
+  <div class="sub">Was an einem Tag zusammenkam, je Charakter. Bounty kommt aus den Gamelogs, die Belohnung aus dem Wallet-Journal, der Loot ist von dir eingetragen. EVE schreibt beim Pl&uuml;ndern nichts mit, deshalb steht dort nur, was du selbst an den Runs hinterlegt hast.</div>
+  ${(d.loot_tage&&d.loot_tage.length)?`<table>
+   <thead><tr><th>Tag</th><th>Charakter</th><th class="r">Runs</th><th class="r">Bounty</th>
+    <th class="r">Belohnung</th><th class="r">Loot</th><th class="r">Gesamt</th></tr></thead>
+   ${d.loot_tage.map(t=>`<tr>
+     <td>${esc(t.tag)}</td><td>${esc(t.char)}</td>
+     <td class="r">${t.runs}${t.mit_loot<t.runs?`<span title="${t.runs-t.mit_loot} Run(s) ohne eingetragenen Loot" style="color:var(--gold)"> *</span>`:''}</td>
+     <td class="r grn">${t.bounty?fmtM(t.bounty):'&middot;'}</td>
+     <td class="r isk">${t.reward?fmtM(t.reward):'&middot;'}</td>
+     <td class="r isk">${t.loot?fmtM(t.loot):'&middot;'}</td>
+     <td class="r isk"><b>${fmtM(t.total)}</b></td></tr>`).join('')}</table>
+   ${d.loot_tage.some(t=>t.mit_loot<t.runs)?'<div class="sub" style="margin-top:6px">* An diesen Tagen gibt es Runs ohne eingetragenen Loot. Die Summe ist dann niedriger als das, was wirklich rumkam.</div>':''}`
+   :'<div class="sub">Noch nichts erfasst. Sobald ein Run abgeschlossen ist, steht er hier.</div>'}
+ </div>
+ <div class="card" style="grid-column:1/-1">
   <div class="sect">Missionen einzeln (aus den Gamelogs)</div>
   ${(d.mission_log&&d.mission_log.length)?d.mission_log.map(x=>`
    <div style="border-top:1px solid var(--line);padding:10px 0">
@@ -12239,6 +12314,14 @@ const EN = {
 'EVE: Heavy Water fast leer!':'EVE: Heavy Water almost empty!','EVE: Watchlist':'EVE: Watchlist',
 'Speichern':'Save','nicht gefunden!':'not found!',
 'Erz-Bilanz (nach Wert)':'Ore balance (by value)','Gegner (letzte 30 Tage)':'Enemies (last 30 days)',
+// Loot pro Tag
+'Pro Tag':'Per day','Runs':'Runs','Belohnung':'Reward','Loot':'Loot','Gesamt':'Total',
+'Was an einem Tag zusammenkam, je Charakter. Bounty kommt aus den Gamelogs, die Belohnung aus dem Wallet-Journal, der Loot ist von dir eingetragen. EVE schreibt beim Plündern nichts mit, deshalb steht dort nur, was du selbst an den Runs hinterlegt hast.':
+ 'What a day brought in, per character. Bounties come from the game logs, rewards from the wallet journal, and the loot is what you entered yourself. EVE records nothing when you loot, so that column only holds what you put on the runs.',
+'* An diesen Tagen gibt es Runs ohne eingetragenen Loot. Die Summe ist dann niedriger als das, was wirklich rumkam.':
+ '* On those days there are runs with no loot entered. The total is then lower than what actually came in.',
+'Noch nichts erfasst. Sobald ein Run abgeschlossen ist, steht er hier.':
+ 'Nothing recorded yet. As soon as a run is finished it shows up here.',
 // Spaltenkoepfe und Erklaerungen der Analyse
 'Waffe':'Weapon','Schaden':'Damage','Tag':'Day','Zeit':'Time',
 'Angreifer':'Attacker','Zuletzt':'Last seen','Dein Charakter':'Your character',

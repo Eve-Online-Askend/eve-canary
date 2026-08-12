@@ -1,5 +1,21 @@
 [
  {
+  "v": "1.88.0",
+  "d": "2026-08-12",
+  "de": [
+   "Neu im Missionen-Tab: eine Tagesuebersicht je Charakter. Runs, Bounty, Belohnung, Loot und die Summe daraus, neueste zuerst. Angeregt von Dune2Man, der Eskalationen fliegt und wissen wollte, was an einem Tag zusammenkam.",
+   "Woher die Zahlen kommen, steht dabei: Bounty aus den Gamelogs, die Belohnung aus dem Wallet-Journal, der Loot von Hand eingetragen. EVE schreibt beim Pluendern nichts mit, es gibt keine Datei, aus der sich das lesen liesse.",
+   "Gibt es an einem Tag Runs ohne eingetragenen Loot, steht ein Sternchen hinter der Anzahl. Dann ist die Summe niedriger als das, was wirklich rumkam, statt so zu tun, als waere sie vollstaendig.",
+   "Die Belohnungen kommen in dieser Uebersicht direkt aus dem Journal. Dadurch zaehlen auch Auftraege mit, zu denen es gar keinen Kampf gab, also Kurier- und Transportfluege, die in der Einzelliste keine Zeile bekommen."
+  ],
+  "en": [
+   "New in the missions tab: a per-day overview by character. Runs, bounties, rewards, loot and the total, newest first. Prompted by Dune2Man, who runs escalations and wanted to know what a day added up to.",
+   "Where each number comes from is stated alongside: bounties from the game logs, rewards from the wallet journal, loot entered by hand. EVE records nothing when you loot, there is no file it could be read from.",
+   "If a day holds runs with no loot entered, an asterisk follows the count. The total is then lower than what actually came in, rather than pretending to be complete.",
+   "Rewards in this overview come straight from the journal. That way jobs with no combat at all are counted too, courier and transport runs, which get no row in the per-run list."
+  ]
+ },
+ {
   "v": "1.87.0",
   "d": "2026-08-12",
   "de": [
