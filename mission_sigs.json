@@ -239,5 +239,17 @@
  "zazzmatazz": {
   "m": "The Right Hand Of Zazzmatazz (Mercenaries)",
   "c": 95
+ },
+ "gate to the sansha base": {
+  "m": "Worlds Collide (Sansha & Angel Cartel)",
+  "c": 92
+ },
+ "gate to the cartel base": {
+  "m": "Worlds Collide (Sansha & Angel Cartel)",
+  "c": 92
+ },
+ "gate to the research outpost": {
+  "m": "Worlds Collide",
+  "c": 85
  }
 }

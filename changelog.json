@@ -1,5 +1,19 @@
 [
  {
+  "v": "1.92.1",
+  "d": "2026-08-12",
+  "de": [
+   "Worlds Collide (Sansha und Angel Cartel, Stufe 4) wird erkannt, gemeldet von Nirahse. Drei einzelne Signaturen statt einer: die Mission hat zwei Wege und man fliegt nur einen, also faellt womoeglich nur eine der drei Torzeilen. Jede fuer sich reicht jetzt.",
+   "Der Ruf ueber das Forschungs-Outpost gilt als \"Worlds Collide\" ohne Fraktionsangabe, weil er vermutlich in allen Fassungen der Mission faellt. Kommt eine der beiden Seiten-Zeilen dazu, gewinnt die genauere.",
+   "Nirahse steht jetzt auf der Danke-Seite. Er hat 9.161 Gamelogs aus sieben Jahren gespendet und meldet laufend Missionen; ein grosser Teil der Missionserkennung geht auf ihn zurueck."
+  ],
+  "en": [
+   "Worlds Collide (Sansha and Angel Cartel, level 4) is now recognised, reported by Nirahse. Three separate signatures rather than one: the mission has two routes and you only fly one, so possibly only a single gate line is spoken. Each one is now enough on its own.",
+   "The call about the research outpost counts as \"Worlds Collide\" with no faction named, because it likely appears in every version of the mission. If one of the side specific lines shows up too, the more precise one wins.",
+   "Nirahse is now on the thanks page. He donated 9,161 game logs spanning seven years and keeps reporting missions; a large part of the mission detection goes back to him."
+  ]
+ },
+ {
   "v": "1.92.0",
   "d": "2026-08-12",
   "de": [

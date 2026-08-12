@@ -50,6 +50,22 @@
   ]
  },
  {
+  "name": "Nirahse",
+  "role": {
+   "de": "Missionsdaten",
+   "en": "Mission data",
+   "fr": "Donnees de missions",
+   "ru": "Данные миссий"
+  },
+  "note": {
+   "de": "Hat 9.161 Gamelogs aus sieben Jahren gespendet und meldet laufend Missionen, die Canary noch nicht kennt. Ein grosser Teil der Missionserkennung geht auf ihn zurueck.",
+   "en": "Donated 9,161 game logs spanning seven years and keeps reporting missions Canary does not know yet. A large part of the mission detection goes back to him.",
+   "fr": "A donne 9 161 journaux de jeu sur sept ans et signale regulierement des missions que Canary ne connait pas encore.",
+   "ru": "Передал 9161 игровой лог за семь лет и постоянно сообщает о миссиях, которые Canary ещё не знает."
+  },
+  "links": []
+ },
+ {
   "name": "NetManDE",
   "role": {
    "de": "Beitrag",
