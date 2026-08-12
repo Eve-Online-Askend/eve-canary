@@ -1,5 +1,17 @@
 [
  {
+  "v": "1.91.1",
+  "d": "2026-08-12",
+  "de": [
+   "Das Logo hat jetzt einen wirklich durchsichtigen Hintergrund. Vorher trug es einen dunkelblauen Kasten mit 86 Prozent Deckung, der sich auf der fast schwarzen Seite als Quadrat abhob und im hellen Thema erst recht.",
+   "Die kleinen Groessen sind neu aus dem grossen Bild gerechnet statt einzeln freigestellt. Bei 16 und 32 Pixeln besteht ein grosser Teil des Bildes aus Kantenpunkten; stellt man die frei, bleibt ein dunkler Saum. Gemessen: vorher 24,7 Prozent Saum bei 16 Pixeln, jetzt null."
+  ],
+  "en": [
+   "The logo now has a genuinely transparent background. It used to carry a dark blue box at 86 percent opacity, which stood out as a square against the near black page and even more so in the light theme.",
+   "The small sizes are now computed from the large image rather than cut out individually. At 16 and 32 pixels a large share of the image is edge pixels, and cutting those out leaves a dark fringe. Measured: 24.7 percent fringe at 16 pixels before, zero now."
+  ]
+ },
+ {
   "v": "1.91.0",
   "d": "2026-08-12",
   "de": [
