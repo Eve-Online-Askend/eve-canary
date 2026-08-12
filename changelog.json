@@ -1,5 +1,15 @@
 [
  {
+  "v": "1.89.1",
+  "d": "2026-08-12",
+  "de": [
+   "Vengeance (Sansha, Stufe 4) wird erkannt, gemeldet von Nirahse. Diese Mission hat keinen NPC-Funk im Local, sie haengt allein am benannten Gegner Draben Kuvakei. Der kommt in keiner anderen Mission vor, deshalb reicht er als einziges Merkmal."
+  ],
+  "en": [
+   "Vengeance (Sansha, level 4) is now recognised, reported by Nirahse. This mission has no NPC chatter in local, it hangs entirely on the named enemy Draben Kuvakei. He appears in no other mission, so he is enough on his own."
+  ]
+ },
+ {
   "v": "1.89.0",
   "d": "2026-08-12",
   "de": [
