@@ -79,6 +79,9 @@ footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-si
     </div>
   </div>
 
+  <label for="mfGegner" data-i18n="l.foe">Named or unusual enemy (if there is one)</label>
+  <input id="mfGegner" type="text" placeholder="Draben Kuvakei" data-ph="ph.foe" autocomplete="off">
+
   <label for="mfLog" data-i18n="l.log">Paste your local chat</label>
   <textarea id="mfLog" rows="9" placeholder="In game click into the local window, Ctrl+A, Ctrl+C, paste here." data-ph="ph.log"></textarea>
 
@@ -132,28 +135,41 @@ footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-si
   function text() {
     const { zeilen } = ernte();
     const notiz = ($('#mfNote').value || '').trim();
+    const gegner = ($('#mfGegner').value || '').trim();
     return 'Mission: ' + (($('#mfName').value || '').trim() || '(ohne Namen)') + '\n'
       + 'Stufe: ' + $('#mfLvl').value + '\n'
-      + 'Fraktion: ' + (($('#mfFac').value || '').trim() || '?') + '\n\n'
-      + 'NPC-Funk (' + zeilen.length + ' Zeilen):\n'
-      + zeilen.map((z) => '  ' + z).join('\n') + '\n'
+      + 'Fraktion: ' + (($('#mfFac').value || '').trim() || '?') + '\n'
+      + (gegner ? 'Benannter Gegner: ' + gegner + '\n' : '')
+      + '\n'
+      + (zeilen.length
+         ? 'NPC-Funk (' + zeilen.length + ' Zeilen):\n'
+           + zeilen.map((z) => '  ' + z).join('\n') + '\n'
+         : 'NPC-Funk: keiner im Local.\n')
       + (notiz ? '\nNotiz: ' + notiz + '\n' : '')
       + '\nGemeldet über das Formular auf der Canary-Seite.\n';
   }
 
   function frisch() {
     const { zeilen, verworfen } = ernte();
+    const gegner = ($('#mfGegner').value || '').trim();
     const p = $('#mfPrev'), a = $('#mfIssue');
-    if (!zeilen.length) {
+    // Ein benannter Gegner reicht als Merkmal genauso wie der Funk. Vorher
+    // hing der Knopf allein am Funk, und die Missionen ohne Funk, also genau
+    // die schwierigen, liessen sich gar nicht melden.
+    if (!zeilen.length && !gegner) {
       p.hidden = true;
       a.setAttribute('aria-disabled', 'true');
       a.removeAttribute('href');
       return;
     }
     p.hidden = false;
-    p.textContent = zeilen.length + ' NPC-Zeilen erkannt, ' + verworfen
-      + ' andere Zeilen verworfen. Das hier wird gesendet:\n'
-      + zeilen.map((z) => '· ' + z).join('\n');
+    p.textContent = (zeilen.length
+        ? zeilen.length + ' NPC-Zeilen erkannt, ' + verworfen
+          + ' andere Zeilen verworfen. Das hier wird gesendet:\n'
+          + zeilen.map((z) => '· ' + z).join('\n')
+        : 'Kein NPC-Funk im Local, das ist in Ordnung.'
+          + (verworfen ? ' ' + verworfen + ' Zeilen verworfen.' : ''))
+      + (gegner ? '\n· Benannter Gegner: ' + gegner : '');
     a.setAttribute('aria-disabled', 'false');
     a.href = 'https://github.com/Eve-Online-Askend/eve-canary/issues/new'
       + '?labels=mission-daten'
@@ -161,7 +177,7 @@ footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-si
       + '&body=' + encodeURIComponent(text());
   }
 
-  ['mfLog', 'mfName', 'mfFac', 'mfNote'].forEach((id) =>
+  ['mfLog', 'mfName', 'mfFac', 'mfNote', 'mfGegner'].forEach((id) =>
     $('#' + id).addEventListener('input', frisch));
   $('#mfLvl').addEventListener('change', frisch);
   $('#mfCopy').addEventListener('click', async () => {
@@ -186,11 +202,13 @@ const L = {
   'p.privacy':'<b>Pilotennamen bleiben hier.</b> Du fügst deinen ganzen Local ein, und alles außer den NPC-Zeilen wird schon in deinem Browser entfernt, bevor irgendetwas abgeschickt wird. In der Vorschau siehst du vorher genau, was rausgeht.',
   'l.name':'Missionsname, genau so wie der Agent sie nennt', 'l.lvl':'Stufe',
   'l.fac':'Gegner-Fraktion', 'l.log':'Local-Chat einfügen',
+  'l.foe':'Benannter oder auffälliger Gegner (falls es einen gibt)',
+  'ph.foe':'Draben Kuvakei',
   'l.note':'Was ist dir aufgefallen? (freiwillig)',
   'b.send':'Als GitHub-Ticket senden', 'b.copy':'Lieber Text kopieren',
   h2:'So geht es am schnellsten',
   'p.steps':'<li>Mission fliegen und dabei das Local-Fenster offen lassen.</li><li>Danach ins Local klicken, <code>Strg+A</code>, <code>Strg+C</code>.</li><li>Hier einfügen, Missionsnamen dazu, absenden. Fertig.</li>',
-  'p.best':'Besonders wertvoll sind Missionen, die Canary <b>nicht</b> erkennt, und solche, die sich ohne Kampf abschließen lassen. Genau die fallen heute durch.',
+  'p.best':'Besonders wertvoll sind Missionen, die Canary <b>nicht</b> erkennt, und solche, die sich ohne Kampf abschließen lassen. Genau die fallen heute durch. Und wenn im Local gar nichts steht: ein einmaliger Gegnername reicht Canary genauso, dann trag nur den ein.',
   'f.home':'Übersicht', 'f.list':'bereits gemeldete Missionen', 'f.src':'Quelltext',
   'ph.log':'Im Spiel ins Local-Fenster klicken, Strg+A, Strg+C, hier einfügen.',
   'ph.note':'Wurde nicht erkannt, ich musste keinen Gegner abschießen.'},
@@ -200,6 +218,7 @@ const L = {
   'p.privacy':'<b>Les noms de pilotes restent ici.</b> Tu colles tout ton local, et tout sauf les lignes PNJ est retiré dans ton navigateur avant tout envoi.',
   'l.name':'Nom de la mission', 'l.lvl':'Niveau', 'l.fac':'Faction ennemie',
   'l.log':'Colle ton chat local', 'l.note':'Quelque chose à signaler ? (facultatif)',
+  'l.foe':'Ennemi nommé ou inhabituel (s\'il y en a un)', 'ph.foe':'Draben Kuvakei',
   'b.send':'Envoyer comme ticket GitHub', 'b.copy':'Copier le texte',
   h2:'La méthode la plus rapide',
   'p.steps':'<li>Fais la mission en gardant local ouvert.</li><li>Clique dans local, <code>Ctrl+A</code>, <code>Ctrl+C</code>.</li><li>Colle ici, ajoute le nom, envoie.</li>',
@@ -213,6 +232,7 @@ const L = {
   'p.privacy':'<b>Имена пилотов остаются здесь.</b> Вы вставляете весь локал, и всё кроме строк NPC удаляется в браузере до отправки.',
   'l.name':'Название миссии', 'l.lvl':'Уровень', 'l.fac':'Фракция врага',
   'l.log':'Вставьте локальный чат', 'l.note':'Что вы заметили? (необязательно)',
+  'l.foe':'Именной или необычный враг (если есть)', 'ph.foe':'Draben Kuvakei',
   'b.send':'Отправить как тикет GitHub', 'b.copy':'Скопировать текст',
   h2:'Самый быстрый способ',
   'p.steps':'<li>Пройдите миссию с открытым локалом.</li><li>Щёлкните в локал, <code>Ctrl+A</code>, <code>Ctrl+C</code>.</li><li>Вставьте сюда, добавьте название, отправьте.</li>',

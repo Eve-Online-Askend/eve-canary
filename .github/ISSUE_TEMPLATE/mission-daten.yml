@@ -38,25 +38,27 @@ body:
   - type: textarea
     id: funk
     attributes:
-      label: NPC-Funk aus dem Local
+      label: NPC-Funk aus dem Local (falls es welchen gibt)
       description: >
         Nur die Zeilen, die mit "Message" beginnen. Die Abschluss-Zeile ist
-        besonders wertvoll, etwa "The mission has been completed".
+        besonders wertvoll, etwa "The mission has been completed". Gibt es im
+        Local gar nichts, lass das Feld leer und trag unten den Gegner ein:
+        ein einmaliger Gegnername reicht Canary genauso.
       render: text
       placeholder: |
         Pirates have emerged from the shadows!
         Pirate Captain: They've discovered our hideout!
         The mission has been completed. Report back to your agent.
-    validations:
-      required: true
 
   - type: textarea
     id: gegner
     attributes:
-      label: Gegner (falls bekannt)
+      label: Gegner, besonders benannte
       description: >
-        Die Namen aus dem Kampflog. Bei Missionen ganz ohne Kampf einfach
-        leer lassen, genau die sind besonders interessant.
+        Die Namen aus dem Kampflog. Ein einmaliger, benannter Gegner ist das
+        Wertvollste hier: an dem allein laesst sich eine Mission erkennen, auch
+        wenn im Local kein Wort faellt. Bei Missionen ganz ohne Kampf einfach
+        leer lassen, genau die sind auf ihre Art auch interessant.
       render: text
       placeholder: |
         Centus Beast Lord
