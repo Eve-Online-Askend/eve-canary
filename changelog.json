@@ -1,5 +1,19 @@
 [
  {
+  "v": "1.86.1",
+  "d": "2026-08-12",
+  "de": [
+   "Behoben: ueber der Kopfzeile stand ein Rest des alten Symbols als sichtbarer Text. Beim Wechsel auf das neue Logo war das Ende des alten Eintrags stehen geblieben.",
+   "Neuer Knopf oben: OBS Overlay. Er oeffnet die Einrichtung mit einer Schritt-fuer-Schritt-Anleitung, wie das Overlay als Browser-Quelle in OBS kommt, samt Groessenangaben und dem Hinweis, welchen Haken man in OBS herausnehmen sollte.",
+   "Im Kopf des Dashboards steht jetzt das gezeichnete Canary-Logo statt des Kueken-Symbols."
+  ],
+  "en": [
+   "Fixed: a leftover fragment of the old icon was showing as visible text above the header. When the new logo went in, the tail of the old entry stayed behind.",
+   "New button at the top: OBS Overlay. It opens the setup with a step by step guide on getting the overlay into OBS as a browser source, including the sizes to use and which checkbox to clear in OBS.",
+   "The dashboard header now carries the drawn Canary logo instead of the chick symbol."
+  ]
+ },
+ {
   "v": "1.86.0",
   "d": "2026-08-12",
   "de": [

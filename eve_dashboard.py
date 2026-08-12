@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.86.0"
+VERSION = "1.86.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -5531,12 +5531,24 @@ body.quer .wert{margin-left:0;text-align:left}
 .cg label{display:flex;align-items:center;gap:6px;font-size:12px;color:#c9d4e3;cursor:pointer}
 .cg select,.cg input[type=number]{background:#0b111a;color:#e6edf7;border:1px solid #22304a;
  border-radius:6px;padding:3px 6px;font:inherit;font-size:12px;width:72px}
+/* Feste 72px schnitten "halb durchsichtig" mitten im Wort ab. In einer
+   132px-Spalte bleibt neben der Beschriftung zu wenig uebrig, also bekommen
+   die beiden Auswahlfelder eine ganze Zeile und das Feld seine Wunschbreite. */
+.cg label:has(select){grid-column:1/-1}
+.cg select{width:auto;min-width:0;max-width:100%}
 .cu{display:flex;gap:7px;margin-top:11px}
 .cu input{flex:1;background:#0b111a;color:#7fe3ff;border:1px solid #22304a;border-radius:7px;
  padding:7px 9px;font-family:Consolas,monospace;font-size:11.5px}
 .cu button{background:#35c8e8;color:#06222a;border:none;border-radius:7px;padding:7px 14px;
  font:inherit;font-weight:700;font-size:12px;cursor:pointer}
-.ch{font-size:11px;color:#7d8a9c;margin-top:9px;line-height:1.55}
+.ch{font-size:11.5px;color:#8c99ab;margin-top:13px;line-height:1.65;
+ border-top:1px solid #1b2740;padding-top:12px}
+.ch b{color:#c9d4e3}
+.ch ol{margin:7px 0 0 17px;padding:0}
+.ch li{margin-bottom:5px}
+.ch code{background:#0b111a;border:1px solid #22304a;border-radius:4px;
+ padding:1px 5px;color:#7fe3ff;font-family:Consolas,monospace;font-size:11px}
+.ch .warnung{color:#f5d873}
 #dt{display:flex;align-items:center;justify-content:center;gap:8px;
  padding:4px 11px;margin-bottom:5px;border-radius:9px;font-size:10px;
  letter-spacing:1.2px;text-transform:uppercase;font-weight:700;
@@ -5566,8 +5578,33 @@ body.quer #mk em{display:none}
 <div class="ct">OBS-Einrichtung</div>
 <div class="cg" id="cg"></div>
 <div class="cu"><input id="url" readonly><button id="cp">Kopieren</button></div>
-<div class="ch">Adresse kopieren, in OBS eine <b>Browser-Quelle</b> anlegen und dort einfuegen.
-Breite etwa 380, Hoehe 220. Diese Leiste erscheint nur hier, nicht in OBS.</div>
+<div class="ch"><b>So kommt es in OBS</b>
+<ol>
+<li>Oben einstellen, was im Bild stehen soll. Was du aenderst, siehst du sofort
+darunter.</li>
+<li><b>Kopieren</b> druecken.</li>
+<li>In OBS unter <b>Quellen</b> auf <b>+</b>, dann <b>Browser</b>.</li>
+<li>Die Adresse in das Feld <b>URL</b> einfuegen. Breite <code>380</code>,
+Hoehe <code>220</code> passen fuer senkrecht, fuer waagerecht eher
+<code>900</code> mal <code>130</code>.</li>
+<li>Den Haken bei <b>Quelle abschalten, wenn nicht sichtbar</b> herausnehmen.
+Sonst faengt das Overlay bei jedem Szenenwechsel von vorn an.</li>
+</ol>
+<p style="margin:9px 0 0"><b>Gut zu wissen</b></p>
+<ol>
+<li>Es laeuft nur auf deinem Rechner. OBS holt das Bild von
+<code>localhost</code>, von aussen kommt niemand an die Adresse.</li>
+<li>Der <b>Standort ist absichtlich aus</b>. Wer ihn einschaltet, verraet im
+Stream, in welchem System er steht.</li>
+<li>Zum Einrichten ohne laufendes EVE den Haken bei <b>Beispielwerte</b>
+setzen. Eine Zeile im Bild sagt dann deutlich, dass es keine echten Zahlen
+sind. <span class="warnung">Vor dem Stream wieder herausnehmen.</span></li>
+<li>Jeder Charakter bekommt seine eigene Marke: <b>MINING</b>, <b>MISSION</b>
+oder <b>PVP</b>. Wer foerdert, bleibt beim Erz, auch wenn er nebenbei eine
+Ratte wegschiesst.</li>
+</ol>
+<p style="margin:9px 0 0">Diese Leiste erscheint nur hier. In OBS haengen
+Parameter an der Adresse, dort ist sie nie zu sehen.</p></div>
 </div><div id="dt" hidden></div><div id="w"></div><div id="sum" hidden></div><div id="mk" hidden><img alt="" src="data:image/png;base64,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"><span>EVE CANARY</span><em>eve-online-askend.github.io/eve-canary</em></div>
 <script>
 const P = new URLSearchParams(location.search);
@@ -8059,7 +8096,7 @@ class Handler(BaseHTTPRequestHandler):
 PAGE = """<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>EVE Canary</title>
-<link rel="icon" href="data:image/png;base64,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"><text y=%22.9em%22 font-size=%2290%22>🐤</text></svg>">
+<link rel="icon" href="data:image/png;base64,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">
 <style>
 :root{--bg:#0b0e14;--card:#121722;--inset:#0e1320;--line:#1e2636;--txt:#c9d4e3;
 --dim:#5d6b80;--cyan:#35c8e8;--red:#e8564f;--green:#4fd47f;--gold:#e8c645;--white:#fff}
@@ -8969,7 +9006,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  </div>
 </div>
 <header>
- <h1>🐤 EVE <b>CANARY</b> <span class="byline">by Askend</span></h1>
+ <h1><img src="data:image/png;base64,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" alt="" width="22" height="22" style="vertical-align:-4px;margin-right:3px"> EVE <b>CANARY</b> <span class="byline">by Askend</span></h1>
  <span class="pill modesel" data-mode="mining" title="Mining-Ansicht">⛏ Mining</span><span class="pill modesel" data-mode="combat" title="PvP- und Missions-Ansicht">⚔ PvP &amp; Missionen</span>
  <span class="pill rolef on" data-role="" title="Alle Charaktere">Alle</span>
  <span class="pill rolef" data-role="mining" title="Nur Mining-Charaktere">⛏</span>
@@ -8984,6 +9021,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span class="pill srv" id="srvStatus" hidden title="EVE-Server (Tranquility)"></span>
  <span class="pill upd" id="updBadge" hidden title="Neue Version verfügbar, Klick installiert sie"></span>
  <span class="pill" id="ovToggle" title="Always-on-top Mini-Overlay (Chrome, Edge, Firefox)">◱ Overlay</span>
+ <span class="pill" id="obsBtn" title="Overlay fuer OBS einrichten: Aussehen waehlen, Adresse kopieren, in OBS als Browser-Quelle einfuegen. Mit Anleitung.">🎥 OBS Overlay</span>
  <span class="pill" id="fontsize" title="Schriftgröße (3 Stufen)">A</span>
  <span class="pill" id="theme" title="Dark/Light">◐</span>
  <span class="pill" id="gear">⚙ Optionen</span>
@@ -10759,6 +10797,7 @@ async function overlayTick(){
 }
 setInterval(overlayTick,2000);
 $('#ovToggle').onclick=toggleOverlay;
+$('#obsBtn').onclick=()=>window.open('/obs','_blank','noopener');
 $('#ovBtn').onclick=toggleOverlay;
 
 let intelNames=lsGet('intelNames',[]),intelSettled=false;
