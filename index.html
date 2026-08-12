@@ -186,6 +186,31 @@ header .logo{margin:0}
  background:#eaf6ff;transform:translate(-50%,-50%);
  transition:transform .12s cubic-bezier(.2,.7,.3,1)}
 @media (prefers-reduced-motion:reduce){.glanz{transition:none}}
+
+/* ------------------------------------------------ Kopf bleibt oben stehen */
+header{position:sticky;top:0;z-index:60;
+ background:linear-gradient(#0a0d0f 86%,rgba(10,13,15,0));
+ transition:padding .22s ease}
+/* Beim Scrollen faellt alles weg, was nicht gebraucht wird, und der Rest
+   rueckt in eine Zeile. Ohne das Schrumpfen wuerde der Kopf zwei Drittel
+   des Bildschirms belegen. */
+header.eng{padding-top:8px;padding-bottom:8px;
+ border-bottom:1px solid rgba(130,150,158,.16);
+ backdrop-filter:blur(10px) saturate(150%)}
+header.eng .tag,
+header.eng .badges,
+header.eng .by,
+header.eng .stream{display:none}
+header.eng .logowrap{width:38px;height:38px;margin:0}
+header.eng .logo{width:38px;height:38px}
+header.eng h1{font-size:16px;margin:0}
+header.eng .missionCta{margin:0}
+header.eng .missionCta .cta{padding:7px 14px;font-size:13px}
+/* In der schmalen Fassung stehen Logo, Name und Knopf nebeneinander */
+header.eng{display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+ justify-content:flex-start;text-align:left}
+header.eng .missionCta{margin-left:auto}
+@media (prefers-reduced-motion:reduce){header{transition:none}}
 </style>
 </head>
 <body>
@@ -1221,6 +1246,29 @@ applyLang(start);
     ziel = null;
     glanz.style.transform = 'translate(-50%, -50%)';
   });
+})();
+</script>
+
+<script>
+/* Der Kopf wird schmal, sobald man ihn verlaesst. Umgeschaltet wird mit
+   Hysterese: einmal ab 150 Pixel schmal, erst unter 90 wieder gross. Ohne
+   den Abstand dazwischen springt die Leiste genau an der Schwelle hin und
+   her, weil das Schrumpfen die Seite verkuerzt und damit die Scrollposition
+   verschiebt. */
+(function () {
+  const kopf = document.querySelector('header');
+  if (!kopf) return;
+  let schmal = false, laeuft = false;
+  function pruefe() {
+    laeuft = false;
+    const y = scrollY;
+    if (!schmal && y > 150) { schmal = true; kopf.classList.add('eng'); }
+    else if (schmal && y < 90) { schmal = false; kopf.classList.remove('eng'); }
+  }
+  addEventListener('scroll', () => {
+    if (!laeuft) { laeuft = true; requestAnimationFrame(pruefe); }
+  }, { passive: true });
+  pruefe();
 })();
 </script>
 </body>
