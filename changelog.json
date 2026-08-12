@@ -1,5 +1,19 @@
 [
  {
+  "v": "1.86.6",
+  "d": "2026-08-12",
+  "de": [
+   "Wichtig behoben: beide Installer haben drei Datendateien nicht mitgeladen, npc_factions.json, site_sigs.json und gank_groups.json. Eine frische Installation lief dadurch ohne Fraktions-Erkennung, ohne Site-Erkennung und ohne die Liste bekannter Gank-Gruppen los. Das betraf Windows und Linux gleichermassen.",
+   "Aufgefallen ist es nicht, weil Canary bei fehlenden Dateien still auf einen leeren Standard zurueckfaellt. Die ersten beiden kamen beim ersten Update nach, die Gank-Liste holt sich Canary ohnehin stuendlich selbst. Wer frisch installiert hat, lief bis dahin trotzdem mit weniger Erkennung herum.",
+   "Damit das nicht wieder passiert, prueft das Veroeffentlichungsskript jetzt vor jedem Release, ob beide Installer genau die Dateien laden, die auch ausgeliefert werden. Fehlt eine oder ist eine zu viel dabei, bricht die Veroeffentlichung ab."
+  ],
+  "en": [
+   "Important fix: both installers were not fetching three data files, npc_factions.json, site_sigs.json and gank_groups.json. A fresh install therefore started without faction detection, without site detection and without the list of known gank groups. This affected Windows and Linux alike.",
+   "It went unnoticed because Canary quietly falls back to an empty default when a file is missing. The first two arrived with the first update, and the gank list is refreshed hourly anyway. Anyone who had just installed still ran with less detection until then.",
+   "So it cannot happen again, the release script now checks before every release that both installers fetch exactly the files that are shipped. If one is missing or one too many is listed, the release is aborted."
+  ]
+ },
+ {
   "v": "1.86.5",
   "d": "2026-08-12",
   "de": [
