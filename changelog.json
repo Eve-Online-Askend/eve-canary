@@ -1,5 +1,27 @@
 [
  {
+  "v": "1.86.0",
+  "d": "2026-08-12",
+  "de": [
+   "Das Stream-Overlay erkennt jetzt je Charakter, was er gerade tut: Mining, Mission oder PvP. Bei einer erkannten Mission steht ihr Name daneben.",
+   "Foerdern geht dabei vor Kampf. Ein Hulk, der zwischendurch eine Ratte wegschiesst, bleibt beim Erz und behaelt seine Rate, statt auf Schadenszahlen umzuspringen. Kommt ein Ganker, sagt das rote UNTER BESCHUSS in derselben Zeile Bescheid.",
+   "PvP wird nur gezaehlt, wenn wirklich ein Spieler beteiligt war. Drohnen, Wracks und Tuerme tragen im Kampflog dieselbe Form wie ein Pilot und werden aussortiert, auch in der Besitzform \"Askend's Warrior II\".",
+   "Die rechte Spalte im Overlay richtet sich nach der Rolle: beim Foerdern m3 pro Stunde und ISK pro Stunde, im Kampf ausgeteilter und erlittener Schaden. Vorher stand dort auch bei einer reinen PvP-Flotte stur \"0 m3/h\".",
+   "Unten im Overlay steht jetzt eine Markenzeile mit Logo, Name und Adresse, damit Zuschauer sehen, woher die Zahlen kommen. Abschaltbar in der Einrichtung.",
+   "Overlay besser lesbar auf hellem Hintergrund: mehr Deckung unter den Zeilen und Schatten auf allen Texten. Auf einem hell beleuchteten Asteroiden lag der Kontrast vorher bei 1,1 zu 1, jetzt zwischen 3,0 und 5,9.",
+   "Behoben: die Schalter fuer Flottensumme und Downtime-Countdown haben nie etwas ausgeblendet, die Leisten blieben als leerer Balken stehen. Auch ohne Foerderung stand so eine leere Summenzeile im Bild."
+  ],
+  "en": [
+   "The stream overlay now recognises per character what they are doing: mining, mission or PvP. When a mission is identified, its name is shown alongside.",
+   "Mining takes precedence over combat. A Hulk that picks off the odd rat stays on the ore and keeps its rate instead of switching to damage figures. If a ganker turns up, the red UNDER FIRE on the same line says so.",
+   "PvP only counts when a real player was involved. Drones, wrecks and towers carry the same form as a pilot in the combat log and are filtered out, including the possessive form \"Askend's Warrior II\".",
+   "The right-hand column of the overlay follows the role: m3 per hour and ISK per hour while mining, damage dealt and taken in combat. Previously even an all-PvP fleet showed a flat \"0 m3/h\".",
+   "A brand line with logo, name and address now sits at the bottom of the overlay so viewers can see where the numbers come from. Can be switched off during setup.",
+   "Overlay readability on bright backgrounds: more coverage behind the rows and a shadow on every text. Over a brightly lit asteroid the contrast used to be 1.1 to 1, it is now between 3.0 and 5.9.",
+   "Fixed: the switches for the fleet total and the downtime countdown never hid anything, the bars stayed on screen as empty strips. An empty total also sat in the picture when nothing had been mined."
+  ]
+ },
+ {
   "v": "1.85.0",
   "d": "2026-08-12",
   "de": [

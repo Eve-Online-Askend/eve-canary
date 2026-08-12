@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.85.0"
+VERSION = "1.86.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -455,6 +455,16 @@ def not_a_pilot(name):
         return True
     if " Wreck" in n or n.startswith("Customs Office"):
         return True
+    # Besitzform "Askend's Warrior II": im Log steht der Eigentuemer vor dem
+    # Geraet, in der Typtabelle steht nur der Typ. Ohne diesen Schritt zaehlt
+    # jede Drohne als gegnerischer Pilot, und Ratten schiessen mit Drohnen
+    # waere ploetzlich PvP. Ein echter Pilotenname faellt hier nicht durch: der
+    # Rest hinter dem Apostroph steht dann in keiner Typtabelle.
+    for trenn in ("'s ", "’s "):
+        if trenn in n:
+            rest = n.split(trenn, 1)[1].strip()
+            if rest and (rest in MARKET_TYPES or rest.lower() in NPC_FACTIONS):
+                return True
     return n.lower() in NPC_FACTIONS
 # Fuehrende Schadenszahl (auch mit Tausender-Trennung) am Zeilenanfang
 DMG_HEAD_RE = re.compile(r"^\d(?:[\d.,  ]|['’](?=\d))*")
@@ -1849,6 +1859,9 @@ class CharSession:
         self.ore_hist = deque(maxlen=400)  # alle Erz-ts (fuer Laser/Drohnen-Strom-Analyse)
         self.laser_alerted = False
         self.dmg_out = self.dmg_in = self.bounty = 0
+        # Nur der Anteil gegen echte Spieler. Trennt PvP von Ratten und
+        # Missionsgegnern, ohne dass jemand die Rolle von Hand setzen muss.
+        self.pvp_out = self.pvp_in = 0
         self.kills = 0  # NPC-Abschuesse (eine Bounty-Zeile = ein Kill)
         self.targets = {}
         self.attackers = {}
@@ -1940,6 +1953,8 @@ class CharSession:
             self.system = ev["key"]      # aktueller Ort aus dem Gamelog
         elif k == "dmg_out":
             self.dmg_out += ev["value"]
+            if ev.get("player"):
+                self.pvp_out += ev["value"]
             self.hits_out += 1
             # Wer schiesst, steht nicht in der Station: ein zuvor begonnener
             # Anflug wurde also abgebrochen.
@@ -1954,6 +1969,8 @@ class CharSession:
                 self.win_out.append((now, ev["value"]))
         elif k == "dmg_in":
             self.dmg_in += ev["value"]
+            if ev.get("player"):
+                self.pvp_in += ev["value"]
             self.attackers[ev["key"]] = self.attackers.get(ev["key"], 0) + ev["value"]
             self._dmg_bucket(ev["ts"], "in", ev["value"])
             if live:
@@ -2026,6 +2043,7 @@ class CharSession:
                 self.bounty = 0
                 self.kills = 0
                 self.dmg_out = self.dmg_in = 0
+                self.pvp_out = self.pvp_in = 0
                 self.hits_out = self.miss_out = self.miss_in = 0
                 self.ewar = {}
                 self.logi_out = {}
@@ -2231,6 +2249,7 @@ class CharSession:
         damit beim naechsten Abschluss ein einziger daraus wird."""
         self.dmg_out = m.get("dmg_out") or 0
         self.dmg_in = m.get("dmg_in") or 0
+        self.pvp_out = self.pvp_in = 0
         self.kills = m.get("kills") or 0
         self.bounty = m.get("bounty") or 0
         self.hits_out = m.get("hits") or 0
@@ -2258,6 +2277,7 @@ class CharSession:
         self.bounty = 0
         self.kills = 0
         self.dmg_out = self.dmg_in = 0
+        self.pvp_out = self.pvp_in = 0
         self.hits_out = self.miss_out = self.miss_in = 0
         self.ewar = {}
         self.logi_out = {}
@@ -5459,6 +5479,343 @@ packintel = PackIntel()
 
 
 # ---------------------------------------------------------------- Abfragen
+
+# ----------------------------------------------------------------- OBS-Seite
+# Eigene, schlanke Seite fuer OBS als Browser-Quelle. Bewusst getrennt vom
+# grossen Dashboard: hier zaehlt nur, was auf einem Stream in einer Sekunde
+# lesbar ist. Alles wird ueber die Adresse gesteuert, damit in OBS niemand
+# etwas einstellen oder gar programmieren muss.
+#
+# Der Standort ist standardmaessig AUS. Wer streamt, verraet sonst im Bild,
+# wo er steht, und im Wurmloch ist das eine Einladung.
+OBS_PAGE = """<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">
+<title>Canary OBS</title><style>
+*{margin:0;box-sizing:border-box;font-family:'Bahnschrift','Segoe UI',system-ui,sans-serif}
+html,body{background:transparent}
+/* Ohne das gewinnt jede display-Regel gegen das hidden-Attribut, und eine
+   abgeschaltete Zeile bleibt als leerer Balken im Bild stehen. */
+[hidden]{display:none !important}
+body{padding:6px;color:#fff;font-variant-numeric:tabular-nums}
+body.grund{background:#0b0e14}
+#w{display:flex;flex-direction:column;gap:5px}
+body.quer #w{flex-direction:row;flex-wrap:wrap;align-items:stretch}
+.z{display:flex;align-items:center;gap:9px;padding:6px 11px;border-radius:9px;
+ background:rgba(10,14,20,.62);border:1px solid rgba(255,255,255,.10);
+ box-shadow:0 1px 2px rgba(0,0,0,.5)}
+body.klar .z{background:rgba(10,14,20,.55)}
+body.grund .z{background:#121722;border-color:#1e2636;box-shadow:none}
+body.quer .z{flex-direction:column;align-items:flex-start;gap:2px;min-width:150px}
+.pkt{width:9px;height:9px;border-radius:50%;flex:none}
+.ok{background:#4fd47f}.warn{background:#e8c645}
+.bad{background:#e8564f;animation:p .9s infinite}
+@keyframes p{50%{opacity:.25}}
+.nm{font-weight:700;font-size:13px;line-height:1.2;
+ text-shadow:0 1px 3px rgba(0,0,0,.9)}
+.sub{font-size:9.5px;color:#b6c2d2;line-height:1.35;text-shadow:0 1px 3px rgba(0,0,0,.9)}
+.tag{display:inline-block;font-size:8.5px;font-weight:700;letter-spacing:.9px;
+ padding:1px 5px;border-radius:4px;vertical-align:middle;margin-right:5px}
+.t-mining{background:rgba(53,200,232,.22);color:#7fe3ff}
+.t-pve{background:rgba(232,198,69,.22);color:#f5d873}
+.t-pvp{background:rgba(232,86,79,.24);color:#ff9a94}
+.wert{margin-left:auto;text-align:right;font-size:13px;font-weight:700;color:#e8c645;
+ line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,.9)}
+body.quer .wert{margin-left:0;text-align:left}
+.wert small{display:block;font-size:9.5px;color:#9fb0c4;font-weight:600}
+.st{font-size:9px;color:#e8c645;font-weight:700;letter-spacing:.5px;\n text-shadow:0 1px 3px rgba(0,0,0,.95)}
+.st.bad{color:#ff8b80}\n.z.leer{opacity:.72}
+#cfg{background:#0f1620;border:1px solid #22304a;border-radius:11px;padding:13px 15px;
+ margin-bottom:9px;max-width:520px}
+.ct{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#93a3bd;
+ font-weight:700;margin-bottom:10px}
+.cg{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:7px}
+.cg label{display:flex;align-items:center;gap:6px;font-size:12px;color:#c9d4e3;cursor:pointer}
+.cg select,.cg input[type=number]{background:#0b111a;color:#e6edf7;border:1px solid #22304a;
+ border-radius:6px;padding:3px 6px;font:inherit;font-size:12px;width:72px}
+.cu{display:flex;gap:7px;margin-top:11px}
+.cu input{flex:1;background:#0b111a;color:#7fe3ff;border:1px solid #22304a;border-radius:7px;
+ padding:7px 9px;font-family:Consolas,monospace;font-size:11.5px}
+.cu button{background:#35c8e8;color:#06222a;border:none;border-radius:7px;padding:7px 14px;
+ font:inherit;font-weight:700;font-size:12px;cursor:pointer}
+.ch{font-size:11px;color:#7d8a9c;margin-top:9px;line-height:1.55}
+#dt{display:flex;align-items:center;justify-content:center;gap:8px;
+ padding:4px 11px;margin-bottom:5px;border-radius:9px;font-size:10px;
+ letter-spacing:1.2px;text-transform:uppercase;font-weight:700;
+ background:rgba(232,198,69,.16);color:#f5d873;border:1px solid rgba(232,198,69,.35)}
+#dt.nah{background:rgba(232,86,79,.20);color:#ff9a94;border-color:rgba(232,86,79,.45)}
+#dt b{font-size:13px;letter-spacing:0}
+#sum{display:flex;align-items:center;justify-content:space-between;gap:12px;
+ padding:5px 11px;border-radius:9px;background:rgba(10,14,20,.62);
+ border:1px solid rgba(255,255,255,.10);font-size:9px;letter-spacing:1.2px;
+ color:#9fb0c4;text-transform:uppercase}
+body.grund #sum{background:#121722;border-color:#1e2636}
+#sum b{font-size:13px;color:#35c8e8;letter-spacing:0;text-transform:none;\n text-shadow:0 1px 3px rgba(0,0,0,.95)}
+#sum i{font-style:normal;font-size:10px;color:#e8c645}
+#mk{display:flex;align-items:center;gap:7px;padding:4px 10px;border-radius:9px;
+ background:rgba(8,11,16,.78);border:1px solid rgba(255,255,255,.12);
+ box-shadow:0 1px 3px rgba(0,0,0,.75)}
+body.klar #mk{background:rgba(10,14,20,.55)}
+body.grund #mk{background:#121722;border-color:#1e2636;box-shadow:none}
+#mk img{width:16px;height:16px;flex:none;display:block}
+#mk span{font-size:10px;font-weight:700;letter-spacing:1.7px;color:#f2d24a;
+ text-shadow:0 1px 3px rgba(0,0,0,.95)}
+#mk em{font-style:normal;font-size:8.5px;color:#a8b8cc;margin-left:auto;
+ padding-left:10px;letter-spacing:.3px;text-shadow:0 1px 3px rgba(0,0,0,.95)}
+body.quer #mk{flex:none;align-self:flex-start}
+body.quer #mk em{display:none}
+</style></head><body><div id="cfg" hidden>
+<div class="ct">OBS-Einrichtung</div>
+<div class="cg" id="cg"></div>
+<div class="cu"><input id="url" readonly><button id="cp">Kopieren</button></div>
+<div class="ch">Adresse kopieren, in OBS eine <b>Browser-Quelle</b> anlegen und dort einfuegen.
+Breite etwa 380, Hoehe 220. Diese Leiste erscheint nur hier, nicht in OBS.</div>
+</div><div id="dt" hidden></div><div id="w"></div><div id="sum" hidden></div><div id="mk" hidden><img alt="" src="data:image/png;base64,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"><span>EVE CANARY</span><em>eve-online-askend.github.io/eve-canary</em></div>
+<script>
+const P = new URLSearchParams(location.search);
+const an = (k, vor) => { const v = P.get(k); return v === null ? vor : v !== '0'; };
+const ZEIG = {
+  sys:    an('sys', false),      // Standort standardmaessig AUS
+  ship:   an('ship', true),
+  status: an('status', true),
+  sum:    an('sum', true),
+  warn:   an('warn', true),\n  iskh:   an('iskh', true)
+};
+const MAX = parseInt(P.get('max') || '0', 10) || 99;
+document.getElementById('mk').hidden = !an('brand', true);
+document.body.classList.toggle('grund', P.get('bg') === 'dark');
+document.body.classList.toggle('klar', P.get('bg') === 'clear');
+document.body.classList.toggle('quer', (P.get('dir') || 'v')[0] === 'h');
+const SKALA = parseFloat(P.get('scale') || '1') || 1;
+if (SKALA !== 1) document.body.style.zoom = SKALA;
+
+const esc = (t) => String(t == null ? '' : t).replace(/[&<>"]/g,
+  (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmt = (n) => Math.round(n || 0).toLocaleString('de-DE');
+const fmtM = (n) => { n = n || 0; const a = Math.abs(n);
+  return a >= 1e9 ? (n / 1e9).toFixed(2) + ' Mrd'
+       : a >= 1e6 ? (n / 1e6).toFixed(1) + ' M'
+       : a >= 1e3 ? (n / 1e3).toFixed(1) + ' K' : String(Math.round(n)); };
+const fmtC = (n) => { n = n || 0;
+  return n >= 1e6 ? (n / 1e6).toFixed(2) + ' M' : n >= 1e3 ? (n / 1e3).toFixed(1) + ' K'
+       : String(Math.round(n)); };
+
+// Rolle je Charakter, aus dem, was wirklich im Log stand.
+//
+// Foerdern gewinnt vor Kampf. Ein Hulk schiesst zwischendurch eine Ratte weg,
+// das macht ihn nicht zum Kampfschiff, und im Stream soll seine Rate stehen
+// bleiben statt auf Schadenszahlen umzuspringen. Kommt ein Ganker, sagt das
+// rote UNTER BESCHUSS in derselben Zeile deutlich genug Bescheid.
+//
+// PvP nur, wenn wirklich ein Spieler beteiligt war. Der Parser erkennt das am
+// "[TICKER](Schiff)" im Kampflog, das steht bei NPCs nie, und Drohnen, Wracks
+// und Tuerme sind dort schon aussortiert. Ohne diese Pruefung waere jede
+// Mission ein Gefecht gegen Mitspieler.
+function rolle(c) {
+  if ((c.m3 || 0) > 0) return ['mining', 'MINING'];
+  if (!((c.dmg_out || 0) > 0 || (c.dmg_in || 0) > 0)) return null;
+  if ((c.pvp_out || 0) > 0 || (c.pvp_in || 0) > 0) return ['pvp', 'PVP'];
+  if (c.mission && c.mission.name) return ['pve', 'MISSION'];
+  return ['pve', 'PVE'];
+}
+
+// ISK je Stunde: Rate mal Wert je m3 dieser Sitzung. Nicht der Kontostand
+// geteilt durch Zeit, denn der enthaelt auch Verkaeufe von gestern.
+function iskH(c) {
+  if (!ZEIG.iskh) return 0;
+  const m3 = c.m3 || 0, isk = c.ore_isk || 0, rate = c.m3h || 0;
+  if (!m3 || !rate) return 0;
+  return rate * (isk / m3);
+}
+
+// Die rechte Spalte richtet sich danach, was der Charakter gerade tut. Beim
+// Foerdern zaehlt die Rate, beim Kaempfen der Schaden. Frueher stand dort
+// stur die Foerderrate, sodass eine PvP-Flotte nur Nullen anzeigte.
+function rechts(c) {
+  const rate = c.m3h || 0, isk = c.total_isk || 0;
+  const raus = c.dmg_out || 0, rein = c.dmg_in || 0;
+  // Gleiche Grenze wie bei der Rolle: wer foerdert, bleibt beim Erz, auch
+  // wenn er nebenbei Ratten wegschiesst.
+  const kampf = (c.m3 || 0) <= 0 && (raus > 0 || rein > 0);
+  const unten = [];
+  if (rate > 0) {
+    unten.push(fmt(rate) + ' m³/h');
+    if (iskH(c)) unten.push(fmtM(iskH(c)) + '/h');
+  } else if (kampf) {
+    // Ohne ISK traegt der Schaden die grosse Zahl, sonst stuende sie doppelt.
+    if (isk > 0 && raus > 0) unten.push(fmtC(raus) + ' Schaden');
+    else if (raus > 0) unten.push('Schaden');
+    if (rein > 0) unten.push(fmtC(rein) + ' rein');
+  }
+  let gross = '';
+  if (isk > 0) gross = fmtM(isk);
+  else if (kampf && raus > 0) gross = fmtC(raus);
+  if (!gross && !unten.length) return '';
+  return '<span class="wert">' + gross
+    + (unten.length ? '<small>' + unten.join(' &middot; ') + '</small>' : '')
+    + '</span>';
+}
+
+function zustand(c) {
+  if (c.dps_in > 0) return ['bad', 'UNTER BESCHUSS'];
+  if (c.cargo_full) return ['bad', 'FRACHTRAUM VOLL'];
+  const tw = c.tool_warns || [];
+  if (tw.length) return ['warn', String(tw[0].tool).toUpperCase() + ' AUS'];
+  if (c.drones_idle) return ['warn', 'DROHNEN OHNE ERZ'];
+  return ['ok', ''];
+}
+
+
+// Ohne Parameter ist das hier die Einrichtung, mit Parametern das fertige
+// Overlay. Eine Adresse, kein zweites Menue, und in OBS taucht die Leiste
+// nie auf, weil dort immer Parameter dranhaengen.
+if (!location.search) {
+  const F = [
+    ['dir', 'Ausrichtung', 'wahl', [['v', 'senkrecht'], ['h', 'waagerecht']]],
+    ['bg', 'Hintergrund', 'wahl', [['', 'halb durchsichtig'], ['clear', 'sehr dezent'], ['dark', 'voll']]],
+    ['scale', 'Groesse', 'zahl', [1, 0.6, 3, 0.1]],
+    ['max', 'Chars hoechstens', 'zahl', [0, 0, 20, 1]],
+    ['status', 'Status PvE/PvP/Mining', 'ja', 1],
+    ['ship', 'Schiff', 'ja', 1],
+    ['iskh', 'ISK pro Stunde', 'ja', 1],
+    ['sum', 'Flottensumme', 'ja', 1],
+    ['warn', 'Warnungen', 'ja', 1],
+    ['brand', 'Markenzeile Eve Canary', 'ja', 1],
+    ['dt', 'Downtime-Countdown', 'ja', 1],
+    ['sys', 'Standort zeigen', 'ja', 0],\n    ['idle', 'Hinweis wenn niemand fliegt', 'ja', 1],\n    ['demo', 'Beispielwerte zum Einrichten', 'ja', 0]
+  ];
+  const box = document.getElementById('cg');
+  box.innerHTML = F.map(([k, txt, art, v]) => {
+    if (art === 'ja') return '<label><input type=checkbox data-k=' + k
+      + (v ? ' checked' : '') + '> ' + txt + '</label>';
+    if (art === 'wahl') return '<label>' + txt + ' <select data-k=' + k + '>'
+      + v.map(([w, t]) => '<option value="' + w + '">' + t + '</option>').join('') + '</select></label>';
+    return '<label>' + txt + ' <input type=number data-k=' + k + ' value=' + v[0]
+      + ' min=' + v[1] + ' max=' + v[2] + ' step=' + v[3] + '></label>';
+  }).join('');
+  function bau() {
+    const q = [];
+    for (const el of box.querySelectorAll('[data-k]')) {
+      const k = el.dataset.k;
+      if (el.type === 'checkbox') { const vor = F.find((f) => f[0] === k)[3];
+        if (el.checked !== !!vor) q.push(k + '=' + (el.checked ? 1 : 0)); }
+      else if (el.value && el.value !== '0' && el.value !== '1') q.push(k + '=' + el.value);
+      else if (el.tagName === 'SELECT' && el.value) q.push(k + '=' + el.value);
+    }
+    document.getElementById('url').value = location.origin + '/obs'
+      + (q.length ? '?' + q.join('&') : '?v=1');
+  }
+  box.addEventListener('input', bau);
+  document.getElementById('cp').onclick = async () => {
+    const f = document.getElementById('url');
+    try { await navigator.clipboard.writeText(f.value);
+      document.getElementById('cp').textContent = 'kopiert'; }
+    catch (e) { f.select(); }
+    setTimeout(() => { document.getElementById('cp').textContent = 'Kopieren'; }, 1800);
+  };
+  document.getElementById('cfg').hidden = false;
+  bau();
+}
+
+const DT_MIN = parseInt(P.get('dtwarn') || '60', 10);
+function downtime() {
+  const jetzt = new Date();
+  const dt = new Date(Date.UTC(jetzt.getUTCFullYear(), jetzt.getUTCMonth(),
+    jetzt.getUTCDate(), 11, 0, 0));
+  if (dt - jetzt < 0) dt.setUTCDate(dt.getUTCDate() + 1);
+  const min = Math.floor((dt - jetzt) / 60000);
+  const box = document.getElementById('dt');
+  if (!an('dt', true) || min > DT_MIN) { box.hidden = true; return; }
+  box.hidden = false;
+  box.classList.toggle('nah', min <= 15);
+  const h = Math.floor(min / 60), m = min % 60;
+  box.innerHTML = 'Downtime in <b>' + (h ? h + ' Std ' : '') + m + ' min</b>';
+}
+
+// Beispielwerte fuer die Einrichtung in OBS. Damit laesst sich Groesse und
+// Platz einstellen, ohne dafuer ins Spiel zu muessen. Rein oertlich, es wird
+// nichts geladen, und die Zeile darunter sagt deutlich, dass es Beispiele
+// sind: sonst steht so etwas irgendwann versehentlich im Stream.
+const DEMO = [
+  { name: 'Darius Ward', active: true, system: 'J152827', ship: 'Hulk',
+    m3: 297699, m3h: 294159, ore_isk: 159300000, total_isk: 159300000, dmg_out: 0 },
+  { name: 'Jessedaika Law', active: true, system: 'J152827', ship: 'Hulk',
+    m3: 241113, m3h: 241113, ore_isk: 131300000, total_isk: 131300000, dmg_out: 0 },
+  // Foerdert und schiesst nebenbei Ratten weg. Muss MINING bleiben und die
+  // Rate zeigen, nicht auf Schadenszahlen umspringen.
+  { name: 'Lea o Connor', active: true, system: 'Vullat', ship: 'Covetor',
+    m3: 209318, m3h: 209318, ore_isk: 145500000, total_isk: 145500000,
+    dmg_out: 6400, dmg_in: 900, tool_warns: [{ tool: 'Strip Miner II' }] },
+  { name: 'Askend', active: true, system: 'Gisleres', ship: 'Megathron',
+    m3: 0, m3h: 0, ore_isk: 0, total_isk: 42800000, dmg_out: 184000, dmg_in: 41000,
+    mission: { name: 'Recon 2 of 3 (Mercenaries)', conf: 92 }, dps_in: 0 },
+  { name: 'FivaS', active: true, system: 'Amarr', ship: 'Vexor',
+    m3: 0, m3h: 0, ore_isk: 0, total_isk: 8100000, dmg_out: 22000, dmg_in: 31000,
+    pvp_out: 22000, pvp_in: 31000, dps_in: 340 }
+];
+
+async function tick() {
+  downtime();
+  if (an('demo', false)) {
+    zeichne({ chars: DEMO });
+    return;
+  }
+  let d;
+  try { d = await (await fetch('/data?view=live', { cache: 'no-store' })).json(); }
+  catch (e) { return; }
+  zeichne(d);
+}
+
+function zeichne(d) {
+  const chars = (d.chars || []).filter((c) => c.active).slice(0, MAX);
+  // Niemand aktiv? Fuer OBS ist ein leeres Bild richtig, beim Einrichten
+  // sieht es aber aus wie kaputt. Deshalb eine stille Bereitschaftszeile,
+  // die verschwindet, sobald jemand fliegt. Mit idle=0 ganz abschaltbar.
+  if (!chars.length) {
+    document.getElementById('w').innerHTML = an('idle', true)
+      ? '<div class="z leer"><span class="pkt warn"></span><span>'
+        + '<div class="nm">Canary bereit</div>'
+        + '<div class="sub">' + ((d.chars || []).length
+            ? 'kein Charakter aktiv, sobald du fliegst erscheint er hier'
+            : 'noch kein Charakter erkannt, EVE starten') + '</div></span></div>'
+      : '';
+    document.getElementById('sum').hidden = true;
+    return;
+  }
+  document.getElementById('w').innerHTML = chars.map((c) => {
+    const [cls, txt] = zustand(c);
+    const r = ZEIG.status ? rolle(c) : null;
+    const unten = [];
+    if (r) unten.push('<span class="tag t-' + r[0] + '">' + r[1] + '</span>');
+    // Bei einer erkannten Mission steht ihr Name da, nicht nur die Rolle: das
+    // ist die eine Angabe, nach der im Chat wirklich gefragt wird.
+    if (r && r[1] === 'MISSION') unten.push(esc(c.mission.name));
+    if (ZEIG.sys && c.system) unten.push(esc(c.system));
+    if (ZEIG.ship && c.ship) unten.push(esc(c.ship));
+    return '<div class="z"><span class="pkt ' + cls + '"></span><span>'
+      + '<div class="nm">' + esc(c.name) + '</div>'
+      + (unten.length ? '<div class="sub">' + unten.join(' &middot; ') + '</div>' : '')
+      + (ZEIG.warn && txt ? '<div class="st ' + (cls === 'bad' ? 'bad' : '') + '">' + txt + '</div>' : '')
+      + '</span>' + rechts(c) + '</div>';
+  }).join('');
+
+  const m3 = chars.reduce((s, c) => s + (c.m3 || 0), 0);
+  const isk = chars.reduce((s, c) => s + (c.ore_isk || 0), 0);
+  if (an('demo', false)) {
+    document.getElementById('w').insertAdjacentHTML('beforeend',
+      '<div class="z leer"><span class="pkt warn"></span><span>'
+      + '<div class="sub">Beispielwerte zum Einrichten, nicht aus dem Spiel. '
+      + 'Zum Beenden demo aus der Adresse entfernen.</div></span></div>');
+  }
+  const box = document.getElementById('sum');
+  box.hidden = !(ZEIG.sum && m3 > 0);
+  if (!box.hidden) {
+    box.innerHTML = '<span>' + chars.length + ' Chars</span>'
+      + '<span><b>' + fmtC(m3) + ' m³</b> <i>' + fmtM(isk) + ' ISK</i></span>';
+  }
+}
+tick();
+setInterval(tick, 2000);
+</script></body></html>"""
+
 def ore_value(ore, units, pm):
     """ISK und Volumen eines Erz-Postens. Bewertet wird zum Preis der
     komprimierten Variante (Komprimieren ist 1:1 in Stück), denn das ist der
@@ -5825,6 +6182,7 @@ def snapshot_live():
             "m3h": round(m3 / mins * 60), "bounty": s.bounty, "kills": s.kills,
             "total_isk": round(ore_isk + s.bounty),
             "dmg_out": s.dmg_out, "dmg_in": s.dmg_in,
+            "pvp_out": s.pvp_out, "pvp_in": s.pvp_in,
             "dps_out": s.dps(s.win_out), "dps_in": s.dps(s.win_in),
             "depleted": s.depleted,
             "weapons": sorted(s.weapons.items(), key=lambda x: -x[1])[:6],
@@ -7322,6 +7680,17 @@ class Handler(BaseHTTPRequestHandler):
         if not _host_ok(self.headers):
             return self._deny()
         p = self.path.split("?")[0]
+        if p == "/obs":
+            # Schlanke Seite fuer OBS als Browser-Quelle. Alles Weitere steht
+            # in der Adresse, siehe OBS_PAGE.
+            body = OBS_PAGE.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if p == "/data":
             view = (self.path.split("view=")[1].split("&")[0]
                     if "view=" in self.path else "live")
