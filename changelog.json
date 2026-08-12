@@ -1,5 +1,19 @@
 [
  {
+  "v": "1.86.3",
+  "d": "2026-08-12",
+  "de": [
+   "Die Gesamt-Ansicht erklaert sich jetzt selbst. Die drei Tabellen haben Spaltenkoepfe, vorher stand da nur eine Reihe Zahlen und man musste raten, welche davon Menge, Volumen und Wert ist.",
+   "Unter den Kennzahlen steht, wie sie zusammenhaengen: ISK gesamt ist Erz-Wert plus Bounties, und der Erz-Wert rechnet mit den heutigen Marktpreisen, nicht mit denen von damals. Wer auf eine Kachel zeigt, bekommt zu jeder einzelnen einen Satz.",
+   "Der Kasten \"Was ist das?\" der Gesamt-Ansicht sagt dasselbe noch einmal in Ruhe, samt Bounties und bestem Tag."
+  ],
+  "en": [
+   "The totals view now explains itself. The three tables have column headers; before there was just a row of numbers and you had to guess which was quantity, volume and value.",
+   "Below the figures it now says how they relate: total ISK is ore value plus bounties, and the ore value uses today's market prices rather than the ones back then. Hovering a tile gives you a sentence on that one figure.",
+   "The \"What is this?\" box of the totals view says the same again at length, covering bounties and the best day."
+  ]
+ },
+ {
   "v": "1.86.2",
   "d": "2026-08-12",
   "de": [

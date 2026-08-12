@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.86.2"
+VERSION = "1.86.3"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -8405,6 +8405,12 @@ td:first-child,th:first-child{padding-left:0}
 td:last-child,th:last-child{padding-right:0}
 th{border-top:none}
 td.r{text-align:right;color:var(--dim);white-space:nowrap}
+/* Spaltenkoepfe: leise, aber da. Ohne sie muss man aus den Zahlen raten,
+   welche Spalte Menge, welche Volumen und welche Wert ist. */
+thead th{font-size:10px;text-transform:uppercase;letter-spacing:.8px;
+ color:var(--dim);font-weight:600;text-align:left;border-top:none;
+ padding-top:0;padding-bottom:5px}
+thead th.r{text-align:right}
 .sect{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin-top:10px}
 .bar{height:4px;border-radius:2px;background:var(--cyan);opacity:.7}
 .spark{display:flex;align-items:flex-end;gap:1px;height:30px;margin-top:8px}
@@ -9285,7 +9291,7 @@ const VIEW_INFO={
   q:'Daten: die Logdateien, die dein EVE-Client auf diesem Rechner schreibt. Marktpreise von Fuzzwork. Wenn du den EVE-Login benutzt, kommen Schiff, Kontostand und Frachtraum-Wert dazu, die sind bis zu eine Stunde alt.'},
  month:{d:'Die letzten 30 Tage, ein Balken für jeden Tag. So siehst du auf einen Blick, an welchen Tagen du viel geschafft hast.',
   q:'Daten: die Datenbank von Canary auf diesem Rechner, gefüllt aus deinen Logdateien.'},
- total:{d:'Alles zusammengezählt, seit Canary mitschreibt: Erz, ISK, Schaden und Gegner, aufgeteilt nach Charakter.',
+ total:{d:'Alles zusammengezählt, seit Canary mitschreibt. ISK gesamt ist Erz-Wert plus Bounties. Der Erz-Wert ist das, was dein Erz heute am Markt bringen würde, nicht das, was du damals dafür bekommen hast. Bounties sind Kopfgelder für abgeschossene NPCs. Bester Tag meint den Tag mit dem höchsten ISK-Ertrag. In den Tabellen sagen die Spaltenköpfe, welche Zahl Menge, Volumen und Wert ist.',
   q:'Daten: die Datenbank von Canary auf diesem Rechner, gefüllt aus deinen Logdateien.'},
  analyse:{d:'Auswertung über längere Zeit. Welche Waffen du benutzt, wer dich angegriffen hat, welches Erz am meisten einbringt und zu welchen Zeiten du spielst.',
   q:'Daten: die Datenbank von Canary auf diesem Rechner, dazu Marktpreise von Fuzzwork.'},
@@ -10568,23 +10574,27 @@ function renderTotal(t){
    <div class="char">Gesamt${state.baseline_day?' (seit '+state.baseline_day+')':''}</div>
    <div class="sub">${t.days_active} aktive Tage · ${fmt(t.depleted)} Asteroiden leergebaggert</div>
    <div class="stats">
-    <div class="stat"><div class="l">ISK gesamt</div><div class="v isk">${fmtM(t.total_isk)}</div></div>
-    <div class="stat"><div class="l">Erz-Wert</div><div class="v isk">${fmtM(t.ore_isk)}</div></div>
-    <div class="stat"><div class="l">Bounties</div><div class="v grn">${fmtM(t.bounty)}</div></div>
-    <div class="stat"><div class="l">Erz gesamt</div><div class="v">${fmt(t.m3)} m³</div></div>
-    <div class="stat"><div class="l">Bester Tag</div><div class="v isk">${fmtM(t.best_day.isk)}</div></div>
-    <div class="stat"><div class="l">Schaden raus/rein</div><div class="v"><span class="out">${fmtM(t.dmg_out)}</span> / <span class="in">${fmtM(t.dmg_in)}</span></div></div>
+    <div class="stat" title="Erz-Wert plus Bounties. Das ist die Summe, die unten in der Spalte ISK gesamt je Charakter noch einmal aufgeteilt steht."><div class="l">ISK gesamt</div><div class="v isk">${fmtM(t.total_isk)}</div></div>
+    <div class="stat" title="Was dein gefoerdertes Erz zu den heutigen Marktpreisen der gewaehlten Region bringen wuerde. Nicht das, was du damals dafuer bekommen hast."><div class="l">Erz-Wert</div><div class="v isk">${fmtM(t.ore_isk)}</div></div>
+    <div class="stat" title="Kopfgeld fuer abgeschossene NPCs, so wie es im Log steht. Loot und Missionsbelohnungen sind nicht enthalten."><div class="l">Bounties</div><div class="v grn">${fmtM(t.bounty)}</div></div>
+    <div class="stat" title="Gesamtvolumen des gefoerderten Erzes in Kubikmetern, unkomprimiert gerechnet."><div class="l">Erz gesamt</div><div class="v">${fmt(t.m3)} m³</div></div>
+    <div class="stat" title="Der Tag mit dem hoechsten ISK-Ertrag. Das Datum steht unter den Kacheln."><div class="l">Bester Tag</div><div class="v isk">${fmtM(t.best_day.isk)}</div></div>
+    <div class="stat" title="Schaden, den du ausgeteilt hast, und Schaden, den du eingesteckt hast. Beides aus dem Kampflog, ueber den gesamten Zeitraum."><div class="l">Schaden raus/rein</div><div class="v"><span class="out">${fmtM(t.dmg_out)}</span> / <span class="in">${fmtM(t.dmg_in)}</span></div></div>
    </div>
    <div class="sub">Bester Tag: ${t.best_day.day}</div>
+   <div class="sub" style="margin-top:6px">ISK gesamt = Erz-Wert + Bounties. Der Erz-Wert rechnet mit den heutigen Marktpreisen, nicht mit denen von damals. Beim Zeigen auf eine Kachel steht, was genau dahintersteckt.</div>
   </div>
-  <div class="card"><div class="char">Erz-Bilanz (nach Wert)</div><table>${t.ores.map(o=>
+  <div class="card"><div class="char">Erz-Bilanz (nach Wert)</div><table>
+   <thead><tr><th>Erz</th><th class="r">Menge</th><th class="r">Volumen</th><th class="r">Wert</th></tr></thead>${t.ores.map(o=>
    `<tr><td>${o.ore}<div class="bar" style="width:${100*o.isk/maxOre}%"></div></td>
     <td class="r">${fmt(o.units)}</td><td class="r">${fmt(o.m3)} m³</td><td class="r isk">${fmtM(o.isk)}</td></tr>`).join('')}</table></div>
-  <div class="card"><div class="char">Pro Charakter</div><table>${Object.entries(t.chars).map(([n,c])=>
+  <div class="card"><div class="char">Pro Charakter</div><table>
+   <thead><tr><th>Charakter</th><th class="r">Erz</th><th class="r">Bounties</th><th class="r">ISK gesamt</th></tr></thead>${Object.entries(t.chars).map(([n,c])=>
    `<tr><td>${esc(n)}</td><td class="r">${fmt(c.m3)} m³</td><td class="r grn">${fmtM(c.bounty)}</td><td class="r isk">${fmtM(c.ore_isk+c.bounty)}</td></tr>`).join('')}</table></div>
   <div class="card"><div class="char">Komprimiert pro Charakter</div>
    <div class="sub">Alles, was über die Schiffs-Kompression gelaufen ist</div>
-   <div style="overflow-x:auto"><table>${t.compressed.length?t.compressed.map(k=>
+   <div style="overflow-x:auto"><table>
+   <thead><tr><th>Charakter</th><th>Typ</th><th class="r">Menge</th><th class="r">Volumen</th><th class="r">Wert</th></tr></thead>${t.compressed.length?t.compressed.map(k=>
    `<tr><td style="white-space:nowrap">${esc(k.char)}</td><td>${esc(k.type)}</td><td class="r">${fmt(k.units)} Stk</td><td class="r">${fmt(k.m3)} m³</td><td class="r isk">${fmtM(k.isk)}</td></tr>`).join(''):'<tr><td>Noch nichts komprimiert</td></tr>'}</table></div></div>`;
 }
 
@@ -12092,6 +12102,24 @@ const EN = {
 'EVE: Heavy Water fast leer!':'EVE: Heavy Water almost empty!','EVE: Watchlist':'EVE: Watchlist',
 'Speichern':'Save','nicht gefunden!':'not found!',
 'Erz-Bilanz (nach Wert)':'Ore balance (by value)','Gegner (letzte 30 Tage)':'Enemies (last 30 days)',
+// Spaltenkoepfe und Erklaerungen der Gesamt-Ansicht
+'Volumen':'Volume','Wert':'Value','Charakter':'Character','Bounties':'Bounties',
+'ISK gesamt = Erz-Wert + Bounties. Der Erz-Wert rechnet mit den heutigen Marktpreisen, nicht mit denen von damals. Beim Zeigen auf eine Kachel steht, was genau dahintersteckt.':
+ 'Total ISK = ore value + bounties. The ore value uses today\\'s market prices, not the ones back then. Hover a tile to see exactly what is behind it.',
+'Erz-Wert plus Bounties. Das ist die Summe, die unten in der Spalte ISK gesamt je Charakter noch einmal aufgeteilt steht.':
+ 'Ore value plus bounties. This is the sum broken down per character in the Total ISK column below.',
+'Was dein gefoerdertes Erz zu den heutigen Marktpreisen der gewaehlten Region bringen wuerde. Nicht das, was du damals dafuer bekommen hast.':
+ 'What your mined ore would fetch at today\\'s market prices in the selected region. Not what you were paid for it at the time.',
+'Kopfgeld fuer abgeschossene NPCs, so wie es im Log steht. Loot und Missionsbelohnungen sind nicht enthalten.':
+ 'Bounties for NPCs you destroyed, exactly as the log records them. Loot and mission rewards are not included.',
+'Gesamtvolumen des gefoerderten Erzes in Kubikmetern, unkomprimiert gerechnet.':
+ 'Total volume of the ore you mined, in cubic metres, counted uncompressed.',
+'Der Tag mit dem hoechsten ISK-Ertrag. Das Datum steht unter den Kacheln.':
+ 'The day with the highest ISK yield. The date is shown below the tiles.',
+'Schaden, den du ausgeteilt hast, und Schaden, den du eingesteckt hast. Beides aus dem Kampflog, ueber den gesamten Zeitraum.':
+ 'Damage you dealt and damage you took. Both from the combat log, over the whole period.',
+'Alles zusammengezählt, seit Canary mitschreibt. ISK gesamt ist Erz-Wert plus Bounties. Der Erz-Wert ist das, was dein Erz heute am Markt bringen würde, nicht das, was du damals dafür bekommen hast. Bounties sind Kopfgelder für abgeschossene NPCs. Bester Tag meint den Tag mit dem höchsten ISK-Ertrag. In den Tabellen sagen die Spaltenköpfe, welche Zahl Menge, Volumen und Wert ist.':
+ 'Everything added up since Canary started recording. Total ISK is ore value plus bounties. The ore value is what your ore would fetch on the market today, not what you were paid for it at the time. Bounties are the rewards for NPCs you destroyed. Best day means the day with the highest ISK yield. In the tables, the column headers tell you which number is quantity, volume and value.',
 'Klassisch (das gewohnte Canary-Design)':'Classic (the familiar Canary look)',
 'Sekunden ohne Erz bis zur Stillstand-Warnung (0 = aus)':'Seconds without ore before the idle warning (0 = off)',
 '🎯 Ziel & Zähler':'🎯 Goal & counters','7 Tage':'7 days','12 Monate':'12 months',
