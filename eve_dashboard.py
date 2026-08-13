@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.1.1"
+VERSION = "2.2.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -13668,8 +13668,18 @@ function renderMissions(d){
              ...gegner.map(g=>'  '+g),
              '',
              'Canary '+(state&&state.version||'')+', Gegner-Fingerabdruck'].join('\\n');
+  // Nach dem Kopieren fehlte der naechste Schritt: es stand nur "kopiert",
+  // aber nicht WOHIN damit. Gemeldet von Nirahse ("Es ist unklar wie man
+  // danach weitermachen soll"). Deshalb hier gleich der Link zum Formular,
+  // in einem neuen Tab, damit die Karte offen bleibt.
+  const ziel='https://eve-online-askend.github.io/eve-canary/mission.html';
   try{await navigator.clipboard.writeText(txt);
-      setzStatus(en2?'✓ copied, paste it into a report':'✓ kopiert, füg es in eine Meldung ein');}
+      const s=finde('.mnamestat');
+      if(s)s.innerHTML=(en2?'✓ copied. Now open the ':'✓ kopiert. Jetzt das ')
+        +'<a href="'+ziel+'" target="_blank" rel="noopener">'
+        +(en2?'report form':'Meldeformular')+'</a>'
+        +(en2?' and paste it into the enemy list.'
+             :' öffnen und in die Gegnerliste einfügen.');}
   catch(e){setzStatus(en2?'Clipboard blocked':'Zwischenablage blockiert');}
  });
  document.querySelectorAll('.mnamego').forEach(b=>b.onclick=async()=>{

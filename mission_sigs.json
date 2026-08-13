@@ -251,5 +251,10 @@
  "gate to the research outpost": {
   "m": "Worlds Collide",
   "c": 85
+ },
+ "reinforce the blockade": {
+  "m": "The Blockade",
+  "c": 95,
+  "q": "Nirahse, Meldung 8, Stufe 4 Sansha. Bewusst NUR der Funk, nicht die Gegner: alle 21 gemeldeten Gegnernamen kommen in 4,22 GB vorliegender Logs zehntausendfach vor, Centus Savage Lord allein 166.285 mal. Als Signatur wuerden sie halb Sansha falsch benennen, deshalb war The Blockade frueher schon einmal verworfen worden. Die Funkzeile dagegen kommt in denselben 4,22 GB kein einziges Mal vor, kollidiert mit keiner der 58 vorhandenen Signaturen und nennt die Mission woertlich."
  }
 }

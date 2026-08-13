@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.2.0",
+  "d": "2026-08-13",
+  "de": [
+   "Canary erkennt jetzt The Blockade, Stufe 4. Erkannt wird sie am NPC-Funk, nicht an den Gegnern. Das ist der springende Punkt: alle 21 gemeldeten Gegnernamen kommen in den vorliegenden 4,22 GB Logs zehntausendfach vor, Centus Savage Lord allein 166.285 mal. Eine Signatur daraus wuerde halb Sansha falsch benennen, und genau deshalb war diese Mission frueher schon einmal verworfen worden. Die Funkzeile dagegen kommt in denselben 4,22 GB kein einziges Mal vor und nennt die Mission woertlich. Gemeldet von Nirahse.",
+   "Nach dem Knopf Fuer alle beitragen stand nur kopiert, aber nicht wohin damit. Jetzt steht der Link zum Meldeformular gleich daneben. Ebenfalls von Nirahse."
+  ],
+  "en": [
+   "Canary now recognises The Blockade, level 4. It is detected by the NPC chatter, not by the enemies. That is the crux: all 21 reported enemy names appear tens of thousands of times in the 4.22 GB of logs available here, Centus Savage Lord alone 166,285 times. A signature built from them would mislabel half of Sansha space, which is exactly why this mission had been rejected once before. The chatter line does not appear a single time in those same 4.22 GB and names the mission literally. Reported by Nirahse.",
+   "After the contribute button it only said copied, but not where to put it. The link to the report form now sits right next to it. Also from Nirahse."
+  ]
+ },
+ {
   "v": "2.1.1",
   "d": "2026-08-13",
   "de": [
