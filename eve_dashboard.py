@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.92.1"
+VERSION = "1.93.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -61,6 +61,8 @@ ERROR_HELP = {
     "CN-CLIP-01": "Zwischenablage nicht lesbar",
     "CN-UPD-01": "Update fehlgeschlagen",
     "CN-DATA-01": "Datendatei fehlt oder ist unbrauchbar und liess sich nicht nachladen",
+    "CN-SET-01": "EVE-Einstellungen nicht lesbar oder nicht gefunden",
+    "CN-SET-02": "EVE-Einstellungen nicht schreibbar",
     "CN-CFG-01": "Einstellungen nicht speicherbar",
     "CN-SRV-01": "Interner Serverfehler",
     "CN-SRV-02": "IPv6-Lauscher nicht startbar (localhost bleibt langsam, dann 127.0.0.1 nutzen)",
@@ -7353,6 +7355,143 @@ def uhr_laden():
 # auseinanderlaufen koennen. Die Oberflaeche zeigt die Summen ohnehin an.
 
 
+# ------------------------------------------------- EVE-Einstellungen (ALPHA)
+# Fehlercodes siehe ERROR_HELP, Praefix CN-SET.
+SET_BACKUP = "settings_backups"
+
+
+def eve_settings_dirs():
+    """Alle Einstellungsordner von EVE finden, neueste zuerst.
+
+    Windows legt sie unter LOCALAPPDATA ab, macOS unter Application Support,
+    Linux im Wine-Praefix neben den Logs. Es kann mehrere geben: pro Server
+    (Tranquility, Singularity) und pro Profil (settings_Default und eigene).
+    """
+    kandidaten = []
+    if os.name == "nt":
+        basis = Path(os.environ.get("LOCALAPPDATA", "")) / "CCP" / "EVE"
+        kandidaten.append(basis)
+    elif sys.platform == "darwin":
+        kandidaten.append(Path.home() / "Library" / "Application Support"
+                          / "CCP" / "EVE")
+    else:
+        # Linux: EVE laeuft im Praefix, die Einstellungen liegen dort im
+        # Benutzerprofil. Der Logordner ist bekannt, von dort aus hochlaufen.
+        p = Path(CONFIG.get("log_dir") or "")
+        for eltern in list(p.parents)[:6]:
+            k = eltern / "AppData" / "Local" / "CCP" / "EVE"
+            if k.is_dir():
+                kandidaten.append(k)
+    gefunden = []
+    for basis in kandidaten:
+        if not basis.is_dir():
+            continue
+        try:
+            for ordner in basis.rglob("settings*"):
+                if ordner.is_dir() and any(ordner.glob("core_*.dat")):
+                    gefunden.append(ordner)
+        except Exception as e:
+            log_error("CN-SET-01", "eve_settings_dirs", e)
+    gefunden.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return gefunden
+
+
+def char_namen():
+    """char_id -> Name, aus allem was Canary schon weiss."""
+    namen = {}
+    try:
+        with DB_LOCK:
+            for cid, name in DB.execute(
+                    "SELECT DISTINCT char_id, char FROM missions "
+                    "WHERE char_id IS NOT NULL AND char IS NOT NULL"):
+                namen[str(cid)] = name
+            for cid, name in DB.execute(
+                    "SELECT DISTINCT char_id, char FROM events "
+                    "WHERE char_id IS NOT NULL AND char IS NOT NULL"):
+                namen.setdefault(str(cid), name)
+    except Exception as e:
+        log_error("CN-DB-01", "char_namen", e)
+    for sess in list(ingest.sessions.values()):
+        if getattr(sess, "char_id", None):
+            namen[str(sess.char_id)] = sess.name
+    return namen
+
+
+def eve_laeuft():
+    """Laeuft der EVE-Client gerade?
+
+    Wichtig, denn der Client schreibt seine Einstellungen beim BEENDEN. Wer
+    waehrend einer laufenden Sitzung zurueckspielt, dessen Arbeit ist beim
+    naechsten Ausloggen wieder weg. Lieber verweigern als still verlieren.
+    """
+    import subprocess
+    namen = ("exefile.exe",) if os.name == "nt" else ("exefile.exe", "eve")
+    try:
+        if os.name == "nt":
+            r = subprocess.run(["tasklist", "/FO", "CSV", "/NH"],
+                               capture_output=True, timeout=8)
+            text = r.stdout.decode("utf-8", errors="replace").lower()
+        else:
+            r = subprocess.run(["ps", "-eo", "comm"], capture_output=True, timeout=8)
+            text = r.stdout.decode("utf-8", errors="replace").lower()
+    except Exception:
+        return None                      # unbekannt, dann nicht behaupten
+    return any(n.lower() in text for n in namen)
+
+
+def set_dateien(ordner):
+    """Die Einstellungsdateien eines Ordners, mit Namen wo bekannt."""
+    namen = char_namen()
+    raus = []
+    for p in sorted(Path(ordner).glob("core_*.dat")):
+        teile = p.stem.split("_")
+        art = teile[1] if len(teile) > 1 else "?"
+        kennung = teile[2] if len(teile) > 2 else ""
+        # core_char__.dat und core_user__.dat sind leere Platzhalter von EVE
+        if not kennung:
+            continue
+        raus.append({"datei": p.name, "art": art, "id": kennung,
+                     "name": namen.get(kennung) or "",
+                     "kb": round(p.stat().st_size / 1024, 1),
+                     "stand": int(p.stat().st_mtime)})
+    return raus
+
+
+def set_sicherungen():
+    ziel = APP_DIR / SET_BACKUP
+    if not ziel.is_dir():
+        return []
+    raus = []
+    for p in sorted(ziel.glob("*.zip"), reverse=True):
+        raus.append({"datei": p.name, "kb": round(p.stat().st_size / 1024, 1),
+                     "stand": int(p.stat().st_mtime)})
+    return raus
+
+
+def set_sichern(ordner, grund=""):
+    """Den ganzen Einstellungsordner als ZIP wegschreiben."""
+    import zipfile
+    q = Path(ordner)
+    ziel = APP_DIR / SET_BACKUP
+    ziel.mkdir(parents=True, exist_ok=True)
+    stempel = time.strftime("%Y%m%d-%H%M%S")
+    kurz = re.sub(r"[^\w.-]", "_", grund)[:24]
+    name = "eve-settings-%s%s.zip" % (stempel, ("-" + kurz) if kurz else "")
+    p = ziel / name
+    with zipfile.ZipFile(p, "w", zipfile.ZIP_DEFLATED) as z:
+        # ALLE Dateien, nicht nur die .dat: daneben liegen prefs.ini mit den
+        # Grafikeinstellungen und core_public__.yaml. Wer nach einem Absturz
+        # alles zurueckhaben will, meint auch die.
+        for f in sorted(q.iterdir()):
+            if f.is_file():
+                z.write(f, f.name)
+        # Woher es kam, mit hineinschreiben. Sonst weiss man beim
+        # Zurueckspielen nicht mehr, zu welchem Profil es gehoert.
+        z.writestr("_herkunft.txt", str(q) + "\n" + time.strftime("%Y-%m-%d %H:%M:%S"))
+    return {"datei": name, "kb": round(p.stat().st_size / 1024, 1),
+            "dateien": sum(1 for f in q.iterdir() if f.is_file())}
+
+
 def query_uhr_liste(n=20):
     with DB_LOCK:
         rows = DB.execute(
@@ -8400,6 +8539,93 @@ class Handler(BaseHTTPRequestHandler):
             return
         elif action == "loot":
             self._send(json.dumps(calc_loot(body.get("text") or "")))
+            return
+        elif action == "settings":
+            # Alles rund um die EVE-Einstellungen unter einer Aktion. ALPHA.
+            was = str(body.get("was") or "")
+            ordner = str(body.get("ordner") or "")
+            # Sicherheitsgurt: nur Ordner, die eve_settings_dirs selbst
+            # gefunden hat. Sonst koennte ein Aufruf beliebige Pfade
+            # ueberschreiben, und das hier schreibt echte Dateien.
+            erlaubt = {str(p): p for p in eve_settings_dirs()}
+            if was == "liste":
+                self._send(json.dumps({
+                    "ok": True,
+                    "ordner": [{"pfad": str(p), "name": p.name,
+                                "eltern": p.parent.name,
+                                "dateien": set_dateien(p)} for p in erlaubt.values()],
+                    "sicherungen": set_sicherungen(),
+                    "eve_laeuft": eve_laeuft()}))
+                return
+            if ordner not in erlaubt:
+                self._send(json.dumps({"ok": False,
+                                       "msg": "Unbekannter Einstellungsordner."}))
+                return
+            q = erlaubt[ordner]
+            if was == "sichern":
+                try:
+                    self._send(json.dumps({"ok": True, "gesichert": set_sichern(q)}))
+                except Exception as e:
+                    log_error("CN-SET-01", "settings/sichern", e)
+                    self._send(json.dumps({"ok": False, "msg": str(e)}))
+                return
+            # Ab hier wird geschrieben. Laeuft EVE, wuerde der Client beim
+            # Beenden alles ueberschreiben: dann lieber gar nicht erst.
+            if eve_laeuft():
+                self._send(json.dumps({"ok": False, "msg":
+                    "EVE laeuft gerade. Der Client schreibt seine Einstellungen "
+                    "beim Beenden und wuerde alles ueberschreiben. Bitte erst "
+                    "EVE schliessen."}))
+                return
+            if was == "kopieren":
+                quelle = str(body.get("quelle") or "")
+                ziele = [str(z) for z in (body.get("ziele") or [])]
+                if not quelle or not ziele:
+                    self._send(json.dumps({"ok": False, "msg": "Quelle oder Ziel fehlt."}))
+                    return
+                da = {d["datei"] for d in set_dateien(q)}
+                if quelle not in da or any(z not in da for z in ziele):
+                    self._send(json.dumps({"ok": False, "msg": "Datei nicht in diesem Ordner."}))
+                    return
+                if quelle in ziele:
+                    self._send(json.dumps({"ok": False, "msg": "Quelle ist auch Ziel."}))
+                    return
+                try:
+                    vorher = set_sichern(q, "vor-kopieren")
+                    roh = (q / quelle).read_bytes()
+                    for z in ziele:
+                        (q / (z + ".neu")).write_bytes(roh)
+                        os.replace(q / (z + ".neu"), q / z)
+                    self._send(json.dumps({"ok": True, "kopiert": len(ziele),
+                                           "gesichert": vorher}))
+                except Exception as e:
+                    log_error("CN-SET-02", "settings/kopieren", e)
+                    self._send(json.dumps({"ok": False, "msg": str(e)}))
+                return
+            if was == "zurueck":
+                import zipfile
+                name = os.path.basename(str(body.get("sicherung") or ""))
+                p = APP_DIR / SET_BACKUP / name
+                if not name.endswith(".zip") or not p.is_file():
+                    self._send(json.dumps({"ok": False, "msg": "Sicherung nicht gefunden."}))
+                    return
+                try:
+                    vorher = set_sichern(q, "vor-zurueck")
+                    with zipfile.ZipFile(p) as z:
+                        for eintrag in z.namelist():
+                            # Ohne Pfadanteil, und die eigene Herkunftsnotiz
+                            # gehoert nicht in den Einstellungsordner.
+                            if "/" in eintrag or "\\" in eintrag \
+                                    or eintrag == "_herkunft.txt":
+                                continue
+                            (q / (eintrag + ".neu")).write_bytes(z.read(eintrag))
+                            os.replace(q / (eintrag + ".neu"), q / eintrag)
+                    self._send(json.dumps({"ok": True, "gesichert": vorher}))
+                except Exception as e:
+                    log_error("CN-SET-02", "settings/zurueck", e)
+                    self._send(json.dumps({"ok": False, "msg": str(e)}))
+                return
+            self._send(json.dumps({"ok": False, "msg": "Unbekannter Befehl."}))
             return
         elif action == "uhr":
             # Eine Aktion mit Unterbefehl statt vier Endpunkten: die Stoppuhr
@@ -9525,6 +9751,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span class="pill" id="ovToggle" title="Always-on-top Mini-Overlay (Chrome, Edge, Firefox)">◱ Overlay</span>
  <span class="pill" id="obsBtn" title="Overlay fuer OBS einrichten: Aussehen waehlen, Adresse kopieren, in OBS als Browser-Quelle einfuegen. Mit Anleitung.">🎥 OBS Overlay</span>
  <span class="pill" id="uhrBtn" title="Stoppuhr fuer eine Aktivitaet: starten, pausieren, am Ende als Trip speichern. Zaehlt mit, wieviel in der Zeit gefoerdert wurde.">⏱ Stoppuhr</span>
+ <span class="pill" id="setBtn" title="EVE-Einstellungen sichern, wiederherstellen und das UI eines Charakters auf andere uebertragen. Alpha.">💾 EVE-Einstellungen</span>
  <span class="pill" id="fontsize" title="Schriftgröße (3 Stufen)">A</span>
  <span class="pill" id="theme" title="Dark/Light">◐</span>
  <span class="pill" id="gear">⚙ Optionen</span>
@@ -9677,6 +9904,17 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 <!-- Belt-Auswertung. Bewusst ein eigener Dialog im festen HTML und NICHT im
      Grid: die Live-Ansicht baut sich alle zwei Sekunden neu auf und wuerde ein
      Eingabefeld darin samt Inhalt wegwerfen. -->
+<dialog id="setDlg">
+ <h2>💾 EVE-Einstellungen <span class="alphabanner" style="font-size:11px">ALPHA</span></h2>
+ <p class="sub">EVE legt sein Fensterlayout je Charakter in einer Datei ab, dazu
+ die Konto- und Grafikeinstellungen. Canary kann den ganzen Ordner sichern,
+ zurueckspielen und das Layout eines Charakters auf andere uebertragen.
+ <b>EVE muss dabei geschlossen sein</b>, der Client schreibt seine Einstellungen
+ erst beim Beenden und wuerde sonst alles ueberschreiben.</p>
+ <div id="setInhalt"></div>
+ <div style="text-align:right;margin-top:10px"><button class="btn" id="setZu">Schließen</button></div>
+</dialog>
+
 <dialog id="uhrDlg">
  <h2>⏱ Stoppuhr</h2>
  <p class="sub">Fuer eine einzelne Aktivitaet: einen Belt, eine Runde Abyss, ein
@@ -11403,6 +11641,92 @@ async function uhrListeMalen(){
   await post({action:'uhr_weg',id:parseInt(e.dataset.id,10)}); uhrListeMalen();});
 }
 $('#uhrBtn').onclick=()=>{uhrMalen();uhrListeMalen();$('#uhrDlg').showModal();};
+
+/* EVE-Einstellungen. Jede schreibende Aktion sichert vorher automatisch, das
+   macht der Server. Hier wird nur gefragt und angezeigt. */
+let setDaten=null;
+function setZeit(t){return new Date(t*1000).toLocaleString().slice(0,16);}
+async function setLaden(){
+ const box=$('#setInhalt'); if(!box)return;
+ box.innerHTML='<div class="sub">wird gelesen …</div>';
+ let d; try{ d=await post({action:'settings',was:'liste'}); }catch(e){ d=null; }
+ if(!d||!d.ok||!d.ordner||!d.ordner.length){
+  box.innerHTML='<div class="sub">Kein EVE-Einstellungsordner gefunden. '
+   +'Canary sucht ihn unter AppData (Windows), Application Support (Mac) und '
+   +'im Wine-Präfix (Linux).</div>'; return;
+ }
+ setDaten=d;
+ const o=d.ordner[0];
+ const chars=o.dateien.filter(f=>f.art==='char');
+ const warn=d.eve_laeuft===true
+  ? '<div class="cardwarn" style="margin-bottom:10px">⚠ EVE läuft gerade. '
+    +'Sichern geht, Zurückspielen und Übertragen sind gesperrt: der Client '
+    +'würde beim Beenden alles überschreiben.</div>' : '';
+ box.innerHTML=warn
+  +`<div class="sect">Ordner</div>
+    <div class="sub" style="word-break:break-all">${esc(o.pfad)}</div>
+    <table><thead><tr><th>Datei</th><th>Charakter</th><th class="r">Größe</th><th class="r">Stand</th></tr></thead>`
+  +o.dateien.map(f=>`<tr><td>${esc(f.datei)}</td>
+     <td>${f.name?esc(f.name):'<span class="sub">'+(f.art==='user'?'Konto':'unbekannt')+'</span>'}</td>
+     <td class="r">${f.kb} KB</td><td class="r">${setZeit(f.stand)}</td></tr>`).join('')
+  +`</table>
+    <div class="btnrow" style="margin-top:10px"><button class="btn" id="setSichern">💾 Jetzt sichern</button>
+     <span class="sub" id="setStat"></span></div>
+
+    <div class="sect" style="margin-top:16px">UI von einem Charakter übertragen</div>
+    <div class="sub">Das Fensterlayout der Quelle wird auf die angekreuzten Charaktere kopiert. Vorher wird automatisch gesichert.</div>`
+  +(chars.length<2
+    ? '<div class="sub">Dafür braucht es mindestens zwei Charaktere im Ordner.</div>'
+    : `<div class="btnrow" style="align-items:center;gap:8px;margin-top:6px">
+        <span class="sub">von</span>
+        <select id="setQuelle">${chars.map(f=>`<option value="${esc(f.datei)}">${esc(f.name||f.id)}</option>`).join('')}</select>
+       </div>
+       <div style="margin-top:6px">${chars.map(f=>`<label style="display:inline-flex;align-items:center;gap:6px;margin-right:14px">
+         <input type="checkbox" class="setZiel" value="${esc(f.datei)}"> ${esc(f.name||f.id)}</label>`).join('')}</div>
+       <div class="btnrow" style="margin-top:6px"><button class="btn" id="setKopieren">→ Übertragen</button></div>`)
+
+    +`<div class="sect" style="margin-top:16px">Sicherungen</div>`
+  +(d.sicherungen.length
+    ? '<table><thead><tr><th>Wann</th><th class="r">Größe</th><th></th></tr></thead>'
+      +d.sicherungen.map(b=>`<tr><td>${setZeit(b.stand)}</td><td class="r">${b.kb} KB</td>
+        <td class="r"><button class="btn setZurueck" data-f="${esc(b.datei)}">zurückspielen</button></td></tr>`).join('')
+      +'</table>'
+    : '<div class="sub">Noch keine Sicherung vorhanden.</div>');
+
+ const stat=(t)=>{const e=$('#setStat'); if(e)e.textContent=t;};
+ $('#setSichern').onclick=async()=>{
+  stat('sichert …');
+  const r=await post({action:'settings',was:'sichern',ordner:o.pfad});
+  stat(r.ok?('gesichert: '+r.gesichert.dateien+' Dateien'):('ging nicht: '+(r.msg||'')));
+  if(r.ok)setLaden();
+ };
+ const kop=$('#setKopieren');
+ if(kop)kop.onclick=async()=>{
+  const quelle=$('#setQuelle').value;
+  const ziele=[...document.querySelectorAll('.setZiel:checked')].map(e=>e.value)
+    .filter(z=>z!==quelle);
+  if(!ziele.length){stat('kein Ziel angekreuzt');return;}
+  const namen=chars.filter(c=>ziele.includes(c.datei)).map(c=>c.name||c.id);
+  if(!confirm('Das Layout wird auf '+namen.join(', ')+' übertragen. '
+    +'Die bisherigen Einstellungen dieser Charaktere werden ersetzt. '
+    +'Vorher wird automatisch gesichert. Fortfahren?'))return;
+  stat('überträgt …');
+  const r=await post({action:'settings',was:'kopieren',ordner:o.pfad,quelle,ziele});
+  stat(r.ok?('übertragen auf '+r.kopiert+' Charakter(e)'):('ging nicht: '+(r.msg||'')));
+  setLaden();
+ };
+ document.querySelectorAll('.setZurueck').forEach(b=>b.onclick=async()=>{
+  if(!confirm('Diese Sicherung zurückspielen? Der aktuelle Stand wird vorher '
+    +'gesichert, geht also nicht verloren.'))return;
+  stat('spielt zurück …');
+  const r=await post({action:'settings',was:'zurueck',ordner:o.pfad,
+                      sicherung:b.dataset.f});
+  stat(r.ok?'zurückgespielt':('ging nicht: '+(r.msg||'')));
+  setLaden();
+ });
+}
+$('#setBtn').onclick=()=>{setLaden();$('#setDlg').showModal();};
+$('#setZu').onclick=()=>$('#setDlg').close();
 $('#uhrZu').onclick=()=>$('#uhrDlg').close();
 $('#obsTab').onclick=()=>window.open('/obs','_blank','noopener');
 // Beim Schliessen entladen, damit die Abfrage im Hintergrund wirklich aufhoert.

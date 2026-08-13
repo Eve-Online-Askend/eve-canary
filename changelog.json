@@ -1,5 +1,21 @@
 [
  {
+  "v": "1.93.0",
+  "d": "2026-08-13",
+  "de": [
+   "Neu und ausdruecklich ALPHA: EVE-Einstellungen sichern, zurueckspielen und das Fensterlayout eines Charakters auf andere uebertragen. Der Knopf steht oben. Angeregt von Dune2Man, dem ein Absturz zweimal an einem Abend alles zurueckgesetzt hat.",
+   "Gesichert wird der ganze Ordner als ZIP, also auch prefs.ini mit den Grafikeinstellungen. Vor jedem Ueberschreiben legt Canary von sich aus eine Sicherung an, man kann also nichts endgueltig verlieren.",
+   "Beim Uebertragen zeigt Canary echte Charakternamen statt Dateinamen wie core_char_1334908780.dat. Die Zuordnung kommt aus den Logs, die Canary ohnehin liest.",
+   "Laeuft EVE gerade, sind Zurueckspielen und Uebertragen gesperrt. Der Client schreibt seine Einstellungen erst beim Beenden und wuerde alles wieder ueberschreiben. Sichern geht auch bei laufendem Spiel."
+  ],
+  "en": [
+   "New and explicitly ALPHA: back up EVE settings, restore them, and copy one character's window layout onto others. The button sits at the top. Prompted by Dune2Man, whose settings were wiped twice in one evening by a crash.",
+   "The whole folder is zipped, including prefs.ini with the graphics settings. Canary takes a backup of its own before every overwrite, so nothing can be lost for good.",
+   "When copying, Canary shows real character names instead of file names like core_char_1334908780.dat. The mapping comes from the logs it reads anyway.",
+   "While EVE is running, restoring and copying are blocked. The client only writes its settings on exit and would overwrite everything again. Backing up works with the game running."
+  ]
+ },
+ {
   "v": "1.92.1",
   "d": "2026-08-12",
   "de": [
