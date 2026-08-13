@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.2.3",
+  "d": "2026-08-13",
+  "de": [
+   "Ein Abyss-Durchgang zeigt jetzt die Zeit IM Abyss, nicht die Laenge des ganzen Kampfblocks. Bisher zaehlte der Anflug mit: gemeldet wurden 10 Minuten, waehrend die Uebergaenge im Local 5:05 sagen, und das deckte sich mit dem Countdown im Spiel.",
+   "Der Eintritt wurde beim Verlassen des Abyss verworfen, bevor der Durchgang abgeschlossen war. Er wird jetzt mitgefuehrt und als Beginn gesetzt. Ausserdem kommt der Ausstieg jetzt aus dem Zeitstempel der Chatzeile statt aus der Uhr, das war beim Nachlesen aelterer Logs minutenweit daneben. Im Abyss laeuft eine harte 20-Minuten-Grenze, da muss die Zahl stimmen. Gemeldet von Nirahse."
+  ],
+  "en": [
+   "An abyssal run now shows the time INSIDE the abyss, not the length of the whole combat block. The approach used to count towards it: 10 minutes were reported while the local transitions say 5:05, which matched the in game countdown.",
+   "The entry was discarded when leaving the abyss, before the run was closed. It is now carried along and used as the start. The exit also comes from the timestamp of the chat line instead of the clock, which was minutes off when reading back older logs. The abyss runs against a hard 20 minute limit, so the number has to be right. Reported by Nirahse."
+  ]
+ },
+ {
   "v": "2.2.2",
   "d": "2026-08-13",
   "de": [

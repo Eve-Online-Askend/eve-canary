@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.2.2"
+VERSION = "2.2.3"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -3235,13 +3235,21 @@ class Ingest(threading.Thread):
         # ins normale All, deshalb gaebe es sonst nie einen Abschluss.
         with chatwatch.lock:
             abyss_fertig, chatwatch.abyss_ende = chatwatch.abyss_ende, []
-        for a_cid, a_ts in abyss_fertig:
+        for a_cid, a_ts, a_ein in abyss_fertig:
             with self.lock:
                 a_sess = self.sessions.get(a_cid)
             if not a_sess:
                 continue
             a_md = a_sess.mission_dict(a_ts)
             if a_md:
+                # Der Durchgang beginnt mit dem EINTRITT in den Abyss, nicht
+                # mit der ersten Logzeile seit dem Abdocken. Sonst zaehlt der
+                # Anflug mit: gemeldet wurden 10 Minuten, obwohl die
+                # Local-Uebergaenge 5:05 sagen. Im Abyss selbst laeuft eine
+                # harte 20-Minuten-Grenze, die Zahl muss also stimmen.
+                # Nur nach vorn korrigieren, nie nach hinten.
+                if a_ein and a_ein > a_md["start_ts"]:
+                    a_md["start_ts"] = a_ein
                 a_md["dialog"] = " ".join(chatwatch.dialogue(
                     a_cid, a_md["start_ts"], a_ts))[:2000] or None
                 save_mission(a_md)
@@ -3612,9 +3620,24 @@ class ChatWatch(threading.Thread):
             # seine eigene Sperre und greift dabei auf die Chat-Daten zu. Wuerde
             # dieser Thread umgekehrt nach der Log-Sperre greifen, koennten sich
             # beide gegenseitig blockieren, ausgerechnet im Moment der Rueckkehr.
-            if self.abyss_seit.pop(cid, None) is not None:
+            eintritt = self.abyss_seit.pop(cid, None)
+            if eintritt is not None:
+                # Ausstieg aus DEM ZEITSTEMPEL der Chatzeile nehmen, nicht aus
+                # der Uhr: beim Nachlesen aelterer Zeilen laege die Uhr sonst
+                # Minuten daneben. Und den Eintritt mitgeben, sonst ist er hier
+                # weg und der Durchgang bekommt die Laenge des ganzen
+                # Kampfblocks statt der Zeit im Abyss. Gemeldet von Nirahse:
+                # Canary zeigte 10 Minuten, die Local-Uebergaenge sagen 5:05.
+                m = CHAT_TS_RE.match(line or "")
+                raus = time.time()
+                if m:
+                    try:
+                        raus = datetime(*(int(x) for x in m.groups()),
+                                        tzinfo=timezone.utc).timestamp()
+                    except (ValueError, OverflowError):
+                        pass
                 with self.lock:
-                    self.abyss_ende.append((cid, time.time()))
+                    self.abyss_ende.append((cid, raus, eintritt))
             return
         self.systems[cid] = ABYSS_ORT
         if cid not in self.abyss_seit:
