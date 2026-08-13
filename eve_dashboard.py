@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.2.0"
+VERSION = "2.2.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -13478,7 +13478,7 @@ function renderMissions(d){
      <div class="btnrow" style="margin-top:4px"><button class="btn mnamego" data-mid="${esc(x.mid)}">Merken</button>
       <button class="btn geist mnameteil" data-mid="${esc(x.mid)}" title="Legt Name und Gegnerliste als fertigen Text in die Zwischenablage. Canary lädt nichts von selbst hoch, du fügst den Block bewusst in eine Meldung ein.">Für alle beitragen</button>
       <span class="mnamestat sub" data-mid="${esc(x.mid)}"></span></div>
-     <div class="sub" style="margin-top:4px">Canary merkt sich die ${x.enemies.length} Gegnertypen dieses Laufs als Vorlage. Ein späterer Lauf mit ähnlicher Zusammenstellung bekommt den Namen dann von allein, mit der Ähnlichkeit als Prozentzahl. Mit "Für alle beitragen" wandert die Vorlage in die Zwischenablage, damit sie im nächsten Update bei allen ankommt.</div>
+     <div class="sub" style="margin-top:4px">Wenn du fertig bist, drück <b>Merken</b>. Canary behält dann die ${x.enemies.length} Gegnertypen dieses Laufs und erkennt spätere Läufe mit ähnlicher Zusammenstellung von allein.</div>
     </div>
     <div class="mlootedit" data-mid="${esc(x.mid)}" hidden>
      <textarea class="mlootin" data-mid="${esc(x.mid)}" rows="2" style="width:100%;margin-top:4px" placeholder="Frachtraum-Loot dieser Mission hier einfügen (im Spiel Strg+A, Strg+C)">${esc(x.loot_text)}</textarea>

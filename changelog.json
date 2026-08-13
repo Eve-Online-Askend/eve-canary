@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.2.1",
+  "d": "2026-08-13",
+  "de": [
+   "Der Erklaertext beim Benennen einer Mission war zu lang und sagte nicht, was man eigentlich tun soll. Jetzt steht dort zuerst der naechste Schritt: wenn du fertig bist, druecke Merken. Vorschlag von Nirahse, woertlich uebernommen."
+  ],
+  "en": [
+   "The explanatory text when naming a mission was too long and never said what to actually do. It now leads with the next step: when you are done, press Merken. Suggested by Nirahse, taken over word for word."
+  ]
+ },
+ {
   "v": "2.2.0",
   "d": "2026-08-13",
   "de": [
