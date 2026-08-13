@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.2.3"
+VERSION = "2.3.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -7669,6 +7669,96 @@ def calc_loot(text):
     return {"ok": True, "items": rows, "hubs": hubs, "unknown": unknown}
 
 
+# Eine reine Zahl, nichts sonst: so sieht die Mengenspalte einer
+# Frachtraum-Kopie aus. Trennzeichen sind erlaubt, ein Buchstabe nicht.
+NUR_ZAHL_RE = re.compile(r"^\d[\d.,\xa0 '’]*$")
+# Nur fuer Zeilen OHNE Tabulator: Menge am Zeilenende abschneiden. Kommt vor,
+# wenn der Text unterwegs durch ein Feld ging, das Tabulatoren frisst.
+ENDZAHL_RE = re.compile(r"\s(\d[\d.,\xa0 '’]*)$")
+
+
+def parse_inventar_text(text):
+    """Eine Frachtraum-Kopie in {Name: Menge} uebersetzen.
+
+    Anders als parse_calc_text braucht das hier KEINE Item-Erkennung. Fuer eine
+    Differenz genuegt der Text mit sich selbst verglichen, deshalb funktioniert
+    es in jeder Client-Sprache und auch mit Items, die Canary nicht kennt.
+    Ueberschriften wie "Munition und Ladungen" stoeren nicht: sie stehen in
+    beiden Kopien und kuerzen sich beim Abziehen von selbst weg.
+
+    Die Menge wird POSITIONSTREU aus der zweiten Spalte gelesen, nicht als
+    "erste Zahl in der Zeile". Grund: bei einem einzelnen Modul laesst EVE die
+    Mengenspalte leer, und die naechste Zahl in der Zeile waere dann das
+    Meta-Level. Eine Zeile "Small Shield Booster II<TAB><TAB>Schildverstaerker
+    <TAB>Modul<TAB>Mid<TAB>5<TAB>2" haette so 5 Stueck ergeben statt einem.
+    Steht in Spalte zwei keine reine Zahl, gilt die erste reine Zahl weiter
+    hinten, und wenn es auch die nicht gibt, ist es ein Stueck."""
+    out = {}
+    for raw in (text or "").splitlines():
+        line = raw.rstrip()
+        if not line.strip():
+            continue
+        if "\t" in line:
+            cols = [c.strip() for c in line.split("\t")]
+        else:
+            # Ohne Tabulatoren: an zwei und mehr Leerzeichen trennen, ein
+            # einzelnes bleibt drin (Item-Namen haben Leerzeichen).
+            cols = [c.strip() for c in SPALTEN_RE.split(line.strip())]
+        name = cols[0]
+        if not name:
+            continue
+        menge = 0
+        if len(cols) > 1:
+            if NUR_ZAHL_RE.match(cols[1]):
+                menge = num(cols[1])
+            elif not cols[1]:
+                # Leere Mengenspalte heisst EIN Stueck. Hier darf nicht weiter
+                # hinten gesucht werden, sonst wird das Meta-Level zur Menge.
+                menge = 1
+            else:
+                # Spalte zwei ist Text: dann hat der Nutzer die Mengenspalte
+                # ausgeblendet oder verschoben, also die erste reine Zahl nehmen.
+                for part in cols[1:]:
+                    if NUR_ZAHL_RE.match(part):
+                        menge = num(part)
+                        break
+        if not menge and len(cols) == 1:
+            m = ENDZAHL_RE.search(name)
+            if m:
+                name, menge = name[:m.start()].strip(), num(m.group(1))
+        if not name:
+            continue
+        out[name] = out.get(name, 0) + (menge or 1)
+    return out
+
+
+def cargo_diff(vorher, nachher):
+    """Zwei Frachtraum-Kopien vergleichen: was ist dazugekommen, was ist weg.
+
+    Rein oertliche Rechnerei, kein Netz. Der Text unter "plus_text" ist so
+    gebaut, dass calc_loot ihn wieder lesen kann (Name, Tabulator, Menge),
+    damit er direkt in das Loot-Feld einer Mission passt."""
+    a, b = parse_inventar_text(vorher), parse_inventar_text(nachher)
+    plus, minus = [], []
+    for name in set(a) | set(b):
+        vor, nach = a.get(name, 0), b.get(name, 0)
+        d = nach - vor
+        if d:
+            zeile = {"name": name, "vor": vor, "nach": nach, "qty": abs(d)}
+            (plus if d > 0 else minus).append(zeile)
+
+    def zahl(x):
+        return str(int(x)) if float(x).is_integer() else str(x)
+
+    for liste in (plus, minus):
+        liste.sort(key=lambda r: (-r["qty"], r["name"].lower()))
+    return {"ok": True, "plus": plus, "minus": minus,
+            "gleich": len(set(a) & set(b)) - len([r for r in plus + minus
+                                                  if r["vor"] and r["nach"]]),
+            "plus_text": "\n".join(r["name"] + "\t" + zahl(r["qty"]) for r in plus),
+            "minus_text": "\n".join(r["name"] + "\t" + zahl(r["qty"]) for r in minus)}
+
+
 def market_item(name):
     """Einzelnes Item per exaktem Namen suchen und Preise ueber alle Handelshubs
     zeigen. Namen loest ESI (/universe/ids/, gross-/kleinschreibungs-egal) auf,
@@ -9114,8 +9204,9 @@ class Handler(BaseHTTPRequestHandler):
                 data["timeline"] = query_timelines()
             elif view == "profil":
                 data["profiles"] = query_profiles()
-            elif view == "rechner":
-                pass  # der Rechner holt seine Daten per calc-POST
+            elif view in ("rechner", "beute"):
+                pass  # beide holen ihre Daten per POST, sonst liefe hier
+                      # unnoetig die grosse Gesamt-Abfrage mit
             else:
                 data["total"] = query_total()
             self._send(json.dumps(data))
@@ -9532,6 +9623,17 @@ class Handler(BaseHTTPRequestHandler):
                            (isk, text, mid))
                 DB.commit()
             self._send(json.dumps({"ok": True, "isk": isk, "unknown": res.get("unknown", [])}))
+            return
+        elif action == "cargo_diff":
+            # Zwei Frachtraum-Kopien vergleichen. Kein Netz, kein Speichern:
+            # der eingefuegte Text bleibt in dieser einen Antwort.
+            self._send(json.dumps(cargo_diff(body.get("vorher") or "",
+                                             body.get("nachher") or "")))
+            return
+        elif action == "loot_calc":
+            # Beliebige Frachtraum-Kopie bewerten, ohne sie an eine Mission zu
+            # haengen. Gleiche Rechnung wie beim Loot-Feld der Missionen.
+            self._send(json.dumps(calc_loot(body.get("text") or "")))
             return
         elif action == "mission_label":
             # Einen Lauf selbst benennen. Das ist gleichzeitig die Vorlage, an
@@ -10643,6 +10745,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="planeten">🪐 Planeten</span>
  <span data-v="vault">💎 Erz-Schatzkammer</span>
  <span data-v="wallet">🧾 Wallet Buddy</span>
+ <span data-v="beute">📦 Beute</span>
  <span data-v="rechner">💰 ISKray</span>
 </nav>
 <div id="viewinfo"></div>
@@ -10851,7 +10954,10 @@ const fmtP=n=>n>=1e6?fmtM(n):n>=1000?fmt(n):(n||0).toLocaleString(undefined,{max
 // fremdbestimmt und dürfen nie ungefiltert in innerHTML landen (XSS).
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function lsGet(key,fallback){try{const v=localStorage.getItem(key);return v==null?fallback:JSON.parse(v);}catch(e){return fallback;}}
-const VIEWS=['live','month','total','analyse','intel','missionen','timeline','profil','planeten','vault','rechner'];
+// Muss ALLE Bereiche aus dem nav enthalten, sonst landet ein direkt
+// aufgerufener Pfad oder die Zurueck-Taste stumm auf "live". Genau das ist
+// dem Wallet-Tab passiert, er fehlte hier seit seiner Einfuehrung.
+const VIEWS=['live','month','total','analyse','intel','missionen','timeline','profil','planeten','vault','wallet','beute','rechner'];
 let view=location.pathname.replace(/^\\//,'')||'live', state=null, lastAlertId=Number(localStorage.getItem('lastAlertId')||0);
 if(!VIEWS.includes(view))view='live';
 window.addEventListener('popstate',()=>{
@@ -10924,7 +11030,9 @@ const VIEW_INFO={
  vault:{d:'Dein Erz in den Stationen, und der Rat, was sich mehr lohnt: roh verkaufen, komprimiert verkaufen oder einschmelzen.',
   q:'Daten: EVE-Login für den Bestand, Marktpreise von Fuzzwork. Der Einschmelz-Wert ist vorsichtig gerechnet, dein echter Erlös liegt eher darüber.'},
  rechner:{d:'Ein Preisrechner. Frachtraum im Spiel markieren, kopieren, hier einfügen, und du siehst sofort, was es an welchem Handelsplatz wert ist.',
-  q:'Daten: Marktpreise von Fuzzwork für die großen Handelsplätze. Der Text, den du einfügst, bleibt auf deinem Rechner.'}};
+  q:'Daten: Marktpreise von Fuzzwork für die großen Handelsplätze. Der Text, den du einfügst, bleibt auf deinem Rechner.'},
+ beute:{d:'Zeigt dir, was ein Lauf eingebracht hat. Du fügst deinen Frachtraum zweimal ein, einmal vor und einmal nach der Mission oder dem Abyss, und Canary rechnet aus, was dazugekommen und was verbraucht worden ist. Das Ergebnis lässt sich mit einem Klick kopieren und passt in das Loot-Feld einer Mission.',
+  q:'Daten: nur der Text, den du selbst einfügst, verglichen auf diesem Rechner. Erst wenn du auf Wert berechnen klickst, werden Marktpreise geholt, dabei gehen nur die Item-Namen raus.'}};
 function renderViewInfo(){
  const box=$('#viewinfo');if(!box)return;
  const inf=VIEW_INFO[view],offen=lsGet('viewinfo',true),schl=view+'|'+offen;
@@ -13896,6 +14004,109 @@ async function doCalc(){
   r.items.map(i=>`<tr><td>${esc(i.name)}</td><td class="r">${fmt(i.qty)}</td><td class="r">${fmt(i.m3)}</td><td class="r isk">${fmtM(i.isk)}</td></tr>`).join('')+'</table>'+
   (r.unknown&&r.unknown.length?`<div class="sub" style="margin-top:8px">Nicht erkannt: ${esc(r.unknown.join(' · '))}</div>`:'');
 }
+// Eigener Bereich, weil zwischen "vorher" und "nachher" ein ganzer Lauf liegt:
+// hier soll niemand erst an einem Preisrechner vorbeiscrollen muessen.
+function renderBeute(){
+ if(document.getElementById('diffBox'))return;   // schon gebaut, Eingaben stehen lassen
+ $('#grid').innerHTML=`<div class="card" id="diffBox" style="grid-column:1/-1">
+  <b>📦 Was hat der Lauf gebracht?</b>
+  <div style="font-size:12px;color:var(--dim);margin:6px 0">EVE schreibt beim Plündern nichts mit, deshalb der Umweg über den Frachtraum. Vor dem Lauf im Spiel den Frachtraum öffnen, alles markieren (Strg+A), kopieren (Strg+C) und links einfügen. Nach der Mission oder dem Abyss dasselbe rechts. Canary zieht beides voneinander ab, und unten steht nur noch, was dazugekommen ist, fertig zum Kopieren für das Loot-Feld einer Mission.
+  Beide Felder bleiben gespeichert, du kannst also in der Zwischenzeit den Bereich wechseln, die Seite neu laden oder Canary neu starten.</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px">
+   <div><div style="font-size:12px;margin-bottom:3px">Vorher</div>
+    <textarea id="diffA" rows="10" style="width:100%" placeholder="Frachtraum vor der Aktion"></textarea></div>
+   <div><div style="font-size:12px;margin-bottom:3px">Nachher</div>
+    <textarea id="diffB" rows="10" style="width:100%" placeholder="Frachtraum nach der Aktion"></textarea></div></div>
+  <div class="btnrow" style="margin:8px 0"><button class="btn" id="diffGo">Differenz bilden</button>
+   <button class="btn" id="diffClr">Felder leeren</button>
+   <span id="diffStat" style="font-size:12px;color:var(--dim)"></span></div>
+  <div id="diffOut" style="overflow-x:auto"></div></div>`;
+ $('#diffGo').onclick=doDiff;
+ $('#diffClr').onclick=()=>{
+  ['diffA','diffB'].forEach(id=>{$('#'+id).value='';localStorage.removeItem(id);});
+  $('#diffOut').innerHTML='';$('#diffStat').textContent='';
+ };
+ // Sofort mitschreiben: der Sinn des Werkzeugs ist, dass zwischen "vorher" und
+ // "nachher" eine ganze Mission liegt. Ohne Speichern waere die erste Kopie
+ // beim naechsten Bereichswechsel weg, denn #grid wird dabei neu gebaut.
+ ['diffA','diffB'].forEach(id=>{
+  const el=$('#'+id), alt=localStorage.getItem(id);
+  if(alt)el.value=alt;
+  el.oninput=()=>localStorage.setItem(id,el.value);
+ });
+}
+// Frachtraum vorher gegen nachher. Der Vergleich laeuft im Server, damit
+// derselbe Parser zaehlt, der spaeter auch das Loot-Feld liest.
+async function doDiff(){
+ const vorher=$('#diffA').value,nachher=$('#diffB').value;
+ if(!vorher.trim()||!nachher.trim()){
+  $('#diffStat').textContent='Bitte in beide Felder eine Frachtraum-Kopie einfügen.';return;}
+ $('#diffStat').textContent='Vergleiche …';$('#diffOut').innerHTML='';
+ let r;try{r=await post({action:'cargo_diff',vorher,nachher});}catch(e){r=null;}
+ if(!$('#diffOut'))return;      // Bereich waehrend der Abfrage gewechselt
+ if(!r||!r.ok){$('#diffStat').textContent='Vergleich fehlgeschlagen.';return;}
+ $('#diffStat').textContent='';
+ if(!r.plus.length&&!r.minus.length){
+  $('#diffOut').innerHTML='<div class="sub">Kein Unterschied gefunden. Beide Kopien enthalten dasselbe.</div>';
+  if(lang!=='de')tr(document.body);
+  return;}
+ const zeilen=(liste,farbe,zeichen)=>liste.map(i=>
+  '<tr><td>'+esc(i.name)+'</td><td class="r">'+fmt(i.vor)+'</td><td class="r">'+fmt(i.nach)
+  +'</td><td class="r" style="color:'+farbe+'">'+zeichen+fmt(i.qty)+'</td></tr>').join('');
+ let h='';
+ if(r.plus.length){
+  h+='<div style="margin-top:4px"><b>Dazugekommen</b></div>'
+   +'<textarea id="diffOutTxt" rows="'+Math.min(12,Math.max(3,r.plus.length))
+   +'" style="width:100%;margin-top:4px"></textarea>'
+   +'<div class="btnrow" style="margin:6px 0"><button class="btn" id="diffCopy">Kopieren</button>'
+   +'<button class="btn" id="diffWert">Wert berechnen</button>'
+   +'<span id="diffWertStat" style="font-size:12px;color:var(--dim)"></span></div>'
+   +'<table><tr><th>Item</th><th class="r">Vorher</th><th class="r">Nachher</th><th class="r">Dazu</th></tr>'
+   +zeilen(r.plus,'var(--gold)','+')+'</table>';
+ }
+ if(r.minus.length){
+  h+='<div style="margin-top:12px"><b>Weniger geworden</b> <span class="sub">'
+   +'verbraucht oder abgeladen, zum Beispiel Munition, Drohnen oder Filamente</span></div>'
+   +'<table><tr><th>Item</th><th class="r">Vorher</th><th class="r">Nachher</th><th class="r">Weg</th></tr>'
+   +zeilen(r.minus,'var(--red)','-')+'</table>';
+ }
+ if(r.gleich>0)h+='<div class="sub" style="margin-top:8px">'+r.gleich
+  +(lang==='en'?(r.gleich===1?' kind stayed the same.':' kinds stayed the same.')
+              :(r.gleich===1?' Sorte ist unverändert geblieben.':' Sorten sind unverändert geblieben.'))+'</div>';
+ $('#diffOut').innerHTML=h;
+ // Den Text ueber .value setzen und nicht in das HTML schreiben: sonst muesste
+ // jeder Item-Name maskiert werden, und ein Tabulator im Markup ist heikel.
+ const ta=$('#diffOutTxt');
+ if(ta)ta.value=r.plus_text||'';
+ const cp=$('#diffCopy');
+ if(cp)cp.onclick=async()=>{
+  try{await navigator.clipboard.writeText($('#diffOutTxt').value);
+      $('#diffStat').textContent='✓ kopiert';}
+  catch(e){$('#diffOutTxt').select();
+           $('#diffStat').textContent='Kopieren ging nicht, Text ist markiert: Strg+C drücken.';}
+ };
+ const wb=$('#diffWert');
+ if(wb)wb.onclick=async()=>{
+  const st=$('#diffWertStat');
+  st.textContent='Hole Preise von allen Handelsplätzen …';
+  let x;try{x=await post({action:'loot_calc',text:$('#diffOutTxt').value});}catch(e){x=null;}
+  if(!$('#diffWertStat'))return;
+  if(!x||!x.ok){$('#diffWertStat').textContent='Preisabfrage fehlgeschlagen.';return;}
+  const hubs=Object.values(x.hubs||{}).filter(h2=>!h2.error);
+  if(!hubs.length){$('#diffWertStat').textContent='Keine Preisdaten erhalten.';return;}
+  const best=Math.max(...hubs.map(h2=>h2.buy)),wo=hubs.find(h2=>h2.buy===best),en=lang==='en';
+  // Hier steht ein Name mitten im Satz, deshalb beide Sprachen direkt im Code
+  // und nicht ueber die Wortliste: ein Textknoten mit Variable passt auf keinen
+  // festen Schluessel.
+  $('#diffWertStat').innerHTML=(en?'Instant sale: ':'Sofortverkauf: ')
+   +'<b class="isk">'+fmtM(best)+'</b> '
+   +'<span class="sub">'+(en?'best hub: ':'bester Handelsplatz: ')+esc(wo?wo.name:'')+'</span>'
+   +(x.unknown&&x.unknown.length
+     ?'<span class="sub"> · '+(en?'not recognised: ':'nicht erkannt: ')
+      +esc(x.unknown.slice(0,6).join(', '))+'</span>':'');
+ };
+ if(lang!=='de')tr(document.body);
+}
 // Ohne gültigen Log-Ordner zuerst einrichten, statt ein leeres Dashboard zu zeigen.
 // Betrifft vor allem Linux: dort liegen die Logs im Wine-Präfix.
 function renderSetup(){
@@ -14078,6 +14289,22 @@ const EN = {
 'Sofortverkauf · mit Sell-Order':'Instant sale · with sell order',
 'Hole Preise von allen Handelsplätzen …':'Fetching prices from all trade hubs …',
 'Preisabfrage fehlgeschlagen.':'Price lookup failed.',
+// Beute
+'📦 Beute':'📦 Loot','📦 Was hat der Lauf gebracht?':'📦 What did the run bring in?',
+'EVE schreibt beim Plündern nichts mit, deshalb der Umweg über den Frachtraum. Vor dem Lauf im Spiel den Frachtraum öffnen, alles markieren (Strg+A), kopieren (Strg+C) und links einfügen. Nach der Mission oder dem Abyss dasselbe rechts. Canary zieht beides voneinander ab, und unten steht nur noch, was dazugekommen ist, fertig zum Kopieren für das Loot-Feld einer Mission. Beide Felder bleiben gespeichert, du kannst also in der Zwischenzeit den Bereich wechseln, die Seite neu laden oder Canary neu starten.':
+ 'EVE records nothing when you loot, hence the detour through the cargo hold. Before the run, open your cargo hold in game, select everything (Ctrl+A), copy it (Ctrl+C) and paste it on the left. After the mission or the abyss do the same on the right. Canary subtracts one from the other, and below you get only what was added, ready to copy into the loot field of a mission. Both boxes are saved, so you can switch views, reload the page or restart Canary in between.',
+'Vorher':'Before','Nachher':'After','Dazu':'Added','Weg':'Gone',
+'Frachtraum vor der Aktion':'Cargo hold before','Frachtraum nach der Aktion':'Cargo hold after',
+'Differenz bilden':'Compare','Felder leeren':'Clear the boxes','Kopieren':'Copy',
+'Wert berechnen':'Get the value','Vergleiche …':'Comparing …',
+'Bitte in beide Felder eine Frachtraum-Kopie einfügen.':'Please paste a cargo copy into both boxes.',
+'Vergleich fehlgeschlagen.':'Comparison failed.',
+'Kein Unterschied gefunden. Beide Kopien enthalten dasselbe.':
+ 'No difference found. Both copies hold the same things.',
+'Dazugekommen':'Added','Weniger geworden':'Gone missing',
+'verbraucht oder abgeladen, zum Beispiel Munition, Drohnen oder Filamente':
+ 'used up or dropped off, for example ammo, drones or filaments',
+'✓ kopiert':'✓ copied','Keine Preisdaten erhalten.':'No price data received.',
 // Desktop-Meldungen
 'EVE: SPIELER-ANGRIFF!':'EVE: PLAYER ATTACK!','EVE: Frachtraum voll!':'EVE: Cargo hold full!',
 'EVE: Mining steht!':'EVE: Mining stopped!','EVE: Drohnen prüfen!':'EVE: Check drones!',
@@ -14238,6 +14465,10 @@ const EN = {
  'Data: EVE login for the stock, market prices from Fuzzwork. The reprocessing value is calculated conservatively, your real return is likely higher.',
 'Ein Preisrechner. Frachtraum im Spiel markieren, kopieren, hier einfügen, und du siehst sofort, was es an welchem Handelsplatz wert ist.':
  'A price calculator. Select your cargo hold in game, copy it, paste it here, and you immediately see what it is worth at which trade hub.',
+'Zeigt dir, was ein Lauf eingebracht hat. Du fügst deinen Frachtraum zweimal ein, einmal vor und einmal nach der Mission oder dem Abyss, und Canary rechnet aus, was dazugekommen und was verbraucht worden ist. Das Ergebnis lässt sich mit einem Klick kopieren und passt in das Loot-Feld einer Mission.':
+ 'Shows what a run brought in. You paste your cargo hold twice, once before and once after the mission or the abyss, and Canary works out what was added and what was used up. The result copies with one click and fits the loot field of a mission.',
+'Daten: nur der Text, den du selbst einfügst, verglichen auf diesem Rechner. Erst wenn du auf Wert berechnen klickst, werden Marktpreise geholt, dabei gehen nur die Item-Namen raus.':
+ 'Data: only the text you paste yourself, compared on this machine. Market prices are fetched only when you click get the value, and only the item names leave your computer.',
 'Daten: Marktpreise von Fuzzwork für die großen Handelsplätze. Der Text, den du einfügst, bleibt auf deinem Rechner.':
  'Data: market prices from Fuzzwork for the major trade hubs. The text you paste stays on your machine.',
 'Anonym mitzählen lassen':'Let this install be counted anonymously',
@@ -14479,6 +14710,7 @@ async function tick(){
    else if(view==='profil')renderProfiles(d.profiles);
    else if(view==='wallet')renderWallet(d.wallet);
    else if(view==='rechner')renderRechner();
+   else if(view==='beute')renderBeute();
    else renderTotal(d.total);
   }
   if(lang!=='de')tr(document.body);   // frisch gerenderte Teile nachuebersetzen

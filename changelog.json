@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.3.0",
+  "d": "2026-08-13",
+  "de": [
+   "Neuer Bereich „Beute“: du fuegst deinen Frachtraum zweimal ein, einmal vor und einmal nach der Mission oder dem Abyss, und Canary rechnet aus, was dazugekommen und was verbraucht worden ist. Das Ergebnis steht als fertiger Text zum Kopieren bereit und passt genau in das Loot-Feld einer Mission. Auf Knopfdruck kommt der Wert ueber alle Handelsplaetze dazu. Beide Felder bleiben gespeichert, dazwischen darfst du den Bereich wechseln, die Seite neu laden oder Canary neu starten. Gewuenscht von Nirahse.",
+   "Die Menge wird dabei aus der zweiten Spalte gelesen und nicht als erste Zahl in der Zeile. Bei einem einzelnen Modul mit eingeblendeter Meta-Spalte waere sonst das Meta-Level als Stueckzahl durchgegangen. Belegt an 148 echten eingefuegten Zeilen, dort steht die Menge in jedem Fall in Spalte zwei.",
+   "Der Aufruf von localhost:8765/wallet zeigte den Live-Bereich statt des Wallet Buddy, weil der Bereich in der Liste der bekannten Adressen fehlte. Ein Lesezeichen auf den Wallet-Tab landet jetzt richtig, und die Zurueck-Taste auch."
+  ],
+  "en": [
+   "New “Loot” view: you paste your cargo hold twice, once before and once after the mission or the abyss, and Canary works out what was added and what was used up. The result comes as ready made text to copy and fits the loot field of a mission exactly. One click adds the value across all trade hubs. Both boxes are saved, so you can switch views, reload the page or restart Canary in between. Requested by Nirahse.",
+   "The quantity is read from the second column instead of the first number found in the line. With a single module and the meta column shown, the meta level would otherwise have passed as the quantity. Verified against 148 real pasted lines, where the quantity sits in column two every time.",
+   "Opening localhost:8765/wallet showed the live view instead of the Wallet Buddy, because that view was missing from the list of known addresses. A bookmark on the wallet tab now lands correctly, and so does the back button."
+  ]
+ },
+ {
   "v": "2.2.3",
   "d": "2026-08-13",
   "de": [
