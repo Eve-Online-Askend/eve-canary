@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.2.2",
+  "d": "2026-08-13",
+  "de": [
+   "Ein von Hand abgeschlossener Lauf ueberlebt jetzt den Neustart. Bisher standen die Missionen nach einem Update wieder offen, sogar bei Charakteren, die laengst offline waren.",
+   "Die Ursache: der Knopf Mission abschliessen schiebt ein kuenstliches Abdock-Ereignis in die laufende Sitzung, und das lebte nur im Speicher. Beim Start baut Canary die Sitzung aus der Logdatei neu auf und spielt dabei alle Kampfzeilen erneut ein. Das kuenstliche Ereignis steht in keiner Logdatei, also war es weg. Der Abschluss wird jetzt dauerhaft gemerkt und beim Neuaufbau an genau der richtigen Stelle wieder eingesetzt. Gemeldet von Nirahse."
+  ],
+  "en": [
+   "A run you finished by hand now survives a restart. Until now those missions were open again after an update, even for characters that had long since gone offline.",
+   "The cause: the finish mission button pushes an artificial undock event into the running session, and that lived in memory only. On start Canary rebuilds the session from the log file and replays every combat line. The artificial event is in no log file, so it was gone. The manual finish is now stored and put back at exactly the right point during the rebuild. Reported by Nirahse."
+  ]
+ },
+ {
   "v": "2.2.1",
   "d": "2026-08-13",
   "de": [

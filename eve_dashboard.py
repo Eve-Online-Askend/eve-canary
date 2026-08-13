@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.2.1"
+VERSION = "2.2.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -1586,6 +1586,38 @@ def meta_get(key, default=None):
     with DB_LOCK:
         r = DB.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
     return r[0] if r else default
+
+
+def zu_laden():
+    """Von Hand abgeschlossene Missionen: Charakter-ID -> Zeitpunkt.
+
+    Warum das dauerhaft sein muss: "Mission abschliessen" schiebt ein
+    kuenstliches Abdock-Ereignis in die laufende Sitzung. Das lebt nur im
+    Speicher. Beim Neustart baut der Ingest die Sitzung aus dem Logkopf neu
+    auf und spielt dabei ALLE Kampfzeilen erneut ein, das kuenstliche
+    Ereignis steht ja in keiner Logdatei. Die Mission stand danach wieder
+    offen, obwohl der Charakter laengst offline war. Gemeldet von Nirahse."""
+    try:
+        return {str(k): float(v) for k, v in
+                json.loads(meta_get("mission_zu") or "{}").items()}
+    except Exception:
+        return {}
+
+
+def zu_merken(char_id, ts):
+    d = zu_laden()
+    d[str(char_id)] = float(ts)
+    # Alte Eintraege wegwerfen, sonst waechst der Schluessel ewig mit. Aelter
+    # als SESSION_MAX_AGE kann keine Sitzung mehr betreffen.
+    grenze = time.time() - SESSION_MAX_AGE
+    d = {k: v for k, v in d.items() if v >= grenze}
+    try:
+        with DB_LOCK:
+            DB.execute("INSERT OR REPLACE INTO meta VALUES('mission_zu',?)",
+                       (json.dumps(d),))
+            DB.commit()
+    except Exception as e:
+        log_error("CN-DB-01", "zu_merken", e)
 
 
 # Parser-Version: hochzaehlen, wenn eine Parser-Aenderung ein Neu-Einlesen aller
@@ -3268,6 +3300,13 @@ class Ingest(threading.Thread):
                         self.sessions[cid] = sess
                         if offset > 0:
                             # Session-Statistik für bereits eingelesenen Teil rekonstruieren
+                            #
+                            # Ein von Hand abgeschlossener Lauf muss dabei
+                            # erhalten bleiben. Sonst spielt der Neuaufbau alle
+                            # Kampfzeilen davor erneut ein und die Mission steht
+                            # wieder offen. Siehe zu_laden().
+                            zu_ts = zu_laden().get(cid)
+                            zu_getan = False
                             try:
                                 with open(f, "rb") as fh0:
                                     head = fh0.read(offset)
@@ -3278,7 +3317,22 @@ class Ingest(threading.Thread):
                                     # der letzten Aktivitaet hoch und ein
                                     # angedockter Client sae aktiv aus.
                                     if ev and ev["kind"] != "noise":
+                                        if zu_ts and not zu_getan and ev["ts"] >= zu_ts:
+                                            sess.feed({"kind": "hold_reset", "key": "dock",
+                                                       "ts": zu_ts, "char_id": cid,
+                                                       "day": time.strftime(
+                                                           "%Y-%m-%d", time.gmtime(zu_ts)),
+                                                       "value": 1}, live=False)
+                                            zu_getan = True
                                         sess.feed(ev, live=False)
+                                # Abschluss NACH dem letzten eingelesenen
+                                # Ereignis: dann steht er am Ende, nicht mittendrin.
+                                if zu_ts and not zu_getan:
+                                    sess.feed({"kind": "hold_reset", "key": "dock",
+                                               "ts": zu_ts, "char_id": cid,
+                                               "day": time.strftime(
+                                                   "%Y-%m-%d", time.gmtime(zu_ts)),
+                                               "value": 1}, live=False)
                             except OSError:
                                 pass
             if skipped or st.st_size <= offset:
@@ -9547,6 +9601,9 @@ class Handler(BaseHTTPRequestHandler):
                     s.feed({"kind": "hold_reset", "key": "dock", "ts": jetzt,
                             "char_id": s.char_id, "day": time.strftime("%Y-%m-%d"),
                             "value": 1}, live=False)
+                    # Dauerhaft merken, sonst ist der Abschluss nach dem
+                    # naechsten Neustart wieder weg. Siehe zu_laden().
+                    zu_merken(s.char_id, jetzt)
             if gespeichert:
                 save_mission(gespeichert)
                 mins = max(1, round((gespeichert["end_ts"] - gespeichert["start_ts"]) / 60))
