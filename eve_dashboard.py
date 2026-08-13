@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.1.0"
+VERSION = "2.1.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -13381,8 +13381,11 @@ function renderMissions(d){
  // Waehrend im Loot-Feld getippt wird, gar nicht erst neu bauen. Sonst
  // verliert die Eingabe bei jedem Takt kurz den Fokus, und genau das macht
  // das Einfuegen mit Strg+V unzuverlaessig.
- if(document.activeElement&&document.activeElement.classList
-    &&document.activeElement.classList.contains('mlootin'))return;
+ // Dasselbe gilt fuer das Feld zum Benennen einer Mission. Das war in 2.1.0
+ // vergessen worden, und der Kasten klappte prompt nach einem Takt wieder zu,
+ // mitsamt dem schon Getippten. Gemeldet von Nirahse, in Firefox wie in Chrome.
+ const tippt=document.activeElement&&document.activeElement.classList;
+ if(tippt&&(tippt.contains('mlootin')||tippt.contains('mnamein')))return;
  const lootOffen={};
  document.querySelectorAll('.mlootedit').forEach(b=>{
   if(b.hidden)return;
@@ -13392,6 +13395,16 @@ function renderMissions(d){
    start:ta?ta.selectionStart:0, end:ta?ta.selectionEnd:0,
    fokus:document.activeElement===ta,
    status:(([...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||''};
+ });
+ const nameOffen={};
+ document.querySelectorAll('.mnameedit').forEach(b=>{
+  if(b.hidden)return;
+  const inp=b.querySelector('.mnamein');
+  nameOffen[b.dataset.mid]={
+   text:inp?inp.value:'',
+   start:inp?inp.selectionStart:0, end:inp?inp.selectionEnd:0,
+   fokus:document.activeElement===inp,
+   status:(([...document.querySelectorAll('.mnamestat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||''};
  });
  // Lokale Demo (nur mit sim_mode-Flag, reine Frontend-Simulation): Live-Char,
  // 50-Missionen-Historie und Journal-Summen einspeisen, nichts davon aus DB/Logs.
@@ -13542,6 +13555,19 @@ function renderMissions(d){
    try{ta.setSelectionRange(z.start,z.end);}catch(e){}
   }
   const st=[...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===mid);
+  if(st&&z.status)st.textContent=z.status;
+ });
+ Object.entries(nameOffen).forEach(([mid,z])=>{
+  const box=[...document.querySelectorAll('.mnameedit')].find(e=>e.dataset.mid===mid);
+  if(!box)return;
+  box.hidden=false;
+  const inp=box.querySelector('.mnamein');
+  if(inp){
+   inp.value=z.text;
+   if(z.fokus)inp.focus();
+   try{inp.setSelectionRange(z.start,z.end);}catch(e){}
+  }
+  const st=[...document.querySelectorAll('.mnamestat')].find(s=>s.dataset.mid===mid);
   if(st&&z.status)st.textContent=z.status;
  });
  // Mission von Hand abschliessen. Danach steht sie sofort unten in der Liste

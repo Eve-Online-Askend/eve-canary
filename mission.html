@@ -82,9 +82,9 @@ footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-si
   <label for="mfGegner" data-i18n="l.foe">Named or unusual enemy (if there is one)</label>
   <input id="mfGegner" type="text" placeholder="Draben Kuvakei" data-ph="ph.foe" autocomplete="off">
 
-  <label for="mfListe" data-i18n="l.list">Full enemy list (Canary: "Für alle beitragen")</label>
+  <label for="mfListe" data-i18n="l.list">Full enemy list</label>
   <textarea id="mfListe" rows="6" placeholder="Federation Navy Megathron&#10;Federation Navy Thorax&#10;Federation Covinus" data-ph="ph.list"></textarea>
-  <div class="tiny" data-i18n="h.list">A mission always throws the same line-up at you. With the full list, Canary recognises that mission for everyone, even when the enemies look completely ordinary and nobody says a word in local. In Canary open the Missions tab, name the run, then press "Für alle beitragen" and paste it here.</div>
+  <div class="tiny" data-i18n="h.list">A mission always throws the same line-up at you. With the full list, Canary recognises that mission for everyone, even when the enemies look completely ordinary and nobody says a word in local. You can simply type the names in here, one per line. Faster route inside the Canary app (not on this page): Missions tab, then "🔖 Mission benennen" on the run, then the "Für alle beitragen" button, and paste the block here.</div>
 
   <label for="mfLog" data-i18n="l.log">Paste your local chat</label>
   <textarea id="mfLog" rows="9" placeholder="In game click into the local window, Ctrl+A, Ctrl+C, paste here." data-ph="ph.log"></textarea>
@@ -226,9 +226,9 @@ const L = {
   'l.fac':'Gegner-Fraktion', 'l.log':'Local-Chat einfügen',
   'l.foe':'Benannter oder auffälliger Gegner (falls es einen gibt)',
   'ph.foe':'Draben Kuvakei',
-  'l.list':'Vollständige Gegnerliste (in Canary: "Für alle beitragen")',
+  'l.list':'Vollständige Gegnerliste',
   'ph.list':'Federation Navy Megathron\nFederation Navy Thorax\nFederation Covinus',
-  'h.list':'Eine Mission wirft dir immer dieselbe Zusammenstellung entgegen. Mit der vollen Liste erkennt Canary sie für alle wieder, auch wenn die Gegner völlig gewöhnlich aussehen und im Local kein Wort fällt. In Canary im Missionen-Tab den Lauf benennen, dann auf "Für alle beitragen" drücken und den Block hier einfügen.',
+  'h.list':'Eine Mission wirft dir immer dieselbe Zusammenstellung entgegen. Mit der vollen Liste erkennt Canary sie für alle wieder, auch wenn die Gegner völlig gewöhnlich aussehen und im Local kein Wort fällt. Du kannst die Namen hier einfach eintippen, einen pro Zeile. Schneller geht es im Canary-Programm selbst (nicht auf dieser Seite): Missionen-Tab, beim Lauf auf "🔖 Mission benennen", dann auf den Knopf "Für alle beitragen" und den Block hier einfügen.',
   'l.note':'Was ist dir aufgefallen? (freiwillig)',
   'b.send':'Als GitHub-Ticket senden', 'b.copy':'Lieber Text kopieren',
   h2:'So geht es am schnellsten',
@@ -244,9 +244,9 @@ const L = {
   'l.name':'Nom de la mission', 'l.lvl':'Niveau', 'l.fac':'Faction ennemie',
   'l.log':'Colle ton chat local', 'l.note':'Quelque chose à signaler ? (facultatif)',
   'l.foe':'Ennemi nommé ou inhabituel (s\'il y en a un)', 'ph.foe':'Draben Kuvakei',
-  'l.list':'Liste complète des ennemis (dans Canary : "Für alle beitragen")',
+  'l.list':'Liste complète des ennemis',
   'ph.list':'Federation Navy Megathron\nFederation Navy Thorax\nFederation Covinus',
-  'h.list':'Une mission t\'envoie toujours la même composition. Avec la liste complète, Canary la reconnaît pour tout le monde, même si les ennemis sont banals et que personne ne parle dans local.',
+  'h.list':'Une mission t\'envoie toujours la même composition. Avec la liste complète, Canary la reconnaît pour tout le monde, même si les ennemis sont banals et que personne ne parle dans local. Tu peux simplement taper les noms ici, un par ligne. Plus rapide dans l\'application Canary (pas sur cette page) : onglet Missions, "🔖 Mission benennen", puis le bouton "Für alle beitragen".',
   'b.send':'Envoyer comme ticket GitHub', 'b.copy':'Copier le texte',
   h2:'La méthode la plus rapide',
   'p.steps':'<li>Fais la mission en gardant local ouvert.</li><li>Clique dans local, <code>Ctrl+A</code>, <code>Ctrl+C</code>.</li><li>Colle ici, ajoute le nom, envoie.</li>',
@@ -261,9 +261,9 @@ const L = {
   'l.name':'Название миссии', 'l.lvl':'Уровень', 'l.fac':'Фракция врага',
   'l.log':'Вставьте локальный чат', 'l.note':'Что вы заметили? (необязательно)',
   'l.foe':'Именной или необычный враг (если есть)', 'ph.foe':'Draben Kuvakei',
-  'l.list':'Полный список врагов (в Canary: "Für alle beitragen")',
+  'l.list':'Полный список врагов',
   'ph.list':'Federation Navy Megathron\nFederation Navy Thorax\nFederation Covinus',
-  'h.list':'Миссия всегда выставляет один и тот же состав. С полным списком Canary распознает её для всех, даже если враги совершенно обычные и в локале тишина.',
+  'h.list':'Миссия всегда выставляет один и тот же состав. С полным списком Canary распознает её для всех, даже если враги совершенно обычные и в локале тишина. Имена можно просто ввести здесь, по одному в строке. Быстрее в самой программе Canary (не на этой странице): вкладка Missionen, "🔖 Mission benennen", затем кнопка "Für alle beitragen".',
   'b.send':'Отправить как тикет GitHub', 'b.copy':'Скопировать текст',
   h2:'Самый быстрый способ',
   'p.steps':'<li>Пройдите миссию с открытым локалом.</li><li>Щёлкните в локал, <code>Ctrl+A</code>, <code>Ctrl+C</code>.</li><li>Вставьте сюда, добавьте название, отправьте.</li>',

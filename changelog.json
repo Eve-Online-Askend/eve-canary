@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.1.1",
+  "d": "2026-08-13",
+  "de": [
+   "Das Feld zum Benennen einer Mission klappte nach einem Takt wieder zu, mitsamt dem schon Getippten. Der Missionen-Tab baut sich alle zwei Sekunden neu auf, und dagegen gibt es laengst einen Schutz: solange jemand in einem Eingabefeld tippt, wird gar nicht neu gebaut, und offene Kaesten werden ueber den Neubau gerettet. Das neue Namensfeld war dort schlicht nicht eingetragen. Gemeldet von Nirahse, in Firefox wie in Chrome.",
+   "Auf der Meldeseite war ausserdem missverstaendlich beschrieben, wo der Knopf Fuer alle beitragen steckt. Er sitzt im Canary-Programm, nicht auf der Webseite. Dort steht jetzt auch, dass man die Gegnernamen genauso gut von Hand eintippen kann, eine je Zeile. Ebenfalls von Nirahse."
+  ],
+  "en": [
+   "The field for naming a mission closed again after one tick, together with whatever had been typed. The missions tab rebuilds every two seconds, and there has long been a guard against that: while somebody is typing in an input, no rebuild happens at all, and open boxes are carried across the rebuild. The new name field simply was not registered there. Reported by Nirahse, in Firefox as well as Chrome.",
+   "The report page also described unclearly where the contribute button lives. It sits in the Canary app, not on the website. It now also says that you can just as well type the enemy names in by hand, one per line. Also from Nirahse."
+  ]
+ },
+ {
   "v": "2.1.0",
   "d": "2026-08-13",
   "de": [
