@@ -1,5 +1,19 @@
 [
  {
+  "v": "1.99.3",
+  "d": "2026-08-13",
+  "de": [
+   "Im Steckbrief fehlten Charaktere. Wer mit sieben unterwegs war und sechs sah, vermutete eine Obergrenze. Es gibt keine: gezeigt wurde nur, wer in 30 Tagen etwas Messbares getan hat, also gefoerdert, gekaempft oder komprimiert. Transporter, Spaeher und reine Booster fielen damit kommentarlos raus.",
+   "Jetzt erscheint jeder per EVE-Login verbundene Charakter, auch ohne Aktivitaet. Statt eines leeren Radars steht dann dabei, warum nichts zu sehen ist. Portrait, Wallet, Corp, Schiff und System stehen wie gewohnt da, die kommen aus ESI und nicht aus dem Log. Gemeldet von Vile Gangster.",
+   "Dazu eine Panne meinerseits: diese Aenderung war zuerst unter der Nummer 1.99.2 hochgeladen worden, also unter einer schon vergebenen. Wer 1.99.2 vorher geladen hatte, haette sie nie bekommen, weil die Update-Pruefung nur Versionsnummern vergleicht. Deshalb jetzt ordentlich als 1.99.3."
+  ],
+  "en": [
+   "Characters were missing from the character sheet. Anyone out with seven and seeing six suspected a cap. There is none: only characters with something measurable in the last 30 days were shown, meaning mining, combat or compression. Haulers, scouts and pure boosters dropped out without a word.",
+   "Now every character linked via EVE login appears, activity or not. Instead of an empty radar it says why there is nothing to see. Portrait, wallet, corp, ship and system are there as usual, since those come from ESI and not from the log. Reported by Vile Gangster.",
+   "Plus a slip on my side: this change first went up under the number 1.99.2, which was already taken. Anyone who had fetched 1.99.2 earlier would never have received it, because the update check only compares version numbers. Hence a proper 1.99.3."
+  ]
+ },
+ {
   "v": "1.99.2",
   "d": "2026-08-13",
   "de": [
