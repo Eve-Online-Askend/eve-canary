@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.96.1"
+VERSION = "1.97.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -2077,6 +2077,62 @@ def check_update():
                 "repo": info.get("repo"), "tag": info.get("tag")}
     except Exception as e:
         return {"ok": False, "error": f"Update-Server nicht erreichbar: {e}"}
+
+
+NOTFALL_CSS = (
+    "font:14px/1.45 'Segoe UI',system-ui,sans-serif;background:#101418;"
+    "color:#dfe7ef;margin:0;padding:40px 20px;text-align:center")
+NOTFALL_KNOPF = (
+    "display:inline-block;margin-top:14px;padding:10px 22px;border:0;"
+    "border-radius:9px;background:#e8c645;color:#101418;font:inherit;"
+    "font-weight:700;cursor:pointer")
+
+
+def notfall_banner():
+    """Update-Hinweis, den PYTHON in die Seite schreibt, nicht das Skript.
+
+    Der Grund steht in der Versionsgeschichte zu 1.96.0: ein einziger
+    Syntaxfehler im grossen Skriptblock legt diesen Block komplett still, und
+    zwar bevor die erste Zeile laeuft. Das bisherige Update-Banner wurde vom
+    Skript gebaut, war damit ebenfalls tot, und die Betroffenen kamen aus dem
+    Dashboard nicht mehr an das rettende Update. Sie mussten den Installer von
+    Hand nachziehen.
+
+    Dieses Banner haengt an gar keinem Skript. Sein Knopf ist ein gewoehnliches
+    Formular, das der Server selbst beantwortet. Es ueberlebt damit auch einen
+    Totalausfall der Oberflaeche, und genau dafuer ist es da.
+
+    Die Position ganz oben im Body ist Absicht, aber sie ist NICHT der Grund,
+    warum es funktioniert. Entscheidend ist, dass hier kein JavaScript
+    beteiligt ist."""
+    if not UPDATE_INFO.get("available"):
+        return ""
+    neu = html_escape(str(UPDATE_INFO.get("latest") or "?"))
+    return (
+        '<form method="post" action="/reparieren" '
+        'style="margin:0;padding:9px 14px;background:#e8c645;color:#101418;'
+        'font:600 13px/1.4 \'Segoe UI\',system-ui,sans-serif;display:flex;'
+        'gap:12px;align-items:center;flex-wrap:wrap">'
+        '<span>Neue Version <b>' + neu + '</b> verfuegbar '
+        '(installiert: ' + html_escape(VERSION) + ').</span>'
+        '<button type="submit" style="padding:5px 14px;border:0;border-radius:7px;'
+        'background:#101418;color:#e8c645;font:inherit;cursor:pointer">'
+        'Jetzt aktualisieren</button>'
+        '<span style="opacity:.75;font-weight:400">Dieser Hinweis kommt vom '
+        'Server und funktioniert auch, wenn die Oberflaeche streikt.</span>'
+        '</form>')
+
+
+def html_escape(t):
+    return (str(t).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def notfall_seite(inhalt):
+    return ("<!DOCTYPE html><html lang=\"de\"><head><meta charset=\"utf-8\">"
+            "<title>EVE Canary reparieren</title></head>"
+            "<body style=\"" + NOTFALL_CSS + "\">"
+            "<div style=\"font-size:46px\">🐤</div>" + inhalt + "</body></html>")
 
 
 def do_update():
@@ -8709,12 +8765,63 @@ class Handler(BaseHTTPRequestHandler):
             self._send(json.dumps({"month": query_month(), "total": query_total(),
                                    "analyse": query_analyse()}, indent=1),
                        "application/json", "eve_dashboard_export.json")
+        elif p == "/reparieren":
+            # Rettungsanker ohne jedes JavaScript. Erreichbar auch dann, wenn
+            # die Oberflaeche gar nicht mehr laeuft. Siehe notfall_banner().
+            refresh_update_info()
+            chk = check_update()
+            if chk.get("ok") and chk.get("available"):
+                txt = ("<h2>Neue Version " + html_escape(str(chk.get("latest")))
+                       + " verfuegbar</h2><p>Installiert ist "
+                       + html_escape(VERSION) + ".</p>")
+                knopf = ('<form method="post" action="/reparieren">'
+                         '<button type="submit" style="' + NOTFALL_KNOPF + '">'
+                         'Jetzt aktualisieren</button></form>')
+            elif chk.get("ok"):
+                txt = ("<h2>Alles aktuell</h2><p>Du hast bereits Version "
+                       + html_escape(VERSION) + ".</p>")
+                knopf = ('<form method="post" action="/reparieren">'
+                         '<button type="submit" style="' + NOTFALL_KNOPF + '">'
+                         'Trotzdem neu laden</button></form>')
+            else:
+                txt = ("<h2>Update-Server nicht erreichbar</h2><p>"
+                       + html_escape(str(chk.get("error") or "")) + "</p>")
+                knopf = ('<form method="post" action="/reparieren">'
+                         '<button type="submit" style="' + NOTFALL_KNOPF + '">'
+                         'Nochmal versuchen</button></form>')
+            self._send(notfall_seite(
+                txt + knopf + '<p style="opacity:.6;margin-top:26px;font-size:12px">'
+                'Diese Seite kommt ohne JavaScript aus und funktioniert auch, '
+                'wenn das Dashboard leer bleibt.</p>'),
+                "text/html; charset=utf-8")
         else:
-            self._send(PAGE, "text/html; charset=utf-8")
+            # Der Update-Hinweis wird hier eingesetzt, nicht vom Skript gebaut.
+            self._send(PAGE.replace("<!--NOTFALL-->", notfall_banner()),
+                       "text/html; charset=utf-8")
 
     def _do_POST(self):
         if not _host_ok(self.headers) or not _origin_ok(self.headers):
             return self._deny()
+        if self.path.split("?")[0] == "/reparieren":
+            # Formular statt JSON: der Rettungsweg darf kein Skript brauchen.
+            try:
+                self.rfile.read(int(self.headers.get("Content-Length", 0) or 0))
+            except Exception:
+                pass
+            r = do_update()
+            if r.get("ok") and r.get("updated"):
+                txt = ("<h2>Aktualisiert</h2><p>" + html_escape(str(r.get("message") or ""))
+                       + "</p><p>Canary startet sich neu. Warte ein paar Sekunden "
+                       "und rufe dann <b>localhost:8765</b> auf.</p>")
+            elif r.get("ok"):
+                txt = ("<h2>Nichts zu tun</h2><p>"
+                       + html_escape(str(r.get("message") or "Bereits aktuell.")) + "</p>")
+            else:
+                txt = ("<h2>Hat nicht geklappt</h2><p>"
+                       + html_escape(str(r.get("error") or "")) + "</p>"
+                       "<p>Dann hilft der Installer von der Canary-Seite. "
+                       "Einstellungen und Daten bleiben dabei erhalten.</p>")
+            return self._send(notfall_seite(txt), "text/html; charset=utf-8")
         length = int(self.headers.get("Content-Length", 0))
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
@@ -10092,6 +10199,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 .btn.warn{color:var(--red);border-color:var(--red)}
 .note{font-size:11px;color:var(--dim);margin-top:10px}
 </style></head><body>
+<!--NOTFALL-->
 <div id="boot" hidden>
  <div class="bootbox">
   <div class="bootbird">🐤</div>
