@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.95.0"
+VERSION = "1.96.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -1427,6 +1427,31 @@ DB.execute("""CREATE TABLE IF NOT EXISTS pack_archive(
     pack_id TEXT PRIMARY KEY, first_ts REAL, last_ts REAL, label TEXT,
     members TEXT, corps TEXT, score REAL)""")
 DB.commit()
+
+
+def belohnung_seit(char, seit):
+    """ESI-belegte Missionsbelohnungen dieses Charakters seit einem Zeitpunkt.
+
+    Gebaut fuer die Flottensumme im OBS-Overlay. Eine ISK pro Stunde, die aus
+    der laufenden Sitzung kommt, kennt bei einer Mission nur die Bounty, und
+    die ist der kleinere Teil: an 10 ESI-belegten Missionen gemessen sind es
+    31,8 Prozent, der Rest ist Belohnung und Loot. Ohne diese Zahl zeigt das
+    Overlay einem Missionsflieger rund ein Drittel seines Verdienstes.
+
+    Der Preis dafuer ist Ehrlichkeit an anderer Stelle: die Belohnung steht
+    erst im Journal, wenn ESI sie liefert, also bis zu eine Stunde spaeter.
+    Deshalb wird sie in der Anzeige gekennzeichnet."""
+    if not char or not seit:
+        return 0.0
+    try:
+        with DB_LOCK:
+            r = DB.execute(
+                "SELECT COALESCE(SUM(amount),0) FROM journal "
+                "WHERE char=? AND ts>=? AND ref_type LIKE 'agent_mission%'",
+                (char, seit)).fetchone()
+        return float(r[0] or 0)
+    except Exception:
+        return 0.0
 
 
 def marken_laden():
@@ -6008,6 +6033,35 @@ body.grund #mk{background:#121722;border-color:#1e2636;box-shadow:none}
  padding-left:10px;letter-spacing:.3px;text-shadow:0 1px 3px rgba(0,0,0,.95)}
 body.quer #mk{flex:none;align-self:flex-start}
 body.quer #mk em{display:none}
+/* Kompakt. Nicht alles gleichmaessig kleiner, das waere nur unleserlich:
+   zuerst geht die Luft raus (Innenabstaende, Luecken, Raender), und erst
+   danach schrumpfen die Beschriftungen. Die grossen Zahlen bleiben fast
+   unangetastet, denn genau die soll man im Stream noch lesen koennen.
+   Gedacht fuer eine schmale Browser-Quelle ab etwa 300 mal 180. */
+body.eng{padding:3px}
+body.eng #w{gap:3px}
+body.eng .z,body.eng .tk{padding:3px 7px;gap:6px;border-radius:7px}
+body.eng .pkt{width:7px;height:7px}
+body.eng .nm{font-size:12px}
+body.eng .sub{font-size:8.5px;line-height:1.2}
+body.eng .st{font-size:8px}
+body.eng .tag{font-size:8px;padding:0 4px;margin-right:4px}
+body.eng .wert,body.eng .tk .zahl{font-size:12.5px}
+body.eng .wert small,body.eng .tk .zahl small{font-size:8.5px}
+body.eng .tk .kopf{font-size:10px;letter-spacing:1.1px}
+body.eng .tk .unter{font-size:8.5px}
+body.eng #sum{padding:3px 7px;gap:7px;font-size:8px;border-radius:7px}
+body.eng #sum b{font-size:11.5px}
+body.eng #sum i{font-size:9px}
+body.eng #mk{padding:2px 7px;border-radius:7px}
+body.eng #mk img{width:13px;height:13px}
+body.eng #mk span{font-size:8.5px;letter-spacing:1.2px}
+body.eng #mk em{display:none}
+body.eng #uhr{padding:3px 8px;margin-bottom:3px;border-radius:7px}
+body.eng #uhr b{font-size:14px}
+body.eng #uhr span{font-size:8.5px}
+body.eng #dt{padding:2px 8px;margin-bottom:3px;font-size:8.5px;border-radius:7px}
+body.eng #dt b{font-size:11px}
 </style></head><body><div id="cfg" hidden>
 <div class="ct">OBS-Einrichtung</div>
 <div class="cg" id="cg"></div>
@@ -6020,7 +6074,8 @@ darunter.</li>
 <li>In OBS unter <b>Quellen</b> auf <b>+</b>, dann <b>Browser</b>.</li>
 <li>Die Adresse in das Feld <b>URL</b> einfuegen. Breite <code>380</code>,
 Hoehe <code>220</code> passen fuer senkrecht, fuer waagerecht eher
-<code>900</code> mal <code>130</code>.</li>
+<code>900</code> mal <code>130</code>. Mit <b>Kompakt</b> reichen
+<code>300</code> mal <code>180</code>.</li>
 <li>Den Haken bei <b>Quelle abschalten, wenn nicht sichtbar</b> herausnehmen.
 Sonst faengt das Overlay bei jedem Szenenwechsel von vorn an.</li>
 </ol>
@@ -6036,6 +6091,19 @@ sind. <span class="warnung">Vor dem Stream wieder herausnehmen.</span></li>
 <li>Jeder Charakter bekommt seine eigene Marke: <b>MINING</b>, <b>MISSION</b>
 oder <b>PVP</b>. Wer foerdert, bleibt beim Erz, auch wenn er nebenbei eine
 Ratte wegschiesst.</li>
+<li>Steht hinter der Stundenrate ein <b>+ESI</b>, dann stecken
+Missionsbelohnungen aus dem Wallet-Journal mit drin. Die Zahl stimmt, kommt
+aber bis zu eine Stunde spaeter, denn so lange braucht ESI. Ohne sie waere
+die Rate eines Missionsfliegers nur seine Bounty, und das ist knapp ein
+Drittel des Einkommens.</li>
+<li>Wirkt das Bild <b>unscharf</b>, dann zieh die Quelle nicht in der Szene
+groesser. Setz stattdessen in den Eigenschaften der Browser-Quelle
+<b>Breite und Hoehe</b> hoeher und dreh hier die <b>Groesse</b> auf. Dann
+rendert der Browser gleich gross und es bleibt scharf.</li>
+<li>Soll es <b>wenig Platz</b> wegnehmen, nimm <b>Kompakt</b>. Das raeumt
+zuerst die Abstaende weg und schrumpft erst danach die Beschriftungen, die
+grossen Zahlen bleiben lesbar. Wer es klein UND scharf will, kombiniert
+Kompakt mit doppelter Quellengroesse und <b>Groesse 2</b>.</li>
 </ol>
 <p style="margin:9px 0 0">Diese Leiste erscheint nur hier. In OBS haengen
 Parameter an der Adresse, dort ist sie nie zu sehen.</p></div>
@@ -6059,6 +6127,7 @@ document.getElementById('mk').hidden = !an('brand', true);
 document.body.classList.toggle('grund', P.get('bg') === 'dark');
 document.body.classList.toggle('klar', P.get('bg') === 'clear');
 document.body.classList.toggle('quer', (P.get('dir') || 'v')[0] === 'h');
+document.body.classList.toggle('eng', an('kompakt', false));
 const SKALA = parseFloat(P.get('scale') || '1') || 1;
 if (SKALA !== 1) document.body.style.zoom = SKALA;
 
@@ -6094,18 +6163,35 @@ function rolle(c) {
 
 // ISK je Stunde: Rate mal Wert je m3 dieser Sitzung. Nicht der Kontostand
 // geteilt durch Zeit, denn der enthaelt auch Verkaeufe von gestern.
+// Alles, was dieser Charakter in der Sitzung verdient hat: Erz und Bounty aus
+// dem Log, dazu die Missionsbelohnung aus dem Wallet-Journal. Ohne die
+// Belohnung sieht ein Missionsflieger nur seine Bounty, und die ist an echten
+// Daten gemessen nur ein knappes Drittel des Missionseinkommens.
+function gesamtIsk(c) {
+  return (c.total_isk || 0) + (c.reward_session || 0);
+}
+
 function iskH(c) {
   if (!ZEIG.iskh) return 0;
   const m3 = c.m3 || 0, isk = c.ore_isk || 0, rate = c.m3h || 0;
-  if (!m3 || !rate) return 0;
-  return rate * (isk / m3);
+  // Beim Foerdern bleibt es bei der gemessenen Rate mal Wert je m3. Die
+  // reagiert sofort, waehrend eine Rechnung ueber die ganze Sitzungsdauer
+  // erst traege nachzieht. Diese Zahl ist erprobt, die wird nicht angefasst.
+  if (m3 && rate) return rate * (isk / m3);
+  // Alle anderen ueber die Sitzungsdauer. Unter fuenf Minuten bleibt es aus:
+  // eine einzelne Bounty geteilt durch zwei Minuten ergaebe eine Fantasiezahl,
+  // die im Stream schlimmer ist als gar keine.
+  const min = c.session_min || 0;
+  const ges = gesamtIsk(c);
+  if (min < 5 || ges <= 0) return 0;
+  return ges / (min / 60);
 }
 
 // Die rechte Spalte richtet sich danach, was der Charakter gerade tut. Beim
 // Foerdern zaehlt die Rate, beim Kaempfen der Schaden. Frueher stand dort
 // stur die Foerderrate, sodass eine PvP-Flotte nur Nullen anzeigte.
 function rechts(c) {
-  const rate = c.m3h || 0, isk = c.total_isk || 0;
+  const rate = c.m3h || 0, isk = gesamtIsk(c);
   const raus = c.dmg_out || 0, rein = c.dmg_in || 0;
   // Gleiche Grenze wie bei der Rolle: wer foerdert, bleibt beim Erz, auch
   // wenn er nebenbei Ratten wegschiesst.
@@ -6119,6 +6205,9 @@ function rechts(c) {
     if (isk > 0 && raus > 0) unten.push(fmtC(raus) + ' Schaden');
     else if (raus > 0) unten.push('Schaden');
     if (rein > 0) unten.push(fmtC(rein) + ' rein');
+    // Bis v1.95 gab es hier nie eine Stundenrate: sie wurde ausschliesslich
+    // aus dem Erz gerechnet. Ein Missionsflieger sah also immer nichts.
+    if (iskH(c)) unten.push(fmtM(iskH(c)) + '/h');
   }
   let gross = '';
   if (isk > 0) gross = fmtM(isk);
@@ -6148,6 +6237,7 @@ if (!location.search) {
     ['modus', 'Aufteilung', 'wahl', [['', 'je Charakter'], ['art', 'je Tätigkeit']]],
     ['bg', 'Hintergrund', 'wahl', [['', 'halb durchsichtig'], ['clear', 'sehr dezent'], ['dark', 'voll']]],
     ['scale', 'Groesse', 'zahl', [1, 0.6, 3, 0.1]],
+    ['kompakt', 'Kompakt (schmale Quelle)', 'ja', 0],
     ['max', 'Chars hoechstens', 'zahl', [0, 0, 20, 1]],
     ['status', 'Status PvE/PvP/Mining', 'ja', 1],
     ['ship', 'Schiff', 'ja', 1],
@@ -6211,21 +6301,31 @@ function downtime() {
 // Platz einstellen, ohne dafuer ins Spiel zu muessen. Rein oertlich, es wird
 // nichts geladen, und die Zeile darunter sagt deutlich, dass es Beispiele
 // sind: sonst steht so etwas irgendwann versehentlich im Stream.
+// session_min gehoert dazu, sonst zeigt die Vorschau die Stundenrate nicht:
+// unter fuenf Minuten bleibt sie absichtlich aus. Und genau beim Einrichten
+// will man sehen, wo die Zahl landet.
 const DEMO = [
   { name: 'Darius Ward', active: true, system: 'J152827', ship: 'Hulk',
-    m3: 297699, m3h: 294159, ore_isk: 159300000, total_isk: 159300000, dmg_out: 0 },
+    m3: 297699, m3h: 294159, ore_isk: 159300000, total_isk: 159300000,
+    session_min: 62, dmg_out: 0 },
   { name: 'Jessedaika Law', active: true, system: 'J152827', ship: 'Hulk',
-    m3: 241113, m3h: 241113, ore_isk: 131300000, total_isk: 131300000, dmg_out: 0 },
+    m3: 241113, m3h: 241113, ore_isk: 131300000, total_isk: 131300000,
+    session_min: 62, dmg_out: 0 },
   // Foerdert und schiesst nebenbei Ratten weg. Muss MINING bleiben und die
   // Rate zeigen, nicht auf Schadenszahlen umspringen.
   { name: 'Lea o Connor', active: true, system: 'Vullat', ship: 'Covetor',
     m3: 209318, m3h: 209318, ore_isk: 145500000, total_isk: 145500000,
-    dmg_out: 6400, dmg_in: 900, tool_warns: [{ tool: 'Strip Miner II' }] },
+    session_min: 58, dmg_out: 6400, dmg_in: 900,
+    tool_warns: [{ tool: 'Strip Miner II' }] },
+  // Missionsflieger MIT Belohnung aus dem Journal, damit in der Vorschau das
+  // Kuerzel +ESI auftaucht und man es beim Einrichten schon erklaert bekommt.
   { name: 'Askend', active: true, system: 'Gisleres', ship: 'Megathron',
-    m3: 0, m3h: 0, ore_isk: 0, total_isk: 42800000, dmg_out: 184000, dmg_in: 41000,
+    m3: 0, m3h: 0, ore_isk: 0, total_isk: 42800000, reward_session: 21500000,
+    session_min: 95, dmg_out: 184000, dmg_in: 41000,
     mission: { name: 'Recon 2 of 3 (Mercenaries)', conf: 92 }, dps_in: 0 },
   { name: 'FivaS', active: true, system: 'Amarr', ship: 'Vexor',
-    m3: 0, m3h: 0, ore_isk: 0, total_isk: 8100000, dmg_out: 22000, dmg_in: 31000,
+    m3: 0, m3h: 0, ore_isk: 0, total_isk: 8100000, session_min: 41,
+    dmg_out: 22000, dmg_in: 31000,
     pvp_out: 22000, pvp_in: 31000, dps_in: 340 }
 ];
 
@@ -6242,7 +6342,7 @@ function nachArt(chars) {
     if (!r) continue;
     const a = arten[r[0]];
     a.n += 1;
-    a.isk += c.total_isk || 0;
+    a.isk += gesamtIsk(c);
     a.m3 += c.m3 || 0;
     a.m3h += c.m3h || 0;
     a.rate += iskH(c) || 0;
@@ -6355,7 +6455,12 @@ function zeichne(d) {
   }).join('');
 
   const m3 = chars.reduce((s, c) => s + (c.m3 || 0), 0);
-  const isk = chars.reduce((s, c) => s + (c.ore_isk || 0), 0);
+  const isk = chars.reduce((s, c) => s + gesamtIsk(c), 0);
+  const rate = chars.reduce((s, c) => s + iskH(c), 0);
+  // Steckt eine ESI-Belohnung mit drin? Dann wird die Zahl gekennzeichnet.
+  // Sie ist richtig, kommt aber bis zu eine Stunde spaeter, und ohne Hinweis
+  // wundert man sich im Stream ueber einen Sprung nach oben.
+  const mitEsi = chars.some((c) => (c.reward_session || 0) > 0);
   if (an('demo', false)) {
     document.getElementById('w').insertAdjacentHTML('beforeend',
       '<div class="z leer"><span class="pkt warn"></span><span>'
@@ -6363,10 +6468,15 @@ function zeichne(d) {
       + 'Zum Beenden demo aus der Adresse entfernen.</div></span></div>');
   }
   const box = document.getElementById('sum');
-  box.hidden = !(ZEIG.sum && m3 > 0);
+  // Frueher hing die ganze Zeile an m3 > 0. Wer Missionen flog oder PvP,
+  // hatte "Flottensumme" eingeschaltet und sah trotzdem nie etwas.
+  box.hidden = !(ZEIG.sum && (m3 > 0 || isk > 0));
   if (!box.hidden) {
     box.innerHTML = '<span>' + chars.length + ' Chars</span>'
-      + '<span><b>' + fmtC(m3) + ' m³</b> <i>' + fmtM(isk) + ' ISK</i></span>';
+      + '<span>' + (m3 > 0 ? '<b>' + fmtC(m3) + ' m³</b> ' : '')
+      + '<i>' + fmtM(isk) + ' ISK</i>'
+      + (rate ? ' <i>' + fmtM(rate) + '/h' + (mitEsi ? ' +ESI' : '') + '</i>' : '')
+      + '</span>';
   }
 }
 tick();
@@ -6738,6 +6848,9 @@ def snapshot_live():
                            or (time.time() - s.last_ore_ts) > 180,
             "m3h": round(m3 / mins * 60), "bounty": s.bounty, "kills": s.kills,
             "total_isk": round(ore_isk + s.bounty),
+            # Missionsbelohnungen dieser Sitzung, aus dem Wallet-Journal. Ohne
+            # sie waere jede ISK/h fuer einen Missionsflieger nur die Bounty.
+            "reward_session": round(belohnung_seit(s.name, s.first_ts)),
             "dmg_out": s.dmg_out, "dmg_in": s.dmg_in,
             "pvp_out": s.pvp_out, "pvp_in": s.pvp_in,
             "dps_out": s.dps(s.win_out), "dps_in": s.dps(s.win_in),

@@ -1,5 +1,27 @@
 [
  {
+  "v": "1.96.0",
+  "d": "2026-08-13",
+  "de": [
+   "Neuer Haken Kompakt im OBS-Overlay, fuer alle, die im Bild wenig Platz abgeben wollen. Er raeumt zuerst die Abstaende weg und schrumpft erst danach die Beschriftungen, damit die grossen Zahlen im Stream lesbar bleiben. Eine Browser-Quelle von 300 mal 180 reicht damit statt 380 mal 220. Angeregt von Michael Starlight.",
+   "Das OBS-Overlay zeigt die Flottensumme jetzt immer, nicht mehr nur beim Mining. Wer Missionen flog oder PvP, hatte die Summe eingeschaltet und sah trotzdem nie etwas. Angeregt von Michael Starlight.",
+   "Neu dabei: ISK pro Stunde fuer die ganze Gruppe, und zwar auch fuer Missionen und Kampf. Bisher wurde die Stundenrate ausschliesslich aus dem Erz gerechnet und blieb bei allem anderen auf null.",
+   "Missionsbelohnungen zaehlen mit. Das ist wichtiger, als es klingt: an 10 belegten Missionen gemessen ist die Bounty nur 31,8 Prozent des Einkommens, der Rest sind Belohnung und Loot. Ohne sie zeigte das Overlay einem Missionsflieger nicht einmal ein Drittel.",
+   "Steht ein +ESI hinter der Rate, stecken solche Belohnungen mit drin. Die Zahl stimmt, kommt aber bis zu eine Stunde spaeter, denn so lange braucht ESI. Ohne den Hinweis wundert man sich im Stream ueber einen Sprung nach oben.",
+   "Unter fuenf Minuten Sitzung bleibt die Rate aus. Eine einzelne Bounty geteilt durch zwei Minuten ergaebe eine Fantasiezahl, und die ist im Stream schlimmer als gar keine.",
+   "Die Einrichtung erklaert jetzt auch, was gegen ein unscharfes Bild hilft: nicht die Quelle in der Szene groesser ziehen, sondern Breite und Hoehe der Browser-Quelle hochsetzen und dann die Groesse aufdrehen."
+  ],
+  "en": [
+   "New Compact checkbox in the OBS overlay, for anyone who wants it to take up little room on screen. It removes the spacing first and only then shrinks the labels, so the big numbers stay readable on stream. A browser source of 300 by 180 is enough with it, instead of 380 by 220. Suggested by Michael Starlight.",
+   "The OBS overlay now always shows the fleet total, not just while mining. Anyone running missions or PvP had the total switched on and still never saw anything. Suggested by Michael Starlight.",
+   "New with it: ISK per hour for the whole group, and for missions and combat too. Until now the hourly rate came purely from ore and stayed at zero for everything else.",
+   "Mission rewards count towards it. That matters more than it sounds: measured across 10 verified missions, bounty is only 31.8 percent of the income, the rest is reward and loot. Without them the overlay showed a mission runner less than a third of what they earned.",
+   "A +ESI behind the rate means such rewards are included. The number is correct but arrives up to an hour late, because that is how long ESI takes. Without the hint you would wonder about a jump mid-stream.",
+   "Below five minutes of session the rate stays off. A single bounty divided by two minutes would be a fantasy number, and on stream that is worse than none at all.",
+   "The setup screen now also explains what helps against a blurry picture: do not drag the source larger in the scene, raise the width and height of the browser source and then turn up the size."
+  ]
+ },
+ {
   "v": "1.95.0",
   "d": "2026-08-13",
   "de": [
