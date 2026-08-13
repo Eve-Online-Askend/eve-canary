@@ -8237,11 +8237,18 @@ def query_profiles():
         for s in ingest.sessions.values():
             if s.system:
                 sysmap[s.name] = s.system
-    active = [c for c in raws if any(raws[c][k] for k in order)]
-    threat.request(active)     # loest Corp/Allianz/Sec fuer die eigenen Chars auf (gecacht)
+    aktiv = {c for c in raws if any(raws[c][k] for k in order)}
+    # Auch per ESI verbundene Charaktere zeigen, die in 30 Tagen nichts
+    # Messbares getan haben. Vorher fielen die kommentarlos raus: wer mit
+    # sieben Chars unterwegs war und sechs sah, suchte den Fehler bei sich und
+    # vermutete eine Obergrenze. Es gibt keine. Betrifft alle, die nicht
+    # foerdern, schiessen oder komprimieren, also Transporter, Spaeher und
+    # Booster ohne Kompression. Gemeldet von Vile Gangster.
+    zeigen = sorted(aktiv | set(echars))
+    threat.request(zeigen)     # loest Corp/Allianz/Sec fuer die eigenen Chars auf (gecacht)
     out = []
-    for c in active:
-        raw = raws[c]
+    for c in zeigen:
+        raw = raws.get(c) or {k: 0 for k in order}
         axes = [{"key": k, "raw": round(raw[k]),
                  "value": round(100 * raw[k] / axmax[k]) if axmax[k] else 0} for k in order]
         ec = echars.get(c, {})
@@ -8254,6 +8261,7 @@ def query_profiles():
                     "corp": prof.get("corp"), "alliance": prof.get("alliance"),
                     "system": sysn or "?",
                     "ore_isk": (ec.get("vault") or {}).get("total_isk"),
+                    "leer": c not in aktiv,
                     "poll_ts": ec.get("poll_ts")})
     out.sort(key=lambda x: x["char"])
     return out
@@ -12782,7 +12790,14 @@ function renderProfiles(list){
     <div class="sbrow">📍 ${p.system&&p.system!=='?'?esc(p.system):'—'}</div>
     <div class="sbrow">💎 ${p.ore_isk!=null?fmtM(p.ore_isk)+' ISK '+(en?'ore':'Erz'):'—'}</div>
     <div class="sub sbfresh">${fresh}</div></div>`;
-  const radar=`<div class="sbradar"><div class="sub" style="text-align:center;margin-bottom:2px">${en?'focus':'Schwerpunkt'}: ${esc(L[top.key]||top.key)}</div>${radarSvg(p.axes)}</div>`;
+  // Ohne Aktivitaet ist jede Achse null und das Radar ein Punkt. Dann lieber
+  // sagen warum, statt eine leere Form zu zeigen: der Charakter FEHLTE hier
+  // frueher ganz, und das sah aus wie eine Obergrenze.
+  const radar=p.leer
+   ?`<div class="sbradar"><div class="sub" style="text-align:center;padding:22px 8px;line-height:1.5">${en
+      ?'No measurable activity in the last 30 days.<br>Haulers, scouts and pure boosters end up here: Canary can only see mining, combat and compression.'
+      :'Keine messbare Aktivität in den letzten 30 Tagen.<br>Transporter, Späher und reine Booster landen hier: Canary sieht nur Fördern, Kampf und Komprimieren.'}</div></div>`
+   :`<div class="sbradar"><div class="sub" style="text-align:center;margin-bottom:2px">${en?'focus':'Schwerpunkt'}: ${esc(L[top.key]||top.key)}</div>${radarSvg(p.axes)}</div>`;
   html+=`<div class="card"><div class="steckbrief">${info}${radar}</div></div>`;
  }
  $('#grid').innerHTML=html;
