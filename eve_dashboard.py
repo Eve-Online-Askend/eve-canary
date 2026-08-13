@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.93.0"
+VERSION = "1.93.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -7458,13 +7458,32 @@ def set_dateien(ordner):
 
 
 def set_sicherungen():
+    """Sicherungen mit ihrem Inhalt, damit man einzelne Charaktere
+    heraussuchen kann statt immer alles einspielen zu muessen."""
+    import zipfile
     ziel = APP_DIR / SET_BACKUP
     if not ziel.is_dir():
         return []
+    namen = char_namen()
     raus = []
     for p in sorted(ziel.glob("*.zip"), reverse=True):
+        inhalt = []
+        try:
+            with zipfile.ZipFile(p) as z:
+                for e in sorted(z.namelist()):
+                    if e == "_herkunft.txt" or "/" in e or "\\" in e:
+                        continue
+                    teile = e.rsplit(".", 1)[0].split("_")
+                    art = teile[1] if len(teile) > 1 and e.startswith("core_") else "sonst"
+                    kennung = teile[2] if len(teile) > 2 else ""
+                    if e.startswith("core_") and not kennung:
+                        continue          # leere Platzhalter von EVE
+                    inhalt.append({"datei": e, "art": art, "id": kennung,
+                                   "name": namen.get(kennung) or ""})
+        except Exception as e:
+            log_error("CN-SET-01", "set_sicherungen", e)
         raus.append({"datei": p.name, "kb": round(p.stat().st_size / 1024, 1),
-                     "stand": int(p.stat().st_mtime)})
+                     "stand": int(p.stat().st_mtime), "inhalt": inhalt})
     return raus
 
 
@@ -8609,8 +8628,13 @@ class Handler(BaseHTTPRequestHandler):
                 if not name.endswith(".zip") or not p.is_file():
                     self._send(json.dumps({"ok": False, "msg": "Sicherung nicht gefunden."}))
                     return
+                # Leere Auswahl heisst: alles. Sonst nur die genannten
+                # Dateien, damit man einen einzelnen Charakter zurueckholen
+                # kann, ohne die anderen mit zurueckzuwerfen.
+                nur = {str(x) for x in (body.get("dateien") or [])}
                 try:
                     vorher = set_sichern(q, "vor-zurueck")
+                    getan = []
                     with zipfile.ZipFile(p) as z:
                         for eintrag in z.namelist():
                             # Ohne Pfadanteil, und die eigene Herkunftsnotiz
@@ -8618,9 +8642,13 @@ class Handler(BaseHTTPRequestHandler):
                             if "/" in eintrag or "\\" in eintrag \
                                     or eintrag == "_herkunft.txt":
                                 continue
+                            if nur and eintrag not in nur:
+                                continue
                             (q / (eintrag + ".neu")).write_bytes(z.read(eintrag))
                             os.replace(q / (eintrag + ".neu"), q / eintrag)
-                    self._send(json.dumps({"ok": True, "gesichert": vorher}))
+                            getan.append(eintrag)
+                    self._send(json.dumps({"ok": True, "gesichert": vorher,
+                                           "dateien": getan}))
                 except Exception as e:
                     log_error("CN-SET-02", "settings/zurueck", e)
                     self._send(json.dumps({"ok": False, "msg": str(e)}))
@@ -11687,10 +11715,25 @@ async function setLaden(){
 
     +`<div class="sect" style="margin-top:16px">Sicherungen</div>`
   +(d.sicherungen.length
-    ? '<table><thead><tr><th>Wann</th><th class="r">Größe</th><th></th></tr></thead>'
-      +d.sicherungen.map(b=>`<tr><td>${setZeit(b.stand)}</td><td class="r">${b.kb} KB</td>
-        <td class="r"><button class="btn setZurueck" data-f="${esc(b.datei)}">zurückspielen</button></td></tr>`).join('')
-      +'</table>'
+    ? '<div class="sub">Ganz zurückspielen, oder aufklappen und einzelne Charaktere auswählen. Der aktuelle Stand wird vorher gesichert.</div>'
+      +d.sicherungen.map((b,i)=>{
+        const chars=(b.inhalt||[]).filter(x=>x.art==='char');
+        return `<div style="border-top:1px solid var(--line);padding:8px 0">
+         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <b>${setZeit(b.stand)}</b>
+          <span class="sub">${b.kb} KB · ${(b.inhalt||[]).length} Dateien</span>
+          <span style="margin-left:auto"></span>
+          ${chars.length?`<span class="setAuf" data-i="${i}" style="cursor:pointer;color:var(--cyan);font-size:12px">▸ einzeln</span>`:''}
+          <button class="btn setZurueck" data-f="${esc(b.datei)}">alles zurückspielen</button>
+         </div>
+         <div class="setEinzeln" data-i="${i}" hidden style="margin-top:6px">
+          ${chars.map(c=>`<label style="display:inline-flex;align-items:center;gap:6px;margin-right:14px">
+            <input type="checkbox" class="setEinzelHaken" data-i="${i}" value="${esc(c.datei)}">
+            ${esc(c.name||c.id)}</label>`).join('')}
+          <div class="btnrow" style="margin-top:6px">
+           <button class="btn setEinzelGo" data-i="${i}" data-f="${esc(b.datei)}">nur diese zurückspielen</button>
+          </div>
+         </div></div>`;}).join('')
     : '<div class="sub">Noch keine Sicherung vorhanden.</div>');
 
  const stat=(t)=>{const e=$('#setStat'); if(e)e.textContent=t;};
@@ -11716,12 +11759,30 @@ async function setLaden(){
   setLaden();
  };
  document.querySelectorAll('.setZurueck').forEach(b=>b.onclick=async()=>{
-  if(!confirm('Diese Sicherung zurückspielen? Der aktuelle Stand wird vorher '
-    +'gesichert, geht also nicht verloren.'))return;
+  if(!confirm('Die GANZE Sicherung zurückspielen? Damit werden auch die '
+    +'anderen Charaktere auf diesen Stand gesetzt. Der aktuelle Stand wird '
+    +'vorher gesichert, geht also nicht verloren.'))return;
   stat('spielt zurück …');
   const r=await post({action:'settings',was:'zurueck',ordner:o.pfad,
                       sicherung:b.dataset.f});
-  stat(r.ok?'zurückgespielt':('ging nicht: '+(r.msg||'')));
+  stat(r.ok?('zurückgespielt: '+(r.dateien||[]).length+' Dateien'):('ging nicht: '+(r.msg||'')));
+  setLaden();
+ });
+ document.querySelectorAll('.setAuf').forEach(a=>a.onclick=()=>{
+  const k=document.querySelector('.setEinzeln[data-i="'+a.dataset.i+'"]');
+  k.hidden=!k.hidden;
+  a.textContent=(k.hidden?'▸':'▾')+' einzeln';
+ });
+ document.querySelectorAll('.setEinzelGo').forEach(b=>b.onclick=async()=>{
+  const haken=[...document.querySelectorAll('.setEinzelHaken[data-i="'+b.dataset.i+'"]:checked')];
+  if(!haken.length){stat('kein Charakter angekreuzt');return;}
+  const namen=haken.map(h=>h.parentElement.textContent.trim());
+  if(!confirm('Nur '+namen.join(', ')+' auf diesen Stand zurücksetzen? '
+    +'Die anderen Charaktere bleiben, wie sie sind.'))return;
+  stat('spielt zurück …');
+  const r=await post({action:'settings',was:'zurueck',ordner:o.pfad,
+    sicherung:b.dataset.f, dateien:haken.map(h=>h.value)});
+  stat(r.ok?('zurückgespielt: '+(r.dateien||[]).join(', ')):('ging nicht: '+(r.msg||'')));
   setLaden();
  });
 }

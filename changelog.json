@@ -1,5 +1,17 @@
 [
  {
+  "v": "1.93.1",
+  "d": "2026-08-13",
+  "de": [
+   "Beim Zurueckspielen lassen sich jetzt einzelne Charaktere auswaehlen. Vorher war es alles oder nichts, und wer nach einem Absturz nur einen zerlegten Charakter zurueckholen wollte, warf damit auch alle anderen auf einen alten Stand.",
+   "Jede Sicherung zeigt aufgeklappt, welche Charaktere darin stecken, mit echten Namen. Ankreuzen, zurueckspielen, die uebrigen bleiben unberuehrt. Auch prefs.ini bleibt dann, wie sie ist."
+  ],
+  "en": [
+   "Restoring can now target individual characters. It used to be all or nothing, so recovering one broken character after a crash also threw every other one back to an old state.",
+   "Each backup can be expanded to show which characters it holds, with real names. Tick, restore, and the rest stays untouched. prefs.ini stays as it is too."
+  ]
+ },
+ {
   "v": "1.93.0",
   "d": "2026-08-13",
   "de": [
