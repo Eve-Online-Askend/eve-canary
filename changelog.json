@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.4.0",
+  "d": "2026-08-13",
+  "de": [
+   "Abyss-Durchgaenge lassen sich jetzt exportieren. In der Liste „Missionen einzeln“ steht dafuer ein Knopf, sobald es Durchgaenge gibt, und darunter liegt localhost:8765/abyss.tsv als Tabelle zum Speichern und Weitergeben. Sie enthaelt Zeit, Dauer, Schaden, Treffer, EWAR, Loot und die haeufigsten Gegner, aber KEINE Charakternamen, nur „Char 1“ und „Char 2“, genau wie die Diagnose. Angeregt von Nirahse.",
+   "Zwei Spalten nennen die Filament-Stufe. Die eine kommt aus dem Namen, den du dem Lauf selbst gegeben hast (Calm bis Cataclysmic), die andere aus dem Gegner: die Rogue-Drone-Schlachtschiffe heissen je Stufe anders, von Photic fuer T1 bis Endobenthic fuer T6. Am EVE-University-Wiki nachgeschlagen, nicht geraten. Steht dort nichts Belegbares, bleibt die Spalte leer, statt eine Stufe zu erfinden."
+  ],
+  "en": [
+   "Abyssal runs can now be exported. The list “missions one by one” shows a button as soon as there are runs, and behind it sits localhost:8765/abyss.tsv as a table to save and pass on. It holds time, duration, damage, hits, EWAR, loot and the most frequent enemies, but NO character names, only “Char 1” and “Char 2”, exactly like the diagnostics. Suggested by Nirahse.",
+   "Two columns name the filament tier. One comes from the name you gave the run yourself (Calm through Cataclysmic), the other from the enemy: the rogue drone battleships are named differently per tier, from Photic for T1 to Endobenthic for T6. Looked up at the EVE University wiki, not guessed. If nothing is verifiable, the column stays empty instead of inventing a tier."
+  ]
+ },
+ {
   "v": "2.3.0",
   "d": "2026-08-13",
   "de": [

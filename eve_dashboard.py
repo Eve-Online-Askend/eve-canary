@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.3.0"
+VERSION = "2.4.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -9074,6 +9074,140 @@ def export_csv():
     return "\n".join(lines)
 
 
+# Die Rogue-Drone-Schlachtschiffe des Abyss heissen je Filament-Stufe anders.
+# Am EVE-University-Wiki verifiziert (13.08.2026, Seite "Abyssal Deadspace"),
+# nicht aus dem Gedaechtnis. Alle sechs Namen stehen ohnehin schon in
+# site_sigs.json, bisher nur als Ortsmarke. WICHTIG: nicht jeder Durchgang hat
+# Rogue Drones, das Signal ist also exakt, aber nicht immer da. Von Nirahse
+# selbst bestaetigt: "wenn sie da sind, hat man eine sichere Info".
+ABYSS_TIER_GEGNER = {"photic abyssal overmind": 1, "twilit abyssal overmind": 2,
+                     "bathyic abyssal overmind": 3, "hadal abyssal overmind": 4,
+                     "benthic abyssal overmind": 5, "endobenthic abyssal overmind": 6}
+# Dasselbe aus dem SELBST VERGEBENEN Namen: wer seinen Lauf "Chaotic Firestorm"
+# nennt, hat die Stufe schon hingeschrieben. Nur die englischen Filamentnamen,
+# denn nur die sind belegt. Steht dort etwas anderes, bleibt die Stufe leer,
+# statt geraten zu werden.
+ABYSS_TIER_NAME = {"calm": 1, "agitated": 2, "fierce": 3,
+                   "raging": 4, "chaotic": 5, "cataclysmic": 6}
+ABYSS_WETTER = ["dark", "electrical", "exotic", "firestorm", "gamma"]
+
+
+def abyss_tier_aus_gegnern(enemies):
+    """Filament-Stufe aus den Gegnernamen, oder None. Exakter Namensvergleich,
+    kein Teilwort: 'benthic' steckt in 'endobenthic'."""
+    for name, _cnt in (enemies or []):
+        t = ABYSS_TIER_GEGNER.get((name or "").strip().lower())
+        if t:
+            return t
+    return None
+
+
+def _wort_drin(wort, text):
+    return re.search(r"(?<![a-z])" + wort + r"(?![a-z])", text) is not None
+
+
+def abyss_tier_aus_name(label):
+    """Filament-Stufe aus dem selbst vergebenen Namen, oder None."""
+    low = (label or "").lower()
+    for wort, t in ABYSS_TIER_NAME.items():
+        if _wort_drin(wort, low):
+            return t
+    return None
+
+
+def abyss_wetter_aus_name(label):
+    low = (label or "").lower()
+    for w in ABYSS_WETTER:
+        if _wort_drin(w, low):
+            return w
+    return None
+
+
+def ist_abyss(system, enemies):
+    """Zwei Wege, damit auch Laeufe mitkommen, bei denen der Chatlog den Ort
+    nicht liefern konnte: der Ort selbst, sonst ein site-eindeutiger Gegner."""
+    if (system or "") == ABYSS_ORT:
+        return True
+    return bool(detect_site(enemies))
+
+
+_ABYSS_N = {"ts": 0.0, "n": 0}
+
+
+def abyss_anzahl():
+    """Wie viele Abyss-Durchgaenge stehen in der Datenbank? Nur fuer den
+    Export-Knopf, der sonst auch bei null Laeufen herumstuende. Gecacht, weil
+    der Missionen-Tab im 2-Sekunden-Takt fragt und die Pruefung jede Zeile
+    einzeln ansieht."""
+    if time.time() - _ABYSS_N["ts"] < 30:
+        return _ABYSS_N["n"]
+    with DB_LOCK:
+        rows = DB.execute("SELECT system, enemies FROM missions").fetchall()
+    n = 0
+    for system, enemies_j in rows:
+        try:
+            enemies = json.loads(enemies_j or "[]")
+        except Exception:
+            enemies = []
+        if ist_abyss(system, enemies):
+            n += 1
+    _ABYSS_N.update({"ts": time.time(), "n": n})
+    return n
+
+
+def abyss_export_tsv():
+    """Alle erkannten Abyss-Durchgaenge als Tabelle zum Weitergeben.
+
+    Bewusst OHNE Charakternamen (nur 'Char 1', 'Char 2' in der Reihenfolge des
+    ersten Auftretens), ohne Tokens und ohne Pfade, genau wie die Diagnose.
+    Tabulatorgetrennt, damit es sich in jede Tabellenkalkulation einfuegen
+    laesst und trotzdem im Textfeld lesbar bleibt."""
+    spalten = ["start_utc", "dauer_s", "char", "system", "name", "stufe_name",
+               "stufe_gegner", "wetter", "dmg_out", "dmg_in", "treffer",
+               "fehl_out", "fehl_in", "kills", "bounty", "loot_isk",
+               "ewar", "gegner_top"]
+    zeilen = ["\t".join(spalten)]
+    nummern, n = {}, 0
+    with DB_LOCK:
+        rows = DB.execute(
+            "SELECT start_ts,end_ts,char_id,system,label,dmg_out,dmg_in,hits,"
+            "miss_out,miss_in,kills,bounty,loot_isk,ewar,enemies "
+            "FROM missions ORDER BY start_ts").fetchall()
+    for (start, ende, cid, system, label, dout, din, hits, mout, min_, kills,
+         bounty, loot, ewar_j, enemies_j) in rows:
+        try:
+            enemies = json.loads(enemies_j or "[]")
+        except Exception:
+            enemies = []
+        if not ist_abyss(system, enemies):
+            continue
+        if cid not in nummern:
+            n += 1
+            nummern[cid] = n
+        try:
+            ewar = json.loads(ewar_j or "[]")
+        except Exception:
+            ewar = []
+        zeilen.append("\t".join(str(x) for x in [
+            datetime.fromtimestamp(start or 0, timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            int((ende or 0) - (start or 0)),
+            "Char " + str(nummern[cid]),
+            (system or "?"),
+            (label or "").replace("\t", " "),
+            abyss_tier_aus_name(label) or "",
+            abyss_tier_aus_gegnern(enemies) or "",
+            abyss_wetter_aus_name(label) or "",
+            int(dout or 0), int(din or 0), int(hits or 0),
+            int(mout or 0), int(min_ or 0), int(kills or 0),
+            int(bounty or 0), int(loot or 0),
+            " ".join(f"{k}x{v}" for k, v in ewar) if ewar else "",
+            " ".join(f"{k}x{v}" for k, v in enemies[:8]).replace("\t", " "),
+        ]))
+    if len(zeilen) == 1:
+        zeilen.append("# keine Abyss-Durchgaenge gefunden")
+    return "\n".join(zeilen)
+
+
 # ---------------------------------------------------------------- HTTP
 def _host_ok(headers):
     """Schuetzt vor DNS-Rebinding: nur localhost-Hosts duerfen zugreifen.
@@ -9184,6 +9318,7 @@ class Handler(BaseHTTPRequestHandler):
             elif view == "missionen":
                 data["missions"] = query_missions()
                 data["mission_log"], data["mission_offen"] = query_mission_history()
+                data["abyss_n"] = abyss_anzahl()
                 data["loot_tage"] = query_loot_tage()
                 data["chars"] = snapshot_live()
             elif view == "vault":
@@ -9224,6 +9359,9 @@ class Handler(BaseHTTPRequestHandler):
                        + "</p></body></html>", "text/html; charset=utf-8")
         elif p == "/diagnose.txt":
             self._send(diagnose_text(), "text/plain; charset=utf-8")
+        elif p == "/abyss.tsv":
+            self._send(abyss_export_tsv(), "text/tab-separated-values; charset=utf-8",
+                       "abyss_runs.tsv")
         elif p == "/export.csv":
             self._send(export_csv(), "text/csv; charset=utf-8", "eve_dashboard_export.csv")
         elif p == "/export.json":
@@ -13639,7 +13777,11 @@ function renderMissions(d){
     </div>`).join(''):''}
  </div>
  <div class="card" style="grid-column:1/-1">
-  <div class="sect">Missionen einzeln (aus den Gamelogs)</div>
+  <div class="sect" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+   <span>Missionen einzeln (aus den Gamelogs)</span>
+   ${d.abyss_n?`<a class="btn" href="/abyss.tsv" download style="margin-left:auto;display:inline-block;font-size:12px"
+     title="${lang==='en'?'Saves a table of all abyssal runs. Without character names, for sharing.':'Speichert eine Tabelle aller Abyss-Durchgänge. Ohne Charakternamen, zum Weitergeben.'}"
+     >🌀 ${lang==='en'?'Export abyssal runs':'Abyss-Durchgänge exportieren'} (${d.abyss_n})</a>`:''}</div>
   ${(d.mission_log&&d.mission_log.length)?d.mission_log
      .slice(seiteRuns*PRO_SEITE,(seiteRuns+1)*PRO_SEITE).map(x=>`
    <div style="border-top:1px solid var(--line);padding:10px 0">
