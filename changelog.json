@@ -1,5 +1,19 @@
 [
  {
+  "v": "1.99.2",
+  "d": "2026-08-13",
+  "de": [
+   "Die Prozentzahlen bei der Laser-Meldung sind wieder raus. Sie standen dort als waeren sie gemessen, stammten aber aus einer Nachbildung des Ablaufs, nicht aus dem laufenden Programm. Zwei Fassungen dieser Nachbildung lieferten 41 und 97 Prozent fuer dieselbe Einstellung, und keine der beiden passte zu dem, was ein Nutzer tatsaechlich sah.",
+   "Statt einer dritten Zahl steht dort jetzt, was die Stufen unterscheidet, und der ehrliche Zusatz, dass die Haeufigkeit stark von Flottengroesse, Erz und Brockengroesse abhaengt.",
+   "An der Funktion aendert sich nichts. Die Stufe bei Einbruch meldet, sobald die Ausbeute um mehr als 15 Prozent faellt, und genau das ist geprueft. Wer bei sauber laufender Flotte fast nie etwas sieht, hat kein Problem, sondern den Normalfall."
+  ],
+  "en": [
+   "The percentages on the laser message are gone again. They were presented as measurements but came from a replay of the logic, not from the running program. Two versions of that replay produced 41 and 97 percent for the same setting, and neither matched what a user actually saw.",
+   "Instead of a third number, the text now explains what separates the settings, plus the honest note that how often you see anything depends heavily on fleet size, ore and rock size.",
+   "Nothing changes about how it works. The on a drop setting reports as soon as your yield falls by more than 15 percent, and that part is tested. If your fleet runs cleanly and you almost never see anything, that is not a problem, that is the normal case."
+  ]
+ },
+ {
   "v": "1.99.1",
   "d": "2026-08-13",
   "de": [

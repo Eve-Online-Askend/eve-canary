@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.99.1"
+VERSION = "1.99.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -10438,7 +10438,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
    </select>
    <span class="hint" style="margin:0">⛔ wann die Meldung „Laser aus, neues Ziel erfassen" kommt</span>
   </div>
-  <div class="hint" style="margin:4px 0 0 2px">An den Logs eines Flotten-Miners mit 5 Rechnern gemessen, Anteil der Förderzeit mit sichtbarer Meldung: immer 41%, bei Einbruch 25%, nur bei leer 7%. Achtung bei der dritten Stufe: sie verschweigt den Ausfall eines einzelnen von mehreren Lasern, weil die übrigen weiter liefern.</div>
+  <div class="hint" style="margin:4px 0 0 2px"><b>immer</b> meldet jede Abschaltung, auch wenn du sofort nachzielst. <b>Bei Einbruch</b> meldet nur, wenn deine Ausbeute wirklich fällt, das ist der sinnvolle Standard. <b>Nur bei leer</b> ist am stillsten, verschweigt aber den Ausfall eines einzelnen von mehreren Lasern, weil die übrigen weiter liefern. Wie oft du am Ende etwas siehst, hängt stark von Flottengröße, Erz und Brockengröße ab.</div>
   <div class="hint" style="margin:4px 0 0 2px">Für Flotten-Miner: an kleinen Brocken schalten die Laser ständig ab, das ist normal und keine Störung. Canary meldet ohnehin nichts mehr, solange danach wieder Erz fließt. Wem es trotzdem zu oft blinkt, stellt hier zusätzlich eine Karenzzeit ein. Die Warnung bei einem echten Ratenverlust bleibt davon unberührt.</div>
   <div class="sect" style="margin-top:12px">Watchlist (Local-Chat, ein Name pro Zeile)</div>
   <textarea id="watchlist" rows="3" placeholder="Bekannte Ganker..."></textarea>
@@ -13828,7 +13828,7 @@ const EN = {
 'nur wenn die Ausbeute einbricht':'only when the yield drops',
 'nur wenn gar kein Erz mehr kommt':'only when no ore arrives at all',
 'gar nicht':'never',
-'An den Logs eines Flotten-Miners mit 5 Rechnern gemessen, Anteil der Förderzeit mit sichtbarer Meldung: immer 41%, bei Einbruch 25%, nur bei leer 7%. Achtung bei der dritten Stufe: sie verschweigt den Ausfall eines einzelnen von mehreren Lasern, weil die übrigen weiter liefern.':'Measured on the logs of a fleet miner running 5 clients, share of mining time with the message on screen: always 41%, on a drop 25%, only when empty 7%. Careful with the third setting: it hides the failure of a single laser among several, because the others keep delivering.',
+'<b>immer</b> meldet jede Abschaltung, auch wenn du sofort nachzielst. <b>Bei Einbruch</b> meldet nur, wenn deine Ausbeute wirklich fällt, das ist der sinnvolle Standard. <b>Nur bei leer</b> ist am stillsten, verschweigt aber den Ausfall eines einzelnen von mehreren Lasern, weil die übrigen weiter liefern. Wie oft du am Ende etwas siehst, hängt stark von Flottengröße, Erz und Brockengröße ab.':'<b>Always</b> reports every cutout, even when you retarget at once. <b>On a drop</b> reports only when your yield actually falls, which is the sensible default. <b>Only when empty</b> is the quietest, but it hides the failure of a single laser among several, because the others keep delivering. How often you end up seeing anything depends heavily on fleet size, ore and rock size.',
 'Für Flotten-Miner: an kleinen Brocken schalten die Laser ständig ab, das ist normal und keine Störung. Canary meldet ohnehin nichts mehr, solange danach wieder Erz fließt. Wem es trotzdem zu oft blinkt, stellt hier zusätzlich eine Karenzzeit ein. Die Warnung bei einem echten Ratenverlust bleibt davon unberührt.':'For fleet miners: on small rocks the lasers cut out constantly, which is normal and not a fault. Canary already stays quiet as long as ore keeps flowing afterwards. If it still blinks too often for you, set an extra grace period here. The warning for a real drop in yield is not affected.',
 '🎯 Ziel & Zähler':'🎯 Goal & counters','7 Tage':'7 days','12 Monate':'12 months',
 'Erz-Effizienz (ISK/m³)':'Ore efficiency (ISK/m³)','Waffen':'Weapons','und':'and',
