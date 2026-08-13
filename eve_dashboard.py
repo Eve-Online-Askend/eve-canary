@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.93.2"
+VERSION = "1.93.3"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -9719,14 +9719,20 @@ html[data-skin=cockpit] #packBox svg{
 .progress{background:var(--inset);border-radius:8px;height:16px;overflow:hidden;margin:8px 0}
 .progress div{background:var(--gold);height:100%;transition:width .5s}
 #empty{color:var(--dim);font-size:13px;margin-top:30px}
+/* margin:auto gehoert HIERHIN und nicht an einzelne Dialoge. Der globale
+   Reset *{margin:0} kippt die Zentrierung, mit der der Browser modale Dialoge
+   mittig setzt, und dann klebt das Popup oben links. Vorher stand das nur bei
+   zwei Dialogen, jeder neue klebte wieder. So gilt es fuer alle, auch fuer
+   die, die es noch nicht gibt.
+   max-height plus overflow: ein langer Dialog soll in sich scrollen statt aus
+   dem Bild zu laufen. */
 dialog{background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:12px;
-padding:20px 22px;max-width:620px;width:94%}
+padding:20px 22px;max-width:620px;width:94%;margin:auto;
+max-height:88vh;overflow-y:auto}
 dialog::backdrop{background:rgba(0,0,0,.55)}
-/* Der globale Reset *{margin:0} kippt das margin:auto, mit dem der Browser
-   modale Dialoge zentriert — sonst klebt das Popup oben links. Nur hier
-   zuruecksetzen, damit die bestehenden Dialoge unveraendert bleiben. */
-#newsGas{margin:auto;max-width:560px}
-#obsDlg{margin:auto;max-width:660px}
+#newsGas{max-width:560px}
+#obsDlg{max-width:660px}
+#setDlg{max-width:720px}
 /* Die Einrichtungsseite bringt ihre eigenen Farben mit und ist durchsichtig,
    damit sie in OBS ueber dem Spiel liegt. Im hellen Thema waere weisse Schrift
    auf weissem Grund unlesbar, also bekommt der Rahmen einen dunklen Boden. */

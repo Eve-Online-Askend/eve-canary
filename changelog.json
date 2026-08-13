@@ -1,5 +1,17 @@
 [
  {
+  "v": "1.93.3",
+  "d": "2026-08-13",
+  "de": [
+   "Alle Popups sitzen jetzt mittig im Bild. Bisher klebten sie oben links, weil eine Grundregel im Stylesheet die Zentrierung aushebelt, und das war nur bei zwei Dialogen einzeln repariert. Jetzt gilt es fuer alle, auch fuer die Optionen, die Belt-Auswertung und alles Kuenftige.",
+   "Lange Popups scrollen jetzt in sich selbst, statt unten aus dem Bild zu laufen."
+  ],
+  "en": [
+   "Every popup now sits centred in the window. They used to stick to the top left because a base rule in the stylesheet cancels the centring, and that had only been patched on two dialogs individually. It now applies to all of them, including options, the belt survey and anything added later.",
+   "Long popups now scroll inside themselves instead of running off the bottom of the screen."
+  ]
+ },
+ {
   "v": "1.93.2",
   "d": "2026-08-13",
   "de": [
