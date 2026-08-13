@@ -1,5 +1,21 @@
 [
  {
+  "v": "1.98.2",
+  "d": "2026-08-13",
+  "de": [
+   "Die Meldung Laser aus haengt jetzt an der Foerderrate statt an einer Uhr. Gemeldet wird nur noch, wenn die Ausbeute auch wirklich eingebrochen ist. Steht ein Modul still, ohne dass es sich in der Rate zeigt, gibt es nichts zu tun und Canary schweigt.",
+   "Der Grund ist gemessen und war eine Fehlannahme von mir: zwischen zwei Abschaltungen DESSELBEN Moduls liegen im Median 204 Sekunden, ueber 985 echte Abstaende. Ein Strip-Miner-Zyklus dauert eben Minuten, das gefuehlte alle paar Sekunden entsteht erst durch viele Laser gleichzeitig. Eine Karenzzeit von 30 Sekunden deckt darum nur 9,7 Prozent der Abstaende ab und konnte gar nicht helfen.",
+   "Neu ist ausserdem ein Schalter, der die Meldung ganz abstellt, in den Optionen bei den Alarmen. Wer sie nicht will, braucht sich nicht mit Sekunden herumzuschlagen.",
+   "Ehrlich dazu: an den vorliegenden Logs bringt die Umstellung 27 Prozent weniger Meldungszeit, von 4,9 auf 3,6 Prozent der Foerderzeit. Fuer eine Flotte aus mehreren Rechnern an kleinen Brocken fehlen mir Messdaten. Wer dort mitliest und sein Log beisteuern mag, hilft sehr. Gemeldet und geduldig nachgetestet von Eron Solette."
+  ],
+  "en": [
+   "The laser off message now hangs on your yield instead of a clock. It only appears when the yield has genuinely dropped. If a module sits idle without it showing in the rate, there is nothing to do and Canary stays quiet.",
+   "The reason is measured and was a wrong assumption on my part: between two cutouts of the SAME module the median gap is 204 seconds, across 985 real intervals. A strip miner cycle simply takes minutes, and the every few seconds feeling only comes from many lasers at once. A grace period of 30 seconds therefore covers just 9.7 percent of the gaps and never stood a chance.",
+   "There is also a new switch that turns the message off entirely, in the options under alerts. If you do not want it, you should not have to fiddle with seconds.",
+   "Honestly: on the logs available to me the change brings 27 percent less message time, from 4.9 down to 3.6 percent of mining time. For a fleet across several machines on small rocks I have no measurements. If you mine that way and would share a log, it would help a lot. Reported and patiently retested by Eron Solette."
+  ]
+ },
+ {
   "v": "1.98.1",
   "d": "2026-08-13",
   "de": [
