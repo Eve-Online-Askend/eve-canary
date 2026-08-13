@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.99.3"
+VERSION = "2.0.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -2275,6 +2275,10 @@ class CharSession:
         self.trips = 0  # Anzahl Station-Stopps (Abdocken) in dieser Session
         self.mining = {}
         self.compressed = {}
+        # Erz -> {Liefermenge: Anzahl}. Grundlage der Bonus-Zaehlung, siehe
+        # bonus_roh(). Winzig: an 3.074 echten Lieferungen kamen je Erz nur
+        # rund 60 verschiedene Mengen vor.
+        self.ore_amounts = {}
         # Command-Ship-Booster: Pilotname -> {Erz: Einheiten}, die ueber den
         # Kompressionsdienst dieses Schiffs liefen (auch fremde Flottenmitglieder).
         self.fleet_compress = {}
@@ -2382,6 +2386,10 @@ class CharSession:
                 self.drone_last = ev["ts"]
                 self.drone_alerted = False   # Drohnen liefern wieder
             self.mining[ev["key"]] = self.mining.get(ev["key"], 0) + ev["value"]
+            # Liefermengen mitzaehlen, fuer die Bonus-Erkennung (bonus_roh).
+            mengen = self.ore_amounts.setdefault(ev["key"], {})
+            menge = int(ev["value"])
+            mengen[menge] = mengen.get(menge, 0) + 1
             self.hold_raw[ev["key"]] = self.hold_raw.get(ev["key"], 0) + ev["value"]
             vol = ORE_TYPES.get(ev["key"], {}).get("volume", 0.0)
             minute = int(ev["ts"] // 60) * 60
@@ -2484,6 +2492,7 @@ class CharSession:
                 self.core_break = ev["ts"]   # Abdocken: davor war der Kern aus
                 self.trips += 1
                 self.mining = {}
+                self.ore_amounts = {}
                 self.compressed = {}
                 self.fleet_compress = {}
                 self.weapons = {}
@@ -2577,6 +2586,50 @@ class CharSession:
             if puffer and now - ts < puffer:
                 continue          # Karenzzeit laeuft noch
             out.append({"tool": tool, "count": cnt, "drone": "Drone" in tool})
+        return out
+
+    def bonus_roh(self):
+        """Lieferungen mit vervielfachtem Ertrag zaehlen. Gibt {Erz: (Anzahl,
+        Zusatz-Einheiten)}.
+
+        Beobachtet an 3.074 echten Lieferungen eines Flotten-Miners: je
+        Charakter und Erz gibt es eine ganz klare Normalmenge (bei Veldspar
+        III-Grade 754 von 881 Lieferungen mit exakt 6.861 Einheiten). Ein
+        kleiner Teil ist ein EXAKTES Vielfaches davon, durchgaengig das
+        Dreifache, rund 3 bis 5 Prozent der Lieferungen. Zweifache gibt es
+        nicht, es springt direkt auf das Dreifache.
+
+        Alles UNTER der Normalmenge sind Restbestaende eines leerlaufenden
+        Brockens und zaehlen selbstverstaendlich nicht als Bonus.
+
+        Erkannt wird allein an ZAHLEN, nicht an Text. Damit funktioniert es in
+        jeder Client-Sprache, so wie fast alles in Canary.
+
+        Die Normalmenge ist die haeufigste Menge. Sie steht nach wenigen
+        Zyklen fest, und weil hier jedes Mal neu ueber alle Lieferungen der
+        Sitzung gerechnet wird, korrigieren sich die ersten Zyklen von selbst,
+        sobald genug Daten da sind.
+
+        Der Orca-Pilot hat in den Messdaten null Bonus: mit Drohnen gibt es ihn
+        offenbar nicht, nur mit Strip Minern. Das faellt hier automatisch raus,
+        es braucht keine Sonderregel."""
+        out = {}
+        for erz, mengen in self.ore_amounts.items():
+            if not mengen:
+                continue
+            # Haeufigste Menge = Normallieferung. Bei Gleichstand die groessere,
+            # damit eine einzelne Restmenge nicht zur Normalmenge wird.
+            basis = max(mengen.items(), key=lambda x: (x[1], x[0]))[0]
+            if basis <= 0:
+                continue
+            anzahl = extra = 0
+            for menge, n in mengen.items():
+                v = menge / basis
+                if round(v) >= 2 and abs(v - round(v)) < 0.01:
+                    anzahl += n
+                    extra += (menge - basis) * n
+            if anzahl:
+                out[erz] = (anzahl, extra)
         return out
 
     def laser_off_liste(self):
@@ -6889,6 +6942,19 @@ def snapshot_live():
                          "known": ore in ORE_TYPES})
         # Unbekannte Erze nach oben (zum Melden), sonst nach ISK-Wert
         ores.sort(key=lambda o: (0 if not o["known"] else 1, -o["isk"]))
+        # Lieferungen mit vervielfachtem Ertrag. Bewertet wie das uebrige Erz,
+        # damit die Zahl direkt mit dem Sitzungs-Ertrag vergleichbar ist.
+        b_n = b_m3 = b_isk = 0
+        b_alle = 0
+        for erz, (anzahl, extra) in s.bonus_roh().items():
+            i, v = ore_value(erz, extra, pm)
+            b_n += anzahl
+            b_m3 += v
+            b_isk += i
+        for mengen in s.ore_amounts.values():
+            b_alle += sum(mengen.values())
+        bonus = {"n": b_n, "von": b_alle, "m3": round(b_m3), "isk": round(b_isk),
+                 "quote": round(100 * b_n / b_alle, 1) if b_alle else 0}
         comp = []
         for ctype, units in sorted(s.compressed.items(), key=lambda x: -x[1]):
             t = ORE_TYPES.get(ctype, {})
@@ -7013,6 +7079,7 @@ def snapshot_live():
             "abyss_min": chatwatch.abyss_minuten(s.char_id),
             "danger": danger.for_system(s.system or chatwatch.systems.get(s.char_id)),
             "ores": ores, "m3": round(m3), "ore_isk": round(ore_isk),
+            "bonus": bonus,
             # Tatsaechlicher Stillstand-Verlust dieser Session (kumuliert), zum
             # ISK/m³-Schnitt der Session bewertet.
             "lost_isk": round(s.lost_m3 * (ore_isk / m3)) if m3 > 0 else 0,
@@ -11677,6 +11744,9 @@ function miningCardHtml(c){
     <div class="stat"><div class="l">${c.trips>0?'ISK Trip':'ISK Session'}</div><div class="v isk">${fmtM(c.total_isk)}</div></div>
     <div class="stat"><div class="l">Erz (${fmt(c.m3)} m³)</div><div class="v isk">${fmtM(c.ore_isk)}</div></div>
     <div class="stat"><div class="l">m³/h</div><div class="v out">${fmt(c.m3h)}</div></div>
+    ${(c.bonus&&c.bonus.n>0)?`<div class="stat" title="Lieferungen mit vervielfachtem Ertrag. Canary erkennt sie daran, dass die Menge ein exaktes Vielfaches deiner Normallieferung ist. Gezeigt wird nur der Teil, der über die Normalmenge hinausging.">
+     <div class="l">Bonus-Erträge (${c.bonus.n} von ${c.bonus.von} · ${c.bonus.quote}%)</div>
+     <div class="v isk">${fmtM(c.bonus.isk)}<span class="sub" style="display:block;font-weight:400">${fmt(c.bonus.m3)} m³ extra</span></div></div>`:''}
     <div class="stat"><div class="l">Laderaum ≈ ${fmt(c.hold_m3)} m³ · ${state.regions[state.region]}</div><div class="v isk">${
       c.hold_prices==='none'
        ?'<span style="color:var(--dim);font-size:12px;font-weight:400">keine Preisdaten</span>'
@@ -13681,6 +13751,8 @@ const EN = {
 'Noch nichts komprimiert':'Nothing compressed yet','Pro Charakter':'Per character',
 'Gesamt nach Typ':'Total by type','Menge':'Amount','Typ':'Type','Stk':'units',
 'seit Abdocken':'since undocking','Asteroiden leergebaggert':'asteroids depleted',
+'Lieferungen mit vervielfachtem Ertrag. Canary erkennt sie daran, dass die Menge ein exaktes Vielfaches deiner Normallieferung ist. Gezeigt wird nur der Teil, der über die Normalmenge hinausging.':
+ 'Deliveries with multiplied yield. Canary spots them because the amount is an exact multiple of your normal delivery. Only the part beyond the normal amount is shown.',
 'Asteroiden leergebaggert · Preise':'asteroids depleted · prices',
 'per ⛽ setzen':'set via ⛽',
 'noch keine Kompression, Verbrauch pausiert':'no compression yet, consumption paused',
@@ -13978,6 +14050,7 @@ const EN_PATTERNS = [
  [/^Erz [(]/, 'Ore ('], [/^Laderaum ≈/, 'Cargo ≈'],
  [/vs[.] gestern/, 'vs. yesterday'],
  [/aktive Tage/, 'active days'], [/Asteroiden leergebaggert/, 'asteroids depleted'],
+ [/Bonus-Erträge \\(([0-9]+) von ([0-9]+)/, 'Bonus yields ($1 of $2'],
  [/abgeschaltet, Drohnen prüfen!/, 'switched off, check drones!'],
  [/abgeschaltet, Ziel prüfen/, 'switched off, check target'],
  [/Seit ([0-9]+) Minuten kein Erz/, 'No ore for $1 minutes'],

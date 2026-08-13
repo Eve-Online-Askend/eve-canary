@@ -1,5 +1,23 @@
 [
  {
+  "v": "2.0.0",
+  "d": "2026-08-13",
+  "de": [
+   "Neu in der Live-Karte: Bonus-Ertraege. Ab und zu liefert ein Strip Miner ein Vielfaches der ueblichen Menge. Canary zaehlt diese Lieferungen jetzt mit und zeigt, wie viele es waren, welchen Anteil sie ausmachen und wie viel Volumen und ISK dadurch zusaetzlich hereinkamen. Gewuenscht von Vile Gangster und Eron Solette.",
+   "Erkannt wird es allein an den Zahlen: die Bonus-Menge ist ein exaktes Vielfaches deiner Normallieferung. Damit funktioniert es in jeder Client-Sprache, so wie fast alles in Canary. Kleinere Mengen sind Restbestaende eines leerlaufenden Brockens und zaehlen nicht mit.",
+   "An 3.074 echten Lieferungen einer Miningflotte geprueft: 111 mit vervielfachtem Ertrag, also 3,6 Prozent, zusammen gut 152.000 m3 und 20 Mio ISK extra an einem Vormittag. Je Charakter lag die Quote zwischen 3,0 und 4,9 Prozent.",
+   "Ein Nebenbefund aus denselben Daten: der Orca-Pilot, der nur mit Drohnen foerdert, hatte keinen einzigen Bonus. Mit Drohnen scheint es ihn nicht zu geben, nur mit Strip Minern. Die Kachel erscheint deshalb nur dort, wo es auch etwas zu zeigen gibt.",
+   "Zurueckgestellt: kritische Treffer im Kampf mitzuzaehlen. Die Trefferqualitaet steht zwar im Log, aber der deutsche Client uebersetzt sie. Das waere das fuenfte sprachabhaengige Signal, und davon gibt es bisher bewusst nur vier. Kommt, sobald die Woerter aus mehreren Sprachen beisammen sind."
+  ],
+  "en": [
+   "New on the live card: bonus yields. Every so often a strip miner delivers a multiple of the usual amount. Canary now counts those deliveries and shows how many there were, what share they make up and how much volume and ISK they added. Requested by Vile Gangster and Eron Solette.",
+   "Detection works purely on the numbers: the bonus amount is an exact multiple of your normal delivery. That makes it work in any client language, like almost everything in Canary. Smaller amounts are the remains of a rock running dry and do not count.",
+   "Checked against 3,074 real deliveries from a mining fleet: 111 with multiplied yield, so 3.6 percent, together a good 152,000 m3 and 20 million ISK extra over one morning. Per character the rate ranged from 3.0 to 4.9 percent.",
+   "A side finding from the same data: the Orca pilot, who only mines with drones, had not a single bonus. It appears not to exist with drones, only with strip miners. The tile therefore only shows up where there is something to show.",
+   "Deferred: counting wrecking hits in combat. Hit quality is in the log, but the German client translates it. That would be the fifth language-dependent signal, and so far there are deliberately only four. It will come once the words from several languages are collected."
+  ]
+ },
+ {
   "v": "1.99.3",
   "d": "2026-08-13",
   "de": [
