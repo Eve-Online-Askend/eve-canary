@@ -1,5 +1,27 @@
 [
  {
+  "v": "2.1.0",
+  "d": "2026-08-13",
+  "de": [
+   "Ein Spieler hat 1.456 Logdateien beigesteuert, 1,07 Millionen Zeilen aus 197 Spieltagen. Daran ist alles Folgende gemessen, nichts davon ist geschaetzt.",
+   "WICHTIG, eine Korrektur an 2.0.0: die Bonus-Ertraege wurden zu niedrig gemeldet. Die Erkennung suchte nach exakt ganzen Vielfachen der Normalmenge, weil an einem einzelnen Vormittag durchgaengig das Dreifache zu sehen war. Es gibt aber einen zweiten Faktor, 2,88, und der wurde komplett verschluckt: 28,6 Prozent aller Bonus-Lieferungen. Fuer aeltere Daten meldete die Anzeige sogar stur null. Statt ganzer Vielfacher wird jetzt ein Fenster geprueft, damit ueberlebt sie auch den naechsten Faktorwechsel.",
+   "Neu: die Flottengroesse steht im Log und wird jetzt genutzt. Jeder Mining-Boost nennt, wie viele Mitglieder er erreicht hat. Diese 67.478 Zeilen landeten bisher im Papierkorb, dabei sind sie die einzige Quelle, die die Flottengroesse minutengenau belegt, ganz ohne EVE-Login. Sie steht jetzt in der Live-Karte.",
+   "Fehlschuesse gegen dich merken sich jetzt, WER daneben geschossen hat. Der Name stand die ganze Zeit in der Zeile und wurde weggeworfen, in allen 10.724 Faellen. Damit ist eine Ausweichquote je Gegner moeglich.",
+   "Rueckstand beim Gasernten wird endlich mitgezaehlt. Die Regel verlangte das Wort Asteroid, deshalb fielen alle Gaswolken-Zeilen durch und die Verschnittquote war dort strukturell falsch. Erkannt wird jetzt ueber die Farbe, das ist sprachunabhaengig.",
+   "Ein abgebrochener Handel beendet nicht mehr faelschlich den Trip.",
+   "Nebenbei bestaetigt der Bestand, was gut laeuft: 99,89 Prozent der Zeilen mit Zeitstempel werden verstanden, alle 623.603 Erznamen treffen die Tabelle, und es wurde keine einzige falsch eingeordnete Zeile gefunden."
+  ],
+  "en": [
+   "A player contributed 1,456 log files, 1.07 million lines across 197 days of play. Everything below is measured against them, none of it is estimated.",
+   "IMPORTANT, a correction to 2.0.0: bonus yields were reported too low. Detection looked for exact whole multiples of the normal amount, because a single morning showed nothing but the threefold. There is a second factor though, 2.88, and it was swallowed entirely: 28.6 percent of all bonus deliveries. For older data the display reported a flat zero. Instead of whole multiples it now checks a window, which also survives the next change of factor.",
+   "New: fleet size is in the log and is now used. Every mining boost states how many members it reached. Those 67,478 lines went into the bin until now, even though they are the only source that proves fleet size to the minute, entirely without an EVE login. It now shows on the live card.",
+   "Misses against you now remember WHO missed. The name was in the line the whole time and was thrown away, in all 10,724 cases. An evasion rate per enemy is now possible.",
+   "Residue from gas harvesting is finally counted. The rule required the word asteroid, so every gas cloud line fell through and the waste ratio there was structurally wrong. Detection now goes by colour, which is language independent.",
+   "A cancelled trade no longer ends your trip by mistake.",
+   "Along the way the data confirms what works: 99.89 percent of timestamped lines are understood, all 623,603 ore names hit the table, and not a single misclassified line was found."
+  ]
+ },
+ {
   "v": "2.0.0",
   "d": "2026-08-13",
   "de": [

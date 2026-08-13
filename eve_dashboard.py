@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -192,6 +192,22 @@ MISSION_FP = [{"name": (v.get("m") or "").strip(),
 # Listen mit drei Namen schon bei einem Zufallstreffer gleichziehen.
 FP_MIN_AEHNLICH = 0.65
 FP_MIN_GEMEINSAM = 4
+# Ab welchem Vielfachen der Normallieferung gilt Erz als Bonus, und bis wohin.
+#
+# Erst hiess die Regel "exaktes ganzes Vielfaches". Das war an einem einzigen
+# Vormittag beobachtet und ist an 623.603 Lieferungen aus 8,5 Monaten
+# durchgefallen: es gibt ZWEI scharfe Spitzen, 3,00 (15.330 Lieferungen) und
+# 2,88 (5.531). Dazwischen liegt nichts, die naechsten Werte kommen 95 und 93
+# mal vor. Die Ganzzahl-Pruefung verschluckte damit 28,6 Prozent aller
+# Bonus-Lieferungen, im November und Dezember 2025 sogar restlos alle: dort
+# hatte die Anzeige 108.924 Lieferungen ausgewertet und null gemeldet.
+#
+# Welcher Faktor gilt, wechselte je Charakter zu verschiedenen Zeitpunkten,
+# nicht global. Deshalb keine feste Zahl mehr, sondern ein Fenster. Die
+# Obergrenze faengt kaputte Basiswerte ab: am allerersten Logtag stand die
+# Normalmenge bei 297 Einheiten und erzeugte Verhaeltnisse bis 21.
+BONUS_AB = 2.5
+BONUS_BIS = 5.0
 # Ort-Erkennung. Fuer Kampfanomalien gibt es sowas NICHT und wird es nie geben:
 # alle Anomalien einer Fraktion ziehen aus demselben Rattenpool, es gibt keinen
 # site-eindeutigen Gegner. Fuer den Abyss dagegen fuehrt CCP zwei eigene Gruppen
@@ -637,6 +653,9 @@ DRONE_UNLOAD_TEXTS = ["Bergbaudrohnen müssen ihre aktuellen Erzladungen verlade
                       "mining drones must unload"]
 UNDOCK_TEXTS = ["Abdocken", "Undocking"]      # (None)-Zeile beim Abdocken
 TRADE_TEXTS = ["Handel mit", "Trade with"]    # Handel abgeschlossen -> Laderaum unklar
+# Abgebrochener Handel. Nur diese Woerter heben den Laderaum-Reset wieder auf,
+# alles andere bleibt wie bisher ein abgeschlossener Handel.
+TRADE_CANCEL_TEXTS = ["canceled", "cancelled", "abgebrochen"]
 # Reise-Zustaende: pausieren den Stillstand-Verlust (angedockt/unterwegs = kein Verlust).
 DOCK_APPROACH_TEXTS = ["docking perimeter", "Andockperimeter", "Andock-Perimeter"]
 WARP_TEXTS = ["Warp drive active", "Warpantrieb aktiv", " in warp", " im Warp"]
@@ -883,6 +902,24 @@ RESIDUE_RE = re.compile(
     re.I)
 # Erfolgreiches Hacken benennt den Behaelter und damit den Site-Typ.
 HACK_RE = re.compile(r"You successfully access the\s+(.+?)\s*\.?\s*$", re.I)
+# Flotten-Boost mit der Zahl der bebonusten Mitglieder. Bis v2.0.x landete das
+# als Rauschen im Papierkorb, und zwar in erheblichem Umfang: an 1,07 Mio
+# Zeilen waren es 67.478 Stueck in 220 Dateien, also 83 Prozent des gesamten
+# verworfenen Materials.
+#
+# Das ist die einzige Quelle, die die FLOTTENGROESSE minutengenau aus dem Log
+# belegt, ganz ohne ESI. Verteilung im Messbestand: 3 Mitglieder 39,4 Prozent,
+# 4 Mitglieder 55,0 Prozent.
+#
+# Beide Sprachfassungen stehen schon als Rauschmuster im Projekt und sind dort
+# an echten Logs belegt, hier werden sie nur zusaetzlich ausgewertet. Es kommt
+# also keine neue Sprachabhaengigkeit hinzu.
+BOOST_RE = re.compile(
+    r"(?:has applied bonuses to\s+(\d+)\s+fleet member"
+    r"|gewährt\s+([\d.,]+)\s+Flottenmitglied)", re.I)
+# Das Boost-Modul steht davor und ist nie uebersetzt.
+BOOST_MOD_RE = re.compile(r"(?:Your|Ihr|Ihre|Dein|Deine)\s+([A-Za-z' ]{4,40}?)\s+"
+                          r"(?:has applied|gewährt)", re.I)
 # Zusatz, den der englische Client seit 2022 an die Ertragszeile haengt. Muss
 # vom Erznamen abgeschnitten werden, sonst ist der Schluessel unbrauchbar.
 RESIDUE_SUFFIX_RE = re.compile(r"\s+with a lost residue of\b.*$", re.I)
@@ -894,6 +931,12 @@ def classify_rest(base, tag, text):
     m = RESIDUE_RE.search(text)
     if m:
         return {**base, "kind": "residue", "key": "Rueckstand",
+                "value": num(m.group(1) or m.group(2))}
+    m = BOOST_RE.search(text)
+    if m:
+        mod = BOOST_MOD_RE.search(text)
+        return {**base, "kind": "boost",
+                "key": (mod.group(1).strip() if mod else "Boost"),
                 "value": num(m.group(1) or m.group(2))}
     m = HACK_RE.search(text)
     if m and len(m.group(1)) < 60:
@@ -945,7 +988,25 @@ def parse_line(raw):
         # "residue" erkannt statt still verworfen, damit die Verschnittquote
         # eines Trips ausweisbar ist.
         if MINE_WASTE_COLOR in body:
-            return classify_rest(base, tag, STRIP_RE.sub("", body))
+            klar = STRIP_RE.sub("", body)
+            ev = classify_rest(base, tag, klar)
+            if ev:
+                return ev
+            # Die Farbe sagt schon sicher, dass es Abfall ist. Passt der
+            # Wortlaut trotzdem nicht, reicht die fuehrende Zahl.
+            #
+            # Gemessen an 1,07 Mio Zeilen: RESIDUE_RE verlangt das Wort
+            # "asteroid", deshalb fielen 96 Gaswolken-Zeilen durch
+            # ("Additional 10 units depleted from Harvestable Cloud as
+            # residue"), obwohl die Gas-Ertraege selbst sauber gezaehlt
+            # wurden. Die Verschnittquote beim Gasernten war dadurch
+            # strukturell falsch. Ueber die Farbe zu gehen ist ausserdem
+            # sprachunabhaengig und ueberlebt jede kuenftige Umformulierung.
+            n = NUM_RE.search(klar)
+            if n:
+                return {**base, "kind": "residue", "key": "Rueckstand",
+                        "value": num(n.group(1))}
+            return None
         text = STRIP_RE.sub("", body)
         n = NUM_RE.search(text)
         hint = HINT_RE.search(body)
@@ -1064,10 +1125,22 @@ def parse_line(raw):
         # Zuerst klaeren, ob die Zeile vom EIGENEN Schiff handelt: sonst wuerde
         # "Ihre Drohne verfehlt sie" als Treffer GEGEN einen gezaehlt.
         eigen = bool(re.match(r"^(your|deine?|ihre?)\b", pl))
-        if not eigen and ("misses you" in pl or "verfehlt dich" in pl
-                          or "verfehlen dich" in pl or "verfehlt sie" in pl
-                          or "verfehlen sie" in pl):
-            return {**base, "kind": "miss_in", "key": "", "value": 1}
+        rein = next((w for w in ("misses you", "verfehlt dich", "verfehlen dich",
+                                 "verfehlt sie", "verfehlen sie") if w in pl), None)
+        if not eigen and rein:
+            # Der Gegnername steht VOR der Fehlschuss-Wendung. Er stand die
+            # ganze Zeit in der Zeile und wurde verworfen: an 1,07 Mio Zeilen
+            # gemessen betraf das ALLE 10.724 gegnerischen Fehlschuesse.
+            # Ohne ihn ist keine Trefferquote je Gegner moeglich.
+            #
+            # Der Name wird aus dem UNGEKUERZTEN Text geschnitten, damit die
+            # Gross- und Kleinschreibung erhalten bleibt. Die Wendung selbst
+            # kommt aus derselben Liste wie die Erkennung, es kommt also keine
+            # neue Sprachabhaengigkeit dazu.
+            roh = STRIP_RE.sub("", body).strip()
+            schnitt = pl.find(rein)
+            wer = roh[:schnitt].strip() if schnitt > 0 else ""
+            return {**base, "kind": "miss_in", "key": wer, "value": 1}
         if eigen and ("miss" in pl or "verfehl" in pl):
             return {**base, "kind": "miss_out", "key": "", "value": 1}
         for etype, pats in EWAR_TEXTS:
@@ -1110,6 +1183,16 @@ def parse_line(raw):
                     "raw": raw.strip().rstrip("*").strip(),
                     "value": num(mfc.group(2))}
         if any(t in text for t in TRADE_TEXTS):
+            # Ein ABGEBROCHENER Handel setzt den Laderaum nicht zurueck. Das
+            # Muster "Trade with" nahm ihn bisher mit: an 1,07 Mio Zeilen zwar
+            # nur 2 Faelle, aber sachlich falsch, und die Zeile beendet den
+            # Trip in der Live-Karte. Sicherheitshalber nur abweisen, wenn das
+            # Abbruchwort wirklich dasteht, sonst bleibt es beim alten
+            # Verhalten. So kann die Regel in keiner Sprache etwas kaputt
+            # machen, das heute funktioniert.
+            if any(w in text.lower() for w in TRADE_CANCEL_TEXTS):
+                return {**base, "kind": "noise", "key": "handel_abgebrochen",
+                        "value": 1}
             LOG_TEXT_HITS["trade"] += 1
             return {**base, "kind": "hold_reset", "key": "trade", "value": 1}
         for tool in MINING_TOOLS:
@@ -2292,6 +2375,9 @@ class CharSession:
         self.core_break = None   # letztes An-/Abdocken: davor und danach nicht ueberbruecken
         self.cargo_full = False
         self.cargo_ts = 0
+        # Belegte Flottengroesse aus den Boost-Zeilen: (Zeitpunkt, Anzahl).
+        # Nur der letzte Stand, mehr braucht die Anzeige nicht.
+        self.boost = None
         self.last_ore_ts = None   # fuer Stillstand-Erkennung
         self.last_event_ts = None # letztes Log-Ereignis (Aktivitaets-/Online-Heuristik)
         self.idle_alerted = False
@@ -2535,6 +2621,12 @@ class CharSession:
                 e[0] = 0  # alter Vorfall abgelaufen -> neu zaehlen
             e[0] += 1
             e[1] = ev["ts"]
+        elif k == "boost":
+            # Die Zahl im Log ist die Zahl der BEBONUSTEN Mitglieder, der
+            # Booster selbst zaehlt nicht mit. Fuer die angezeigte
+            # Flottengroesse gehoert er dazu.
+            self.boost = {"ts": ev["ts"], "n": int(ev["value"]) + 1,
+                          "modul": ev["key"]}
         elif k == "cargo":
             self.cargo_full = True
             self.cargo_ts = ev["ts"]
@@ -2592,12 +2684,17 @@ class CharSession:
         """Lieferungen mit vervielfachtem Ertrag zaehlen. Gibt {Erz: (Anzahl,
         Zusatz-Einheiten)}.
 
-        Beobachtet an 3.074 echten Lieferungen eines Flotten-Miners: je
-        Charakter und Erz gibt es eine ganz klare Normalmenge (bei Veldspar
-        III-Grade 754 von 881 Lieferungen mit exakt 6.861 Einheiten). Ein
-        kleiner Teil ist ein EXAKTES Vielfaches davon, durchgaengig das
-        Dreifache, rund 3 bis 5 Prozent der Lieferungen. Zweifache gibt es
-        nicht, es springt direkt auf das Dreifache.
+        Je Charakter und Erz gibt es eine klare Normalmenge. Ein kleiner Teil
+        der Lieferungen ist ein Vielfaches davon, rund 3,4 Prozent.
+
+        Nachgemessen an 623.603 Lieferungen aus 8,5 Monaten: es gibt ZWEI
+        scharfe Spitzen, 3,00 und 2,88, dazwischen praktisch nichts.
+        Zweifache und Vierfache gibt es nicht. Welcher der beiden Faktoren
+        gilt, wechselte je Charakter zu unterschiedlichen Zeitpunkten, das
+        sieht nach Schiff oder Ausruestung aus und nicht nach einem Patch.
+        Deshalb wird hier ein FENSTER geprueft (BONUS_AB bis BONUS_BIS) und
+        nicht auf ganze Vielfache. Die erste Fassung tat Letzteres und meldete
+        fuer die Daten von Dezember 2025 stur null.
 
         Alles UNTER der Normalmenge sind Restbestaende eines leerlaufenden
         Brockens und zaehlen selbstverstaendlich nicht als Bonus.
@@ -2625,7 +2722,7 @@ class CharSession:
             anzahl = extra = 0
             for menge, n in mengen.items():
                 v = menge / basis
-                if round(v) >= 2 and abs(v - round(v)) < 0.01:
+                if BONUS_AB <= v <= BONUS_BIS:
                     anzahl += n
                     extra += (menge - basis) * n
             if anzahl:
@@ -7080,6 +7177,11 @@ def snapshot_live():
             "danger": danger.for_system(s.system or chatwatch.systems.get(s.char_id)),
             "ores": ores, "m3": round(m3), "ore_isk": round(ore_isk),
             "bonus": bonus,
+            # Flottengroesse aus den Boost-Zeilen. Nur zeigen, solange sie
+            # frisch ist: ein Boost von vor einer halben Stunde sagt nichts
+            # mehr ueber die Flotte von jetzt.
+            "boost": (s.boost if s.boost and time.time() - s.boost["ts"] < 600
+                      else None),
             # Tatsaechlicher Stillstand-Verlust dieser Session (kumuliert), zum
             # ISK/m³-Schnitt der Session bewertet.
             "lost_isk": round(s.lost_m3 * (ore_isk / m3)) if m3 > 0 else 0,
@@ -11738,7 +11840,7 @@ function miningCardHtml(c){
    ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur noch ${c.rate_low}%. Vermutlich ist ein Modul oder eine Drohne aus.</div>`:''}
    ${mineIdle(c,state)?`<div class="cardwarn">⚠ Seit ${Math.round(c.mine_idle/60)} min kein Erz. Laser und Drohnen prüfen!</div>`:''}
    ${(localStorage.getItem('iskCoach')==='1'&&c.lost_isk>=1000&&!c.command_ship)?`<div class="cardwarn">💸 ${lang==='en'?'Downtime loss this session':'Stillstand-Verlust diese Session'}: ≈ ${fmtM(c.lost_isk)} ISK${c.lost_paused?(lang==='en'?' <span style="color:var(--dim);font-weight:400">(paused, docked/warp)</span>':' <span style="color:var(--dim);font-weight:400">(pausiert, angedockt/Warp)</span>'):''}</div>`:''}
-   <div class="sub">${c.trips>0?'Trip '+(c.trips+1)+' · seit Abdocken':'Session'} ${c.session_min} min · ${c.depleted} Asteroiden leergebaggert · Preise: ${state.price_src==='esi'?'ESI · ':''}${state.regions[state.region]}</div>
+   <div class="sub">${c.trips>0?'Trip '+(c.trips+1)+' · seit Abdocken':'Session'} ${c.session_min} min · ${c.depleted} Asteroiden leergebaggert${c.boost?' · '+c.boost.n+' in der Flotte':''} · Preise: ${state.price_src==='esi'?'ESI · ':''}${state.regions[state.region]}</div>
    ${dangerLine(c)}
    <div class="stats">
     <div class="stat"><div class="l">${c.trips>0?'ISK Trip':'ISK Session'}</div><div class="v isk">${fmtM(c.total_isk)}</div></div>
