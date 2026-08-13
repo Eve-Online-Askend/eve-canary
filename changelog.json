@@ -1,5 +1,19 @@
 [
  {
+  "v": "1.97.1",
+  "d": "2026-08-13",
+  "de": [
+   "Der Installer beendet jetzt eine laufende Canary, bevor er die Dateien austauscht. Vorher tat er das nicht, und das war der Grund, warum bei einigen auch nach einem erneuten Setup nichts besser wurde: der alte Prozess hielt weiter Port 8765 und bediente aus dem Speicher, waehrend der neu gestartete gar nicht erst an den Port kam.",
+   "Windows wie Linux und macOS. Auf Windows ueber den Port, mit netstat als Rueckfallebene fuer aeltere Systeme, sonst ueber lsof oder fuser.",
+   "Aufgefallen an einer Meldung von Vile Gangster, der genau das Richtige getan hatte und trotzdem vor derselben leeren Seite sass."
+  ],
+  "en": [
+   "The installer now stops a running Canary before it swaps the files. It did not before, and that is why re-running the setup changed nothing for some people: the old process kept holding port 8765 and kept serving from memory, while the newly started one never got the port.",
+   "Windows as well as Linux and macOS. On Windows via the port, with netstat as a fallback for older systems, otherwise via lsof or fuser.",
+   "Spotted thanks to a report from Vile Gangster, who had done exactly the right thing and still sat in front of the same empty page."
+  ]
+ },
+ {
   "v": "1.97.0",
   "d": "2026-08-13",
   "de": [

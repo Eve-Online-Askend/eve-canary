@@ -94,6 +94,27 @@ for f in $FILES; do
   echo "  geladen: $f"
 done
 
+# Laeuft schon eine Canary? Dann JETZT beenden, vor dem Austausch der Dateien.
+# Sonst haelt der alte Prozess Port 8765 und bedient weiter aus dem SPEICHER,
+# waehrend der neu gestartete nicht an den Port kommt. Fuer den Nutzer sieht es
+# aus, als haette das Update nichts bewirkt.
+ALT=""
+if command -v lsof >/dev/null 2>&1; then
+  ALT="$(lsof -ti tcp:8765 2>/dev/null || true)"
+elif command -v fuser >/dev/null 2>&1; then
+  ALT="$(fuser 8765/tcp 2>/dev/null | tr -d ' ' || true)"
+fi
+if [ -n "$ALT" ]; then
+  for p in $ALT; do
+    kill "$p" 2>/dev/null || true
+  done
+  sleep 2
+  for p in $ALT; do
+    kill -9 "$p" 2>/dev/null || true
+  done
+  echo "  laufende Canary beendet"
+fi
+
 mkdir -p "$DIR"
 for f in $FILES; do
   mv -f "$TMP/$f" "$DIR/$f"

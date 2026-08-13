@@ -134,6 +134,39 @@ try {
     Write-Host "  Es wurde nichts installiert. Bitte Internetverbindung pruefen und erneut versuchen." -ForegroundColor Yellow
     return
 }
+# Laeuft schon eine Canary? Dann JETZT beenden, vor dem Austausch der Dateien.
+#
+# Ohne das schreibt der Installer zwar die neuen Dateien, aber der alte Prozess
+# haelt Port 8765 und bedient weiter aus dem SPEICHER. Der neu gestartete kommt
+# an den Port nicht heran und gibt auf. Fuer den Nutzer sieht es dann aus, als
+# haette das Update gar nichts bewirkt. Genau so ging es nach dem Ausfall in
+# 1.96.0 mehreren Leuten, die brav das Setup nochmal laufen liessen.
+try {
+    $alt = Get-NetTCPConnection -LocalPort 8765 -State Listen -ErrorAction Stop
+    foreach ($proz in ($alt.OwningProcess | Select-Object -Unique)) {
+        try {
+            Stop-Process -Id $proz -Force -ErrorAction Stop
+            Write-Host "  laufende Canary beendet (PID $proz)"
+        } catch { }
+    }
+    Start-Sleep -Seconds 2
+} catch {
+    # Get-NetTCPConnection gibt es nicht ueberall. Dann ueber netstat suchen.
+    try {
+        $zeilen = netstat -ano | Select-String ":8765\s.*LISTENING"
+        foreach ($z in $zeilen) {
+            $proz = ($z.ToString() -split '\s+')[-1]
+            if ($proz -match '^\d+$') {
+                try {
+                    Stop-Process -Id ([int]$proz) -Force -ErrorAction Stop
+                    Write-Host "  laufende Canary beendet (PID $proz)"
+                } catch { }
+            }
+        }
+        Start-Sleep -Seconds 2
+    } catch { }
+}
+
 New-Item -ItemType Directory -Force -Path $Dir | Out-Null
 foreach ($f in $files) {
     Move-Item -Force (Join-Path $tmp $f) (Join-Path $Dir $f)
