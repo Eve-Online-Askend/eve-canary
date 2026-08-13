@@ -25,10 +25,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.93.3"
+VERSION = "1.95.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
-                "mining_tools.json", "mission_sigs.json", "market_types.json",
+                "mining_tools.json", "mission_sigs.json", "mission_items.json",
+                "mission_fingerprints.json", "market_types.json",
                 "README_INSTALL.md"]
 from collections import deque
 from datetime import datetime, timezone, timedelta
@@ -166,6 +167,31 @@ GANK_IDX = gank_index(GANK_GROUPS)
 # Missionserkennung über einzigartige Gegnernamen (nur geprüfte Signaturen).
 MISSION_SIGS = {k.lower(): v for k, v in load_json("mission_sigs.json", {}).items()
                 if not k.startswith("_")}
+# Missionserkennung über einzigartige FRACHT-Gegenstände. Dritter Weg neben
+# Gegnernamen und Funk, und der einzige, der auch bei Missionen ohne Kampf und
+# ohne Funk greift. Vergleich EXAKT, nicht als Teilwort: ein Frachtraum enthält
+# gewöhnliche Ware, daran bliebe ein Teilwort-Vergleich sofort hängen.
+MISSION_ITEMS = {k.lower(): v for k, v in load_json("mission_items.json", {}).items()
+                 if not k.startswith("_")}
+# Selbst vergebene Missionsnamen samt der Gegner-Zusammenstellung, an der sie
+# haengen. Wird aus der Datenbank gefuellt (marken_laden), nicht ausgeliefert.
+# Liste von {"name", "set", "ts"}.
+MARKEN = []
+# Dasselbe, aber von anderen gemeldet und mitgeliefert. Wer nie selbst etwas
+# benennt, hat dadurch trotzdem Erkennung. Mehrere Vorlagen je Missionsname sind
+# ausdruecklich erlaubt: dieselbe Mission hat je nach Auftraggeber andere Ratten.
+MISSION_FP = [{"name": (v.get("m") or "").strip(),
+               "set": {str(g).strip().lower() for g in (v.get("g") or []) if g},
+               "n": int(v.get("n") or 1)}
+              for v in (load_json("mission_fingerprints.json", {}).get("vorlagen") or [])
+              if (v.get("m") or "").strip() and (v.get("g") or [])]
+# Ab wann zwei Gegnerlisten dieselbe Mission sein duerfen. Beides muss stimmen.
+# Die Zahlen sind am eigenen Bestand gewaehlt: dort gibt es genau ein Paar
+# ueber der Schwelle, die zwei Aramachi-Laeufe mit 67% und 6 gemeinsamen
+# Gegnern. Der zweite Wert ist der wichtigere. Ohne ihn wuerden zwei winzige
+# Listen mit drei Namen schon bei einem Zufallstreffer gleichziehen.
+FP_MIN_AEHNLICH = 0.65
+FP_MIN_GEMEINSAM = 4
 # Ort-Erkennung. Fuer Kampfanomalien gibt es sowas NICHT und wird es nie geben:
 # alle Anomalien einer Fraktion ziehen aus demselben Rattenpool, es gibt keinen
 # site-eindeutigen Gegner. Fuer den Abyss dagegen fuehrt CCP zwei eigene Gruppen
@@ -200,6 +226,9 @@ def sys_names():
 MARKET_TYPES = load_json("market_types.json", {})
 # Vorsortiert nach Namenslaenge: kurze, exakte Treffer sollen oben stehen.
 _MARKET_INDEX = sorted(((n.lower(), n) for n in MARKET_TYPES), key=lambda x: len(x[0]))
+# Nur die Namen, klein geschrieben. Dient als Sperre fuer die Fracht-Erkennung:
+# was handelbar ist, taugt nicht als Missions-Signatur. Siehe detect_mission.
+MARKT_NAMEN = {str(n).lower() for n in MARKET_TYPES}
 
 
 def market_suggest(q, limit=12):
@@ -219,12 +248,45 @@ def market_suggest(q, limit=12):
     return (starts + contains)[:limit]
 
 
-def detect_mission(enemies, dialogue=""):
-    """Missionsname + Genauigkeit (%) aus Gegnernamen UND NPC-Funk (Local-Dialog).
+def loot_namen(text):
+    """Gegenstandsnamen aus einem eingefuegten Frachtraum-Text.
+
+    Bewusst NICHT ueber calc_loot: das wirft alles weg, was keine Markt-ID hat,
+    und genau das sind Missionsgegenstaende. "Port Rolette Residents" steht in
+    keiner der 19.119 Markt-Typen. Ueber calc_loot waere der Gegenstand, an dem
+    die Mission haengt, immer der eine, der verschwindet."""
+    namen = []
+    for raw in (text or "").splitlines():
+        n = raw.strip().split("\t")[0].strip()
+        if n:
+            namen.append(n)
+    return namen
+
+
+def beste_mission(*treffer):
+    """Aus mehreren Erkennungen die mit der hoechsten Genauigkeit. None faellt raus."""
+    best = None
+    for t in treffer:
+        if t and (best is None or int(t.get("conf", 0)) > int(best.get("conf", 0))):
+            best = t
+    return best
+
+
+def detect_mission(enemies, dialogue="", items=None):
+    """Missionsname + Genauigkeit (%) aus Gegnernamen, NPC-Funk (Local-Dialog)
+    UND Fracht-Gegenstaenden.
     Der Funk ist die stärkere Quelle: er ist missions-spezifisch, kommt beim
     Reinwarpen und erkennt auch Missionen mit generischen Gegnern. Jede Signatur
-    trägt eine Confidence; passt mehr als eine, gewinnt die mit der höchsten. Gibt
-    {'name','conf'} oder None zurück (None = keine Mission erkannt)."""
+    trägt eine Confidence; passt mehr als eine, gewinnt die mit der höchsten.
+
+    Die Fracht ist der dritte Weg und deckt ab, woran die beiden anderen
+    scheitern: Missionen mit gewoehnlichen Gegnern und ohne jeden Funk. Belegter
+    Fall ist "Enemies Abound (1 von 5)" aus Aramachi, 13.08.2026: sieben Gegner,
+    allesamt gewoehnliche Federation-Navy-Schiffe, kein Funk aufgezeichnet, also
+    aus Kampf und Chat nicht ableitbar. Im Frachtraum lagen "Port Rolette
+    Residents", und die gibt es nur in dieser Mission.
+
+    Gibt {'name','conf'} oder None zurück (None = keine Mission erkannt)."""
     text = (" ".join(n for n, _ in (enemies or [])) + " " + (dialogue or "")).lower()
     best = None
     for sig, val in MISSION_SIGS.items():
@@ -233,6 +295,74 @@ def detect_mission(enemies, dialogue=""):
             conf = int(val.get("c", 80)) if isinstance(val, dict) else 80
             if name and (best is None or conf > best["conf"]):
                 best = {"name": name, "conf": conf}
+    # Fracht: exakter Namensvergleich, wie bei den Site-Signaturen und aus
+    # demselben Grund. Teilworte waeren hier fatal, weil im Laderaum ganz
+    # normale Ware liegt.
+    for nm in (items or []):
+        schl = (nm or "").strip().lower()
+        val = MISSION_ITEMS.get(schl)
+        # Sperre: handelbare Ware taugt nie als Signatur, auch wenn sie in einer
+        # Mission faellt. Belegt am eigenen Bestand: am 24.07. lagen "Tourists"
+        # und "Kruul's DNA" aus einer frueheren Damsel-Mission noch im Laderaum,
+        # waehrend in Anttiri Guristas bekaempft wurden. Als Signatur haetten die
+        # beiden diesen Lauf falsch benannt. Beide stehen im Markt, echte
+        # Missionsgegenstaende wie "Port Rolette Residents" oder "The Damsel"
+        # dagegen nicht. Die Sperre greift also genau dort, wo sie muss, und
+        # verhindert den Fehlgriff schon beim Eintragen.
+        if not val or schl in MARKT_NAMEN:
+            continue
+        name = val.get("m") if isinstance(val, dict) else val
+        conf = int(val.get("c", 90)) if isinstance(val, dict) else 90
+        if name and (best is None or conf > best["conf"]):
+            best = {"name": name, "conf": conf}
+    return best
+
+
+def fingerprint_mission(enemies):
+    """Vierter Weg: der Gegner-Fingerabdruck aus deinen eigenen Benennungen.
+
+    Missionen haben feste Gegner-Zusammenstellungen. Wer einen Lauf einmal
+    benennt, hat damit eine Vorlage, an der jeder weitere Lauf derselben Mission
+    wiedererkannt wird. Das braucht kein Wiki und keine gepflegte Signatur und
+    greift genau da, wo alles andere versagt: gewoehnliche Gegner, kein Funk,
+    nichts Einmaliges im Laderaum.
+
+    Gemessen wird die Jaccard-Aehnlichkeit, also Schnittmenge geteilt durch
+    Vereinigungsmenge. An den eigenen Daten liegt genau ein Paar darueber, und
+    zwar das richtige: zwei Aramachi-Laeufe mit 6 von 9 gemeinsamen Gegnern.
+
+    Die Genauigkeit ist die gemessene Aehnlichkeit, gedeckelt auf 88, damit ein
+    einmaliger Gegnername oder Funk (90 bis 95) immer vorgeht. Das hier ist eine
+    Aehnlichkeit, kein Beweis, und soll sich nie so anfuehlen.
+
+    Verglichen wird gegen zwei Bestaende: die eigenen Benennungen und die
+    mitgelieferten Vorlagen aus Meldungen anderer. Bei Gleichstand gewinnt die
+    eigene, denn die stammt aus dem eigenen Spiel und ist damit die belastbarere.
+
+    Gibt {'name','conf','quelle','wie'} oder None. 'quelle' ist 'eigen' oder
+    'geteilt', 'wie' der Zeitstempel der eigenen Vorlage (sonst None), damit die
+    Oberflaeche sagen kann, WORAN erinnert wurde."""
+    hier = {(n or "").strip().lower() for n, _ in (enemies or []) if n}
+    if len(hier) < FP_MIN_GEMEINSAM:
+        return None
+    best = None
+    # Reihenfolge zaehlt: die eigenen zuerst, damit sie bei gleicher Genauigkeit
+    # stehen bleiben (verglichen wird auf groesser, nicht groesser-gleich).
+    for quelle, bestand in (("eigen", MARKEN), ("geteilt", MISSION_FP)):
+        for m in bestand:
+            gemeinsam = hier & m["set"]
+            if len(gemeinsam) < FP_MIN_GEMEINSAM:
+                continue
+            alle = hier | m["set"]
+            if not alle:
+                continue
+            j = len(gemeinsam) / len(alle)
+            if j < FP_MIN_AEHNLICH:
+                continue
+            conf = min(88, int(round(j * 100)))
+            if best is None or conf > best["conf"]:
+                best = {"name": m["name"], "conf": conf, "quelle": quelle,
+                        "wie": m.get("ts")}
     return best
 
 
@@ -1260,6 +1390,13 @@ try:  # v1.50: EWAR-Profil je Mission (Scram/Web/Jam/Neut … gegen dich)
     DB.commit()
 except sqlite3.OperationalError:
     pass
+try:  # v1.95: selbst vergebener Missionsname. Grundlage des Gegner-Fingerabdrucks:
+      # einmal benannt, erkennt Canary jeden weiteren Lauf derselben Mission an
+      # der Gegner-Zusammenstellung. Bleibt rein lokal.
+    DB.execute("ALTER TABLE missions ADD COLUMN label TEXT")
+    DB.commit()
+except sqlite3.OperationalError:
+    pass
 try:  # v1.71: Fernunterstuetzung je Einsatz. Ohne diese Spalten ist die
       # Leistung eines Logi-Piloten nach dem Andocken fuer immer weg.
     DB.execute("ALTER TABLE missions ADD COLUMN logi_out REAL")
@@ -1290,6 +1427,39 @@ DB.execute("""CREATE TABLE IF NOT EXISTS pack_archive(
     pack_id TEXT PRIMARY KEY, first_ts REAL, last_ts REAL, label TEXT,
     members TEXT, corps TEXT, score REAL)""")
 DB.commit()
+
+
+def marken_laden():
+    """Die selbst benannten Laeufe als Vorlagen fuer den Fingerabdruck einlesen.
+
+    Laeuft beim Start und nach jeder Benennung. Bewusst ein voller Neuaufbau:
+    die Liste ist klein (so viele Eintraege, wie von Hand benannt wurden), und
+    ein Neuaufbau kann nicht auseinanderlaufen wie ein fortgeschriebener Index.
+
+    Gleiche Namen werden zusammengefasst: wer dieselbe Mission dreimal benennt,
+    soll dadurch nicht dreimal verglichen werden. Es gewinnt die groesste
+    Gegnerliste, denn die beschreibt die Mission am vollstaendigsten."""
+    global MARKEN
+    try:
+        with DB_LOCK:
+            rows = DB.execute(
+                "SELECT label, enemies, start_ts FROM missions "
+                "WHERE label IS NOT NULL AND label<>'' ORDER BY start_ts").fetchall()
+    except Exception:
+        return
+    je_name = {}
+    for label, ej, ts in rows:
+        try:
+            s = {(n or "").strip().lower() for n, _ in json.loads(ej or "[]") if n}
+        except Exception:
+            continue
+        if len(s) < FP_MIN_GEMEINSAM:
+            continue
+        name = (label or "").strip()
+        alt = je_name.get(name)
+        if alt is None or len(s) > len(alt["set"]):
+            je_name[name] = {"name": name, "set": s, "ts": ts}
+    MARKEN = list(je_name.values())
 
 
 def meta_get(key, default=None):
@@ -1747,6 +1917,9 @@ DATEN_PRUEFUNG = {
     "site_sigs.json": lambda d: isinstance(d, dict) and len(d) > 2,
     "mining_tools.json": lambda d: isinstance(d, list) and len(d) > 5,
     "mission_sigs.json": lambda d: isinstance(d, dict) and len(d) > 5,
+    "mission_items.json": lambda d: isinstance(d, dict) and len(d) > 1,
+    "mission_fingerprints.json": lambda d: isinstance(d, dict)
+    and isinstance(d.get("vorlagen"), list) and len(d["vorlagen"]) > 0,
     "market_types.json": lambda d: isinstance(d, dict) and len(d) > 100,
     "gank_groups.json": lambda d: isinstance(d, dict)
     and bool((d.get("highsec") or {}).get("allianzen")),
@@ -1762,8 +1935,8 @@ def daten_uebernehmen(name):
     ausgeschrieben und nicht ueber eine Automatik: das ist die eine Stelle, die
     mitgezogen werden muss, wenn oben eine neue Datei dazukommt."""
     global ORE_TYPES, ORE_BY_TID, ORE_REFINE, MINING_TOOLS, GANK_GROUPS
-    global GANK_IDX, MISSION_SIGS, SITE_SIGS, MARKET_TYPES, _MARKET_INDEX
-    global NPC_FACTIONS, _SYS_NAMES
+    global GANK_IDX, MISSION_SIGS, MISSION_ITEMS, MISSION_FP, SITE_SIGS
+    global MARKET_TYPES, _MARKET_INDEX, MARKT_NAMEN, NPC_FACTIONS, _SYS_NAMES
     if name == "ore_types.json":
         ORE_TYPES = load_json(name, {})
         ORE_BY_TID = {v["typeID"]: (n, v.get("volume", 0.0))
@@ -1778,6 +1951,15 @@ def daten_uebernehmen(name):
     elif name == "mission_sigs.json":
         MISSION_SIGS = {k.lower(): v for k, v in load_json(name, {}).items()
                         if not k.startswith("_")}
+    elif name == "mission_items.json":
+        MISSION_ITEMS = {k.lower(): v for k, v in load_json(name, {}).items()
+                         if not k.startswith("_")}
+    elif name == "mission_fingerprints.json":
+        MISSION_FP = [{"name": (v.get("m") or "").strip(),
+                       "set": {str(g).strip().lower() for g in (v.get("g") or []) if g},
+                       "n": int(v.get("n") or 1)}
+                      for v in (load_json(name, {}).get("vorlagen") or [])
+                      if (v.get("m") or "").strip() and (v.get("g") or [])]
     elif name == "site_sigs.json":
         SITE_SIGS = {k.lower(): v for k, v in load_json(name, {}).items()
                      if not k.startswith("_")}
@@ -1785,6 +1967,7 @@ def daten_uebernehmen(name):
         MARKET_TYPES = load_json(name, {})
         _MARKET_INDEX = sorted(((n.lower(), n) for n in MARKET_TYPES),
                                key=lambda x: len(x[0]))
+        MARKT_NAMEN = {str(n).lower() for n in MARKET_TYPES}
     elif name == "npc_factions.json":
         NPC_FACTIONS = load_json(name, {})
     elif name == "eve_map.json":
@@ -4157,11 +4340,16 @@ class Esi(threading.Thread):
             rows.append({"name": self.type_name(tid) or str(tid), "qty": q,
                          "isk": round(q * buy)})
         rows.sort(key=lambda r: -r["isk"])
+        # Liegt ein Missionsgegenstand an Bord? Das muss ueber die VOLLE Liste
+        # laufen und nicht ueber die gekuerzte Anzeige unten: ein
+        # Missionsgegenstand ist nicht handelbar, steht deshalb mit 0 ISK ganz
+        # am Ende und faellt aus rows[:12] praktisch immer heraus.
+        fracht = detect_mission([], "", [r["name"] for r in rows])
         with CONFIG_LOCK:
             c["cargo"] = {
                 "buy": round(sum(q * pm.get(t, (0, 0))[0] for t, q in qty.items())),
                 "sell": round(sum(q * pm.get(t, (0, 0))[1] for t, q in qty.items())),
-                "as_of": int(asof), "next": int(nxt),
+                "as_of": int(asof), "next": int(nxt), "mission": fracht,
                 "n": len(cargo), "items": rows[:12]}
 
     def loc_info(self, c, loc_id):
@@ -6561,8 +6749,13 @@ def snapshot_live():
             "top_targets": sorted(s.targets.items(), key=lambda x: -x[1])[:60],
             "enemy_types": len(s.targets),
             "top_attackers": sorted(s.attackers.items(), key=lambda x: -x[1])[:12],
-            "mission": detect_mission(sorted(s.targets.items(), key=lambda x: -x[1]),
-                                      " ".join(chatwatch.dialogue(s.char_id, s.first_ts))),
+            # Kampf und Funk aus dieser Session, dazu der Fracht-Treffer aus der
+            # letzten ESI-Runde. Es gewinnt die genauere der beiden Erkennungen.
+            "mission": beste_mission(
+                detect_mission(sorted(s.targets.items(), key=lambda x: -x[1]),
+                               " ".join(chatwatch.dialogue(s.char_id, s.first_ts))),
+                ((esi_char or {}).get("cargo") or {}).get("mission"),
+                fingerprint_mission(sorted(s.targets.items(), key=lambda x: -x[1]))),
             "site": detect_site(sorted(s.targets.items(), key=lambda x: -x[1])),
             "faction": faction_info(sorted(s.targets.items(), key=lambda x: -x[1])),
             "npc": chatwatch.dialogue(s.char_id, s.first_ts)[-3:],
@@ -7239,7 +7432,7 @@ def query_mission_history(limit=40):
         rows = DB.execute(
             """SELECT mid,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
                       hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,
-                      char_id,ewar,logi_out,logi_in
+                      char_id,ewar,logi_out,logi_in,label
                FROM missions ORDER BY start_ts DESC LIMIT ?""", (limit * 5,)).fetchall()
         # Verifizierte Missions-Belohnungen aus dem Wallet-Journal (Server-Wahrheit).
         # Jede wird gleich der Mission zugeordnet, die kurz davor endete.
@@ -7286,14 +7479,24 @@ def query_mission_history(limit=40):
         if len(out) >= limit:
             break
         (mid, char, st, et, sysn, do, di, kills, bounty, hits, mo, mi,
-         wj, ej, loot, loot_text, dialog, char_id, ewj, lo, li) = r
+         wj, ej, loot, loot_text, dialog, char_id, ewj, lo, li, label) = r
         shots = (hits or 0) + (mo or 0)
         enemies = json.loads(ej or "[]")
         # Fehlt der gespeicherte Funk (aeltere Mission, oder Reingest lief vor dem
         # Chat-Watcher), aus dem heute im Speicher gehaltenen NPC-Funk nachfuellen.
         if not dialog and char_id:
             dialog = " ".join(chatwatch.dialogue(str(char_id), st or 0, et or None))[:2000]
-        mission = detect_mission(enemies, dialog or "")
+        # Der eingefuegte Frachtraum-Text dieser Mission ist die dritte Quelle.
+        # Er ist an die einzelne Mission gebunden und damit sauberer als die
+        # laufende Fracht, die bis zur Abgabe an Bord bleibt.
+        # Selbst benannt schlaegt alles: das ist keine Erkennung mehr, das weisst
+        # du. Sonst der Fingerabdruck als vierte Quelle, aber nur wenn keine
+        # eindeutige Signatur greift, denn er misst nur Aehnlichkeit.
+        mission = (({"name": label.strip(), "conf": 100, "selbst": True}
+                    if (label or "").strip() else None)
+                   or beste_mission(
+                       detect_mission(enemies, dialog or "", loot_namen(loot_text)),
+                       fingerprint_mission(enemies)))
         site = detect_site(enemies)
         # Belt-Ratten raus: eine echte Mission ist entweder erkannt, oder hat
         # spuerbaren eigenen Schaden (>5000), oder echte Bounty (>100k). Reine
@@ -7325,6 +7528,7 @@ def query_mission_history(limit=40):
             "reward": vreward, "bonus": vbonus,
             "weapons": json.loads(wj or "[]"), "enemies": enemies,
             "loot_isk": round(loot) if loot else None, "loot_text": loot_text or "",
+            "label": (label or "").strip(),
             "total": round((bounty or 0) + (loot or 0) + (vreward or 0) + (vbonus or 0))})
     return out, {"liste": ohne_mission, "summe": ohne_summe, "n": len(offen)}
 
@@ -7605,16 +7809,22 @@ def query_timelines():
     with DB_LOCK:
         mrows = DB.execute(
             """SELECT char, start_ts, end_ts, system, kills, bounty, dmg_out, dmg_in,
-                      enemies, ewar FROM missions WHERE start_ts>=?""", (cut,)).fetchall()
+                      enemies, ewar, loot_text, label FROM missions
+               WHERE start_ts>=?""", (cut,)).fetchall()
         erows = DB.execute(
             "SELECT char, ts, detail FROM events WHERE ts>=? AND kind='mine'", (cut,)).fetchall()
         jrows = DB.execute(
             "SELECT char, ts, ref_type, amount, party FROM journal WHERE ts>=? "
             "AND ref_type LIKE 'agent_mission%'", (cut,)).fetchall()
 
-    for char, st, et, sysn, kills, bounty, do, di, ej, ewj in mrows:
+    for char, st, et, sysn, kills, bounty, do, di, ej, ewj, lt, lbl in mrows:
         enemies = json.loads(ej or "[]")
-        mission = detect_mission(enemies, "")
+        # Loot-Text und Benennung mit auswerten, sonst zeigt der Verlauf "keine
+        # Mission", waehrend die Missions-Historie dieselbe Mission erkennt.
+        mission = (({"name": lbl.strip(), "conf": 100, "selbst": True}
+                    if (lbl or "").strip() else None)
+                   or beste_mission(detect_mission(enemies, "", loot_namen(lt)),
+                                    fingerprint_mission(enemies)))
         site = detect_site(enemies)
         # Belt-Ratten raus, wie in der Missions-Historie
         if not mission and not site and (do or 0) < 5000 and (bounty or 0) < 100000:
@@ -8718,6 +8928,20 @@ class Handler(BaseHTTPRequestHandler):
                            (isk, text, mid))
                 DB.commit()
             self._send(json.dumps({"ok": True, "isk": isk, "unknown": res.get("unknown", [])}))
+            return
+        elif action == "mission_label":
+            # Einen Lauf selbst benennen. Das ist gleichzeitig die Vorlage, an
+            # der kuenftige Laeufe derselben Mission wiedererkannt werden.
+            # Leerer Name loescht die Benennung wieder.
+            mid = str(body.get("mid") or "")
+            name = str(body.get("name") or "").strip()[:80]
+            with DB_LOCK:
+                DB.execute("UPDATE missions SET label=? WHERE mid=?",
+                           (name or None, mid))
+                DB.commit()
+            marken_laden()
+            self._send(json.dumps({"ok": True, "name": name,
+                                   "vorlagen": len(MARKEN)}))
             return
         elif action == "threat_scan":
             names = [str(n).strip() for n in (body.get("names") or [])][:200]
@@ -10779,8 +11003,21 @@ function heroBar(s){
 // Missions-Kachel: Name + Genauigkeit in % + Guide-Link. m ist {name,conf} oder null.
 function missionHtml(m){
  if(!m||!m.name)return '';
+ const gd=` <a href="https://duckduckgo.com/?q=${encodeURIComponent('EVE Online '+m.name+' mission guide')}" target="_blank" rel="noopener">Guide</a>`;
+ // Selbst benannt ist keine Erkennung, sondern Wissen. Deshalb kein Prozentwert,
+ // sonst sieht die eigene Angabe aus wie eine Schaetzung.
+ if(m.selbst)return `🔖 ${esc(m.name)} <span class="mconf">${lang==='en'?'named by you':'von dir benannt'}</span>${gd}`;
+ // Fingerabdruck: ehrlich als Aehnlichkeit ausweisen, nicht als Treffer. Wer
+ // "gleicht deinem Lauf vom 07.08." liest, weiss sofort, worauf das beruht.
+ if(m.quelle){
+  const dt=m.wie?new Date(m.wie*1000).toLocaleDateString():'';
+  const wo=m.quelle==='eigen'
+    ? (lang==='en'?'% like your run of '+dt:'% wie dein Lauf vom '+dt)
+    : (lang==='en'?'% like a shared template':'% wie eine geteilte Vorlage');
+  return `🔗 ${esc(m.name)} <span class="mconf">${lang==='en'?m.conf+wo:'zu '+m.conf+wo}</span>${gd}`;
+ }
  const c=m.conf!=null?` <span class="mconf">~${m.conf}% sicher</span>`:'';
- return `🎯 ${esc(m.name)}${c} <a href="https://duckduckgo.com/?q=${encodeURIComponent('EVE Online '+m.name+' mission guide')}" target="_blank" rel="noopener">Guide</a>`;
+ return `🎯 ${esc(m.name)}${c}${gd}`;
 }
 // Ort statt Mission. Ein Abyss-Lauf ist keine Mission, deshalb eigenes Zeichen
 // und kein Prozentwert: die Gegnernamen dort gibt es nirgendwo sonst, das ist
@@ -12656,7 +12893,15 @@ function renderMissions(d){
     ${(x.npc&&x.npc.length)?`<div class="npc">${x.npc.map(l=>`<div>💬 ${esc(l)}</div>`).join('')}</div>`:''}
     <div class="sub" style="margin-top:6px">${x.loot_isk!=null?'Loot: <b class="isk">'+fmtM(x.loot_isk)+'</b>':''}
      <span class="mloottoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px">${x.loot_isk!=null?'✎ Loot ändern':'＋ Loot eintragen'}</span>
-     <span class="mreopen" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--dim);font-size:11px;margin-left:10px" title="Andocken ist kein sicherer Abschluss. Wer nur kurz zum Reparieren reingeflogen ist, holt die Mission hiermit zurück und der weitere Kampf zählt dazu.">↩ Läuft doch noch</span></div>
+     <span class="mreopen" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--dim);font-size:11px;margin-left:10px" title="Andocken ist kein sicherer Abschluss. Wer nur kurz zum Reparieren reingeflogen ist, holt die Mission hiermit zurück und der weitere Kampf zählt dazu.">↩ Läuft doch noch</span>
+     <span class="mnametoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px;margin-left:10px" title="Trag den Namen aus deinem Missionsjournal ein. Canary merkt sich dazu die Gegner und erkennt künftige Läufe derselben Mission von allein.">${x.label?'🔖 Name ändern':'🔖 Mission benennen'}</span></div>
+    <div class="mnameedit" data-mid="${esc(x.mid)}" hidden>
+     <input class="mnamein" data-mid="${esc(x.mid)}" style="width:100%;margin-top:4px" placeholder="Missionsname aus deinem Journal, z. B. Enemies Abound (1 of 5)" value="${esc(x.label||'')}">
+     <div class="btnrow" style="margin-top:4px"><button class="btn mnamego" data-mid="${esc(x.mid)}">Merken</button>
+      <button class="btn geist mnameteil" data-mid="${esc(x.mid)}" title="Legt Name und Gegnerliste als fertigen Text in die Zwischenablage. Canary lädt nichts von selbst hoch, du fügst den Block bewusst in eine Meldung ein.">Für alle beitragen</button>
+      <span class="mnamestat sub" data-mid="${esc(x.mid)}"></span></div>
+     <div class="sub" style="margin-top:4px">Canary merkt sich die ${x.enemies.length} Gegnertypen dieses Laufs als Vorlage. Ein späterer Lauf mit ähnlicher Zusammenstellung bekommt den Namen dann von allein, mit der Ähnlichkeit als Prozentzahl. Mit "Für alle beitragen" wandert die Vorlage in die Zwischenablage, damit sie im nächsten Update bei allen ankommt.</div>
+    </div>
     <div class="mlootedit" data-mid="${esc(x.mid)}" hidden>
      <textarea class="mlootin" data-mid="${esc(x.mid)}" rows="2" style="width:100%;margin-top:4px" placeholder="Frachtraum-Loot dieser Mission hier einfügen (im Spiel Strg+A, Strg+C)">${esc(x.loot_text)}</textarea>
      <div class="btnrow" style="margin-top:4px"><button class="btn mlootgo" data-mid="${esc(x.mid)}">Loot bewerten</button> <span class="mlootstat sub" data-mid="${esc(x.mid)}"></span></div>
@@ -12805,6 +13050,53 @@ function renderMissions(d){
    // es sonst offen stehen, und wer mehrere Missionen nacheinander eintraegt,
    // hatte am Ende einen Stapel offener Kaesten untereinander.
    const box=finde('.mlootedit'); if(box)box.hidden=true;
+   setTimeout(tick,600);
+  }else setzStatus(r?(en2?'Error':'Fehler')
+                    :(en2?'Server not reachable':'Server nicht erreichbar'));
+ });
+ document.querySelectorAll('.mnametoggle').forEach(t=>t.onclick=()=>{
+  const box=[...document.querySelectorAll('.mnameedit')].find(e=>e.dataset.mid===t.dataset.mid);
+  if(box){box.hidden=!box.hidden; if(!box.hidden){const i=box.querySelector('.mnamein'); if(i)i.focus();}}
+ });
+ document.querySelectorAll('.mnameteil').forEach(b=>b.onclick=async()=>{
+  // Beitragen heisst hier: fertigen Text in die Zwischenablage, mehr nicht.
+  // Canary schickt nichts von selbst irgendwohin, und das soll auch so bleiben.
+  const mid=b.dataset.mid;
+  const finde=sel=>[...document.querySelectorAll(sel)].find(e=>e.dataset.mid===mid);
+  const setzStatus=t=>{const s=finde('.mnamestat'); if(s)s.textContent=t;};
+  const run=(letzteMissionen&&letzteMissionen.mission_log||[]).find(m=>String(m.mid)===String(mid));
+  const inp=finde('.mnamein');
+  const name=(inp?inp.value:'').trim()||(run&&run.label)||'';
+  const en2=lang==='en';
+  if(!name){setzStatus(en2?'Enter the mission name first':'Erst den Missionsnamen eintragen');return;}
+  const gegner=((run&&run.enemies)||[]).map(g=>g[0]);
+  if(gegner.length<4){setzStatus(en2?'Too few enemies for a template':'Zu wenige Gegner für eine Vorlage');return;}
+  const txt=['Mission: '+name,
+             'System: '+((run&&run.system)||'?'),
+             'Gegner ('+gegner.length+'):',
+             ...gegner.map(g=>'  '+g),
+             '',
+             'Canary '+(state&&state.version||'')+', Gegner-Fingerabdruck'].join('\n');
+  try{await navigator.clipboard.writeText(txt);
+      setzStatus(en2?'✓ copied, paste it into a report':'✓ kopiert, füg es in eine Meldung ein');}
+  catch(e){setzStatus(en2?'Clipboard blocked':'Zwischenablage blockiert');}
+ });
+ document.querySelectorAll('.mnamego').forEach(b=>b.onclick=async()=>{
+  // Gleiches Vorgehen wie beim Loot: Statusfeld jedes Mal frisch suchen, weil
+  // die Ansicht sich nach dem Fokusverlust neu aufbauen darf.
+  const mid=b.dataset.mid;
+  const finde=sel=>[...document.querySelectorAll(sel)].find(e=>e.dataset.mid===mid);
+  const setzStatus=txt=>{const s=finde('.mnamestat'); if(s)s.textContent=txt;};
+  const inp=finde('.mnamein');
+  const name=inp?inp.value.trim():'';
+  const en2=lang==='en';
+  setzStatus(en2?'Saving …':'Speichere …');
+  let r;try{r=await post({action:'mission_label',mid,name});}catch(e){r=null;}
+  if(r&&r.ok){
+   setzStatus(r.name
+     ?(en2?`✓ saved, ${r.vorlagen} template(s)`:`✓ gemerkt, ${r.vorlagen} Vorlage(n)`)
+     :(en2?'✓ name removed':'✓ Name entfernt'));
+   const box=finde('.mnameedit'); if(box)box.hidden=true;
    setTimeout(tick,600);
   }else setzStatus(r?(en2?'Error':'Fehler')
                     :(en2?'Server not reachable':'Server nicht erreichbar'));
@@ -13556,6 +13848,9 @@ if __name__ == "__main__":
     # Eine laufende Stoppuhr ueberlebt den Neustart: wer waehrend eines Trips
     # aktualisiert, soll nicht von vorn anfangen muessen.
     uhr_laden()
+    # Die selbst benannten Missionen als Vorlagen einlesen. Muss vor der ersten
+    # Abfrage stehen, sonst waere der Fingerabdruck bis zur ersten Benennung leer.
+    marken_laden()
     # Einmal nachsehen, ob die Installation vollstaendig ist, und
     # nachholen was fehlt. Im Hintergrund, damit der Start nicht wartet.
     threading.Thread(target=pruefe_daten, daemon=True,

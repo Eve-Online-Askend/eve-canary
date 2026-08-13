@@ -61,7 +61,7 @@ fi
 # Diese Liste MUSS alle Datendateien aus FILES in release.py enthalten, sonst
 # startet eine frische Installation mit weniger Erkennung als eine aktualisierte.
 # release.py prueft das vor jeder Veroeffentlichung und bricht sonst ab.
-FILES="eve_dashboard.py ore_types.json ore_refine.json eve_map.json npc_factions.json site_sigs.json mining_tools.json mission_sigs.json market_types.json gank_groups.json README_INSTALL.md start_dashboard.sh"
+FILES="eve_dashboard.py ore_types.json ore_refine.json eve_map.json npc_factions.json site_sigs.json mining_tools.json mission_sigs.json mission_items.json mission_fingerprints.json market_types.json gank_groups.json README_INSTALL.md start_dashboard.sh"
 
 # Erst vollstaendig in einen Temp-Ordner laden, dann ans Ziel verschieben, damit
 # ein abgebrochener Download keine halbe Installation hinterlaesst.

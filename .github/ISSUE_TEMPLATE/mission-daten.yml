@@ -65,6 +65,24 @@ body:
         Centior Cannibal
 
   - type: textarea
+    id: fingerabdruck
+    attributes:
+      label: Vollständige Gegnerliste (Gegner-Fingerabdruck)
+      description: >
+        Anders als oben: hier bitte ALLE Gegnertypen des Laufs, auch die ganz
+        gewöhnlichen. Eine Mission wirft immer dieselbe Zusammenstellung
+        entgegen, deshalb erkennt Canary sie daran auch dann wieder, wenn kein
+        einziger Name auffällig ist und im Local nichts steht. Am einfachsten
+        in Canary: Missionen-Tab, Lauf benennen, "Für alle beitragen" drücken
+        und den Block hier einfügen. Ab vier Namen ist es brauchbar.
+      render: text
+      placeholder: |
+        Federation Navy Megathron
+        Federation Navy Thorax
+        Federation Covinus
+        Federation Navy Orion
+
+  - type: textarea
     id: notiz
     attributes:
       label: Was ist Canary aufgefallen?

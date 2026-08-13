@@ -82,6 +82,10 @@ footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-si
   <label for="mfGegner" data-i18n="l.foe">Named or unusual enemy (if there is one)</label>
   <input id="mfGegner" type="text" placeholder="Draben Kuvakei" data-ph="ph.foe" autocomplete="off">
 
+  <label for="mfListe" data-i18n="l.list">Full enemy list (Canary: "Für alle beitragen")</label>
+  <textarea id="mfListe" rows="6" placeholder="Federation Navy Megathron&#10;Federation Navy Thorax&#10;Federation Covinus" data-ph="ph.list"></textarea>
+  <div class="tiny" data-i18n="h.list">A mission always throws the same line-up at you. With the full list, Canary recognises that mission for everyone, even when the enemies look completely ordinary and nobody says a word in local. In Canary open the Missions tab, name the run, then press "Für alle beitragen" and paste it here.</div>
+
   <label for="mfLog" data-i18n="l.log">Paste your local chat</label>
   <textarea id="mfLog" rows="9" placeholder="In game click into the local window, Ctrl+A, Ctrl+C, paste here." data-ph="ph.log"></textarea>
 
@@ -132,14 +136,29 @@ footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-si
     return { zeilen, verworfen: verworfen.length };
   }
 
+  // Volle Gegnerliste, eine je Zeile. Der Block aus Canary bringt Kopfzeilen
+  // wie "Mission:" und "Gegner (7):" mit, die hier wieder rausfallen, damit man
+  // ihn einfach ganz einfuegen kann.
+  function liste() {
+    return ($('#mfListe').value || '').split('\n')
+      .map((z) => z.replace(/^[\s·*-]+/, '').trim())
+      .filter((z) => z && !/^(Mission|System|Gegner|Canary|Enemies)\b.*:?$/i.test(z)
+                     && !/:\s*$/.test(z) && !/^Canary /i.test(z));
+  }
+
   function text() {
     const { zeilen } = ernte();
     const notiz = ($('#mfNote').value || '').trim();
     const gegner = ($('#mfGegner').value || '').trim();
+    const g = liste();
     return 'Mission: ' + (($('#mfName').value || '').trim() || '(ohne Namen)') + '\n'
       + 'Stufe: ' + $('#mfLvl').value + '\n'
       + 'Fraktion: ' + (($('#mfFac').value || '').trim() || '?') + '\n'
       + (gegner ? 'Benannter Gegner: ' + gegner + '\n' : '')
+      + (g.length
+         ? '\nGegner-Fingerabdruck (' + g.length + '):\n'
+           + g.map((z) => '  ' + z).join('\n') + '\n'
+         : '')
       + '\n'
       + (zeilen.length
          ? 'NPC-Funk (' + zeilen.length + ' Zeilen):\n'
@@ -152,11 +171,13 @@ footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-si
   function frisch() {
     const { zeilen, verworfen } = ernte();
     const gegner = ($('#mfGegner').value || '').trim();
+    const g = liste();
     const p = $('#mfPrev'), a = $('#mfIssue');
     // Ein benannter Gegner reicht als Merkmal genauso wie der Funk. Vorher
     // hing der Knopf allein am Funk, und die Missionen ohne Funk, also genau
-    // die schwierigen, liessen sich gar nicht melden.
-    if (!zeilen.length && !gegner) {
+    // die schwierigen, liessen sich gar nicht melden. Die volle Gegnerliste
+    // zaehlt ab vier Namen genauso, das ist die Schwelle des Fingerabdrucks.
+    if (!zeilen.length && !gegner && g.length < 4) {
       p.hidden = true;
       a.setAttribute('aria-disabled', 'true');
       a.removeAttribute('href');
@@ -169,7 +190,8 @@ footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-si
           + zeilen.map((z) => '· ' + z).join('\n')
         : 'Kein NPC-Funk im Local, das ist in Ordnung.'
           + (verworfen ? ' ' + verworfen + ' Zeilen verworfen.' : ''))
-      + (gegner ? '\n· Benannter Gegner: ' + gegner : '');
+      + (gegner ? '\n· Benannter Gegner: ' + gegner : '')
+      + (g.length ? '\n· Gegner-Fingerabdruck: ' + g.length + ' Namen' : '');
     a.setAttribute('aria-disabled', 'false');
     a.href = 'https://github.com/Eve-Online-Askend/eve-canary/issues/new'
       + '?labels=mission-daten'
@@ -177,7 +199,7 @@ footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-si
       + '&body=' + encodeURIComponent(text());
   }
 
-  ['mfLog', 'mfName', 'mfFac', 'mfNote', 'mfGegner'].forEach((id) =>
+  ['mfLog', 'mfName', 'mfFac', 'mfNote', 'mfGegner', 'mfListe'].forEach((id) =>
     $('#' + id).addEventListener('input', frisch));
   $('#mfLvl').addEventListener('change', frisch);
   $('#mfCopy').addEventListener('click', async () => {
@@ -204,6 +226,9 @@ const L = {
   'l.fac':'Gegner-Fraktion', 'l.log':'Local-Chat einfügen',
   'l.foe':'Benannter oder auffälliger Gegner (falls es einen gibt)',
   'ph.foe':'Draben Kuvakei',
+  'l.list':'Vollständige Gegnerliste (in Canary: "Für alle beitragen")',
+  'ph.list':'Federation Navy Megathron\nFederation Navy Thorax\nFederation Covinus',
+  'h.list':'Eine Mission wirft dir immer dieselbe Zusammenstellung entgegen. Mit der vollen Liste erkennt Canary sie für alle wieder, auch wenn die Gegner völlig gewöhnlich aussehen und im Local kein Wort fällt. In Canary im Missionen-Tab den Lauf benennen, dann auf "Für alle beitragen" drücken und den Block hier einfügen.',
   'l.note':'Was ist dir aufgefallen? (freiwillig)',
   'b.send':'Als GitHub-Ticket senden', 'b.copy':'Lieber Text kopieren',
   h2:'So geht es am schnellsten',
@@ -219,6 +244,9 @@ const L = {
   'l.name':'Nom de la mission', 'l.lvl':'Niveau', 'l.fac':'Faction ennemie',
   'l.log':'Colle ton chat local', 'l.note':'Quelque chose à signaler ? (facultatif)',
   'l.foe':'Ennemi nommé ou inhabituel (s\'il y en a un)', 'ph.foe':'Draben Kuvakei',
+  'l.list':'Liste complète des ennemis (dans Canary : "Für alle beitragen")',
+  'ph.list':'Federation Navy Megathron\nFederation Navy Thorax\nFederation Covinus',
+  'h.list':'Une mission t\'envoie toujours la même composition. Avec la liste complète, Canary la reconnaît pour tout le monde, même si les ennemis sont banals et que personne ne parle dans local.',
   'b.send':'Envoyer comme ticket GitHub', 'b.copy':'Copier le texte',
   h2:'La méthode la plus rapide',
   'p.steps':'<li>Fais la mission en gardant local ouvert.</li><li>Clique dans local, <code>Ctrl+A</code>, <code>Ctrl+C</code>.</li><li>Colle ici, ajoute le nom, envoie.</li>',
@@ -233,6 +261,9 @@ const L = {
   'l.name':'Название миссии', 'l.lvl':'Уровень', 'l.fac':'Фракция врага',
   'l.log':'Вставьте локальный чат', 'l.note':'Что вы заметили? (необязательно)',
   'l.foe':'Именной или необычный враг (если есть)', 'ph.foe':'Draben Kuvakei',
+  'l.list':'Полный список врагов (в Canary: "Für alle beitragen")',
+  'ph.list':'Federation Navy Megathron\nFederation Navy Thorax\nFederation Covinus',
+  'h.list':'Миссия всегда выставляет один и тот же состав. С полным списком Canary распознает её для всех, даже если враги совершенно обычные и в локале тишина.',
   'b.send':'Отправить как тикет GitHub', 'b.copy':'Скопировать текст',
   h2:'Самый быстрый способ',
   'p.steps':'<li>Пройдите миссию с открытым локалом.</li><li>Щёлкните в локал, <code>Ctrl+A</code>, <code>Ctrl+C</code>.</li><li>Вставьте сюда, добавьте название, отправьте.</li>',

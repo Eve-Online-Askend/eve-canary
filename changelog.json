@@ -1,5 +1,41 @@
 [
  {
+  "v": "1.95.0",
+  "d": "2026-08-13",
+  "de": [
+   "Missionen lassen sich jetzt selbst benennen, und Canary merkt sich dabei die Gegner. Taucht spaeter ein Lauf mit aehnlicher Zusammenstellung auf, traegt er den Namen von allein, samt der gemessenen Aehnlichkeit in Prozent.",
+   "Das ist der vierte Erkennungsweg und der einzige, der ohne gepflegte Signaturen auskommt. Er greift genau dort, wo die anderen drei aufgeben: gewoehnliche Gegner, kein Funk, nichts Einmaliges im Laderaum.",
+   "Am eigenen Bestand gemessen: von 37 Missionen haben 43 Prozent genug Gegner fuer einen Fingerabdruck, gegenueber 24 Prozent mit einem Bauwerk und 14 Prozent mit Funk. Ein benannter Lauf hat sofort einen zweiten wiedererkannt, mit 67 Prozent und sechs gemeinsamen Gegnern.",
+   "Bewusst zurueckhaltend: es braucht mindestens vier gemeinsame Gegnertypen und 65 Prozent Aehnlichkeit, und die Anzeige nennt die Vorlage samt Datum, statt einen Treffer zu behaupten. Eine eindeutige Signatur geht immer vor.",
+   "Recherche dahinter: 4,04 GB Logs aus 10.665 Dateien durchsucht. Ein Missionstitel steht in keiner einzigen Zeile, und ESI kennt Missionen ueberhaupt nicht. Deshalb dieser Weg."
+  ],
+  "en": [
+   "You can now name a mission yourself, and Canary remembers its enemies. When a later run shows a similar line-up, it carries the name automatically, together with the measured similarity in percent.",
+   "This is the fourth detection route and the only one that needs no curated signatures. It works exactly where the other three give up: ordinary enemies, no chatter, nothing unique in the hold.",
+   "Measured on real data: of 37 missions, 43 percent have enough enemies for a fingerprint, against 24 percent with a structure and 14 percent with chatter. One named run immediately recognised a second, at 67 percent with six shared enemies.",
+   "Deliberately cautious: it takes at least four shared enemy types and 65 percent similarity, and the display names the template and its date instead of claiming a hit. A unique signature always wins.",
+   "The research behind it: 4.04 GB of logs across 10,665 files searched. Not one line contains a mission title, and ESI does not expose missions at all. Hence this route."
+  ]
+ },
+ {
+  "v": "1.94.0",
+  "d": "2026-08-13",
+  "de": [
+   "Canary erkennt Missionen jetzt auch am Frachtraum. Viele Missionen geben einen Gegenstand, den es nur in dieser einen Mission gibt, und der verraet sie selbst dann, wenn die Gegner ganz gewoehnlich sind und im Local kein Wort faellt.",
+   "Damit sind erstmals auch Auftraege erreichbar, bei denen gar nicht geschossen wird, also Kurier- und Transportfluege.",
+   "Anlass war Enemies Abound (1 von 5): sieben Gegner, allesamt gewoehnliche Schiffe der Foederationsflotte, kein Funk. Aus Kampf und Chat war die Mission nicht abzuleiten, aus der Ladung schon. Dazu kommt The Damsel in Distress.",
+   "Handelbare Ware wird als Signatur hart abgewiesen, auch wenn jemand sie eintraegt. Der Grund steht in den eigenen Daten: Beute aus einer frueheren Mission liegt oft noch im Laderaum und wuerde den naechsten Lauf falsch benennen. Echte Missionsgegenstaende stehen in keinem Markt, genau daran erkennt Canary den Unterschied.",
+   "Der Name muss ausserdem genau stimmen, ein Teilwort reicht nicht. Geprueft gegen 3.166 NPC-Namen und 19.119 Marktartikel, und die 37 vorhandenen Missionen zeigen vorher wie nachher dieselbe Erkennung."
+  ],
+  "en": [
+   "Canary now also recognises missions from your cargo hold. Many missions hand you an item that exists in that one mission only, and it gives the mission away even when the enemies are ordinary and nobody says a word in local.",
+   "This finally reaches jobs with no shooting at all, meaning courier and transport runs.",
+   "The trigger was Enemies Abound (1 of 5): seven enemies, all of them ordinary Federation Navy ships, no chatter. The mission was not derivable from combat or chat, but it was from the cargo. The Damsel in Distress comes along with it.",
+   "Tradeable goods are rejected as a signature outright, even if somebody enters one. The reason is right there in the data: loot from an earlier mission often still sits in the hold and would put the wrong name on the next run. Genuine mission items appear in no market, and that is exactly how Canary tells them apart.",
+   "The name also has to match exactly, a partial word is not enough. Checked against 3,166 NPC names and 19,119 market items, and the 37 existing missions detect exactly the same before and after."
+  ]
+ },
+ {
   "v": "1.93.3",
   "d": "2026-08-13",
   "de": [

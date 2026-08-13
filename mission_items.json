@@ -1,0 +1,11 @@
+{
+  "_hinweis": "Missionserkennung über einzigartige FRACHT-Gegenstände. Der dritte Weg neben Gegnernamen und NPC-Funk, und der einzige, der auch bei Missionen ohne Kampf und ohne Funk greift (Kurier, Transport, Abholaufträge). Grundlage: viele Missionen geben einen Gegenstand, den es nur in dieser einen Mission gibt.",
+  "_regel": "Vergleich ist EXAKT und nicht als Teilwort, anders als bei mission_sigs.json. Ein Frachtraum enthält ganz gewöhnliche Ware, und ein Teilwort-Vergleich würde daran hängenbleiben. Deshalb muss der Name genau so dastehen, wie EVE ihn schreibt.",
+  "_aufnahme": "Nur Gegenstände, die nachweislich zu genau einer Mission gehören. Vorher gegen npc_factions.json, market_types.json und die eigenen Daten prüfen. Steht der Name im Markt, ist er handelbare Ware und gehört NICHT hierher.",
+  "_sperre": "Handelbare Ware wird von detect_mission zusätzlich hart abgewiesen, auch wenn sie hier stünde. Grund an echten Daten: am 24.07.2026 lagen 'Tourists' und 'Kruul's DNA' aus einer früheren Damsel-Mission noch im Laderaum, während in Anttiri Guristas bekämpft wurden. Beide stehen im Markt und hätten diesen Lauf falsch benannt. Wer hier etwas einträgt, das im Markt steht, bekommt keinen Treffer statt eines falschen.",
+  "_grenze": "Die Fracht kommt über ESI und hängt bis zu eine Stunde nach. Der Gegenstand muss im aktiven Schiff liegen. Sicher ist der Weg über den eingefügten Frachtraum-Text bei einer Mission.",
+  "_c": "c = Genauigkeit in Prozent. Ein Missionsgegenstand ist ein starker Beleg, aber er bleibt bis zur Abgabe im Laderaum liegen. Beginnst du in der Zeit eine andere Mission, zeigt der Gegenstand noch die alte. Deshalb 90 statt 95, damit Funk-Signaturen gewinnen.",
+
+  "Port Rolette Residents": {"m": "Enemies Abound (1 von 5)", "c": 90},
+  "The Damsel": {"m": "The Damsel in Distress", "c": 90}
+}
