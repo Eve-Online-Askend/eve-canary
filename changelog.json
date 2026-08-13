@@ -1,5 +1,19 @@
 [
  {
+  "v": "1.98.1",
+  "d": "2026-08-13",
+  "de": [
+   "Nachtrag zu 1.98.0: die Karenzzeit wirkte nur auf eine von zwei Meldungen. Die zweite, Laser aus seit HH:MM, neues Ziel erfassen, kam weiterhin sofort. Sie haengt an einem eigenen Mechanismus und war schlicht nicht angeschlossen. Jetzt gilt die Einstellung fuer beide. Erneut gemeldet von Eron Solette.",
+   "Diese zweite Meldung ist absichtlich hartnaeckiger: sie bleibt stehen, bis die Foerderrate sich erholt hat, bis angedockt wird oder bis man sie abhakt. Ein wirklich toter Laser soll nicht nach einer Minute aus dem Blick geraten. Nur greift die Erholung erst beim naechsten vollen Minutenwechsel, und deshalb blitzte sie nach jedem Asteroiden auf.",
+   "Die Karenzzeit passt hier besonders gut: jede neue Abschaltung desselben Moduls setzt die Uhr zurueck. Ein Laser, der brav von Brocken zu Brocken springt, meldet sich im Sekundentakt neu und kommt nie ueber die Karenz. Einer, der wirklich steht, meldet gar nichts mehr, altert durch und wird angezeigt."
+  ],
+  "en": [
+   "Follow-up to 1.98.0: the grace period only applied to one of two messages. The second one, laser off since HH:MM, acquire a new target, still appeared instantly. It hangs on its own mechanism and was simply not wired up. The setting now covers both. Reported again by Eron Solette.",
+   "That second message is deliberately more stubborn: it stays until the yield recovers, until you dock, or until you tick it off. A genuinely dead laser should not slip out of view after a minute. But the recovery only kicks in at the next full minute, which is why it flashed up after every asteroid.",
+   "The grace period fits this case especially well: every fresh cutout of the same module resets the clock. A laser hopping from rock to rock reports again every few seconds and never gets past the grace period. One that has really stopped reports nothing more, ages through it and is shown."
+  ]
+ },
+ {
   "v": "1.98.0",
   "d": "2026-08-13",
   "de": [

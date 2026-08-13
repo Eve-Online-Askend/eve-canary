@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.98.0"
+VERSION = "1.98.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -2568,6 +2568,39 @@ class CharSession:
                 continue          # Karenzzeit laeuft noch
             out.append({"tool": tool, "count": cnt, "drone": "Drone" in tool})
         return out
+
+    def laser_off_liste(self):
+        """Die Dauer-Meldung "Laser aus, neues Ziel erfassen" fuers Frontend.
+
+        Wichtig: das hier ist ein ANDERER Mechanismus als tool_warns. Der
+        Zustand bleibt absichtlich stehen, bis die Rate sich erholt hat, bis
+        angedockt wird oder bis man ihn abhakt. Genau das ist der Sinn: ein
+        wirklich toter Laser soll nicht nach 60 Sekunden aus dem Blick fallen.
+
+        Nur greift die Erholung erst beim naechsten vollen Minutenwechsel. Wer
+        an kleinen Brocken foerdert, sieht die Meldung deshalb nach JEDEM
+        Asteroiden aufblitzen, obwohl der Laser laengst weiterarbeitet.
+
+        Der Ausweg ist dieselbe Karenzzeit wie bei tool_warns, und sie wirkt
+        hier sogar praeziser: jede neue Abschaltung DESSELBEN Moduls setzt
+        'since' zurueck. Ein Laser, der brav von Brocken zu Brocken springt,
+        meldet sich also im Sekundentakt neu und kommt nie ueber die Karenz.
+        Einer, der wirklich steht, meldet gar nichts mehr, altert durch und
+        wird angezeigt. Genau die Unterscheidung, um die es geht.
+
+        Bewusst NICHT die 'seit dem Abschalten floss wieder Erz'-Regel aus
+        tool_warns: hier faellt das Erz der ANDEREN Laser und der Drohnen mit
+        an, und damit wuerde ein tatsaechlich ausgefallenes Modul sofort
+        stillgelegt. Das ist der eine Fall, den diese Meldung finden soll."""
+        try:
+            puffer = max(0, int(CONFIG.get("tool_warn_delay", 0) or 0))
+        except (TypeError, ValueError):
+            puffer = 0
+        now = time.time()
+        return [{"tool": t, "since": int(i["since"]),
+                 "before": round(i["before"] or 0, 1)}   # m³/min vor dem Stopp
+                for t, i in sorted(self.lasers_off.items())
+                if not puffer or now - i["since"] >= puffer]
 
     def rate_status(self):
         """(Normalrate, aktuelle Rate) in m3/min — verglichen wird nur mit
@@ -6900,9 +6933,7 @@ def snapshot_live():
             "skill_bonus": (esi_char or {}).get("skill_bonus"),
             "trips": s.trips,
             "compressed": comp, "fleet_compress": fleet_comp, "tool_warns": s.tool_warns(),
-            "lasers_off": [] if drone_only else [{"tool": t, "since": int(i["since"]),
-                            "before": round(i["before"] or 0, 1)}  # m³/min vor dem Stopp
-                           for t, i in sorted(s.lasers_off.items())],
+            "lasers_off": [] if drone_only else s.laser_off_liste(),
             # Bei Command Ships / Drohnen-Boostern (Orca/Porpoise/Rorqual, aktiver
             # Kern) NICHT die generische "Abbaurate runter"-Warnung zeigen — die
             # ergibt dort keinen Sinn (kein reiner Miner). Wie schon bei laser_stalled.
