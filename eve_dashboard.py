@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.99.0"
+VERSION = "1.99.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -9677,6 +9677,13 @@ tr.lvl-yellow td{background:rgba(228,179,76,.07)}
 .mfpshare:hover{color:var(--cyan);border-color:var(--cyan)}
 select.pill{appearance:none;-webkit-appearance:none;outline:none;background:var(--card);
 border:1px solid var(--line);color:var(--dim);font-size:11px;padding:4px 11px;border-radius:20px;cursor:pointer}
+/* Auswahlfeld in den Optionen. BEWUSST ohne appearance:none, damit der Browser
+   seinen Aufklapp-Pfeil zeichnet. Die Pillen-Form daneben sah aus wie eine
+   Beschriftung: ein Nutzer hat die Auswahl schlicht nicht als Bedienelement
+   erkannt und links davon gesucht, weil dort in allen anderen Zeilen das
+   Eingabefeld steht. Deshalb steht dieses hier ebenfalls links. */
+select.feld{background:var(--inset);border:1px solid var(--line);color:var(--txt);
+font:inherit;font-size:12px;padding:4px 8px;border-radius:8px;cursor:pointer;min-width:210px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
 .char{font-size:15px;font-weight:600;color:var(--white)}
 .chead{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;flex-wrap:wrap}
@@ -10423,13 +10430,13 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
    <button class="btn" id="saveToolDelay">Speichern</button>
   </div>
   <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
-   <span class="hint" style="margin:0">⛔ Meldung „Laser aus, neues Ziel erfassen"</span>
-   <select id="laserOffMode" class="pill">
+   <select id="laserOffMode" class="feld">
     <option value="immer">immer, bei jeder Abschaltung</option>
     <option value="rate">nur wenn die Ausbeute einbricht</option>
     <option value="leer">nur wenn gar kein Erz mehr kommt</option>
     <option value="aus">gar nicht</option>
    </select>
+   <span class="hint" style="margin:0">⛔ wann die Meldung „Laser aus, neues Ziel erfassen" kommt</span>
   </div>
   <div class="hint" style="margin:4px 0 0 2px">An den Logs eines Flotten-Miners mit 5 Rechnern gemessen, Anteil der Förderzeit mit sichtbarer Meldung: immer 41%, bei Einbruch 25%, nur bei leer 7%. Achtung bei der dritten Stufe: sie verschweigt den Ausfall eines einzelnen von mehreren Lasern, weil die übrigen weiter liefern.</div>
   <div class="hint" style="margin:4px 0 0 2px">Für Flotten-Miner: an kleinen Brocken schalten die Laser ständig ab, das ist normal und keine Störung. Canary meldet ohnehin nichts mehr, solange danach wieder Erz fließt. Wem es trotzdem zu oft blinkt, stellt hier zusätzlich eine Karenzzeit ein. Die Warnung bei einem echten Ratenverlust bleibt davon unberührt.</div>
@@ -13816,7 +13823,7 @@ const EN = {
 'Klassisch (das gewohnte Canary-Design)':'Classic (the familiar Canary look)',
 'Sekunden ohne Erz bis zur Stillstand-Warnung (0 = aus)':'Seconds without ore before the idle warning (0 = off)',
 'Sekunden Karenz, bevor eine Modul-Warnung erscheint (0 = sofort)':'Seconds of grace before a module warning appears (0 = at once)',
-'⛔ Meldung „Laser aus, neues Ziel erfassen"':'⛔ Message "laser off, acquire a new target"',
+'⛔ wann die Meldung „Laser aus, neues Ziel erfassen" kommt':'⛔ when the message "laser off, acquire a new target" appears',
 'immer, bei jeder Abschaltung':'always, on every cutout',
 'nur wenn die Ausbeute einbricht':'only when the yield drops',
 'nur wenn gar kein Erz mehr kommt':'only when no ore arrives at all',

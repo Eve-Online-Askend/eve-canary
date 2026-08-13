@@ -1,5 +1,17 @@
 [
  {
+  "v": "1.99.1",
+  "d": "2026-08-13",
+  "de": [
+   "Die neue Auswahl fuer die Laser-Meldung war nicht als Bedienelement zu erkennen. Sie sass rechts neben dem Text und war als runde Pille ohne Aufklapp-Pfeil gezeichnet, sah also aus wie eine Beschriftung. In jeder anderen Zeile der Optionen steht das Eingabefeld links, deshalb hat dort auch gesucht wer sie brauchte.",
+   "Jetzt steht sie links wie alle anderen Felder, hat einen sichtbaren Rahmen und den Aufklapp-Pfeil des Systems. Gemeldet von Eron Solette, der sich dafuer entschuldigt hat, obwohl der Fehler bei mir lag."
+  ],
+  "en": [
+   "The new selector for the laser message was not recognisable as a control. It sat to the right of the text and was drawn as a rounded pill with no drop-down arrow, so it looked like a label. In every other row of the options the input field sits on the left, which is where people went looking for it.",
+   "It now sits on the left like every other field, with a visible border and the system drop-down arrow. Reported by Eron Solette, who apologised for it even though the fault was mine."
+  ]
+ },
+ {
   "v": "1.99.0",
   "d": "2026-08-13",
   "de": [
