@@ -1,5 +1,21 @@
 [
  {
+  "v": "1.97.2",
+  "d": "2026-08-13",
+  "de": [
+   "Die Ordner-Auswahl des Installers kommt jetzt nach vorn. Sie oeffnete sich bisher hinter dem Konsolenfenster, und weil die Zeile davor ein Fenster ankuendigt, sah es aus, als haenge die Installation. Gemeldet von MelvinMafia.",
+   "Ursache war ein Besitzer-Fenster, das nie angezeigt wurde und deshalb gar kein Fensterhandle hatte. Damit lief die Einstellung Immer im Vordergrund ins Leere. Jetzt wird es angezeigt, bleibt aber unsichtbar.",
+   "In PowerShell 7 gab es das Fenster gar nicht, weil dort ein anderer Thread-Modus gilt. Das wird jetzt erkannt und der Ordner stattdessen abgefragt, statt still nichts zu tun.",
+   "Und ein Hinweis steht jetzt gleich mit in der Konsole: kommt kein Fenster nach vorn, hilft Alt und Tab."
+  ],
+  "en": [
+   "The installer's folder picker now comes to the front. It used to open behind the console window, and since the line before it announces a window, it looked like the installation had hung. Reported by MelvinMafia.",
+   "The cause was an owner window that was never shown and therefore had no window handle at all, which made the always on top setting do nothing. It is now shown, but stays invisible.",
+   "In PowerShell 7 the window never appeared at all, because a different thread mode applies there. That is now detected and the folder is asked for instead of silently doing nothing.",
+   "And a hint is now printed right in the console: if no window comes to the front, Alt and Tab will find it."
+  ]
+ },
+ {
   "v": "1.97.1",
   "d": "2026-08-13",
   "de": [

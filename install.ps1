@@ -20,16 +20,38 @@ Write-Host ""
 # Installationsordner per Windows-Dialog waehlen
 $default = "$env:LOCALAPPDATA\EVE-Canary"
 if (-not $Dir) {
-    Write-Host "  Es oeffnet sich ein Fenster zur Ordner-Auswahl ..."
     try {
+        # Ein Fenster geht nur aus einem STA-Thread. powershell.exe ist STA,
+        # pwsh (PowerShell 7) standardmaessig NICHT. Ohne diese Pruefung wirft
+        # ShowDialog dort still, und der Nutzer sitzt vor einer Zeile, die ein
+        # Fenster ankuendigt, das nie kommt. Der Wurf hier landet im catch
+        # unten und damit bei der Eingabe per Tastatur.
+        if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
+            throw "kein STA-Thread, Fenster nicht moeglich"
+        }
+        Write-Host "  Es oeffnet sich ein Fenster zur Ordner-Auswahl ..."
+        Write-Host "  (kommt es nicht nach vorn: Alt+Tab, es liegt dann hinter diesem Fenster)" -ForegroundColor DarkGray
         Add-Type -AssemblyName System.Windows.Forms
         $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
         $dlg.Description = "Wohin soll EVE Canary installiert werden? Canary legt dort einen Unterordner 'EVE-Canary' an. Abbrechen nimmt den Standardordner."
         $dlg.SelectedPath = $env:LOCALAPPDATA
         $dlg.ShowNewFolderButton = $true
+        # Der Besitzer muss WIRKLICH angezeigt werden, sonst hat er kein
+        # Fensterhandle, und dann bringt TopMost gar nichts: die Ordner-Auswahl
+        # oeffnet sich hinter der Konsole und sieht aus, als kaeme sie nie.
+        # Unsichtbar ist sie trotzdem, ueber Groesse 1x1 und Deckkraft 0.
         $owner = New-Object System.Windows.Forms.Form
         $owner.TopMost = $true
+        $owner.ShowInTaskbar = $false
+        $owner.FormBorderStyle = 'None'
+        $owner.Opacity = 0
+        $owner.Width = 1
+        $owner.Height = 1
+        $owner.StartPosition = 'CenterScreen'
+        $owner.Show()
+        $owner.Activate()
         $result = $dlg.ShowDialog($owner)
+        $owner.Close()
         $owner.Dispose()
         if ($result -eq [System.Windows.Forms.DialogResult]::OK -and $dlg.SelectedPath) {
             if ((Split-Path $dlg.SelectedPath -Leaf) -ieq "EVE-Canary") {
