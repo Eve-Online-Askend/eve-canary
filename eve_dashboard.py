@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.93.1"
+VERSION = "1.93.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "market_types.json",
@@ -11672,7 +11672,7 @@ $('#uhrBtn').onclick=()=>{uhrMalen();uhrListeMalen();$('#uhrDlg').showModal();};
 
 /* EVE-Einstellungen. Jede schreibende Aktion sichert vorher automatisch, das
    macht der Server. Hier wird nur gefragt und angezeigt. */
-let setDaten=null;
+let setDaten=null, setOrdner=null;
 function setZeit(t){return new Date(t*1000).toLocaleString().slice(0,16);}
 async function setLaden(){
  const box=$('#setInhalt'); if(!box)return;
@@ -11684,15 +11684,24 @@ async function setLaden(){
    +'im Wine-Präfix (Linux).</div>'; return;
  }
  setDaten=d;
- const o=d.ordner[0];
+ // Merken, welcher Ordner gewaehlt ist, sonst springt die Auswahl bei jedem
+ // Neuaufbau zurueck.
+ if(!setOrdner||!d.ordner.some(x=>x.pfad===setOrdner)) setOrdner=d.ordner[0].pfad;
+ const o=d.ordner.find(x=>x.pfad===setOrdner);
  const chars=o.dateien.filter(f=>f.art==='char');
  const warn=d.eve_laeuft===true
   ? '<div class="cardwarn" style="margin-bottom:10px">⚠ EVE läuft gerade. '
     +'Sichern geht, Zurückspielen und Übertragen sind gesperrt: der Client '
     +'würde beim Beenden alles überschreiben.</div>' : '';
  box.innerHTML=warn
-  +`<div class="sect">Ordner</div>
-    <div class="sub" style="word-break:break-all">${esc(o.pfad)}</div>
+  +`<div class="sect">Ordner</div>`
+  +(d.ordner.length>1
+    ? `<div class="btnrow" style="align-items:center;gap:8px">
+        <select id="setOrdnerWahl">${d.ordner.map(x=>
+          `<option value="${esc(x.pfad)}"${x.pfad===o.pfad?' selected':''}>${esc(x.eltern)} / ${esc(x.name)}</option>`).join('')}</select>
+        <span class="sub">${d.ordner.length} Profile gefunden</span></div>`
+    : '')
+  +`<div class="sub" style="word-break:break-all">${esc(o.pfad)}</div>
     <table><thead><tr><th>Datei</th><th>Charakter</th><th class="r">Größe</th><th class="r">Stand</th></tr></thead>`
   +o.dateien.map(f=>`<tr><td>${esc(f.datei)}</td>
      <td>${f.name?esc(f.name):'<span class="sub">'+(f.art==='user'?'Konto':'unbekannt')+'</span>'}</td>
@@ -11736,6 +11745,8 @@ async function setLaden(){
          </div></div>`;}).join('')
     : '<div class="sub">Noch keine Sicherung vorhanden.</div>');
 
+ const wahl=$('#setOrdnerWahl');
+ if(wahl)wahl.onchange=()=>{setOrdner=wahl.value;setLaden();};
  const stat=(t)=>{const e=$('#setStat'); if(e)e.textContent=t;};
  $('#setSichern').onclick=async()=>{
   stat('sichert …');
