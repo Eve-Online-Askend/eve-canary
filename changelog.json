@@ -1,5 +1,21 @@
 [
  {
+  "v": "1.98.0",
+  "d": "2026-08-13",
+  "de": [
+   "Schluss mit der Dauer-Meldung, dass ein Turm ausgefallen sei. Ein Strip Miner, der abschaltet weil der Brocken leer ist und gleich am naechsten haengt, ist kein Ausfall, sondern ganz normales Mining. Canary meldet jetzt nichts mehr, solange danach wieder Erz fliesst.",
+   "Dazu eine neue Einstellung: Sekunden Karenz, bevor eine Modul-Warnung ueberhaupt erscheint. Steht auf 0, aendert sich also von allein bei niemandem etwas. Zu finden in den Optionen unter der Stillstand-Warnung.",
+   "An echten Logs nachgezaehlt: schon bei einem einzelnen Miner kommt die Meldung in der Spitze alle 77 Sekunden, und sie bleibt 60 Sekunden stehen. Bei einer Flotte aus mehreren Hulks steht sie damit dauerhaft im Bild und wird zu Tapete.",
+   "Die echte Ausfallerkennung bleibt vollstaendig erhalten. Sackt die Foerderrate wirklich ab, warnt Canary weiter wie bisher, denn das haengt am Ratenwaechter und nicht an dieser Meldung. Es verschwindet nur der Laerm. Vorgeschlagen von Eron Solette."
+  ],
+  "en": [
+   "No more permanent warning that a turret has failed. A strip miner that cuts out because the rock is empty and grabs the next one right after is not a fault, it is ordinary mining. Canary now stays quiet as long as ore keeps flowing afterwards.",
+   "Along with it a new setting: seconds of grace before a module warning appears at all. It sits at 0, so nothing changes by itself for anyone. You will find it in the options below the idle warning.",
+   "Counted on real logs: even for a single miner the message arrives every 77 seconds at peak, and it stays up for 60 seconds. For a fleet of several Hulks it is therefore permanently on screen and turns into wallpaper.",
+   "The real failure detection is fully intact. If your yield genuinely drops, Canary warns exactly as before, because that hangs on the rate watcher and not on this message. Only the noise is gone. Suggested by Eron Solette."
+  ]
+ },
+ {
   "v": "1.97.2",
   "d": "2026-08-13",
   "de": [

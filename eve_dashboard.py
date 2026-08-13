@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.97.2"
+VERSION = "1.98.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -1268,6 +1268,8 @@ def load_config():
     cfg = {"port": PORT_DEFAULT, "region": "10000002", "log_dir": None,
            "mode": "all", "install_ts": time.time(),
            "goal": None, "watchlist": [], "idle_warn": 240, "heavy_water": {},
+           # Karenzzeit fuer die Modul-Warnung, in Sekunden. 0 = sofort.
+           "tool_warn_delay": 0,
            "clip_watch": False, "roles": {}, "log_texts": {},
            "count_me": True, "ping": {}, "share_ore": False,
            "update_url": "https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main"}
@@ -2530,14 +2532,41 @@ class CharSession:
                     del self.tool_off[tool]
 
     def tool_warns(self):
-        """Aktive Modul-Warnungen (letzte 60s), mit Werkzeugname."""
-        cutoff = time.time() - 60
+        """Aktive Modul-Warnungen (letzte 60s), mit Werkzeugname.
+
+        Zwei Daempfer, beide aus der Praxis eines Flotten-Miners (gemeldet von
+        Eron Solette, 4 Hulks und eine Orca an kleinen Brocken):
+
+        1. Ist seit dem Abschalten wieder Erz geflossen, war es kein Ausfall,
+           sondern ganz gewoehnliches Mining: der Brocken war leer, der Laser
+           haengt laengst am naechsten. Die Meldung war dort schlicht falsch.
+        2. Zusaetzlich eine einstellbare Karenzzeit (Optionen, tool_warn_delay),
+           fuer alle, denen auch die verbleibenden Meldungen zu haeufig sind.
+           Standard 0, damit sich ungefragt bei niemandem etwas aendert.
+
+        Die echte Ausfallerkennung haengt NICHT hier dran. Die laeuft ueber
+        lasers_off und den Ratenwaechter (rate_status) und schlaegt weiter an,
+        sobald die Foerderrate wirklich einbricht. Hier faellt nur der Laerm weg.
+
+        Warum ueberhaupt: an echten Logs gezaehlt kommt die Meldung schon bei
+        EINEM Miner in der Spitze alle 77 Sekunden, bei 60 Sekunden Standzeit.
+        Bei einer Flotte steht sie damit dauerhaft im Bild und wird zu Tapete."""
+        now = time.time()
+        cutoff = now - 60
+        try:
+            puffer = max(0, int(CONFIG.get("tool_warn_delay", 0) or 0))
+        except (TypeError, ValueError):
+            puffer = 0
         out = []
         for tool, (cnt, ts) in list(self.tool_off.items()):
             if ts < cutoff:
                 del self.tool_off[tool]
-            else:
-                out.append({"tool": tool, "count": cnt, "drone": "Drone" in tool})
+                continue
+            if self.last_ore_ts and self.last_ore_ts > ts:
+                continue          # es floss wieder Erz, also laeuft das Ding
+            if puffer and now - ts < puffer:
+                continue          # Karenzzeit laeuft noch
+            out.append({"tool": tool, "count": cnt, "drone": "Drone" in tool})
         return out
 
     def rate_status(self):
@@ -7558,6 +7587,7 @@ def state_info():
             "sim": bool(CONFIG.get("sim_mode")),
             "baseline_day": meta_get("baseline_day"), "log_dir": CONFIG["log_dir"],
             "idle_warn": int(CONFIG.get("idle_warn", 240) or 0),
+            "tool_warn_delay": int(CONFIG.get("tool_warn_delay", 0) or 0),
             "clip_watch": bool(CONFIG.get("clip_watch")),
             "count_me": bool(CONFIG.get("count_me", True)),
             "share_ore": bool(CONFIG.get("share_ore", False)),
@@ -8846,6 +8876,13 @@ class Handler(BaseHTTPRequestHandler):
             # HTTP 500 beenden statt die Einstellung einfach zu ignorieren.
             try:
                 CONFIG["idle_warn"] = max(0, int(body.get("seconds") or 0))
+            except (TypeError, ValueError):
+                pass
+        elif action == "tool_warn_delay":
+            # Nach oben begrenzt: die Warnung steht ohnehin nur 60 Sekunden,
+            # ein groesserer Wert wuerde sie schlicht nie erscheinen lassen.
+            try:
+                CONFIG["tool_warn_delay"] = min(60, max(0, int(body.get("seconds") or 0)))
             except (TypeError, ValueError):
                 pass
         elif action == "set_role":
@@ -10287,6 +10324,12 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
    <span class="hint" style="margin:0">Sekunden ohne Erz bis zur Stillstand-Warnung (0 = aus)</span>
    <button class="btn" id="saveIdle">Speichern</button>
   </div>
+  <div style="display:flex;gap:6px;align-items:center;margin-top:8px">
+   <input type="number" id="toolDelay" min="0" max="60" step="5" style="width:110px">
+   <span class="hint" style="margin:0">Sekunden Karenz, bevor eine Modul-Warnung erscheint (0 = sofort)</span>
+   <button class="btn" id="saveToolDelay">Speichern</button>
+  </div>
+  <div class="hint" style="margin:4px 0 0 2px">Für Flotten-Miner: an kleinen Brocken schalten die Laser ständig ab, das ist normal und keine Störung. Canary meldet ohnehin nichts mehr, solange danach wieder Erz fließt. Wem es trotzdem zu oft blinkt, stellt hier zusätzlich eine Karenzzeit ein. Die Warnung bei einem echten Ratenverlust bleibt davon unberührt.</div>
   <div class="sect" style="margin-top:12px">Watchlist (Local-Chat, ein Name pro Zeile)</div>
   <textarea id="watchlist" rows="3" placeholder="Bekannte Ganker..."></textarea>
   <div class="btnrow">
@@ -10641,6 +10684,7 @@ $('#clearGoal').onclick=async()=>{await post({action:'goal',isk:null});$('#goalI
 $('#saveWatch').onclick=async()=>{await post({action:'watchlist',names:$('#watchlist').value.split('\\n')});};
 $('#notifPerm').onclick=()=>Notification.requestPermission();
 $('#saveIdle').onclick=async()=>{await post({action:'idle_warn',seconds:Number($('#idleWarn').value)||0});syncOpts();};
+$('#saveToolDelay').onclick=async()=>{await post({action:'tool_warn_delay',seconds:Number($('#toolDelay').value)||0});syncOpts();};
 $('#esiLogin').onclick=async()=>{
  const r=await post({action:'esi_login'});
  if(r.url)window.open(r.url,'_blank');
@@ -10691,6 +10735,7 @@ function syncOpts(){
   ms.innerHTML='<option value="">Automatisch</option>'+names.map(n=>`<option value="${esc(n)}"${n===cur?' selected':''}>${esc(n)}</option>`).join('');
   ms.value=names.includes(cur)?cur:'';}
  $('#idleWarn').value=state.idle_warn??240;
+ $('#toolDelay').value=state.tool_warn_delay??0;
  $('#verinfo').textContent='Installiert: EVE Canary v'+(state.version||'?')+' · by Askend';
  if(state.goal){$('#goalIsk').value=state.goal.isk;$('#goalDate').value=state.goal.deadline||'';}
  if(state.esi){
@@ -13665,6 +13710,8 @@ const EN = {
  'Everything added up since Canary started recording. Total ISK is ore value plus bounties. The ore value is what your ore would fetch on the market today, not what you were paid for it at the time. Bounties are the rewards for NPCs you destroyed. Best day means the day with the highest ISK yield. In the tables, the column headers tell you which number is quantity, volume and value.',
 'Klassisch (das gewohnte Canary-Design)':'Classic (the familiar Canary look)',
 'Sekunden ohne Erz bis zur Stillstand-Warnung (0 = aus)':'Seconds without ore before the idle warning (0 = off)',
+'Sekunden Karenz, bevor eine Modul-Warnung erscheint (0 = sofort)':'Seconds of grace before a module warning appears (0 = at once)',
+'Für Flotten-Miner: an kleinen Brocken schalten die Laser ständig ab, das ist normal und keine Störung. Canary meldet ohnehin nichts mehr, solange danach wieder Erz fließt. Wem es trotzdem zu oft blinkt, stellt hier zusätzlich eine Karenzzeit ein. Die Warnung bei einem echten Ratenverlust bleibt davon unberührt.':'For fleet miners: on small rocks the lasers cut out constantly, which is normal and not a fault. Canary already stays quiet as long as ore keeps flowing afterwards. If it still blinks too often for you, set an extra grace period here. The warning for a real drop in yield is not affected.',
 '🎯 Ziel & Zähler':'🎯 Goal & counters','7 Tage':'7 days','12 Monate':'12 months',
 'Erz-Effizienz (ISK/m³)':'Ore efficiency (ISK/m³)','Waffen':'Weapons','und':'and',
 'Schaden ausgeteilt':'Damage dealt','Schaden kassiert':'Damage taken',
