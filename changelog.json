@@ -1,5 +1,19 @@
 [
  {
+  "v": "1.96.1",
+  "d": "2026-08-13",
+  "de": [
+   "Notfall-Behebung: in 1.96.0 blieb das Dashboard leer. Kopfzeile und Reiter waren da, aber kein Knopf reagierte und es kamen keine Daten. Betroffen war jeder, der 1.96.0 installiert hatte. Sofort aktualisieren.",
+   "Ursache war ein einziges falsch geschriebenes Zeichen in einer neuen Zeile des Beitragen-Knopfes. Es wurde beim Ausliefern zu einem echten Zeilenumbruch mitten in einem Text, und ein solcher Fehler legt das gesamte Skript der Seite lahm, nicht nur die betroffene Stelle.",
+   "Damit das nicht wiederkommt, wird die Seite jetzt vor jeder Veroeffentlichung so geprueft, wie sie beim Nutzer ankommt. Die bisherige Pruefung sah nur den Python-Teil und die Schnittstellen, und die waren alle in Ordnung. Gemeldet von Eron Solette, danke fuer die schnelle Rueckmeldung."
+  ],
+  "en": [
+   "Emergency fix: in 1.96.0 the dashboard stayed empty. The header and tabs were there, but no button responded and no data arrived. Everyone on 1.96.0 was affected. Please update right away.",
+   "The cause was a single mistyped character in a new line of the contribute button. On delivery it turned into a real line break in the middle of a piece of text, and a fault like that takes down the whole script of the page, not just the spot it sits in.",
+   "So it does not come back, the page is now checked before every release exactly as it arrives at the user. The previous checks only covered the Python side and the interfaces, and those were all fine. Reported by Eron Solette, thank you for the quick heads up."
+  ]
+ },
+ {
   "v": "1.96.0",
   "d": "2026-08-13",
   "de": [

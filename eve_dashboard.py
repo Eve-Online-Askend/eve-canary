@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.96.0"
+VERSION = "1.96.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -13189,7 +13189,7 @@ function renderMissions(d){
              'Gegner ('+gegner.length+'):',
              ...gegner.map(g=>'  '+g),
              '',
-             'Canary '+(state&&state.version||'')+', Gegner-Fingerabdruck'].join('\n');
+             'Canary '+(state&&state.version||'')+', Gegner-Fingerabdruck'].join('\\n');
   try{await navigator.clipboard.writeText(txt);
       setzStatus(en2?'✓ copied, paste it into a report':'✓ kopiert, füg es in eine Meldung ein');}
   catch(e){setzStatus(en2?'Clipboard blocked':'Zwischenablage blockiert');}
