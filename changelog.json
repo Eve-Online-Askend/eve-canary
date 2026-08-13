@@ -1,5 +1,21 @@
 [
  {
+  "v": "1.99.0",
+  "d": "2026-08-13",
+  "de": [
+   "Die Meldung Laser aus hat jetzt vier Stufen statt eines Ja/Nein. Zu finden in den Optionen bei den Alarmen: immer, nur wenn die Ausbeute einbricht (Standard), nur wenn gar kein Erz mehr kommt, oder gar nicht.",
+   "Jede Stufe ist an echten Logs gemessen, und zwar an denen eines Flotten-Miners mit fuenf Rechnern, vier Hulks und einer Orca. Angegeben ist, wie oft dort mindestens eine der fuenf Karten die Meldung zeigte: immer 41 Prozent der Foerderzeit, bei Einbruch 25 Prozent, nur bei leer 7 Prozent.",
+   "An der dritten Stufe steht bewusst eine Warnung. Sie verschweigt den Ausfall eines EINZELNEN von mehreren Lasern, weil die uebrigen weiter liefern und damit Erz fliesst. Der Ratenwaechter faengt das nicht auf, der schlaegt erst unter 55 Prozent an, waehrend ein toter Laser von dreien 67 Prozent bedeutet. Wer ganz Ruhe will, weiss jetzt, womit er sie bezahlt.",
+   "Danke an Eron Solette, der nicht lockergelassen und am Ende seine Logs beigesteuert hat. Ohne die waere es beim Raten geblieben."
+  ],
+  "en": [
+   "The laser off message now has four settings instead of on/off. In the options under alerts: always, only when the yield drops (default), only when no ore arrives at all, or never.",
+   "Every setting is measured on real logs, specifically those of a fleet miner running five clients, four Hulks and an Orca. The figure is how often at least one of the five cards showed the message: always 41 percent of mining time, on a drop 25 percent, only when empty 7 percent.",
+   "The third setting carries a deliberate warning. It hides the failure of a SINGLE laser among several, because the others keep delivering and so ore keeps flowing. The rate watcher does not cover that gap, it only fires below 55 percent while one dead laser out of three means 67 percent. If you want complete quiet, you now know what it costs.",
+   "Thanks to Eron Solette, who kept at it and finally shared his logs. Without them this would have stayed guesswork."
+  ]
+ },
+ {
   "v": "1.98.2",
   "d": "2026-08-13",
   "de": [

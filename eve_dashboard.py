@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.98.2"
+VERSION = "1.99.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -1270,8 +1270,10 @@ def load_config():
            "goal": None, "watchlist": [], "idle_warn": 240, "heavy_water": {},
            # Karenzzeit fuer die Modul-Warnung, in Sekunden. 0 = sofort.
            "tool_warn_delay": 0,
-           # Die Dauer-Meldung "Laser aus, neues Ziel erfassen" ueberhaupt zeigen?
-           "laser_off_msg": True,
+           # Wie empfindlich soll die Meldung "Laser aus, neues Ziel erfassen"
+           # sein? immer | rate | leer | aus. Die Stufen sind an echten Logs
+           # gemessen, siehe laser_off_liste().
+           "laser_off_mode": "rate",
            "clip_watch": False, "roles": {}, "log_texts": {},
            "count_me": True, "ping": {}, "share_ore": False,
            "update_url": "https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main"}
@@ -1283,6 +1285,12 @@ def load_config():
     if not cfg.get("log_dir"):
         d = find_log_dir()
         cfg["log_dir"] = str(d) if d else ""
+    # 1.98.2 hatte fuer die Laser-Meldung nur einen Ja/Nein-Schalter. Wer ihn
+    # ausgeschaltet hatte, soll nach dem Update nicht ploetzlich wieder
+    # Meldungen bekommen. Ein gesetztes Ja bedeutete den heutigen Standard.
+    if "laser_off_msg" in cfg:
+        if not cfg.pop("laser_off_msg"):
+            cfg["laser_off_mode"] = "aus"
     save_config(cfg)
     return cfg
 
@@ -2602,29 +2610,55 @@ class CharSession:
         gleichzeitig. Eine Karenz von 30 Sekunden deckt darum nur 9,7% der
         Abstaende ab, der Zustand altert fast immer durch.
 
-        Deshalb haengt die Anzeige jetzt an der RATE: gemeldet wird nur, wenn
-        die Foerderung auch wirklich eingebrochen ist. Steht ein Laser still,
-        ohne dass es sich in der Ausbeute zeigt, gibt es nichts zu tun. An
-        echten Logs bringt das 27% weniger Meldungszeit, und was uebrig bleibt,
-        sind die Faelle mit tatsaechlichem Verlust."""
-        if not CONFIG.get("laser_off_msg", True):
+        Deshalb gibt es vier Stufen (laser_off_mode), alle an den Logs eines
+        Flotten-Miners mit 5 Rechnern gemessen. Angegeben ist, wie oft dort
+        MINDESTENS EINE der fuenf Karten die Meldung zeigte:
+
+          immer  41,1% der Foerderzeit. Jede Abschaltung meldet, bis die
+                 Erholung greift. Das war das Verhalten bis 1.98.1.
+          rate   24,7%. Nur wenn die Ausbeute auch wirklich eingebrochen ist.
+                 Trennt sauber: sofort nachgezielt sind ~100% und still,
+                 vergessen sind ~67% und meldet. Der Rest sind echte
+                 Schwankungen (Warp, voller Frachtraum, Wechsel der
+                 Guteklasse). Standard.
+          leer    7,3%. Zusaetzlich still, sobald ueberhaupt wieder Erz kommt.
+                 ACHTUNG, das verschweigt den Ausfall EINES von mehreren
+                 Lasern: die anderen liefern weiter, und der Ratenwaechter
+                 schlaegt erst unter 55% an, waehrend einer von drei Lasern
+                 67% bedeutet. Wer ganz Ruhe will, zahlt hier dafuer.
+          aus    gar nichts.
+
+        Die Schwelle 0.85 ist dieselbe wie in der schon vorhandenen
+        Erholungsregel, damit Anzeige und Erholung nicht auseinanderlaufen."""
+        modus = str(CONFIG.get("laser_off_mode", "rate") or "rate")
+        if modus == "aus":
             return []
         try:
             puffer = max(0, int(CONFIG.get("tool_warn_delay", 0) or 0))
         except (TypeError, ValueError):
             puffer = 0
         now = time.time()
-        # Rate in Ordnung? Dann fehlt nichts, egal was ein einzelnes Modul
-        # gerade meldet. Ohne genug Messwerte (erste Minuten einer Sitzung)
-        # bleibt es beim bisherigen Verhalten, sonst waere ein echter Ausfall
-        # ausgerechnet am Anfang stumm. Schwelle wie in der Erholungsregel.
-        rs = self.rate_status()
-        if rs and rs[0] > 0 and rs[1] >= 0.85 * rs[0]:
-            return []
-        return [{"tool": t, "since": int(i["since"]),
-                 "before": round(i["before"] or 0, 1)}   # m³/min vor dem Stopp
-                for t, i in sorted(self.lasers_off.items())
-                if not puffer or now - i["since"] >= puffer]
+        if modus in ("rate", "leer"):
+            # Rate in Ordnung? Dann fehlt nichts, egal was ein einzelnes Modul
+            # meldet. Ohne genug Messwerte (erste Minuten einer Sitzung) bleibt
+            # es beim Melden, sonst waere ein echter Ausfall ausgerechnet am
+            # Anfang stumm.
+            rs = self.rate_status()
+            if rs and rs[0] > 0 and rs[1] >= 0.85 * rs[0]:
+                return []
+        out = []
+        for t, i in sorted(self.lasers_off.items()):
+            if puffer and now - i["since"] < puffer:
+                continue
+            # Stufe "leer": kam nach der Abschaltung wieder Erz, ist Ruhe.
+            # Die 15 Sekunden Beruhigung verhindern, dass eine Lieferung aus
+            # dem noch laufenden alten Zyklus faelschlich als Entwarnung zaehlt.
+            if modus == "leer" and self.last_ore_ts \
+                    and self.last_ore_ts >= i["since"] + 15:
+                continue
+            out.append({"tool": t, "since": int(i["since"]),
+                        "before": round(i["before"] or 0, 1)})  # m³/min vorher
+        return out
 
     def rate_status(self):
         """(Normalrate, aktuelle Rate) in m3/min — verglichen wird nur mit
@@ -7643,7 +7677,7 @@ def state_info():
             "baseline_day": meta_get("baseline_day"), "log_dir": CONFIG["log_dir"],
             "idle_warn": int(CONFIG.get("idle_warn", 240) or 0),
             "tool_warn_delay": int(CONFIG.get("tool_warn_delay", 0) or 0),
-            "laser_off_msg": bool(CONFIG.get("laser_off_msg", True)),
+            "laser_off_mode": str(CONFIG.get("laser_off_mode", "rate") or "rate"),
             "clip_watch": bool(CONFIG.get("clip_watch")),
             "count_me": bool(CONFIG.get("count_me", True)),
             "share_ore": bool(CONFIG.get("share_ore", False)),
@@ -8934,8 +8968,9 @@ class Handler(BaseHTTPRequestHandler):
                 CONFIG["idle_warn"] = max(0, int(body.get("seconds") or 0))
             except (TypeError, ValueError):
                 pass
-        elif action == "laser_off_msg":
-            CONFIG["laser_off_msg"] = bool(body.get("on"))
+        elif action == "laser_off_mode":
+            if body.get("modus") in ("immer", "rate", "leer", "aus"):
+                CONFIG["laser_off_mode"] = body["modus"]
         elif action == "tool_warn_delay":
             # Nach oben begrenzt: die Warnung steht ohnehin nur 60 Sekunden,
             # ein groesserer Wert wuerde sie schlicht nie erscheinen lassen.
@@ -10387,7 +10422,16 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
    <span class="hint" style="margin:0">Sekunden Karenz, bevor eine Modul-Warnung erscheint (0 = sofort)</span>
    <button class="btn" id="saveToolDelay">Speichern</button>
   </div>
-  <label><input type="checkbox" id="laserOffMsg" checked> ⛔ Meldung „Laser aus, neues Ziel erfassen" anzeigen</label>
+  <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
+   <span class="hint" style="margin:0">⛔ Meldung „Laser aus, neues Ziel erfassen"</span>
+   <select id="laserOffMode" class="pill">
+    <option value="immer">immer, bei jeder Abschaltung</option>
+    <option value="rate">nur wenn die Ausbeute einbricht</option>
+    <option value="leer">nur wenn gar kein Erz mehr kommt</option>
+    <option value="aus">gar nicht</option>
+   </select>
+  </div>
+  <div class="hint" style="margin:4px 0 0 2px">An den Logs eines Flotten-Miners mit 5 Rechnern gemessen, Anteil der Förderzeit mit sichtbarer Meldung: immer 41%, bei Einbruch 25%, nur bei leer 7%. Achtung bei der dritten Stufe: sie verschweigt den Ausfall eines einzelnen von mehreren Lasern, weil die übrigen weiter liefern.</div>
   <div class="hint" style="margin:4px 0 0 2px">Für Flotten-Miner: an kleinen Brocken schalten die Laser ständig ab, das ist normal und keine Störung. Canary meldet ohnehin nichts mehr, solange danach wieder Erz fließt. Wem es trotzdem zu oft blinkt, stellt hier zusätzlich eine Karenzzeit ein. Die Warnung bei einem echten Ratenverlust bleibt davon unberührt.</div>
   <div class="sect" style="margin-top:12px">Watchlist (Local-Chat, ein Name pro Zeile)</div>
   <textarea id="watchlist" rows="3" placeholder="Bekannte Ganker..."></textarea>
@@ -10744,7 +10788,7 @@ $('#saveWatch').onclick=async()=>{await post({action:'watchlist',names:$('#watch
 $('#notifPerm').onclick=()=>Notification.requestPermission();
 $('#saveIdle').onclick=async()=>{await post({action:'idle_warn',seconds:Number($('#idleWarn').value)||0});syncOpts();};
 $('#saveToolDelay').onclick=async()=>{await post({action:'tool_warn_delay',seconds:Number($('#toolDelay').value)||0});syncOpts();};
-$('#laserOffMsg').onchange=async()=>{await post({action:'laser_off_msg',on:$('#laserOffMsg').checked});syncOpts();};
+$('#laserOffMode').onchange=async()=>{await post({action:'laser_off_mode',modus:$('#laserOffMode').value});syncOpts();};
 $('#esiLogin').onclick=async()=>{
  const r=await post({action:'esi_login'});
  if(r.url)window.open(r.url,'_blank');
@@ -10796,7 +10840,7 @@ function syncOpts(){
   ms.value=names.includes(cur)?cur:'';}
  $('#idleWarn').value=state.idle_warn??240;
  $('#toolDelay').value=state.tool_warn_delay??0;
- $('#laserOffMsg').checked=state.laser_off_msg!==false;
+ $('#laserOffMode').value=state.laser_off_mode||'rate';
  $('#verinfo').textContent='Installiert: EVE Canary v'+(state.version||'?')+' · by Askend';
  if(state.goal){$('#goalIsk').value=state.goal.isk;$('#goalDate').value=state.goal.deadline||'';}
  if(state.esi){
@@ -13772,6 +13816,12 @@ const EN = {
 'Klassisch (das gewohnte Canary-Design)':'Classic (the familiar Canary look)',
 'Sekunden ohne Erz bis zur Stillstand-Warnung (0 = aus)':'Seconds without ore before the idle warning (0 = off)',
 'Sekunden Karenz, bevor eine Modul-Warnung erscheint (0 = sofort)':'Seconds of grace before a module warning appears (0 = at once)',
+'⛔ Meldung „Laser aus, neues Ziel erfassen"':'⛔ Message "laser off, acquire a new target"',
+'immer, bei jeder Abschaltung':'always, on every cutout',
+'nur wenn die Ausbeute einbricht':'only when the yield drops',
+'nur wenn gar kein Erz mehr kommt':'only when no ore arrives at all',
+'gar nicht':'never',
+'An den Logs eines Flotten-Miners mit 5 Rechnern gemessen, Anteil der Förderzeit mit sichtbarer Meldung: immer 41%, bei Einbruch 25%, nur bei leer 7%. Achtung bei der dritten Stufe: sie verschweigt den Ausfall eines einzelnen von mehreren Lasern, weil die übrigen weiter liefern.':'Measured on the logs of a fleet miner running 5 clients, share of mining time with the message on screen: always 41%, on a drop 25%, only when empty 7%. Careful with the third setting: it hides the failure of a single laser among several, because the others keep delivering.',
 'Für Flotten-Miner: an kleinen Brocken schalten die Laser ständig ab, das ist normal und keine Störung. Canary meldet ohnehin nichts mehr, solange danach wieder Erz fließt. Wem es trotzdem zu oft blinkt, stellt hier zusätzlich eine Karenzzeit ein. Die Warnung bei einem echten Ratenverlust bleibt davon unberührt.':'For fleet miners: on small rocks the lasers cut out constantly, which is normal and not a fault. Canary already stays quiet as long as ore keeps flowing afterwards. If it still blinks too often for you, set an extra grace period here. The warning for a real drop in yield is not affected.',
 '🎯 Ziel & Zähler':'🎯 Goal & counters','7 Tage':'7 days','12 Monate':'12 months',
 'Erz-Effizienz (ISK/m³)':'Ore efficiency (ISK/m³)','Waffen':'Weapons','und':'and',
