@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.15.0"
+VERSION = "2.16.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -79,6 +79,11 @@ ERROR_HELP = {
 ERRORS = deque(maxlen=60)
 ERROR_SEEN = {}
 ERROR_LOCK = threading.Lock()
+
+
+# Welche Hintergrund-Threads laufen sollen. Wird beim Start gefuellt und in der
+# Diagnose abgefragt. Ohne das faellt ein beendeter Thread niemandem auf.
+THREAD_WACHE = {}
 
 
 def log_error(code, where, exc=None):
@@ -703,6 +708,39 @@ PLAYER_RE = re.compile(r"\[[^\[\]]{1,10}\]\s*\([^()]+\)")
 WH_SYS_RE = re.compile(r"^J\d{6}\b")
 
 
+# Die Overview-Spalten einer Kampfzeile stehen jede in ihrem EIGENEN
+# font/color-Block. Im Klartext sind sie danach nicht mehr zu trennen, in der
+# Auszeichnung schon. Genau daran scheiterte die Fernunterstuetzung: an 8.150
+# echten Zeilen war der Pilot zu 95,1 % "?", und das Schiffsfeld enthielt
+# stattdessen "Deacon Levi Haginen .IBU.", also Schiff, Pilot und Kuerzel am
+# Stueck. Beim Audit gefunden.
+#
+# Betonungs-Tags fliegen zuerst raus, sonst zerreissen sie eine Klammergruppe
+# ("[<b>PR.BL</b>]" wuerde sonst zu drei Bruchstuecken).
+LOGI_INLINE_TAGS = re.compile(r"</?(?:b|u|i)\s*>", re.I)
+LOGI_BLOCK_TAGS = re.compile(r"<[^>]+>")
+
+
+def logi_spalten(rest):
+    """Die Overview-Spalten eines Zeilenrests, in ihrer Reihenfolge.
+
+    Belegt an drei verschiedenen Overview-Layouts aus echten Logs:
+      Schiff / Pilot / Kuerzel   "Deacon" "Levi Haginen" ".IBU."
+      Schiff = Pilot [KUERZEL]   "Brutix" "Nirahse Haginen" "[ANGEL]"
+      Schiff [CORP] [ALLI] [Pilot]  "Guardian" "[PR.BL]" "[C.H.P] [Jarrod Sands]"
+    """
+    ohne = LOGI_INLINE_TAGS.sub("", rest)
+    teile = []
+    for t in LOGI_BLOCK_TAGS.split(ohne):
+        # Welches Trennzeichen zwischen den Spalten steht, stellt jeder selbst
+        # ein: "=", "-" und "/" sind alle in echten Logs belegt ("Loki /" und
+        # "/ Nessu One" waren sonst Schiff und Pilot mit Schraegstrich).
+        t = " ".join(t.split()).strip(" =-/|·")
+        if t:
+            teile.append(t)
+    return teile
+
+
 def not_a_pilot(name):
     """Traegt die Form "Name[TICKER](Typ)", ist aber kein Mensch.
 
@@ -1162,34 +1200,52 @@ def parse_line(raw):
             modul = plain.rsplit(" - ", 1)[-1].strip() if " - " in plain else ""
             ml = modul.lower()
             art = next((a for w, a in LOGI_ART if w in ml), "?")
-            # Vor dem ersten Klammerblock steht "<Menge> <Satz> <Richtung> <Schiff>".
-            # Von hinten nach dem Richtungswort suchen, alles danach ist das Schiff.
+            # Richtung steht im Satz vor den Spalten ("... repaired to/by ...").
             kopf = plain.split("[", 1)[0] if "[" in plain else plain
             worte = kopf.split()
-            richtung, schiff = "unklar", ""
+            richtung = "unklar"
+            wort_pos = None
             for i in range(len(worte) - 1, -1, -1):
                 r = LOGI_DIR.get(worte[i].lower())
                 if r:
-                    richtung, schiff = r, " ".join(worte[i + 1:]).strip()
+                    richtung, wort_pos = r, worte[i]
                     break
-            # Reihenfolge der Klammern ist [Corp] [Allianz] [Pilot], die
-            # Allianz fehlt manchmal. Der Pilot steht immer zuletzt.
-            # ABER: das gilt nur fuer ein bestimmtes Overview-Layout. An zwei
-            # fremden Log-Spenden geprueft: beim einen 10 echte Pilotennamen und
-            # 100% Treffer, beim anderen 96,3% ohne jede Klammer und der Rest
-            # ein ALLIANZKUERZEL ("LAWN", "ANGEL"), das dann als Pilot angezeigt
-            # wurde. Kuerzel bestehen nur aus Grossbuchstaben, Ziffern und
+            # Schiff und Pilot aus den Overview-SPALTEN holen, nicht aus dem
+            # Klartext: im Klartext stehen sie ohne Trenner hintereinander.
+            rest = body
+            if wort_pos:
+                # Ab hinter dem Richtungswort, und den Modulnamen am Ende weg.
+                mpos = re.search(r"\b" + re.escape(wort_pos) + r"\b\s*<", body)
+                if mpos:
+                    rest = body[mpos.end() - 1:]
+            rest = rest.rsplit(" - ", 1)[0] if " - " in rest else rest
+            spalten = logi_spalten(rest)
+            schiff = spalten[0] if spalten else ""
+            # Reihenfolge der Klammern ist [Corp] [Allianz] [Pilot], die Allianz
+            # fehlt manchmal. Der Pilot steht dort immer zuletzt. Kuerzel
+            # bestehen nur aus Grossbuchstaben, Ziffern, Punkten und
             # Bindestrichen; ein Pilotenname hat immer Kleinbuchstaben. Sieht es
             # nach Kuerzel aus, lieber "?" als ein falscher Name.
+            def taugt(x):
+                return bool(x) and any(c.islower() for c in x) and not not_a_pilot(x)
+
+            pilot = ""
             klammern = re.findall(r"\[([^\[\]]+)\]", plain)
-            pilot = klammern[-1].strip() if klammern else ""
-            if not pilot or not any(c.islower() for c in pilot):
-                pilot = "?"
-            # Das Schiff endet vor dem Modulnamen, sonst schleppt es ihn mit.
-            if " - " in schiff:
-                schiff = schiff.rsplit(" - ", 1)[0].strip()
+            for k in reversed(klammern):
+                if taugt(k.strip()):
+                    pilot = k.strip()
+                    break
+            if not pilot:
+                # Kein Klammer-Layout: die zweite Spalte ist die Namensspalte des
+                # Overviews. Bei einem Spieler steht dort der Pilot, bei einem
+                # Wrack oder einer Drohne dessen Name — den faengt not_a_pilot.
+                for s in spalten[1:]:
+                    s = s.strip("[]").strip()
+                    if s and s != schiff and taugt(s):
+                        pilot = s
+                        break
             return {**base, "kind": "logi_" + richtung, "art": art,
-                    "key": pilot, "ship": schiff, "weapon": modul,
+                    "key": pilot or "?", "ship": schiff, "weapon": modul,
                     "value": num(n.group(1))}
         direction = "dmg_out" if OUT_COLOR in low else ("dmg_in" if IN_COLOR in low else None)
         if direction:
@@ -1587,6 +1643,17 @@ CREATE TABLE IF NOT EXISTS missions(mid TEXT PRIMARY KEY, char_id TEXT, char TEX
     CREATE TABLE IF NOT EXISTS uhr(id INTEGER PRIMARY KEY AUTOINCREMENT,
     label TEXT, start_ts REAL, end_ts REAL, sek REAL, m3 REAL, isk REAL,
     unsicher INTEGER);
+-- Genau EIN Register, und zwar das einzige, das nachweislich hilft:
+-- die Missions-Liste holt die neuesten 200 von zigtausend Zeilen.
+-- An 30.000 Missionen gemessen 3,3 ms ohne, 0,3 ms mit.
+--
+-- Register auf wbook(ts), trades(ts) und die char-Varianten wurden bewusst
+-- WIEDER ENTFERNT: gemessen an 300.000 Zeilen machten sie den Zeitraum
+-- "alles" drei- bis fuenfmal LANGSAMER (wbook 124 -> 618 ms, trades 159 ->
+-- 389 ms). SQLite nimmt dann das Register und springt einzeln in die Zeilen,
+-- statt die Tabelle am Stueck zu lesen. Bei kurzen Zeitraeumen halfen sie
+-- zwar (35 -> 17 ms), aber "alles" ist der Fall, der weh tut.
+CREATE INDEX IF NOT EXISTS ix_missions_start ON missions(start_ts);
 """)
 DB.commit()
 try:  # v1.5.1: System-Kontext je Journal-Eintrag (filtert Belt-Bounties aus der Missions-Statistik)
@@ -3478,35 +3545,44 @@ class Ingest(threading.Thread):
         with chatwatch.lock:
             abyss_fertig, chatwatch.abyss_ende = chatwatch.abyss_ende, []
         for a_cid, a_ts, a_ein in abyss_fertig:
+            # Ablesen und Zuruecksetzen gehoeren unter EINE Sperre. Vorher lagen
+            # mission_dict() und reset_combat() ausserhalb: baute der HTTP-Thread
+            # gerade seine Live-Karte (snapshot_live haelt ingest.lock ueber die
+            # ganze Runde), konnte er die aufgelaufenen Erzmengen noch vor dem
+            # Ruecksetzen lesen und first_ts erst danach. Die Karte zeigte dann
+            # zwei Stunden Ertrag mit einer Laufzeit von wenigen Minuten.
+            # Datenbank und Chatlog bleiben bewusst DRAUSSEN, sonst haengt die
+            # Sperre an einem Schreibzugriff.
             with self.lock:
                 a_sess = self.sessions.get(a_cid)
-            if not a_sess:
-                continue
-            # Zweite Absicherung: ein Ausstieg, der VOR dem Beginn der laufenden
-            # Sitzung liegt, kann nicht zu ihr gehoeren. Sonst schliesst ein alt
-            # gemeldeter Chatlog-Uebergang den gerade laufenden Kampf ab.
-            if a_sess.first_ts and a_ts < a_sess.first_ts:
-                continue
-            a_md = a_sess.mission_dict(a_ts)
+                # Zweite Absicherung: ein Ausstieg, der VOR dem Beginn der
+                # laufenden Sitzung liegt, kann nicht zu ihr gehoeren. Sonst
+                # schliesst ein alt gemeldeter Chatlog-Uebergang den gerade
+                # laufenden Kampf ab.
+                if not a_sess or (a_sess.first_ts and a_ts < a_sess.first_ts):
+                    continue
+                a_md = a_sess.mission_dict(a_ts)
+                if a_md:
+                    # Der Durchgang beginnt mit dem EINTRITT in den Abyss, nicht
+                    # mit der ersten Logzeile seit dem Abdocken. Sonst zaehlt der
+                    # Anflug mit: gemeldet wurden 10 Minuten, obwohl die
+                    # Local-Uebergaenge 5:05 sagen. Im Abyss selbst laeuft eine
+                    # harte 20-Minuten-Grenze, die Zahl muss also stimmen.
+                    # Nur nach vorn korrigieren, nie nach hinten.
+                    if a_ein and a_ein > a_md["start_ts"]:
+                        a_md["start_ts"] = a_ein
+                    a_sess.reset_combat(a_ts)
+                a_name = a_sess.name
             if a_md:
-                # Der Durchgang beginnt mit dem EINTRITT in den Abyss, nicht
-                # mit der ersten Logzeile seit dem Abdocken. Sonst zaehlt der
-                # Anflug mit: gemeldet wurden 10 Minuten, obwohl die
-                # Local-Uebergaenge 5:05 sagen. Im Abyss selbst laeuft eine
-                # harte 20-Minuten-Grenze, die Zahl muss also stimmen.
-                # Nur nach vorn korrigieren, nie nach hinten.
-                if a_ein and a_ein > a_md["start_ts"]:
-                    a_md["start_ts"] = a_ein
                 a_md["dialog"] = " ".join(chatwatch.dialogue(
                     a_cid, a_md["start_ts"], a_ts))[:2000] or None
                 save_mission(a_md)
-                a_sess.reset_combat(a_ts)
                 # Nur bei frischer Rueckkehr melden, nicht beim einmaligen
                 # Nachlesen alter Logs: sonst prasseln beim Neuaufbau hunderte
                 # Hinweise auf einmal herein.
                 if time.time() - a_ts < 300 and (a_md["bounty"] or a_md["kills"]):
-                    alerts.push("mission", a_sess.name,
-                                mission_hinweis(a_sess.name, a_md))
+                    alerts.push("mission", a_name,
+                                mission_hinweis(a_name, a_md))
 
         done = 0
         for f, cid, st in sorted(files, key=lambda x: x[2].st_mtime):
@@ -4187,31 +4263,43 @@ class Prices(threading.Thread):
 
     def run(self):
         while True:
-            region = CONFIG["region"]
-            ids = self.wanted_ids()
-            # Sofort nachladen, wenn eine neue Erzsorte auftaucht (noch nie angefragt)
-            # — sonst bliebe frisch abgebautes Erz bis zu 15 min ohne Preis. Wir merken
-            # uns ANGEFRAGTE IDs (nicht nur zurückgelieferte), damit Erze ohne Markt
-            # nicht alle 3s neu abgefragt werden.
-            new_ids = ids - self.requested.get(region, set())
-            due = time.time() - self.fetched.get(region, 0) > PRICE_REFRESH
-            if ids and (due or new_ids):
-                try:
-                    # Erz-Bewertung bevorzugt das frische CCP-Orderbuch (ESI), faellt
-                    # aber je Typ auf Fuzzwork zurueck. hub_prices liefert (buy, sell);
-                    # fuer die Mining-Anzeige zaehlt der Verkaufserloes = Buy-Preis.
-                    pm = hub_prices(region, ids, prefer_esi=True)
-                    self.cache[region] = {int(t): float(b) for t, (b, s) in pm.items()}
-                    self.fetched[region] = time.time()
-                    self.requested[region] = set(ids)
-                except Exception as e:
-                    log_error("CN-NET-01", f"Prices.run(region={region})", e)
-                    self.fetched[region] = time.time() - PRICE_REFRESH + 60
-                    # Auch bei Fehlschlag als "angefragt" merken: sonst bleibt
-                    # new_ids gefuellt und der 60s-Backoff (ueber 'due') wird bei
-                    # neuen Erzsorten umgangen -> Retry-Sturm alle 3s.
-                    self.requested[region] = set(ids)
+            try:
+                self.runde()
+            except Exception as e:
+                # Frueher lagen CONFIG["region"] und wanted_ids() (DB-Zugriff)
+                # AUSSERHALB der Absicherung. Eine einzige Ausnahme dort, etwa
+                # weil die Datenbank waehrend einer Sicherung kurz nicht lesbar
+                # ist, beendete den Thread lautlos. Danach blieben alle Preise
+                # auf dem letzten Stand stehen, ohne Fehlermeldung und ohne
+                # Hinweis in der Oberflaeche.
+                log_error("CN-NET-01", "Prices.run", e)
             time.sleep(3)
+
+    def runde(self):
+        region = CONFIG["region"]
+        ids = self.wanted_ids()
+        # Sofort nachladen, wenn eine neue Erzsorte auftaucht (noch nie angefragt)
+        # — sonst bliebe frisch abgebautes Erz bis zu 15 min ohne Preis. Wir merken
+        # uns ANGEFRAGTE IDs (nicht nur zurückgelieferte), damit Erze ohne Markt
+        # nicht alle 3s neu abgefragt werden.
+        new_ids = ids - self.requested.get(region, set())
+        due = time.time() - self.fetched.get(region, 0) > PRICE_REFRESH
+        if ids and (due or new_ids):
+            try:
+                # Erz-Bewertung bevorzugt das frische CCP-Orderbuch (ESI), faellt
+                # aber je Typ auf Fuzzwork zurueck. hub_prices liefert (buy, sell);
+                # fuer die Mining-Anzeige zaehlt der Verkaufserloes = Buy-Preis.
+                pm = hub_prices(region, ids, prefer_esi=True)
+                self.cache[region] = {int(t): float(b) for t, (b, s) in pm.items()}
+                self.fetched[region] = time.time()
+                self.requested[region] = set(ids)
+            except Exception as e:
+                log_error("CN-NET-01", f"Prices.run(region={region})", e)
+                self.fetched[region] = time.time() - PRICE_REFRESH + 60
+                # Auch bei Fehlschlag als "angefragt" merken: sonst bleibt
+                # new_ids gefuellt und der 60s-Backoff (ueber 'due') wird bei
+                # neuen Erzsorten umgangen -> Retry-Sturm alle 3s.
+                self.requested[region] = set(ids)
 
 
 class ServerStatus(threading.Thread):
@@ -4431,6 +4519,7 @@ class Esi(threading.Thread):
         self.sys_cache = {}   # system_id -> Name (fuer Planeten-Kolonien)
         self.schem_cache = {} # schematic_id -> Produktname (PI-Fabriken)
         self.group_cache = {} # type_id -> group_id (fuer den PI-Tier)
+        self.group_miss = {}  # type_id -> ts des letzten Fehlschlags (Negativ-Cache)
         self.tid_cache = {}   # Produktname -> type_id (fuer Icon/Tier der Fabrik-Produkte)
         self.pi_alerted = {}  # (char, planet_id) -> Ablauf-ts, fuer den PI-Ablauf-Alarm ohne Wiederholung
         self.party_names = {} # id -> Name (Agenten aus dem Wallet-Journal)
@@ -4765,6 +4854,12 @@ class Esi(threading.Thread):
         """group_id eines Typs (oeffentlich, gecacht) -> daraus der PI-Tier."""
         if tid in self.group_cache:
             return self.group_cache[tid]
+        # Negativ-Cache wie bei type_name. Ohne ihn kostete ein Typ, den ESI
+        # gerade nicht ausliefert, bei JEDEM Aufruf erneut den vollen Timeout.
+        # Im Kill-Ticker faellt das besonders auf: die Zeilen werden bei jedem
+        # Poll neu bewertet, also alle paar Sekunden.
+        if time.time() - self.group_miss.get(tid, 0) < 600:
+            return None
         g = None
         try:
             g = self._pub(f"/universe/types/{tid}/").get("group_id")
@@ -4772,7 +4867,20 @@ class Esi(threading.Thread):
             g = None
         if g is not None:
             self.group_cache[tid] = g
+        else:
+            self.group_miss[tid] = time.time()
         return g
+
+    def type_groups_bulk(self, tids):
+        """Gruppen mehrerer Typen vorab aufloesen.
+
+        Zweck ist nicht Geschwindigkeit, sondern die Sperre: PackIntel.snapshot
+        rief type_group frueher MITTEN im with self.lock auf. Ein Typ, den ESI
+        nicht ausliefert, hielt damit die Rudel-Sperre ueber den ganzen Timeout,
+        und zwar bei jedem Poll. Beim Audit gefunden. Vorher aufloesen kostet
+        dieselbe Zeit, aber ohne gehaltene Sperre."""
+        for t in {int(x) for x in tids if x}:
+            self.type_group(t)
 
     def name_tid(self, name):
         """type_id zu einem (Produkt-)Namen, fuer Icon + Tier der Fabrik-Produkte."""
@@ -6215,8 +6323,14 @@ class PackIntel(threading.Thread):
         # unbekannte Typ eine eigene ESI-Anfrage im Antwortpfad ausloeste.
         with self.lock:
             vorab = {t for p in self.packs.values() for t in (p.get("ships") or [])}
-            vorab |= {v for _, _, v, _, _ in self.recent if v}
+            schiffe = {v for _, _, v, _, _ in self.recent if v}
+            vorab |= schiffe
         esi.type_names_bulk(vorab)
+        # Auch die Gruppen VOR der Sperre aufloesen. Der Kill-Ticker unten
+        # klassifiziert jede Zeile ueber esi.type_group; das lief bisher mitten
+        # im gehaltenen self.lock und blockierte bei einem stummen ESI-Typ jeden
+        # anderen Zugriff auf die Rudel-Daten bis zum Timeout.
+        esi.type_groups_bulk(schiffe)
         with self.lock:
             for pid, p in self.packs.items():
                 st = self._status(p, now)
@@ -7394,6 +7508,14 @@ def diagnose_text():
     except Exception:
         pass
     L.append(f"ESI      : {len((CONFIG.get('esi') or {}).get('chars', {}))} Charaktere verbunden")
+    # Laufen die Hintergrund-Threads ueberhaupt noch? Ein gestorbener Thread
+    # fiel bisher niemandem auf: die Oberflaeche zeigt dann einfach den letzten
+    # Stand weiter, ohne Fehler und ohne Hinweis. Beim Audit am Preis-Thread
+    # gefunden. Hier steht jetzt schwarz auf weiss, wer nicht mehr laeuft.
+    tot = [name for name, t in THREAD_WACHE.items()
+           if t is not None and not t.is_alive()]
+    L.append("Threads  : " + (f"ACHTUNG, beendet: {', '.join(sorted(tot))}"
+                              if tot else f"alle {len(THREAD_WACHE)} laufen"))
     # Meldungen, fuer die es kein Textmuster gibt. Bei DE/EN ist das harmloses
     # Rauschen, bei anderen Client-Sprachen stehen hier die Saetze, die noch
     # fehlen (Frachtraum voll, Abdocken, Handel, Drohnen abladen).
@@ -8440,13 +8562,29 @@ def query_mission_history(limit=40):
                       hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,
                       char_id,ewar,logi_out,logi_in,label
                FROM missions ORDER BY start_ts DESC LIMIT ?""", (limit * 5,)).fetchall()
-        # Verifizierte Missions-Belohnungen aus dem Wallet-Journal (Server-Wahrheit).
-        # Jede wird gleich der Mission zugeordnet, die kurz davor endete.
-        jrows = DB.execute(
-            "SELECT char, ts, ref_type, amount FROM journal "
-            "WHERE ref_type LIKE 'agent_mission%'").fetchall()
     # (mid, char, start, end) je Missionszeile fuer die Zuordnung unten.
     cand = [(x[0], x[1], x[2] or 0, x[3] or 0) for x in rows]
+    # Verifizierte Missions-Belohnungen aus dem Wallet-Journal (Server-Wahrheit).
+    # Jede wird gleich der Mission zugeordnet, die kurz davor endete.
+    #
+    # Nur das Zeitfenster holen, das die angezeigten Missionen ueberhaupt
+    # abdecken koennen. Vorher las die Abfrage JEDE agent_mission-Buchung der
+    # gesamten Historie und verglich sie danach in einer verschachtelten
+    # Schleife mit allen Missionszeilen — bei drei Jahren ESI-Journal waren das
+    # zehntausende Zeilen, und zwar bei jedem Poll, also alle zwei Sekunden.
+    # Die Grenzen kommen aus derselben Toleranz, die die Zuordnung unten
+    # benutzt (-300 s vor Beginn, +3600 s nach Ende), das Ergebnis aendert sich
+    # dadurch nicht.
+    if cand:
+        von = min(m[2] for m in cand) - 300
+        bis = max(max(m[3], m[2]) for m in cand) + 3600
+    else:
+        von = bis = 0
+    with DB_LOCK:
+        jrows = DB.execute(
+            "SELECT char, ts, ref_type, amount FROM journal "
+            "WHERE ref_type LIKE 'agent_mission%' AND ts>=? AND ts<=?",
+            (von, bis)).fetchall() if cand else []
     verified = {}
     # Belohnungen, zu denen es keine Mission gibt. Die entstehen bei Auftraegen
     # ganz OHNE Kampf (Kurier, Transport, reine Dialog-Missionen, viele Schritte
@@ -9086,23 +9224,29 @@ def query_wallet(days=30, char=None):
     # Gewuenscht von Vile Gangster ("welcher Char hat was gekauft/verkauft").
     nur = " AND char=?" if char else ""
     arg = [char] if char else []
+    # EIN Durchlauf durch wbook statt drei. Vorher liefen Summe je Art, dieselbe
+    # Summe nach Vorzeichen getrennt und der Zeitraum als drei eigene Abfragen,
+    # alle unter derselben Sperre und alle ueber dieselben Zeilen. Bei "alles"
+    # als Zeitraum ist das ein Vollscan, und der Wallet-Bereich fragt im
+    # Zwei-Sekunden-Takt: DB_LOCK ist die EINZIGE Datenbanksperre des Programms,
+    # in dieser Zeit kommt auch der Log-Leser nicht dran. Beim Audit gefunden.
     with DB_LOCK:
         tx = DB.execute("SELECT char, ts, type_id, qty, price, is_buy, loc_id "
                         "FROM trades WHERE ts>=?" + nur + " ORDER BY ts",
                         [seit] + arg).fetchall()
-        jr = DB.execute("SELECT ref_type, SUM(amount), COUNT(*) FROM wbook "
-                        "WHERE ts>=?" + nur + " GROUP BY ref_type",
-                        [seit] + arg).fetchall()
-        # Fuer die Bilanz: Ein- und Ausgaben je Art getrennt. Eine Art kann
-        # beides haben (Spenden gehen hin UND her), eine Summe allein wuerde
-        # das verschlucken.
-        jr_vz = DB.execute(
-            "SELECT ref_type, SUM(CASE WHEN amount>0 THEN amount ELSE 0 END), "
-            "SUM(CASE WHEN amount<0 THEN amount ELSE 0 END), COUNT(*) "
+        # Ein- und Ausgaben je Art getrennt: eine Art kann beides haben (Spenden
+        # gehen hin UND her), eine Summe allein wuerde das verschlucken.
+        wb = DB.execute(
+            "SELECT ref_type, SUM(amount), COUNT(*), "
+            "SUM(CASE WHEN amount>0 THEN amount ELSE 0 END), "
+            "SUM(CASE WHEN amount<0 THEN amount ELSE 0 END), "
+            "MIN(ts), MAX(ts) "
             "FROM wbook WHERE ts>=?" + nur + " GROUP BY ref_type",
             [seit] + arg).fetchall()
-        zeitraum = DB.execute("SELECT MIN(ts), MAX(ts) FROM wbook WHERE ts>=?" + nur,
-                              [seit] + arg).fetchone()
+    jr = [(r[0], r[1], r[2]) for r in wb]
+    jr_vz = [(r[0], r[3], r[4], r[2]) for r in wb]
+    zeitraum = (min((r[5] for r in wb if r[5] is not None), default=None),
+                max((r[6] for r in wb if r[6] is not None), default=None))
     gekauft = {t[2] for t in tx if t[5]}
     verkauft = {t[2] for t in tx if not t[5]}
     rund = gekauft & verkauft            # nur diese gelten als Handel
@@ -9252,8 +9396,19 @@ def query_wallet(days=30, char=None):
                         for n, c in ((CONFIG.get("esi") or {}).get("chars") or {}).items()
                         if _gewaehlt(n)
                         for o in (c.get("orders") or []) if o.get("buy")))
+    # Wieviel ISK im gewaehlten Zeitraum in Kauforders GEWANDERT ist (negativ)
+    # bzw. aus stornierten zurueckkam (positiv). Das ist die echte Bewegung im
+    # Wallet, waehrend die Bilanz oben den Kauf erst zaehlt, wenn die Order
+    # ZIEHT. Beides ist richtig, aber es sind zwei verschiedene Zeitpunkte, und
+    # ohne diese Zahl liess sich der Saldo nicht mit dem Wallet abgleichen: eine
+    # Order von vor drei Wochen, die gestern zog, erscheint als Ausgabe von
+    # gestern, obwohl gestern kein einziger ISK das Wallet verlassen hat.
+    # Beim Audit gefunden.
+    escrow_fluss = round(sum(summe or 0.0 for ref, summe, _n in jr
+                             if ref in ("market_escrow", "market_escrow_refund")))
     bilanz = {
         "ein": ein_ges, "aus": aus_ges, "saldo": ein_ges - aus_ges,
+        "escrow": escrow_fluss,
         "ein_kat": sorted(({"k": k, "isk": v} for k, v in ein_kat.items()),
                           key=lambda x: -x["isk"]),
         "aus_kat": sorted(({"k": k, "isk": v} for k, v in aus_kat.items()),
@@ -9677,17 +9832,31 @@ def _host_ok(headers):
     return host in ("localhost", "127.0.0.1", "::1", "")
 
 
-def _origin_ok(headers):
-    """Schuetzt vor CSRF: Ein Origin (bei fetch/CORS gesetzt) muss localhost sein.
-    Gleiche-Ursprung-Requests der eigenen Seite senden localhost oder gar keinen."""
+def _origin_ok(headers, mein_port=None):
+    """Schuetzt vor CSRF: Ein Origin (bei fetch/CORS gesetzt) muss die EIGENE
+    Adresse sein, also localhost UND unser Port.
+
+    Frueher reichte irgendein localhost-Origin. Damit durfte jede andere lokale
+    Webanwendung — ein Dev-Server auf Port 3000, ein Fitting-Werkzeug, das
+    Weboberflaeche eines Plugins — beliebige Aktionen ausloesen, bis hin zu
+    do_update. Beim Audit gefunden. Der Port ist die einzige Angabe, die eine
+    fremde lokale Seite nicht faelschen kann: den Origin-Header setzt der
+    Browser selbst.
+
+    Kein Origin heisst klassische Navigation oder ein Formular ohne Skript
+    (der Rettungsweg /reparieren). Dort greift der Host-Check."""
     origin = headers.get("Origin")
     if not origin:
-        return True  # klassische Navigation/Formular ohne Origin -> ok, Host-Check greift
+        return True
     try:
-        h = urllib.parse.urlparse(origin).hostname or ""
+        u = urllib.parse.urlparse(origin)
+        h = (u.hostname or "").lower()
+        p = u.port or (443 if u.scheme == "https" else 80)
     except ValueError:
         return False
-    return h.lower() in ("localhost", "127.0.0.1", "::1")
+    if h not in ("localhost", "127.0.0.1", "::1"):
+        return False
+    return mein_port is None or p == mein_port
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -9877,7 +10046,11 @@ class Handler(BaseHTTPRequestHandler):
                        "text/html; charset=utf-8")
 
     def _do_POST(self):
-        if not _host_ok(self.headers) or not _origin_ok(self.headers):
+        try:
+            mein_port = self.server.server_address[1]
+        except Exception:
+            mein_port = None
+        if not _host_ok(self.headers) or not _origin_ok(self.headers, mein_port):
             return self._deny()
         if self.path.split("?")[0] == "/reparieren":
             # Formular statt JSON: der Rettungsweg darf kein Skript brauchen.
@@ -9899,6 +10072,15 @@ class Handler(BaseHTTPRequestHandler):
                        "<p>Dann hilft der Installer von der Canary-Seite. "
                        "Einstellungen und Daten bleiben dabei erhalten.</p>")
             return self._send(notfall_seite(txt), "text/html; charset=utf-8")
+        # Zweite Sperre gegen CSRF: alle Aktionen kommen als JSON und muessen das
+        # auch sagen. Ein Formular oder ein no-cors-fetch von einer fremden Seite
+        # kann nur text/plain, multipart oder urlencoded schicken; fuer
+        # application/json fragt der Browser vorher per Preflight nach, und den
+        # beantwortet Canary nicht. Der Rettungsweg /reparieren steht bewusst
+        # oberhalb dieser Zeile, er ist ein reines HTML-Formular.
+        ct = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ct != "application/json":
+            return self._deny()
         length = int(self.headers.get("Content-Length", 0))
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
@@ -11796,7 +11978,16 @@ $('#diagBtn').onclick=async()=>{
 };
 $('#saveGoal').onclick=async()=>{await post({action:'goal',isk:Number($('#goalIsk').value)||null,deadline:$('#goalDate').value});syncOpts();};
 $('#clearGoal').onclick=async()=>{await post({action:'goal',isk:null});$('#goalIsk').value='';syncOpts();};
-$('#saveWatch').onclick=async()=>{await post({action:'watchlist',names:$('#watchlist').value.split('\\n')});};
+$('#saveWatch').onclick=async()=>{
+ const namen=$('#watchlist').value.split('\\n');
+ await post({action:'watchlist',names:namen});
+ // Den bekannten Stand gleich mitziehen. Sonst setzt ein syncOpts() aus einer
+ // anderen Aktion das Feld bis zum naechsten Poll auf den alten Wert zurueck.
+ if(state)state.watchlist=namen.map(s=>s.trim()).filter(Boolean);
+ const b=$('#saveWatch'), alt=b.textContent;
+ b.textContent=(lang==='en'?'✓ saved':'✓ gespeichert');
+ setTimeout(()=>{b.textContent=alt;},1500);
+};
 $('#notifPerm').onclick=()=>Notification.requestPermission();
 $('#saveIdle').onclick=async()=>{await post({action:'idle_warn',seconds:Number($('#idleWarn').value)||0});syncOpts();};
 $('#saveToolDelay').onclick=async()=>{await post({action:'tool_warn_delay',seconds:Number($('#toolDelay').value)||0});syncOpts();};
@@ -11822,7 +12013,10 @@ $('#doUpd').onclick=async()=>{
 };
 document.querySelectorAll('#opts input[name=mode]').forEach(r=>r.onchange=()=>post({action:'mode',mode:r.value}));
 
-async function post(b){return (await fetch('/',{method:'POST',body:JSON.stringify(b)})).json();}
+// Content-Type MUSS mit: der Server weist POSTs ohne application/json ab. Das
+// ist die zweite Sperre gegen fremde lokale Seiten, siehe _do_POST.
+async function post(b){return (await fetch('/',{method:'POST',
+ headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})).json();}
 
 function syncOpts(){
  if(!state)return;
@@ -11845,7 +12039,12 @@ function syncOpts(){
   : '';
  $('#baseinfo').textContent=state.baseline_day?('Aktive Baseline: zählt seit '+state.baseline_day+' (UTC).'):'Keine Baseline aktiv.';
  $('#loginfo').textContent='Log-Ordner: '+(state.log_dir||'nicht gefunden!')+' · Dateien: '+state.progress.done+'/'+state.progress.total;
- $('#watchlist').value=(state.watchlist||[]).join('\\n');
+ // Wie beim Log-Ordner: nur befuellen, solange niemand darin tippt. Vorher
+ // reichte es, im selben Dialog irgendetwas anderes zu speichern — jeder
+ // andere Knopf ruft syncOpts() auf, und die frisch getippten Namen waren
+ // ohne Meldung wieder weg. Beim Audit gefunden.
+ if(document.activeElement!==$('#watchlist'))
+  $('#watchlist').value=(state.watchlist||[]).join('\\n');
  // Main-Charakter-Auswahl aus den bekannten Chars fuellen (fuers Teilen-Bild)
  const ms=$('#mainCharSel');
  if(ms){const names=[...new Set((lastChars||[]).map(c=>c.name))].sort();
@@ -12058,6 +12257,13 @@ function bootScreen(){
   setTimeout(()=>b.classList.add('fade'),450);
   setTimeout(()=>{b.hidden=true;},1400);
   bootDone=true;
+ }else if(state&&state.log_ok===false){
+  // Noch kein Log-Ordner: hier ist NICHTS abgeschlossen, das Einlesen kommt
+  // erst noch. Frueher wurde bootDone schon beim ersten Takt gesetzt, und wer
+  // den Ordner von Hand eintragen musste (vor allem Linux und Proton), sah
+  // danach beim Einlesen tausender Dateien einen leeren Bildschirm statt des
+  // Ladebalkens. Beim Audit gefunden.
+  return;
  }else bootDone=true;
 }
 function updateBadge(){
@@ -13979,6 +14185,9 @@ function renderWallet(w){
    <div class="sub" style="margin-top:8px">${en
      ? `Purchases come from your transactions, not from the journal: EVE books a buy order the moment you place it, as escrow, and that money would come back on cancellation. ${B.geparkt?`Currently ${fmtM(B.geparkt)} ISK are parked in open buy orders and count as neither income nor spending.`:''}`
      : `Die Käufe stammen aus deinen Transaktionen und nicht aus dem Journal: EVE bucht eine Kauforder schon beim Einstellen als Sicherheit, und das Geld käme bei Storno zurück. ${B.geparkt?`Aktuell liegen ${fmtM(B.geparkt)} ISK in offenen Kauforders, die zählen weder als Einnahme noch als Ausgabe.`:''}`}</div>
+   ${B.escrow?`<div class="sub" style="margin-top:6px">${en
+     ? `Why this does not match your wallet movement one to one: a purchase counts here when the order FILLS, while the ISK leaves your wallet when you PLACE it. In this period ${fmtM(Math.abs(B.escrow))} ISK ${B.escrow<0?'moved into buy orders':'came back from cancelled orders'}.`
+     : `Warum das nicht Eins zu Eins zur Wallet-Bewegung passt: ein Kauf zählt hier, wenn die Order ZIEHT, das Geld verlässt das Wallet aber schon beim EINSTELLEN. In diesem Zeitraum ${B.escrow<0?'wanderten':'kamen'} ${fmtM(Math.abs(B.escrow))} ISK ${B.escrow<0?'in Kauforders':'aus stornierten Orders zurück'}.`}</div>`:''}
   </div>`;
  }
 
@@ -15753,15 +15962,18 @@ if __name__ == "__main__":
         except Exception:
             pass
     rebuild_if_needed()   # nach Parser-Update einmal alle Logs frisch neu einlesen
-    ingest.start()
-    chatwatch.start()
-    prices.start()
-    esi.start()
-    threat.start()
-    clipwatch.start()
-    serverstatus.start()
-    danger.start()
-    packintel.start()
+    for _name, _t in (("Ingest", ingest), ("ChatWatch", chatwatch),
+                      ("Prices", prices), ("Esi", esi), ("ThreatIntel", threat),
+                      ("ClipWatch", clipwatch), ("ServerStatus", serverstatus),
+                      ("SystemDanger", danger), ("PackIntel", packintel)):
+        _t.start()
+        THREAD_WACHE[_name] = _t
+    # ClipWatch beendet sich absichtlich sofort, wenn die Zwischenablage nicht
+    # lesbar ist (kein Windows, kein Modul). Das ist kein Ausfall und gehoert
+    # deshalb nicht in die Wache, sonst stuende dort auf Linux dauerhaft eine
+    # Warnung.
+    if not CLIPBOARD_OK:
+        THREAD_WACHE.pop("ClipWatch", None)
     print(f"EVE Canary läuft:  http://localhost:{port}")
     if "--no-browser" not in sys.argv:
         # Browser erst jetzt öffnen, wo der Port sicher gebunden ist
