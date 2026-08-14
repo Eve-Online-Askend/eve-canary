@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.12.0"
+VERSION = "2.13.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -7168,7 +7168,13 @@ def query_ore_advisor(region):
     komprimiert verkaufen (1:1 Stueck, nur Volumen kleiner), raffinieren+Mineralien
     verkaufen. Ausbeute aus den echten Reprocessing-Skills (bester Char), NPC-50%-Basis."""
     # Bestand je Roh-Erz aggregieren (komprimiert -> Roh, 1:1 in Stueck).
-    units = {}
+    # ABER getrennt zaehlen, was schon komprimiert im Hangar liegt: Komprimieren
+    # laesst sich im Spiel nicht rueckgaengig machen. Fuer diesen Teil ist "roh
+    # verkaufen" also gar keine erreichbare Wahl, und der Berater bot sie
+    # trotzdem an, mit einem Betrag, an den niemand herankommt.
+    # Beim Audit gefunden.
+    units = {}        # Gesamtmenge je Roh-Erz (roh + komprimiert)
+    roh_units = {}    # davon der Teil, der WIRKLICH noch roh im Hangar liegt
     for nm, c in ((CONFIG.get("esi") or {}).get("chars", {})).items():
         v = c.get("vault") or {}
         for l in v.get("locs", []):
@@ -7177,6 +7183,8 @@ def query_ore_advisor(region):
             for o in (l.get("ores") or []):
                 key = re.sub(r"^(Batch )?Compressed ", "", o["ore"])
                 units[key] = units.get(key, 0) + o["units"]
+                if not o["ore"].startswith(("Compressed ", "Batch Compressed ")):
+                    roh_units[key] = roh_units.get(key, 0) + o["units"]
     if not units:
         return None
     # Beste Reprocessing-Ausbeute ueber die verbundenen Chars.
@@ -7206,14 +7214,18 @@ def query_ore_advisor(region):
     for ore, u in units.items():
         t = ORE_TYPES.get(ore, {})
         comp = ORE_TYPES.get("Compressed " + ore)
-        raw = u * pm.get(t.get("typeID"), (0, 0))[0]
+        u_roh = roh_units.get(ore, 0)
+        # "roh verkaufen" gilt nur fuer den Teil, der noch roh daliegt.
+        # Komprimieren und Raffinieren gehen dagegen mit dem ganzen Bestand.
+        raw = u_roh * pm.get(t.get("typeID"), (0, 0))[0]
         cmp_ = u * pm.get(comp["typeID"], (0, 0))[0] if comp else 0.0
         ref = refine_value(ore, u, yfrac, pm)
         best = max((("raw", raw), ("comp", cmp_), ("refine", ref)), key=lambda x: x[1])[0]
         t_raw += raw
         t_comp += cmp_
         t_ref += ref
-        rows.append({"ore": ore, "units": u, "raw": round(raw), "comp": round(cmp_),
+        rows.append({"ore": ore, "units": u, "units_roh": u_roh,
+                     "raw": round(raw), "comp": round(cmp_),
                      "refine": round(ref), "best": best})
     rows.sort(key=lambda r: -max(r["raw"], r["comp"], r["refine"]))
     tot = {"raw": round(t_raw), "comp": round(t_comp), "refine": round(t_ref)}
@@ -8288,8 +8300,14 @@ def query_analyse():
     total = query_total()
     month = query_month()
     if goal and goal.get("isk"):
-        last7 = [d["total"] for d in month[-7:]]
-        avg = sum(last7) / max(len(last7), 1)
+        # Ueber echte KALENDERTAGE mitteln, nicht ueber die letzten sieben
+        # Eintraege: query_month liefert nur Tage MIT Aktivitaet. Wer drei Tage
+        # die Woche spielt, bekam so den Schnitt seiner Spieltage als
+        # Tagesleistung angerechnet, und die Prognose "erreicht am" war
+        # entsprechend zu optimistisch. Beim Audit gefunden.
+        grenze = (datetime.now(timezone.utc).date() - timedelta(days=6)).strftime("%Y-%m-%d")
+        last7 = [d["total"] for d in month if (d.get("day") or "") >= grenze]
+        avg = sum(last7) / 7.0
         remaining = max(0, goal["isk"] - total["total_isk"])
         eta_days = round(remaining / avg, 1) if avg > 0 else None
         # timedelta wirft bei riesigen Werten OverflowError (winziger Schnitt +
@@ -9055,6 +9073,13 @@ def query_wallet(days=30, char=None):
                 n = min(rest, los[0])
                 s["gewinn"] += n * (price - los[1])
                 s["matched"] += n
+                # Was die verrechneten Stueck im Einkauf und im Verkauf wirklich
+                # gekostet bzw. gebracht haben. Nur damit rechnet sich die Zeile
+                # nach: Stueck mal (Verkauf minus Einkauf) ergibt den Gewinn.
+                # Der Durchschnitt ueber ALLE Kaeufe passte dazu nicht, weil er
+                # auch noch nicht verkaufte Ware enthaelt. Beim Audit gefunden.
+                s["ek_matched"] = s.get("ek_matched", 0.0) + n * los[1]
+                s["vk_matched"] = s.get("vk_matched", 0.0) + n * price
                 los[0] -= n
                 rest -= n
                 if los[0] == 0:
@@ -9071,8 +9096,11 @@ def query_wallet(days=30, char=None):
     for tid, s in stat.items():
         if tid not in rund or not s["matched"]:
             continue
-        ek = s["kauf_isk"] / s["kauf_st"] if s["kauf_st"] else 0.0
-        vk = s["verk_isk"] / s["verk_st"] if s["verk_st"] else 0.0
+        # Beide Durchschnitte beziehen sich auf die VERRECHNETEN Stueck, damit
+        # die Zeile aufgeht: stk * (vk - ek) = gewinn.
+        m = s.get("matched") or 0
+        ek = (s.get("ek_matched", 0.0) / m) if m else 0.0
+        vk = (s.get("vk_matched", 0.0) / m) if m else 0.0
         posten.append({"type_id": tid, "name": esi.type_name(tid) or str(tid),
                        "stk": s["matched"], "ek": round(ek, 2), "vk": round(vk, 2),
                        "gewinn": round(s["gewinn"]),

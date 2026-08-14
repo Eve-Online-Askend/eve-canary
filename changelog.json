@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.13.0",
+  "d": "2026-08-14",
+  "de": [
+   "Im Wallet Buddy rechnet sich die Tabelle „Was wirklich einbringt“ jetzt nach. Die Spalten Einkauf und Verkauf zeigten den Durchschnitt ueber ALLE Kaeufe und Verkaeufe, der Gewinn daneben stammte aber nur aus den tatsaechlich verrechneten Stueck. Wer nachrechnete, kam auf andere Zahlen. Jetzt beziehen sich alle drei auf dieselben Stueck: Menge mal Spanne ergibt genau den ausgewiesenen Gewinn, an allen Zeilen geprueft.",
+   "Der Verwertungs-Berater bietet „roh verkaufen“ nur noch fuer das Erz an, das wirklich noch roh im Hangar liegt. Komprimieren laesst sich im Spiel nicht rueckgaengig machen, trotzdem floss der komprimierte Bestand bisher in diese Empfehlung ein, mit einem Betrag, an den niemand herankommt. Komprimieren und Raffinieren gelten weiterhin fuer den gesamten Bestand.",
+   "Die Zielprognose mittelt jetzt ueber echte Kalendertage. Vorher nahm sie die letzten sieben Tage MIT Aktivitaet und teilte durch sieben. Wer nur an ein paar Tagen pro Woche spielt, bekam dadurch seine Spieltage als Tagesleistung angerechnet und eine zu fruehe Zieldatums-Schaetzung."
+  ],
+  "en": [
+   "In the Wallet Buddy the table “what really pays” adds up again. The buy and sell columns showed the average across ALL purchases and sales, while the profit next to them came only from the units actually matched. Anyone checking the maths got different numbers. All three now refer to the same units: quantity times spread equals exactly the profit shown, verified on every row.",
+   "The processing advisor now offers “sell raw” only for ore that is genuinely still raw in your hangar. Compression cannot be undone in game, yet compressed stock was feeding into that recommendation with a figure nobody can reach. Compressing and reprocessing still apply to the whole stock.",
+   "The goal forecast now averages over real calendar days. Before, it took the last seven days WITH activity and divided by seven. Anyone playing only a few days a week had their play days counted as daily output, and got a target date that was too early."
+  ]
+ },
+ {
   "v": "2.12.0",
   "d": "2026-08-14",
   "de": [
