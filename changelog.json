@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.5.0",
+  "d": "2026-08-14",
+  "de": [
+   "Abyss-Durchgaenge bekommen zwei Auswahlfelder fuer Stufe und Wetter, statt den Namen tippen zu muessen. Gespeichert wird weiterhin ein gewoehnlicher Name wie „Chaotic Firestorm“, der Export und die Auswertung arbeiten also unveraendert weiter. War ein Wunsch von Nirahse.",
+   "War ein Rogue-Drone-Schlachtschiff dabei, schlaegt Canary die Stufe vor und du uebernimmst sie mit einem Klick. Warum nur ein Vorschlag: an 1.843 Logdateien mit Abyss-Gegnern gemessen ist so ein Schlachtschiff je nach Zaehlweise in 7 bis 21 Prozent der Durchgaenge dabei, und die 21 sind die geschoente Rechnung. In mindestens vier von fuenf Laeufen verraet also kein Gegner die Stufe. Deshalb waehlst du sie selbst, statt dass Canary raet.",
+   "Im Bereich Beute gibt es den Knopf „Nachher wird Vorher“. Wer mehrere Laeufe hintereinander macht, schiebt den Frachtraum-Stand damit nach links und muss dieselbe Kopie nicht zweimal einfuegen. Das Ergebnis darunter bleibt stehen, damit es sich noch kopieren laesst. Ebenfalls von Nirahse."
+  ],
+  "en": [
+   "Abyssal runs now have two dropdowns for tier and weather instead of typing a name. What gets saved is still an ordinary name like “Chaotic Firestorm”, so the export and the analysis keep working unchanged. Requested by Nirahse.",
+   "If a rogue drone battleship was present, Canary suggests the tier and you apply it with one click. Why only a suggestion: measured across 1,843 log files containing abyssal enemies, such a battleship shows up in 7 to 21 percent of runs depending on how you count, and 21 is the flattering figure. So in at least four out of five runs no enemy reveals the tier. That is why you pick it yourself instead of Canary guessing.",
+   "The loot view gained an “after becomes before” button. Doing several runs in a row, it moves the cargo state to the left so you do not have to paste the same copy twice. The result below stays put so you can still copy it. Also from Nirahse."
+  ]
+ },
+ {
   "v": "2.4.0",
   "d": "2026-08-13",
   "de": [

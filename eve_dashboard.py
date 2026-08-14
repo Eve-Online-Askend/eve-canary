@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.4.0"
+VERSION = "2.5.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -8154,6 +8154,17 @@ def query_mission_history(limit=40):
             "weapons": json.loads(wj or "[]"), "enemies": enemies,
             "loot_isk": round(loot) if loot else None, "loot_text": loot_text or "",
             "label": (label or "").strip(),
+            # Fuer die beiden Auswahlfelder im Abyss: ist das ueberhaupt ein
+            # Durchgang, und verraet ein Gegner die Stufe? Letzteres ist exakt,
+            # aber selten: an 1.843 Logdateien gemessen fehlt das Signal in
+            # mindestens vier von fuenf Durchgaengen.
+            "abyss": ist_abyss(sysn, enemies),
+            "tier_gegner": abyss_tier_aus_gegnern(enemies),
+            # Was schon im selbst vergebenen Namen steht, damit die Auswahl-
+            # felder vorbelegt sind. Ausgewertet wird derselbe Code wie im
+            # Export, es kann also nicht auseinanderlaufen.
+            "tier_name": abyss_tier_aus_name(label),
+            "wetter": abyss_wetter_aus_name(label),
             "total": round((bounty or 0) + (loot or 0) + (vreward or 0) + (vbonus or 0))})
     return out, {"liste": ohne_mission, "summe": ohne_summe, "n": len(offen)}
 
@@ -11096,6 +11107,11 @@ function lsGet(key,fallback){try{const v=localStorage.getItem(key);return v==nul
 // aufgerufener Pfad oder die Zurueck-Taste stumm auf "live". Genau das ist
 // dem Wallet-Tab passiert, er fehlte hier seit seiner Einfuehrung.
 const VIEWS=['live','month','total','analyse','intel','missionen','timeline','profil','planeten','vault','wallet','beute','rechner'];
+// Filament-Stufen in der Reihenfolge T1 bis T6 und die fuenf Wetterlagen. Die
+// Namen sind die englischen aus dem Spiel, denn genau die schreibt Canary in
+// den Namen des Laufs und liest sie dort auch wieder heraus.
+const ABYSS_STUFEN=['Calm','Agitated','Fierce','Raging','Chaotic','Cataclysmic'];
+const ABYSS_WETTER=['Dark','Electrical','Exotic','Firestorm','Gamma'];
 let view=location.pathname.replace(/^\\//,'')||'live', state=null, lastAlertId=Number(localStorage.getItem('lastAlertId')||0);
 if(!VIEWS.includes(view))view='live';
 window.addEventListener('popstate',()=>{
@@ -13711,7 +13727,10 @@ function renderMissions(d){
  // vergessen worden, und der Kasten klappte prompt nach einem Takt wieder zu,
  // mitsamt dem schon Getippten. Gemeldet von Nirahse, in Firefox wie in Chrome.
  const tippt=document.activeElement&&document.activeElement.classList;
- if(tippt&&(tippt.contains('mlootin')||tippt.contains('mnamein')))return;
+ // Die Auswahlfelder gehoeren mit in den Schutz: ein aufgeklapptes select
+ // schnappt beim Neubau zu, und dann waehlt man ins Leere.
+ if(tippt&&(tippt.contains('mlootin')||tippt.contains('mnamein')
+            ||tippt.contains('abysstier')||tippt.contains('abysswetter')))return;
  const lootOffen={};
  document.querySelectorAll('.mlootedit').forEach(b=>{
   if(b.hidden)return;
@@ -13803,6 +13822,23 @@ function renderMissions(d){
      <span class="mloottoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px">${x.loot_isk!=null?'✎ Loot ändern':'＋ Loot eintragen'}</span>
      <span class="mreopen" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--dim);font-size:11px;margin-left:10px" title="Andocken ist kein sicherer Abschluss. Wer nur kurz zum Reparieren reingeflogen ist, holt die Mission hiermit zurück und der weitere Kampf zählt dazu.">↩ Läuft doch noch</span>
      <span class="mnametoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px;margin-left:10px" title="Trag den Namen aus deinem Missionsjournal ein. Canary merkt sich dazu die Gegner und erkennt künftige Läufe derselben Mission von allein.">${x.label?'🔖 Name ändern':'🔖 Mission benennen'}</span></div>
+    ${x.abyss?`<div class="sub" style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+     <span>🌀 Abyss:</span>
+     <select class="abysstier" data-mid="${esc(x.mid)}">
+      <option value="">Stufe wählen</option>
+      ${ABYSS_STUFEN.map((n,i)=>`<option value="${n}"${x.tier_name===i+1?' selected':''}>T${i+1} ${n}</option>`).join('')}
+     </select>
+     <select class="abysswetter" data-mid="${esc(x.mid)}">
+      <option value="">Wetter wählen</option>
+      ${ABYSS_WETTER.map(n=>`<option value="${n}"${(x.wetter||'')===n.toLowerCase()?' selected':''}>${n}</option>`).join('')}
+     </select>
+     <span class="abystat sub" data-mid="${esc(x.mid)}"></span>
+     ${(x.tier_gegner&&x.tier_name!==x.tier_gegner)?`<span class="sub">·
+       ${lang==='en'?'the enemies say':'die Gegner sagen'} <b>T${x.tier_gegner}</b>
+       <button class="btn geist abystake" data-mid="${esc(x.mid)}" data-tier="${x.tier_gegner}"
+        title="${lang==='en'?'A rogue drone battleship is named per tier, so this one is certain. It is only there in about one run out of five.':'Ein Rogue-Drone-Schlachtschiff heißt je Stufe anders, das ist also sicher. Dabei ist es nur in etwa jedem fünften Durchgang.'}"
+        >${lang==='en'?'apply':'übernehmen'}</button></span>`:''}
+    </div>`:''}
     <div class="mnameedit" data-mid="${esc(x.mid)}" hidden>
      <input class="mnamein" data-mid="${esc(x.mid)}" style="width:100%;margin-top:4px" placeholder="Missionsname aus deinem Journal, z. B. Enemies Abound (1 of 5)" value="${esc(x.label||'')}">
      <div class="btnrow" style="margin-top:4px"><button class="btn mnamego" data-mid="${esc(x.mid)}">Merken</button>
@@ -13974,6 +14010,30 @@ function renderMissions(d){
    setTimeout(tick,600);
   }else setzStatus(r?(en2?'Error':'Fehler')
                     :(en2?'Server not reachable':'Server nicht erreichbar'));
+ });
+ // Zwei Auswahlfelder statt Freitext, gewuenscht von Nirahse. Gespeichert wird
+ // trotzdem der gewohnte Name ("Chaotic Firestorm"), damit Export, Anzeige und
+ // Stufenerkennung unveraendert weiterarbeiten und nichts auseinanderlaeuft.
+ const abyssSpeichern=async(mid,tier,wetter)=>{
+  const finde=sel=>[...document.querySelectorAll(sel)].find(e=>e.dataset.mid===mid);
+  const name=[tier,wetter].filter(Boolean).join(' ');
+  const st=finde('.abystat'); if(st)st.textContent=lang==='en'?'Saving …':'Speichere …';
+  let r;try{r=await post({action:'mission_label',mid,name});}catch(e){r=null;}
+  const s2=finde('.abystat');
+  if(s2)s2.textContent=(r&&r.ok)?'✓':(lang==='en'?'Error':'Fehler');
+  setTimeout(tick,600);
+ };
+ document.querySelectorAll('.abysstier,.abysswetter').forEach(sel=>sel.onchange=()=>{
+  const mid=sel.dataset.mid;
+  const finde=k=>[...document.querySelectorAll(k)].find(e=>e.dataset.mid===mid);
+  const t=finde('.abysstier'), w=finde('.abysswetter');
+  abyssSpeichern(mid,t?t.value:'',w?w.value:'');
+ });
+ document.querySelectorAll('.abystake').forEach(b=>b.onclick=()=>{
+  const mid=b.dataset.mid;
+  const finde=k=>[...document.querySelectorAll(k)].find(e=>e.dataset.mid===mid);
+  const w=finde('.abysswetter');
+  abyssSpeichern(mid,ABYSS_STUFEN[Number(b.dataset.tier)-1],w?w.value:'');
  });
  document.querySelectorAll('.mnametoggle').forEach(t=>t.onclick=()=>{
   const box=[...document.querySelectorAll('.mnameedit')].find(e=>e.dataset.mid===t.dataset.mid);
@@ -14160,6 +14220,7 @@ function renderBeute(){
    <div><div style="font-size:12px;margin-bottom:3px">Nachher</div>
     <textarea id="diffB" rows="10" style="width:100%" placeholder="Frachtraum nach der Aktion"></textarea></div></div>
   <div class="btnrow" style="margin:8px 0"><button class="btn" id="diffGo">Differenz bilden</button>
+   <button class="btn" id="diffNext" title="Für den nächsten Durchgang: der Stand von rechts wandert nach links, rechts wird leer. Spart das doppelte Einfügen, wenn du mehrere Läufe hintereinander machst.">⬅ Nachher wird Vorher</button>
    <button class="btn" id="diffClr">Felder leeren</button>
    <span id="diffStat" style="font-size:12px;color:var(--dim)"></span></div>
   <div id="diffOut" style="overflow-x:auto"></div></div>`;
@@ -14167,6 +14228,21 @@ function renderBeute(){
  $('#diffClr').onclick=()=>{
   ['diffA','diffB'].forEach(id=>{$('#'+id).value='';localStorage.removeItem(id);});
   $('#diffOut').innerHTML='';$('#diffStat').textContent='';
+ };
+ // Mehrere Laeufe hintereinander: der Frachtraum von eben ist der Ausgangsstand
+ // fuer den naechsten Durchgang. Ohne das muesste man dieselbe Kopie zweimal
+ // einfuegen. Gewuenscht von Nirahse. Das Ergebnis bleibt absichtlich stehen,
+ // sonst waere es weg, bevor man es kopiert hat.
+ $('#diffNext').onclick=()=>{
+  const a=$('#diffA'),b=$('#diffB');
+  // tr() gleich selbst nachziehen: sonst steht die Meldung bis zu zwei Sekunden
+  // auf Deutsch, bis der naechste Takt uebersetzt. Gemessen, nicht vermutet.
+  const sagen=t=>{$('#diffStat').textContent=t; if(lang!=='de')tr(document.body);};
+  if(!b.value.trim()){sagen('Im Feld Nachher steht noch nichts.');return;}
+  a.value=b.value; b.value='';
+  localStorage.setItem('diffA',a.value); localStorage.removeItem('diffB');
+  sagen('Nachher ist jetzt Vorher. Das Ergebnis darunter bleibt stehen.');
+  b.focus();
  };
  // Sofort mitschreiben: der Sinn des Werkzeugs ist, dass zwischen "vorher" und
  // "nachher" eine ganze Mission liegt. Ohne Speichern waere die erste Kopie
@@ -14426,6 +14502,7 @@ const EN = {
 'Strg+A':'Ctrl+A','Strg+C':'Ctrl+C',
 // Missionen
 'Missionen erledigt':'Missions completed','Belohnungen':'Rewards','Zeitboni':'Time bonuses',
+'Stufe wählen':'Pick tier','Wetter wählen':'Pick weather',
 // Rechner
 'Berechnen':'Calculate','Was lohnt sich am meisten pro Laderaum?':'What pays off most per cargo hold?',
 'Sofortverkauf · mit Sell-Order':'Instant sale · with sell order',
@@ -14438,6 +14515,12 @@ const EN = {
 'Vorher':'Before','Nachher':'After','Dazu':'Added','Weg':'Gone',
 'Frachtraum vor der Aktion':'Cargo hold before','Frachtraum nach der Aktion':'Cargo hold after',
 'Differenz bilden':'Compare','Felder leeren':'Clear the boxes','Kopieren':'Copy',
+'⬅ Nachher wird Vorher':'⬅ After becomes before',
+'Für den nächsten Durchgang: der Stand von rechts wandert nach links, rechts wird leer. Spart das doppelte Einfügen, wenn du mehrere Läufe hintereinander machst.':
+ 'For the next run: what is on the right moves to the left and the right box is emptied. Saves pasting the same copy twice when you do several runs in a row.',
+'Im Feld Nachher steht noch nichts.':'The after box is still empty.',
+'Nachher ist jetzt Vorher. Das Ergebnis darunter bleibt stehen.':
+ 'After is now before. The result below stays as it is.',
 'Wert berechnen':'Get the value','Vergleiche …':'Comparing …',
 'Bitte in beide Felder eine Frachtraum-Kopie einfügen.':'Please paste a cargo copy into both boxes.',
 'Vergleich fehlgeschlagen.':'Comparison failed.',
