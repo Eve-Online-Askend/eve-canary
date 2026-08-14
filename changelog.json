@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.6.0",
+  "d": "2026-08-14",
+  "de": [
+   "Neuer Schalter in den Optionen unter „System und Daten“: „Neue Versionen selbst installieren“. Ist er an, holt Canary eine neue Version von allein, sobald sie da ist, und startet sich dabei neu. Gewuenscht von Dune2Man.",
+   "Der Schalter ist bewusst AUS als Vorgabe und bleibt es auch. Fremden Code ohne Zutun zu ersetzen gehoert nicht zur Grundausstattung, das muss jeder selbst entscheiden.",
+   "Es laeuft genau derselbe Weg wie beim Knopf „Jetzt aktualisieren“, mit allen Sicherungen: geladen wird nur ueber HTTPS aus dem offiziellen Release, nur Dateien aus Canarys eigener Liste, der neue Code wird VOR dem Einspielen auf Fehler geprueft, und getauscht wird atomar mit Rueckrollen. Schlaegt etwas fehl, bleibt der alte Stand stehen und der naechste Versuch kommt fruehestens in einer Stunde. Der Neustart dauert ein paar Sekunden, in denen keine Alarme kommen; verloren geht nichts, die laufende Sitzung baut sich danach aus den Logdateien wieder auf."
+  ],
+  "en": [
+   "New switch in the options under “System & data”: “Install new versions automatically”. When on, Canary fetches a new version by itself as soon as one is out and restarts in the process. Requested by Dune2Man.",
+   "The switch is deliberately OFF by default and stays that way. Replacing someone else's code without them asking is not part of the basic setup, everyone decides that for themselves.",
+   "It follows exactly the same path as the “update now” button, with all its safeguards: downloads only over HTTPS from the official release, only files from Canary's own list, the new code is checked for errors BEFORE it is applied, and the swap is atomic with rollback. If anything fails the previous version stays in place and the next attempt comes an hour later at the earliest. The restart takes a few seconds during which no alerts arrive; nothing is lost, the running session rebuilds itself from the log files afterwards."
+  ]
+ },
+ {
   "v": "2.5.3",
   "d": "2026-08-14",
   "de": [

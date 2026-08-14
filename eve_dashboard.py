@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.5.3"
+VERSION = "2.6.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -1358,6 +1358,9 @@ def load_config():
            # sein? immer | rate | leer | aus. Die Stufen sind an echten Logs
            # gemessen, siehe laser_off_liste().
            "laser_off_mode": "rate",
+           # Updates selbst installieren. Bewusst AUS als Vorgabe: fremden Code
+           # ohne Zutun zu ersetzen gehoert nicht zur Grundausstattung.
+           "auto_update": False,
            "clip_watch": False, "roles": {}, "log_texts": {},
            "count_me": True, "ping": {}, "share_ore": False,
            "update_url": "https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main"}
@@ -1859,6 +1862,48 @@ def refresh_update_info():
     if chk.get("ok"):
         UPDATE_INFO["available"] = bool(chk.get("available"))
         UPDATE_INFO["latest"] = chk.get("latest")
+
+
+# Letzter Versuch eines selbsttaetigen Updates. Schuetzt davor, nach einem
+# Fehlschlag (Netz weg, Datei gesperrt) im Viertelstundentakt weiterzurennen.
+AUTO_UPDATE = {"versuch": 0.0}
+
+
+def auto_update_pruefen():
+    """Neue Version selbst installieren, WENN der Nutzer das eingeschaltet hat.
+
+    Standard ist aus, und das bleibt auch so: Canary ersetzt keinen Code auf
+    einem fremden Rechner, ohne dass jemand das ausdruecklich wollte. Ist der
+    Schalter an, laeuft genau derselbe Weg wie beim Knopf "Jetzt aktualisieren",
+    inklusive aller Sicherungen (nur HTTPS, nur Dateien aus der eigenen Liste,
+    der neue Code wird VOR dem Anwenden kompiliert, atomarer Tausch mit
+    Rueckrollen). Danach startet Canary sich neu, die laufende Sitzung baut
+    sich beim naechsten Takt aus den Logdateien wieder auf.
+
+    Gewuenscht von Dune2Man."""
+    if not CONFIG.get("auto_update") or not UPDATE_INFO.get("available"):
+        return
+    if time.time() - AUTO_UPDATE["versuch"] < 3600:
+        return
+    AUTO_UPDATE["versuch"] = time.time()
+    ziel = UPDATE_INFO.get("latest") or "?"
+    try:
+        r = do_update()
+    except Exception as e:
+        log_error("CN-UPD-01", "auto_update", e)
+        return
+    if r.get("ok") and r.get("updated"):
+        # Der Neustart kommt eine Sekunde spaeter, der Hinweis geht also nur
+        # noch raus, wenn gerade jemand hinsieht. Wichtiger ist die Konsole:
+        # dort steht hinterher, warum sich die Version geaendert hat.
+        print(f"Automatisches Update auf {ziel} installiert, Neustart laeuft.")
+        try:
+            alerts.push("update", "Canary",
+                        f"Automatisches Update auf {ziel}. Canary startet neu.")
+        except Exception:
+            pass
+    elif not r.get("ok"):
+        log_error("CN-UPD-01", "auto_update", r.get("error") or "unbekannt")
 
 
 # --------------------------------------------- Installations-Zaehlung
@@ -3112,6 +3157,7 @@ class Ingest(threading.Thread):
                 self.check_idle()
                 self.hw_tick()
                 refresh_update_info()
+                auto_update_pruefen()
                 count_ping()
                 share_ore_ping()
                 refresh_gank_list()
@@ -8067,6 +8113,7 @@ def state_info():
             "laser_off_mode": str(CONFIG.get("laser_off_mode", "rate") or "rate"),
             "clip_watch": bool(CONFIG.get("clip_watch")),
             "count_me": bool(CONFIG.get("count_me", True)),
+            "auto_update": bool(CONFIG.get("auto_update", False)),
             "share_ore": bool(CONFIG.get("share_ore", False)),
             "autostart": AUTOSTART_OK and autostart_path().exists(),
             # Was diese Plattform kann — die Oberflaeche blendet den Rest aus,
@@ -9659,6 +9706,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         elif action == "count_me":
             CONFIG["count_me"] = bool(body.get("on"))
+        elif action == "auto_update":
+            CONFIG["auto_update"] = bool(body.get("on"))
+            # Beim Einschalten nicht bis zur naechsten Viertelstunde warten:
+            # eine Sperre aus einem frueheren Fehlversuch wird zurueckgesetzt,
+            # der naechste Takt des Ingest-Threads zieht dann sofort.
+            if CONFIG["auto_update"]:
+                AUTO_UPDATE["versuch"] = 0.0
         elif action == "share_ore":
             CONFIG["share_ore"] = bool(body.get("on"))
         elif action == "clip_watch":
@@ -11039,6 +11093,8 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <div class="optgroup">
   <div class="sect">🖥 System &amp; Daten</div>
   <label id="autostartRow"><input type="checkbox" id="autostart"> Canary beim Systemstart automatisch mitstarten (still im Hintergrund, ohne Konsolenfenster)</label>
+  <label><input type="checkbox" id="autoUpdate"> Neue Versionen selbst installieren</label>
+  <div class="hint">Standardmäßig aus. Ist es an, holt Canary eine neue Version von allein, sobald sie da ist, und startet sich dabei neu. Das dauert ein paar Sekunden, in denen keine Alarme kommen und das Overlay leer bleibt. Verloren geht nichts: die laufende Sitzung baut sich danach aus deinen Logdateien wieder auf. Geprüft wird viertelstündlich, geladen wird nur aus dem offiziellen Release, und der neue Code wird vor dem Einspielen auf Fehler geprüft. Schlägt etwas fehl, bleibt der alte Stand stehen. Gewünscht von Dune2Man.</div>
   <label><input type="checkbox" id="countMe"> Anonym mitzählen lassen</label>
   <div class="hint">Einmal am Tag holt Canary eine leere Datei von GitHub, deren Name nur das Datum enthält. Gesendet wird dabei nichts: keine Kennung, keine Namen, keine Spieldaten. GitHub zählt nur, wie oft die Datei ausgeliefert wurde, und daraus wird sichtbar, wie viele Installationen es gibt. Ohne diese Zahl gibt es keinen Nachweis für die EVE-Partnerschaft.</div>
   <label><input type="checkbox" id="shareOre"> Erz-Erträge für die Homepage-Statistik freigeben</label>
@@ -11185,6 +11241,7 @@ const savedSkin=localStorage.getItem('skin');
 if(savedSkin)document.documentElement.dataset.skin=savedSkin;
 $('#autostart').onchange=async()=>{const r=await post({action:'autostart',on:$('#autostart').checked});if(r.state)state=r.state;syncOpts();};
 $('#countMe').onchange=()=>post({action:'count_me',on:$('#countMe').checked});
+$('#autoUpdate').onchange=()=>post({action:'auto_update',on:$('#autoUpdate').checked});
 $('#shareOre').onchange=()=>post({action:'share_ore',on:$('#shareOre').checked});
 $('#saveLogDir').onclick=async()=>{
  const st=$('#logDirStat');st.textContent='Prüfe …';st.style.color='';
@@ -11420,6 +11477,7 @@ function syncOpts(){
  // Autostart gibt es nur auf Windows und Linux — sonst Zeile ausblenden
  $('#autostartRow').hidden=state.autostart_ok===false;
  $('#countMe').checked=state.count_me!==false;
+ $('#autoUpdate').checked=state.auto_update===true;
  $('#shareOre').checked=state.share_ore===true;
  // Log-Ordner nur befüllen, solange niemand darin tippt
  if(document.activeElement!==$('#logDir'))$('#logDir').value=state.log_dir||'';
@@ -14724,6 +14782,9 @@ const EN = {
  'The mini overlay needs Chrome or Edge (Document Picture-in-Picture).',
 'Canary beim Systemstart automatisch mitstarten (still im Hintergrund, ohne Konsolenfenster)':
  'Start Canary automatically with the system (quietly in the background, no console window)',
+'Neue Versionen selbst installieren':'Install new versions automatically',
+'Standardmäßig aus. Ist es an, holt Canary eine neue Version von allein, sobald sie da ist, und startet sich dabei neu. Das dauert ein paar Sekunden, in denen keine Alarme kommen und das Overlay leer bleibt. Verloren geht nichts: die laufende Sitzung baut sich danach aus deinen Logdateien wieder auf. Geprüft wird viertelstündlich, geladen wird nur aus dem offiziellen Release, und der neue Code wird vor dem Einspielen auf Fehler geprüft. Schlägt etwas fehl, bleibt der alte Stand stehen. Gewünscht von Dune2Man.':
+ 'Off by default. When on, Canary fetches a new version by itself as soon as one is out and restarts in the process. That takes a few seconds during which no alerts arrive and the overlay stays empty. Nothing is lost: the running session rebuilds itself from your log files afterwards. It checks every fifteen minutes, downloads only from the official release, and the new code is checked for errors before it is applied. If anything fails, the previous version stays in place. Requested by Dune2Man.',
 'Was ist das?':'What is this?',
 'Hier siehst du, was gerade passiert. Für jeden Charakter eine Karte mit Erz, ISK, Schaden und Warnungen. Die Zahlen werden alle zwei Sekunden frisch aus deinen Logdateien gelesen.':
  'This shows what is happening right now. One card per character with ore, ISK, damage and warnings. The numbers are read fresh from your log files every two seconds.',
