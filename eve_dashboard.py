@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.17.0"
+VERSION = "2.18.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -8253,6 +8253,64 @@ def parse_inventar_text(text):
     return out
 
 
+# Spalten des Frachtraum-Fensters, die eine Einheit tragen. Das Spiel schreibt
+# sie mit der Einheit dahinter, und genau daran sind sie zu erkennen — der
+# Nutzer kann die Spalten beliebig anordnen oder ausblenden.
+VOL_SPALTE_RE = re.compile(r"^([\d.,\xa0 '’]+)\s*m[³3]$", re.I)
+ISK_SPALTE_RE = re.compile(r"^([\d.,\xa0 '’]+)\s*ISK$", re.I)
+
+
+def zahl_f(s):
+    """Wie num(), aber mit Nachkommastellen. Fuer Volumen noetig: eine Zeile mit
+    0,20 m3 wuerde sonst als 0 zaehlen, und bei Filamenten ist genau das der
+    ganze Posten."""
+    t = re.sub("[\xa0 '’]", "", str(s))
+    m = re.search(r"[.,](\d{1,2})$", t)
+    rest = ""
+    if m:
+        rest = m.group(1)
+        t = t[:m.start()]
+    ganz = re.sub("[.,]", "", t) or "0"
+    try:
+        return float(ganz) + (float(rest) / (10 ** len(rest)) if rest else 0.0)
+    except ValueError:
+        return 0.0
+
+
+def inventar_summe(text):
+    """Was steht in dieser Frachtraum-Kopie: Positionen, Stueck, Volumen, Wert.
+
+    Volumen und Wert kommen aus den Spalten des Frachtraum-Fensters, also aus
+    der SCHAETZUNG DES SPIELS, nicht vom Markt. Wer die Spalten ausgeblendet
+    hat, bekommt hier schlicht keine Zahl statt einer erfundenen — deshalb
+    stehen 'hat_m3' und 'hat_isk' mit in der Antwort.
+
+    Bewusst dieselbe Zerlegung wie parse_inventar_text: sonst zaehlt die Summe
+    unter dem Feld andere Zeilen als der Vergleich darunter."""
+    mengen = parse_inventar_text(text)
+    m3 = isk = 0.0
+    hat_m3 = hat_isk = False
+    for raw in (text or "").splitlines():
+        line = raw.rstrip()
+        if not line.strip():
+            continue
+        cols = ([c.strip() for c in line.split("\t")] if "\t" in line
+                else [c.strip() for c in SPALTEN_RE.split(line.strip())])
+        for c in cols[1:]:
+            mv = VOL_SPALTE_RE.match(c)
+            if mv:
+                m3 += zahl_f(mv.group(1))
+                hat_m3 = True
+                continue
+            mi = ISK_SPALTE_RE.match(c)
+            if mi:
+                isk += zahl_f(mi.group(1))
+                hat_isk = True
+    return {"n": len(mengen), "stueck": int(sum(mengen.values())),
+            "m3": round(m3, 2), "isk": round(isk),
+            "hat_m3": hat_m3, "hat_isk": hat_isk}
+
+
 def cargo_diff(vorher, nachher):
     """Zwei Frachtraum-Kopien vergleichen: was ist dazugekommen, was ist weg.
 
@@ -8271,13 +8329,64 @@ def cargo_diff(vorher, nachher):
     def zahl(x):
         return str(int(x)) if float(x).is_integer() else str(x)
 
+    # Stueckpreise aus der Nachher-Kopie: das Frachtraum-Fenster nennt je Zeile
+    # den Gesamtwert, geteilt durch die Menge ergibt das den Preis je Stueck.
+    # Damit laesst sich sofort sagen, was der Zuwachs laut Spiel wert ist, ohne
+    # eine einzige Marktabfrage. Die echte Bewertung ueber die Handelsplaetze
+    # bleibt daneben, sie ist die belastbarere Zahl.
+    # Beide Kopien als Preisquelle, Nachher gewinnt. Nur die Nachher-Kopie zu
+    # nehmen waere fuer die Liste "weniger geworden" nutzlos: was voellig
+    # aufgebraucht wurde, steht dort gar nicht mehr, und genau das ist der
+    # haeufigste Fall (Munition, Drohnen, Filamente). Am Prueffall gemessen
+    # standen sonst 2.526 verschossene Raketen mit 0 ISK da.
+    je_stueck = dict(einzelpreise(vorher))
+    je_stueck.update(einzelpreise(nachher))
+    for r in plus + minus:
+        p = je_stueck.get(r["name"])
+        if p:
+            r["isk"] = round(p * r["qty"])
+
     for liste in (plus, minus):
-        liste.sort(key=lambda r: (-r["qty"], r["name"].lower()))
+        liste.sort(key=lambda r: (-(r.get("isk") or 0), -r["qty"], r["name"].lower()))
+    plus_isk = sum(r.get("isk") or 0 for r in plus)
     return {"ok": True, "plus": plus, "minus": minus,
             "gleich": len(set(a) & set(b)) - len([r for r in plus + minus
                                                   if r["vor"] and r["nach"]]),
+            "vorher_summe": inventar_summe(vorher),
+            "nachher_summe": inventar_summe(nachher),
+            # Nur ausweisen, wenn wirklich Preise in der Kopie standen.
+            "plus_isk": round(plus_isk) if plus_isk else None,
+            "minus_isk": round(sum(r.get("isk") or 0 for r in minus)) or None,
             "plus_text": "\n".join(r["name"] + "\t" + zahl(r["qty"]) for r in plus),
             "minus_text": "\n".join(r["name"] + "\t" + zahl(r["qty"]) for r in minus)}
+
+
+def einzelpreise(text):
+    """{Name: ISK je Stueck} aus einer Frachtraum-Kopie, sofern die Wertspalte
+    eingeblendet ist. Leeres Dict, wenn nicht — dann bleibt die Wertangabe im
+    Ergebnis einfach weg, statt eine Null zu behaupten."""
+    out = {}
+    for raw in (text or "").splitlines():
+        line = raw.rstrip()
+        if not line.strip():
+            continue
+        cols = ([c.strip() for c in line.split("\t")] if "\t" in line
+                else [c.strip() for c in SPALTEN_RE.split(line.strip())])
+        name = cols[0]
+        if not name:
+            continue
+        wert = None
+        for c in cols[1:]:
+            mi = ISK_SPALTE_RE.match(c)
+            if mi:
+                wert = zahl_f(mi.group(1))
+                break
+        if wert is None:
+            continue
+        menge = parse_inventar_text(line).get(name) or 1
+        if menge:
+            out[name] = wert / menge
+    return out
 
 
 def market_item(name):
@@ -10522,6 +10631,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send(json.dumps(cargo_diff(body.get("vorher") or "",
                                              body.get("nachher") or "")))
             return
+        elif action == "cargo_stats":
+            # Was steht in EINEM Feld: Positionen, Stueck, Volumen, Wert. Laeuft
+            # im Server, damit unter dem Feld dieselbe Zerlegung zaehlt wie im
+            # Vergleich darunter. Eine zweite Zahlenlogik im Browser waere
+            # irgendwann abgedriftet, und dann haette die Summe etwas anderes
+            # behauptet als die Tabelle.
+            self._send(json.dumps({"ok": True,
+                                   **inventar_summe(body.get("text") or "")}))
+            return
         elif action == "loot_calc":
             # Beliebige Frachtraum-Kopie bewerten, ohne sie an eine Mission zu
             # haengen. Gleiche Rechnung wie beim Loot-Feld der Missionen.
@@ -11585,6 +11703,62 @@ padding:6px 8px;font-size:12px;width:100%}
 .btn{background:var(--inset);border:1px solid var(--line);color:var(--txt);font-size:12px;
 padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 .btn.warn{color:var(--red);border-color:var(--red)}
+/* Hauptaktion einer Karte. Bisher sahen alle Knoepfe gleich aus, und in einer
+   Reihe aus dreien war nicht zu sehen, welcher der gemeinte ist. */
+.btn.pri{border-color:var(--cyan);color:var(--cyan);font-weight:600}
+.btn.pri:hover{background:color-mix(in srgb,var(--cyan) 12%,var(--inset))}
+/* ---------- Eingabefelder ausserhalb der Dialoge
+   Die gab es nur in Dialogen. Alles in #grid — Beute, Belt-Auswertung,
+   Rechner, Intel — stand deshalb als weisser Browser-Kasten auf dunkler
+   Karte. Checkboxen bleiben bewusst aussen vor. */
+#grid textarea,#setup textarea,
+#grid input[type=text],#grid input:not([type]),#setup input:not([type]){
+ background:var(--inset);border:1px solid var(--line);color:var(--txt);
+ border-radius:8px;padding:8px 10px;font-size:12px;width:100%}
+#grid textarea:focus,#grid input:focus,#setup input:focus{
+ outline:none;border-color:var(--cyan)}
+#grid textarea::placeholder,#grid input::placeholder{color:var(--dim)}
+/* Eine Frachtraum-Kopie IST eine Tabelle: das Spiel trennt mit Tabulatoren.
+   Nur mit dicktengleicher Schrift stehen Menge, Volumen und Wert untereinander. */
+.paste{font-family:ui-monospace,Consolas,'Courier New',monospace !important;
+ font-size:11.5px;line-height:1.55;tab-size:16;white-space:pre;overflow:auto}
+/* ---------- Beute: vorher / Lauf / nachher
+   Die beiden Kopien sind Rohstoff, das Ergebnis darunter ist die Antwort.
+   Frueher sahen alle drei Felder gleich aus und man musste raten, welches
+   das Ergebnis ist. */
+.diffflow{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:stretch}
+.diffslot{display:flex;flex-direction:column;min-width:0}
+/* #grid textarea ist eine ID-Regel und schlaegt jede reine Klassen-Regel.
+   Ohne das #grid davor blieben die unteren Ecken rund und der Rahmen doppelt,
+   weil die Summe darunter ihren eigenen oberen Rand mitbringt. Gemessen. */
+#grid .diffslot textarea{flex:1;border-bottom-left-radius:0;border-bottom-right-radius:0;
+ border-bottom:none}
+.diffhead{display:flex;align-items:baseline;gap:7px;margin-bottom:5px}
+.diffstep{display:inline-flex;align-items:center;justify-content:center;
+ width:17px;height:17px;border-radius:50%;background:var(--inset);
+ border:1px solid var(--line);color:var(--dim);font-size:10px;font-weight:700}
+.diffslot.voll .diffstep{border-color:var(--cyan);color:var(--cyan)}
+.difftitle{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)}
+/* Die Summe klebt am Feld, nicht daneben: sie gehoert zu dieser einen Kopie. */
+.difffoot{background:var(--inset);border:1px solid var(--line);border-top:1px dashed var(--line);
+ border-radius:0 0 8px 8px;padding:5px 10px;font-size:11px;color:var(--dim);
+ display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;min-height:27px}
+.difffoot b{color:var(--txt);font-weight:600}
+.difffoot .isk{font-weight:600}
+/* Zwischen den beiden Feldern liegt eine ganze Mission. Genau das steht hier. */
+.diffgap{display:flex;flex-direction:column;align-items:center;justify-content:center;
+ gap:6px;padding:0 2px;color:var(--dim);text-align:center}
+.diffgap .pfeil{font-size:19px;color:var(--cyan);opacity:.8;line-height:1}
+.diffgap .was{font-size:9.5px;text-transform:uppercase;letter-spacing:1.2px;
+ writing-mode:vertical-rl;transform:rotate(180deg)}
+@media(max-width:720px){
+ .diffflow{grid-template-columns:1fr}
+ .diffgap{flex-direction:row;padding:2px 0}
+ .diffgap .pfeil{transform:rotate(90deg)}
+ .diffgap .was{writing-mode:horizontal-tb;transform:none}
+}
+/* Das Ergebnis: eigene Zone, damit es nicht wie ein viertes Eingabefeld wirkt. */
+.diffout{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
 .note{font-size:11px;color:var(--dim);margin-top:10px}
 </style></head><body>
 <!--NOTFALL-->
@@ -15177,24 +15351,42 @@ async function doCalc(){
 // hier soll niemand erst an einem Preisrechner vorbeiscrollen muessen.
 function renderBeute(){
  if(document.getElementById('diffBox'))return;   // schon gebaut, Eingaben stehen lassen
+ const en=(lang==='en');
  $('#grid').innerHTML=`<div class="card" id="diffBox" style="grid-column:1/-1">
   <b>📦 Was hat der Lauf gebracht?</b>
-  <div style="font-size:12px;color:var(--dim);margin:6px 0">EVE schreibt beim Plündern nichts mit, deshalb der Umweg über den Frachtraum. Vor dem Lauf im Spiel den Frachtraum öffnen, alles markieren (Strg+A), kopieren (Strg+C) und links einfügen. Nach der Mission oder dem Abyss dasselbe rechts. Canary zieht beides voneinander ab, und unten steht nur noch, was dazugekommen ist, fertig zum Kopieren für das Loot-Feld einer Mission.
-  Beide Felder bleiben gespeichert, du kannst also in der Zwischenzeit den Bereich wechseln, die Seite neu laden oder Canary neu starten.</div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px">
-   <div><div style="font-size:12px;margin-bottom:3px">Vorher</div>
-    <textarea id="diffA" rows="10" style="width:100%" placeholder="Frachtraum vor der Aktion"></textarea></div>
-   <div><div style="font-size:12px;margin-bottom:3px">Nachher</div>
-    <textarea id="diffB" rows="10" style="width:100%" placeholder="Frachtraum nach der Aktion"></textarea></div></div>
-  <div class="btnrow" style="margin:8px 0"><button class="btn" id="diffGo">Differenz bilden</button>
+  <div class="sub" style="margin:6px 0 0">Frachtraum vorher und nachher einfügen, Canary zieht beides voneinander ab.</div>
+  <details style="margin:6px 0 12px">
+   <summary style="font-size:11px;color:var(--dim);cursor:pointer">So geht es</summary>
+   <div style="font-size:12px;color:var(--dim);margin-top:6px">EVE schreibt beim Plündern nichts mit, deshalb der Umweg über den Frachtraum. Vor dem Lauf im Spiel den Frachtraum öffnen, alles markieren (Strg+A), kopieren (Strg+C) und links einfügen. Nach der Mission oder dem Abyss dasselbe rechts. Unten steht dann nur noch, was dazugekommen ist, fertig zum Kopieren für das Loot-Feld einer Mission.
+   Beide Felder bleiben gespeichert, du kannst also in der Zwischenzeit den Bereich wechseln, die Seite neu laden oder Canary neu starten.</div>
+  </details>
+  <div class="diffflow">
+   <div class="diffslot" id="diffSlotA">
+    <div class="diffhead"><span class="diffstep">1</span>
+     <span class="difftitle">Vor dem Lauf</span></div>
+    <textarea id="diffA" class="paste" rows="9" placeholder="Frachtraum vor der Aktion"></textarea>
+    <div class="difffoot" id="diffSumA"></div>
+   </div>
+   <div class="diffgap" aria-hidden="true">
+    <span class="pfeil">➜</span><span class="was">dazwischen liegt der Lauf</span>
+   </div>
+   <div class="diffslot" id="diffSlotB">
+    <div class="diffhead"><span class="diffstep">2</span>
+     <span class="difftitle">Nach dem Lauf</span></div>
+    <textarea id="diffB" class="paste" rows="9" placeholder="Frachtraum nach der Aktion"></textarea>
+    <div class="difffoot" id="diffSumB"></div>
+   </div>
+  </div>
+  <div class="btnrow" style="margin:10px 0 0"><button class="btn pri" id="diffGo">Vergleichen</button>
    <button class="btn" id="diffNext" title="Für den nächsten Durchgang: der Stand von rechts wandert nach links, rechts wird leer. Spart das doppelte Einfügen, wenn du mehrere Läufe hintereinander machst.">⬅ Nachher wird Vorher</button>
    <button class="btn" id="diffClr">Felder leeren</button>
-   <span id="diffStat" style="font-size:12px;color:var(--dim)"></span></div>
-  <div id="diffOut" style="overflow-x:auto"></div></div>`;
+   <span id="diffStat" style="font-size:12px;color:var(--dim);align-self:center"></span></div>
+  <div id="diffOut"></div></div>`;
  $('#diffGo').onclick=doDiff;
  $('#diffClr').onclick=()=>{
   ['diffA','diffB'].forEach(id=>{$('#'+id).value='';localStorage.removeItem(id);});
   $('#diffOut').innerHTML='';$('#diffStat').textContent='';
+  diffSumme('diffA');diffSumme('diffB');
  };
  // Mehrere Laeufe hintereinander: der Frachtraum von eben ist der Ausgangsstand
  // fuer den naechsten Durchgang. Ohne das muesste man dieselbe Kopie zweimal
@@ -15208,6 +15400,7 @@ function renderBeute(){
   if(!b.value.trim()){sagen('Im Feld Nachher steht noch nichts.');return;}
   a.value=b.value; b.value='';
   localStorage.setItem('diffA',a.value); localStorage.removeItem('diffB');
+  diffSumme('diffA');diffSumme('diffB');
   sagen('Nachher ist jetzt Vorher. Das Ergebnis darunter bleibt stehen.');
   b.focus();
  };
@@ -15217,8 +15410,38 @@ function renderBeute(){
  ['diffA','diffB'].forEach(id=>{
   const el=$('#'+id), alt=localStorage.getItem(id);
   if(alt)el.value=alt;
-  el.oninput=()=>localStorage.setItem(id,el.value);
+  el.oninput=()=>{localStorage.setItem(id,el.value); diffSummeSpaeter(id);};
+  diffSumme(id);
  });
+}
+// Summe unter einem Frachtraum-Feld. Der Server zerlegt, damit unter dem Feld
+// dasselbe gezaehlt wird wie in der Tabelle darunter.
+const diffTimer={};
+function diffSummeSpaeter(id){
+ clearTimeout(diffTimer[id]);
+ diffTimer[id]=setTimeout(()=>diffSumme(id),350);   // nicht bei jedem Anschlag fragen
+}
+async function diffSumme(id){
+ const feld=$('#'+id), kasten=$('#diffSum'+id.slice(-1));
+ const slot=$('#diffSlot'+id.slice(-1));
+ if(!feld||!kasten)return;
+ const en=(lang==='en');
+ if(slot)slot.classList.toggle('voll',!!feld.value.trim());
+ if(!feld.value.trim()){
+  kasten.innerHTML='<span style="opacity:.7">'
+   +(en?'nothing pasted yet':'noch nichts eingefügt')+'</span>';
+  return;}
+ let s;try{s=await post({action:'cargo_stats',text:feld.value});}catch(e){s=null;}
+ if(!$('#diffSum'+id.slice(-1)))return;      // Bereich zwischendurch gewechselt
+ if(!s||!s.ok){kasten.textContent='';return;}
+ // Nur zeigen, was wirklich in der Kopie steht: wer die Wert- oder
+ // Volumenspalte im Spiel ausgeblendet hat, bekommt hier keine erfundene Null.
+ let h='<b>'+fmt(s.n)+'</b> '+(en?(s.n===1?'position':'positions'):(s.n===1?'Position':'Positionen'));
+ h+=' <span style="opacity:.55">·</span> <b>'+fmt(s.stueck)+'</b> '+(en?'units':'Stück');
+ if(s.hat_m3)h+=' <span style="opacity:.55">·</span> <b>'+fmt(Math.round(s.m3))+'</b> m³';
+ if(s.hat_isk)h+=' <span style="opacity:.55">·</span> <span class="isk">'+fmtM(s.isk)+' ISK</span>';
+ kasten.innerHTML=h;
+ if(lang!=='de')tr(kasten);
 }
 // Frachtraum vorher gegen nachher. Der Vergleich laeuft im Server, damit
 // derselbe Parser zaehlt, der spaeter auch das Loot-Feld liest.
@@ -15235,25 +15458,62 @@ async function doDiff(){
   $('#diffOut').innerHTML='<div class="sub">Kein Unterschied gefunden. Beide Kopien enthalten dasselbe.</div>';
   if(lang!=='de')tr(document.body);
   return;}
+ const en=(lang==='en');
+ const wert=i=>i.isk!=null?'<span class="isk">'+fmtM(i.isk)+'</span>':'<span style="opacity:.4">·</span>';
  const zeilen=(liste,farbe,zeichen)=>liste.map(i=>
   '<tr><td>'+esc(i.name)+'</td><td class="r">'+fmt(i.vor)+'</td><td class="r">'+fmt(i.nach)
-  +'</td><td class="r" style="color:'+farbe+'">'+zeichen+fmt(i.qty)+'</td></tr>').join('');
- let h='';
+  +'</td><td class="r" style="color:'+farbe+'">'+zeichen+fmt(i.qty)+'</td>'
+  +'<td class="r">'+wert(i)+'</td></tr>').join('');
+ // Kopfzeilen der drei Kennzahlen. Die dritte ist die Antwort auf die Frage in
+ // der Ueberschrift: was bleibt unterm Strich, nachdem die verschossene Munition
+ // und das verbrauchte Filament abgezogen sind. Nur zeigen, wenn die Wertspalte
+ // im Frachtraum-Fenster ueberhaupt eingeblendet war.
+ let h='<div class="diffout">';
+ const mitWert=(r.plus_isk!=null||r.minus_isk!=null);
+ if(mitWert){
+  const netto=(r.plus_isk||0)-(r.minus_isk||0);
+  h+='<div class="stats" style="grid-template-columns:repeat(3,1fr)">'
+   +'<div class="stat"><div class="l">'+(en?'Added':'Dazugekommen')+'</div>'
+   +'<div class="v isk">'+fmtM(r.plus_isk||0)+' ISK</div>'
+   +'<div class="sub" style="margin:2px 0 0">'+r.plus.length+' '
+   +(en?(r.plus.length===1?'position':'positions'):(r.plus.length===1?'Position':'Positionen'))+'</div></div>'
+   +'<div class="stat"><div class="l">'+(en?'Used up':'Verbraucht')+'</div>'
+   +'<div class="v in">-'+fmtM(r.minus_isk||0)+' ISK</div>'
+   +'<div class="sub" style="margin:2px 0 0">'+r.minus.length+' '
+   +(en?(r.minus.length===1?'position':'positions'):(r.minus.length===1?'Position':'Positionen'))+'</div></div>'
+   +'<div class="stat"><div class="l">'+(en?'Bottom line':'Unterm Strich')+'</div>'
+   +'<div class="v '+(netto>=0?'isk':'in')+'">'+(netto<0?'-':'')+fmtM(Math.abs(netto))+' ISK</div>'
+   +'<div class="sub" style="margin:2px 0 0">'
+   +(en?'as valued by the game':'laut Frachtraum-Fenster')+'</div></div></div>';
+ }
+ if(!mitWert&&(r.plus.length||r.minus.length)){
+  // Leerer Zustand mit Ausweg statt einer fehlenden Zeile: ohne die Wertspalte
+  // im Frachtraum-Fenster kann hier kein Betrag stehen, und man sieht nicht,
+  // warum. Der Satz sagt, woran es liegt und was dagegen hilft.
+  h+='<div class="sub" style="margin:0 0 10px">'+(en
+   ? 'No ISK figures here: the value column was not visible in your cargo hold. Right-click a column header in game to switch it on, or use <b>Get market value</b> below.'
+   : 'Hier stehen keine ISK: im Frachtraum-Fenster war die Spalte <b>Wert</b> nicht eingeblendet. Im Spiel mit Rechtsklick auf die Spaltenköpfe einschalten, oder unten <b>Marktwert holen</b> benutzen.')+'</div>';
+ }
  if(r.plus.length){
-  h+='<div style="margin-top:4px"><b>Dazugekommen</b></div>'
-   +'<textarea id="diffOutTxt" rows="'+Math.min(12,Math.max(3,r.plus.length))
-   +'" style="width:100%;margin-top:4px"></textarea>'
-   +'<div class="btnrow" style="margin:6px 0"><button class="btn" id="diffCopy">Kopieren</button>'
-   +'<button class="btn" id="diffWert">Wert berechnen</button>'
-   +'<span id="diffWertStat" style="font-size:12px;color:var(--dim)"></span></div>'
-   +'<table><tr><th>Item</th><th class="r">Vorher</th><th class="r">Nachher</th><th class="r">Dazu</th></tr>'
-   +zeilen(r.plus,'var(--gold)','+')+'</table>';
+  h+='<div class="sect" style="margin-top:0">'
+   +(en?'For the loot field of a mission':'Für das Loot-Feld einer Mission')+'</div>'
+   +'<textarea id="diffOutTxt" class="paste" rows="'+Math.min(12,Math.max(3,r.plus.length))
+   +'" style="margin-top:4px"></textarea>'
+   +'<div class="btnrow" style="margin:6px 0 0"><button class="btn pri" id="diffCopy">Kopieren</button>'
+   +'<span id="diffCopyStat" style="font-size:12px;color:var(--green);align-self:center"></span>'
+   +'<button class="btn" id="diffWert">Marktwert holen</button>'
+   +'<span id="diffWertStat" style="font-size:12px;color:var(--dim);align-self:center"></span></div>'
+   +'<div style="overflow-x:auto"><table><thead><tr><th>Item</th><th class="r">Vorher</th>'
+   +'<th class="r">Nachher</th><th class="r">Dazu</th><th class="r">Wert</th></tr></thead>'
+   +zeilen(r.plus,'var(--gold)','+')+'</table></div>';
  }
  if(r.minus.length){
-  h+='<div style="margin-top:12px"><b>Weniger geworden</b> <span class="sub">'
-   +'verbraucht oder abgeladen, zum Beispiel Munition, Drohnen oder Filamente</span></div>'
-   +'<table><tr><th>Item</th><th class="r">Vorher</th><th class="r">Nachher</th><th class="r">Weg</th></tr>'
-   +zeilen(r.minus,'var(--red)','-')+'</table>';
+  h+='<div class="sect" style="margin-top:14px">Weniger geworden</div>'
+   +'<div class="sub" style="margin:2px 0 0">'
+   +'verbraucht oder abgeladen, zum Beispiel Munition, Drohnen oder Filamente</div>'
+   +'<div style="overflow-x:auto"><table><thead><tr><th>Item</th><th class="r">Vorher</th>'
+   +'<th class="r">Nachher</th><th class="r">Weg</th><th class="r">Wert</th></tr></thead>'
+   +zeilen(r.minus,'var(--red)','-')+'</table></div>';
  }
  if(r.gleich>0)h+='<div class="sub" style="margin-top:8px">'+r.gleich
   +(lang==='en'?(r.gleich===1?' kind stayed the same.':' kinds stayed the same.')
@@ -15265,10 +15525,19 @@ async function doDiff(){
  if(ta)ta.value=r.plus_text||'';
  const cp=$('#diffCopy');
  if(cp)cp.onclick=async()=>{
+  // Die Rueckmeldung gehoert AN DEN KNOPF, nicht in die Knopfreihe ganz oben.
+  // Dort stand sie bisher, also weit weg und ohne Bezug, und wer den Text
+  // kopiert hatte, sah gar nicht, dass es geklappt hat. Gemeldet von Nirahse.
+  const st=$('#diffCopyStat');
+  const sagen=(t,farbe)=>{if(!st)return;
+   st.textContent=t; st.style.color=farbe;
+   if(lang!=='de')tr(st);};
   try{await navigator.clipboard.writeText($('#diffOutTxt').value);
-      $('#diffStat').textContent='✓ kopiert';}
+      sagen('✓ Kopiert','var(--green)');
+      clearTimeout(cp._weg);
+      cp._weg=setTimeout(()=>{if($('#diffCopyStat'))$('#diffCopyStat').textContent='';},2500);}
   catch(e){$('#diffOutTxt').select();
-           $('#diffStat').textContent='Kopieren ging nicht, Text ist markiert: Strg+C drücken.';}
+           sagen('Kopieren ging nicht, Text ist markiert: Strg+C drücken.','var(--gold)');}
  };
  const wb=$('#diffWert');
  if(wb)wb.onclick=async()=>{
@@ -15553,11 +15822,24 @@ const EN = {
 'Preisabfrage fehlgeschlagen.':'Price lookup failed.',
 // Beute
 '📦 Beute':'📦 Loot','📦 Was hat der Lauf gebracht?':'📦 What did the run bring in?',
-'EVE schreibt beim Plündern nichts mit, deshalb der Umweg über den Frachtraum. Vor dem Lauf im Spiel den Frachtraum öffnen, alles markieren (Strg+A), kopieren (Strg+C) und links einfügen. Nach der Mission oder dem Abyss dasselbe rechts. Canary zieht beides voneinander ab, und unten steht nur noch, was dazugekommen ist, fertig zum Kopieren für das Loot-Feld einer Mission. Beide Felder bleiben gespeichert, du kannst also in der Zwischenzeit den Bereich wechseln, die Seite neu laden oder Canary neu starten.':
- 'EVE records nothing when you loot, hence the detour through the cargo hold. Before the run, open your cargo hold in game, select everything (Ctrl+A), copy it (Ctrl+C) and paste it on the left. After the mission or the abyss do the same on the right. Canary subtracts one from the other, and below you get only what was added, ready to copy into the loot field of a mission. Both boxes are saved, so you can switch views, reload the page or restart Canary in between.',
+'Frachtraum vorher und nachher einfügen, Canary zieht beides voneinander ab.':
+ 'Paste your cargo hold before and after, Canary subtracts one from the other.',
+'So geht es':'How this works',
+'EVE schreibt beim Plündern nichts mit, deshalb der Umweg über den Frachtraum. Vor dem Lauf im Spiel den Frachtraum öffnen, alles markieren (Strg+A), kopieren (Strg+C) und links einfügen. Nach der Mission oder dem Abyss dasselbe rechts. Unten steht dann nur noch, was dazugekommen ist, fertig zum Kopieren für das Loot-Feld einer Mission. Beide Felder bleiben gespeichert, du kannst also in der Zwischenzeit den Bereich wechseln, die Seite neu laden oder Canary neu starten.':
+ 'EVE records nothing when you loot, hence the detour through the cargo hold. Before the run, open your cargo hold in game, select everything (Ctrl+A), copy it (Ctrl+C) and paste it on the left. After the mission or the abyss do the same on the right. Below you then get only what was added, ready to copy into the loot field of a mission. Both boxes are saved, so you can switch views, reload the page or restart Canary in between.',
+'Vor dem Lauf':'Before the run','Nach dem Lauf':'After the run',
+'dazwischen liegt der Lauf':'the run happens here',
+'noch nichts eingefügt':'nothing pasted yet',
+'Für das Loot-Feld einer Mission':'For the loot field of a mission',
+// 'Dazugekommen' und 'Wert' stehen schon weiter unten. Ein zweiter Eintrag
+// waere nicht falsch, aber wirkungslos: in JavaScript gewinnt der letzte.
+'Verbraucht':'Used up','Unterm Strich':'Bottom line',
+'laut Frachtraum-Fenster':'as valued by the game',
+'✓ Kopiert':'✓ Copied',
 'Vorher':'Before','Nachher':'After','Dazu':'Added','Weg':'Gone',
 'Frachtraum vor der Aktion':'Cargo hold before','Frachtraum nach der Aktion':'Cargo hold after',
-'Differenz bilden':'Compare','Felder leeren':'Clear the boxes','Kopieren':'Copy',
+'Vergleichen':'Compare','Felder leeren':'Clear the boxes','Kopieren':'Copy',
+'Marktwert holen':'Get market value',
 '⬅ Nachher wird Vorher':'⬅ After becomes before',
 'Für den nächsten Durchgang: der Stand von rechts wandert nach links, rechts wird leer. Spart das doppelte Einfügen, wenn du mehrere Läufe hintereinander machst.':
  'For the next run: what is on the right moves to the left and the right box is emptied. Saves pasting the same copy twice when you do several runs in a row.',

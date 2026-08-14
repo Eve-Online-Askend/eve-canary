@@ -1,5 +1,25 @@
 [
  {
+  "v": "2.18.0",
+  "d": "2026-08-14",
+  "de": [
+   "DER BEUTE-VERGLEICH IST NEU GEBAUT. Gemeldet von Nirahse. Vorher sahen die drei Felder — vorher, nachher und das Ergebnis — voellig gleich aus, und man musste raten, welches davon die Antwort ist. Jetzt sind die beiden Kopien ein Arbeitsschritt mit den Nummern 1 und 2, dazwischen steht, dass genau dort der Lauf liegt, und das Ergebnis darunter ist eine eigene Zone.",
+   "JEDES FELD ZEIGT JETZT SEINE SUMME: Positionen, Stueck, Volumen und ISK, direkt unter der Kopie und angeklebt statt danebengesetzt. Die Zahlen kommen aus den Spalten des Frachtraum-Fensters, also aus der Schaetzung des Spiels. Wer die Wert- oder Volumenspalte ausgeblendet hat, bekommt dort keine erfundene Null, sondern die Zeile bleibt weg — und im Ergebnis steht ein Satz, woran es liegt und wie man die Spalte einschaltet.",
+   "UND DIE FRAGE IN DER UEBERSCHRIFT WIRD ENDLICH BEANTWORTET. Ueber dem Ergebnis stehen drei Zahlen: dazugekommen, verbraucht und unterm Strich. Der mittlere Wert fehlte bisher voellig, dabei ist er bei einem Abyss-Lauf der halbe Punkt: an einem echten Beispiel standen 45,2 Mio Beute gegen 8,3 Mio verschossene Munition und ein verbrauchtes Filament, macht 36,9 Mio unterm Strich. Auch die Tabellen haben jetzt eine Wert-Spalte je Posten.",
+   "Die Rueckmeldung „Kopiert“ steht jetzt AM Kopieren-Knopf und nicht mehr in der Knopfreihe ganz oben, wo sie mit dem Knopf gar nichts zu tun hatte. Genau das war Nirahses Meldung. Sie verschwindet nach zweieinhalb Sekunden von selbst.",
+   "Eingabefelder ausserhalb der Dialoge waren nie gestaltet: Beute, Belt-Auswertung, Rechner und Intel zeigten weisse Browser-Kaesten auf dunkler Karte. Jetzt gehoeren sie zum Rest. Die Frachtraum-Kopien stehen zusaetzlich in dicktengleicher Schrift, denn das Spiel trennt die Spalten mit Tabulatoren — nur so stehen Menge, Volumen und Wert wirklich untereinander.",
+   "Kleinigkeiten am selben Bereich: Der Hauptknopf heisst jetzt „Vergleichen“ und sieht auch wie der gemeinte aus, die lange Anleitung ist zugeklappt und aufklappbar, und die Erklaerung ganz oben ist ein Satz statt eines Absatzes."
+  ],
+  "en": [
+   "THE LOOT COMPARISON HAS BEEN REBUILT. Reported by Nirahse. The three boxes — before, after and the result — used to look exactly alike, leaving you to guess which one held the answer. The two copies are now one work step numbered 1 and 2, with a marker between them saying that this is where the run happens, and the result below is a zone of its own.",
+   "EVERY BOX NOW SHOWS ITS TOTAL: positions, units, volume and ISK, attached right under the copy instead of sitting beside it. The figures come from the columns of your cargo hold window, so from the game's own estimate. If you have the value or volume column switched off, no invented zero appears — the line simply stays away, and the result explains why and how to switch the column on.",
+   "AND THE QUESTION IN THE HEADING FINALLY GETS AN ANSWER. Above the result there are three numbers: added, used up, and the bottom line. The middle one was missing entirely, although on an abyssal run it is half the point: on a real example 45.2 million of loot stood against 8.3 million of spent ammunition and one used filament, leaving 36.9 million. The tables also have a value column per item now.",
+   "The “copied” confirmation now sits AT the copy button instead of in the button row at the very top, where it had nothing to do with the button. That was exactly Nirahse's report. It fades away by itself after two and a half seconds.",
+   "Input fields outside dialogs had never been styled: loot, belt survey, calculator and intel showed white browser boxes on a dark card. They belong to the rest now. Cargo copies additionally use a monospaced face, because the game separates columns with tabs — only that way do quantity, volume and value truly line up.",
+   "Small things in the same area: the main button now says “Compare” and looks like the one you mean, the long instructions are collapsed and expandable, and the explanation at the top is one sentence instead of a paragraph."
+  ]
+ },
+ {
   "v": "2.17.0",
   "d": "2026-08-14",
   "de": [
