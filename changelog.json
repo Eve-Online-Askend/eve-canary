@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.8.1",
+  "d": "2026-08-14",
+  "de": [
+   "Wer im Wallet Buddy einen Charakter auswaehlte, der in diesem Zeitraum keine Geschaefte hat, sass fest: die Seite zeigte nur noch „Noch keine Wallet-Daten“, und die Auswahl selbst war verschwunden. Zeitraum und Charaktere stehen jetzt IMMER oben, auch wenn darunter nichts kommt, und der Text sagt, woran es liegt. Gemeldet von Vile Gangster, eingebaut hatte ich den Fehler selbst mit 2.7.0.",
+   "Ein Abruf, der nie beantwortet wird, konnte die Oberflaeche dauerhaft blockieren: kein Tab-Wechsel mehr, und die Ladeanzeige blieb stehen. Passieren kann das etwa, wenn Canary zwischendurch neu startet, waehrend der Browser noch auf eine Antwort wartet. Jetzt bricht Canary so einen Abruf nach 25 Sekunden ab und macht weiter. Nachgestellt und gemessen: vorher stand die Anzeige nach 40 Sekunden immer noch, jetzt loest sie sich nach genau 25.",
+   "Die Liste der Charaktere fuer die Auswahl wird eine Minute lang gemerkt, statt sie im Zwei-Sekunden-Takt aus zwei ganzen Tabellen neu zu lesen. Bei kleinen Wallets war das egal, bei einem Vielhandler waere es unnoetige Last."
+  ],
+  "en": [
+   "Picking a character in the Wallet Buddy that has no trades in the selected period left you stuck: the page only said “no wallet data yet” and the selection itself was gone. Period and characters now stay on top at all times, even when nothing follows below, and the text explains why. Reported by Vile Gangster; I introduced the fault myself in 2.7.0.",
+   "A request that is never answered could block the interface for good: no more switching views, and the loading indicator stayed on screen. This can happen when Canary restarts while the browser is still waiting for a reply. Such a request is now aborted after 25 seconds and things carry on. Reproduced and measured: before, the indicator was still there after 40 seconds, now it clears after exactly 25.",
+   "The list of characters for the selector is cached for a minute instead of being read from two whole tables every two seconds. Irrelevant for small wallets, needless load for a heavy trader."
+  ]
+ },
+ {
   "v": "2.8.0",
   "d": "2026-08-14",
   "de": [

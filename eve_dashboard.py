@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.8.0"
+VERSION = "2.8.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -8776,15 +8776,28 @@ WB_GROUPS = {
 WB_IGNORE = ("market_escrow", "contract_deposit_refund", "market_escrow_refund")
 
 
+_WCHARS = {"ts": 0.0, "liste": []}
+
+
 def wallet_chars():
     """Welche Charaktere haben ueberhaupt Wallet-Daten? Fuer die Auswahl im
     Wallet Buddy. Aus beiden Quellen, denn wer nur handelt, steht nicht im
-    Journal, und wer nur rattet, hat keine Transaktionen."""
+    Journal, und wer nur rattet, hat keine Transaktionen.
+
+    60 s gecacht: der Wallet-Bereich fragt im 2-Sekunden-Takt, und die Abfrage
+    laeuft ueber zwei ganze Tabellen. Bei kleinen Wallets kostet das nichts,
+    bei einem Vielhandler waere es alle zwei Sekunden ein voller Durchlauf.
+    Neue Charaktere tauchen dadurch bis zu eine Minute spaeter auf, und das
+    faellt neben dem stuendlichen ESI-Abgleich nicht ins Gewicht."""
+    if time.time() - _WCHARS["ts"] < 60:
+        return list(_WCHARS["liste"])
     with DB_LOCK:
         rows = DB.execute(
             "SELECT char FROM wbook WHERE char IS NOT NULL "
             "UNION SELECT char FROM trades WHERE char IS NOT NULL").fetchall()
-    return sorted({r[0] for r in rows if r[0]})
+    liste = sorted({r[0] for r in rows if r[0]})
+    _WCHARS.update({"ts": time.time(), "liste": liste})
+    return list(liste)
 
 
 def query_wallet(days=30, char=None):
@@ -13540,14 +13553,55 @@ function renderProfiles(list){
  }
  $('#grid').innerHTML=html;
 }
+// Zeitraum- und Charakter-Knoepfe verdrahten. Ausgelagert, weil sie in BEIDEN
+// Faellen gebraucht werden: mit Daten und auf der leeren Seite.
+function walletSchalter(){
+ $('#grid').querySelectorAll('.wtage').forEach(el=>{
+  el.onclick=()=>{
+   walletTage=Number(el.dataset.wt);
+   localStorage.setItem('walletTage',walletTage);
+   tick();
+  };
+ });
+ $('#grid').querySelectorAll('.wchar').forEach(el=>{
+  el.onclick=()=>{
+   walletChar=el.dataset.wc||'';
+   localStorage.setItem('walletChar',walletChar);
+   tick();
+  };
+ });
+}
 // Wallet Buddy: Handels-Auswertung plus Herkunft der Einnahmen.
 function renderWallet(w){
  w=w||{};
  const en=lang==='en';
+ // Zeitraum und Charakter-Auswahl werden IMMER zuerst gebaut, auch wenn es
+ // nichts anzuzeigen gibt. Sonst landet man mit einem Charakter ohne
+ // Handelsdaten auf einer leeren Seite OHNE die Auswahl und kommt nicht mehr
+ // zurueck. Gemeldet von Vile Gangster, eingebaut mit 2.7.0, hier behoben.
+ const ZR=[[7,en?'7 days':'7 Tage'],[30,en?'30 days':'30 Tage'],[0,en?'all':'alles']];
+ let kopf=`<div class="card" style="grid-column:1/-1"><div class="mfphead">
+   <span class="mfptitle">${en?'Period':'Zeitraum'}</span>
+   <span>`+ZR.map(([t,l])=>`<span class="pill wtage${walletTage===t?' on':''}" data-wt="${t}">${l}</span>`).join(' ')
+   +`</span></div></div>`;
+ // Charakter-Reihe: sobald es mehr als einen gibt, ODER wenn gerade auf einen
+ // eingeschraenkt ist. Der zweite Fall ist der Rueckweg aus der Sackgasse.
+ if((w.chars||[]).length>1||w.char){
+  kopf+=`<div class="card" style="grid-column:1/-1"><div class="mfphead">
+    <span class="mfptitle">${en?'Character':'Charakter'}</span>
+    <span><span class="pill wchar${!w.char?' on':''}" data-wc="">${en?'all':'alle'}</span> `
+   +(w.chars||[]).map(c=>`<span class="pill wchar${w.char===c?' on':''}" data-wc="${esc(c)}">${esc(c)}</span>`).join(' ')
+   +`</span></div></div>`;
+ }
  if(!w.trades){
-  $('#grid').innerHTML='<div class="card" style="grid-column:1/-1"><div class="sub">'
-   +(en?'No wallet data yet. Connect your characters via the EVE login (⚙ Options). After the first sync (up to 1 hour) your trades appear here.'
-       :'Noch keine Wallet-Daten. Verbinde deine Chars per EVE-Login (⚙ Optionen). Nach dem ersten Abgleich (bis zu 1 Stunde) erscheinen hier deine Geschäfte.')+'</div></div>';
+  $('#grid').innerHTML=kopf+'<div class="card" style="grid-column:1/-1"><div class="sub">'
+   +(w.char
+     ?(en?'No trades for this character in this period. Pick another character or period above.'
+         :'Für diesen Charakter gibt es in diesem Zeitraum keine Geschäfte. Wähle oben einen anderen Charakter oder Zeitraum.')
+     :(en?'No wallet data yet. Connect your characters via the EVE login (⚙ Options). After the first sync (up to 1 hour) your trades appear here.'
+         :'Noch keine Wallet-Daten. Verbinde deine Chars per EVE-Login (⚙ Optionen). Nach dem ersten Abgleich (bis zu 1 Stunde) erscheinen hier deine Geschäfte.'))
+   +'</div></div>';
+  walletSchalter();
   return;
  }
  const g=w.gruppen||{};
@@ -13568,22 +13622,7 @@ function renderWallet(w){
               hypernet:'Hypernet',reparatur:'Reparaturen',klone:'Klone',
               belohnungen:'Belohnungen',direkthandel:'Direkthandel',sonstiges:'Sonstiges'};
 
- // ---- Zeitraum-Umschalter -------------------------------------------------
- const ZR=[[7,en?'7 days':'7 Tage'],[30,en?'30 days':'30 Tage'],[0,en?'all':'alles']];
- let h0=`<div class="card" style="grid-column:1/-1"><div class="mfphead">
-   <span class="mfptitle">${en?'Period':'Zeitraum'}</span>
-   <span>`+ZR.map(([t,l])=>`<span class="pill wtage${walletTage===t?' on':''}" data-wt="${t}">${l}</span>`).join(' ')
-   +`</span></div></div>`;
- // ---- Charakter-Umschalter ------------------------------------------------
- // Nur zeigen, wenn es ueberhaupt mehr als einen gibt: bei einem Charakter
- // waere die Zeile nur Platzverschwendung.
- if((w.chars||[]).length>1){
-  h0+=`<div class="card" style="grid-column:1/-1"><div class="mfphead">
-    <span class="mfptitle">${en?'Character':'Charakter'}</span>
-    <span><span class="pill wchar${!w.char?' on':''}" data-wc="">${en?'all':'alle'}</span> `
-   +w.chars.map(c=>`<span class="pill wchar${w.char===c?' on':''}" data-wc="${esc(c)}">${esc(c)}</span>`).join(' ')
-   +`</span></div></div>`;
- }
+ let h0=kopf;
  // ---- Bilanz: Einnahmen, Ausgaben, Saldo ---------------------------------
  const B=w.bilanz;
  if(B&&(B.ein||B.aus)){
@@ -13690,21 +13729,7 @@ function renderWallet(w){
  }
  $('#grid').innerHTML=h0+h;
  // Zeitraum umschalten: merken und sofort neu holen, nicht auf den Takt warten.
- $('#grid').querySelectorAll('.wtage').forEach(el=>{
-  el.onclick=()=>{
-   walletTage=Number(el.dataset.wt);
-   localStorage.setItem('walletTage',walletTage);
-   tick();
-  };
- });
- // Charakter umschalten, gleiche Mechanik wie beim Zeitraum.
- $('#grid').querySelectorAll('.wchar').forEach(el=>{
-  el.onclick=()=>{
-   walletChar=el.dataset.wc||'';
-   localStorage.setItem('walletChar',walletChar);
-   tick();
-  };
- });
+ walletSchalter();
  // Kopier-Knoepfe: EIN Handler am Container statt einer je Zeile, sonst waeren
  // sie nach dem naechsten Neuzeichnen (2s-Takt) wieder weg.
  $('#grid').onclick=ev=>{
@@ -15152,7 +15177,19 @@ async function tick(){
   const zusatz=(reqView==='wallet')
     ?('&days='+walletTage+(walletChar?'&wchar='+encodeURIComponent(walletChar):''))
     :'';
-  const d=await (await fetch('/data?view='+reqView+zusatz,{cache:'no-store'})).json();
+  // Harte Zeitgrenze fuer den Abruf. Ohne sie kann eine Verbindung, die nie
+  // beantwortet wird (Server startet zwischendurch neu, der Socket bleibt aber
+  // offen), tickBusy fuer immer auf true stehen lassen: dann wechselt kein Tab
+  // mehr, und die Ladeanzeige bleibt stehen, weil auch der Aufraeumer nur bei
+  // ruhendem tickBusy greift. Genau diesen Zustand hat Vile Gangster gemeldet,
+  // bei ihm nach zehn Minuten immer noch da.
+  const stop=new AbortController();
+  const wecker=setTimeout(()=>stop.abort(),25000);
+  let d;
+  try{
+   d=await (await fetch('/data?view='+reqView+zusatz,
+                        {cache:'no-store',signal:stop.signal})).json();
+  }finally{ clearTimeout(wecker); }
   if(reqView!==view)return;  // Nutzer hat inzwischen gewechselt -> Antwort verwerfen
   state=d.state;regionPills();handleAlerts();updateBadge();updateBanner();serverBadge();bootScreen();renderViewInfo();
   if(state.log_ok===false){renderSetup();return;}
