@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.16.0"
+VERSION = "2.17.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -33,11 +33,27 @@ VERSION = "2.16.0"
 # Quelle: logo/canary-180.png aus dem Repo (180 px, rund 21 KB Base64).
 LOGO_DATA_URI = "data:image/png;base64,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"
 
+# Was ein Update in eine BESTEHENDE Installation nachtraegt. Zugleich eine
+# Erlaubnisliste: was hier nicht steht, wird nie heruntergeladen, auch wenn es
+# in version.json auftaucht.
+#
+# Muss zu FILES in release.py passen. release.py bricht ab, wenn eine
+# Datendatei hier fehlt: gank_groups.json fehlte tatsaechlich, und eine
+# bestehende Installation haette sie ohne die monatliche Extra-Abholung nie
+# bekommen. Beim Audit gefunden.
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
                 "mission_fingerprints.json", "market_types.json",
+                "gank_groups.json",
+                "install.ps1", "uninstall.ps1", "install.sh",
                 "README_INSTALL.md"]
+# BEWUSST NICHT dabei: start_dashboard.bat und start_dashboard.sh. Genau die
+# laufen im Moment des Updates, und cmd wie sh lesen ihr Skript zeilenweise
+# waehrend der Ausfuehrung. Wird die Datei unter ihnen ausgetauscht, springt
+# der Interpreter mitten in fremden Text. Wer eine Aenderung an den Startern
+# braucht, holt sie ueber den Installer.
+UPDATE_AUSNAHMEN = ["start_dashboard.bat", "start_dashboard.sh"]
 from collections import deque
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -1901,11 +1917,20 @@ def db_add(day, char_id, char_name, kind, key, value):
 
 def log_event(char_id, char, kind, detail, ts=None):
     """Ein Zeitachsen-Ereignis ablegen (Mining-Trip, Bedrohung). detail = dict,
-    wird als JSON gespeichert und im Frontend sprachabhaengig gerendert. Dedupe
-    ueber UNIQUE(char_id, ts, kind), damit ein Re-Ingest nichts doppelt."""
+    wird als JSON gespeichert und im Frontend sprachabhaengig gerendert.
+    UNIQUE(char_id, ts, kind) verhindert Doppelte beim erneuten Einlesen.
+
+    Beim Wiedersehen wird der Inhalt AKTUALISIERT, nicht verworfen. Vorher stand
+    hier INSERT OR IGNORE: ein Rebuild nach einem Parser-Update las die Logs zwar
+    neu, der alte Eintrag blieb aber stehen. Ein Mining-Trip, der mit einem
+    verunreinigten Erznamen und 0 m3 gespeichert war, blieb im Verlauf fuer immer
+    falsch, waehrend dieselben Zahlen in der Tages-Statistik richtig waren.
+    Beim Audit gefunden."""
     try:
         with DB_LOCK:
-            DB.execute("INSERT OR IGNORE INTO events VALUES(?,?,?,?,?)",
+            DB.execute("""INSERT INTO events VALUES(?,?,?,?,?)
+                          ON CONFLICT(char_id, ts, kind)
+                          DO UPDATE SET char=excluded.char, detail=excluded.detail""",
                        (str(char_id), float(ts or time.time()), kind, char,
                         json.dumps(detail, ensure_ascii=False)))
             DB.commit()
@@ -2570,7 +2595,12 @@ def do_update():
     if not chk.get("ok"):
         return chk
     if not chk.get("available"):
-        return {"ok": True, "updated": False, "message": "Bereits aktuell."}
+        # "lage" ist der Schluessel fuer die Oberflaeche: sie formuliert den Satz
+        # selbst und damit in der eingestellten Sprache. Die deutschen Texte
+        # bleiben als Rueckfallebene stehen, fuer den Rettungsweg /reparieren,
+        # der ohne JavaScript auskommt.
+        return {"ok": True, "updated": False, "lage": "aktuell",
+                "message": "Bereits aktuell."}
     base = CONFIG["update_url"].rstrip("/")
     # Bevorzugt vom GitHub-Release laden: nur dort zaehlt GitHub die Downloads
     # (raw.githubusercontent liefert keine Statistik). Klappt das nicht, geht es
@@ -2609,9 +2639,23 @@ def do_update():
             (APP_DIR / (name + ".new")).write_bytes(data)
         for name in blobs:
             target = APP_DIR / name
+            rechte = None
             if target.exists():
                 shutil.copy2(target, APP_DIR / (name + ".bak"))
+                # Auf Linux und Mac haengt am Startskript das Ausfuehrungsrecht.
+                # Eine frisch geschriebene Datei bekommt es nicht, und os.replace
+                # traegt es auch nicht nach: die Datei waere nach dem Update
+                # nicht mehr startbar.
+                try:
+                    rechte = target.stat().st_mode
+                except OSError:
+                    rechte = None
             os.replace(APP_DIR / (name + ".new"), target)
+            if rechte is not None and os.name != "nt":
+                try:
+                    os.chmod(target, rechte)
+                except OSError:
+                    pass
             written.append(name)
     except Exception as e:
         for name in written:  # Rollback der schon getauschten Dateien
@@ -2641,7 +2685,8 @@ def do_update():
         os._exit(0)
 
     threading.Timer(1.0, _restart).start()
-    return {"ok": True, "updated": True,
+    return {"ok": True, "updated": True, "lage": "installiert",
+            "latest": chk.get("latest"),
             "message": f"Update auf {chk['latest']} installiert. Neustart läuft, die Seite lädt gleich neu."}
 
 
@@ -4419,6 +4464,9 @@ ESI_SCOPES = ("esi-assets.read_assets.v1 esi-location.read_ship_type.v1 "
               "esi-ui.open_window.v1 esi-skills.read_skills.v1 "
               "esi-industry.read_character_mining.v1 esi-planets.manage_planets.v1 "
               "esi-markets.read_character_orders.v1")
+# Wie lange ein begonnener SSO-Login einloesbar bleibt. Danach ist der state
+# wertlos und der Eintrag wird beim naechsten Login-Versuch weggeraeumt.
+SSO_PENDING_TTL = 600
 # Mining-Skills, die den Erzertrag heben (typeID -> Ertrag je Stufe).
 # Mining und Astrogeology sind die beiden Kern-Ertragsskills (+5% je Stufe).
 MINING_YIELD_SKILLS = {3386: 0.05,   # Mining
@@ -4509,7 +4557,7 @@ class Esi(threading.Thread):
 
     def __init__(self):
         super().__init__()
-        self.pending = {}     # state -> code_verifier laufender Logins
+        self.pending = {}     # state -> (code_verifier, Startzeit) laufender Logins
         self.status = {}      # char -> Klartext-Status fuer die Optionen-Seite
         self.type_cache = {}  # type_id -> Name (Schiffstypen, öffentlicher Endpunkt)
         self.type_miss = {}   # type_id -> ts des letzten Fehlschlags (Negativ-Cache)
@@ -4546,7 +4594,17 @@ class Esi(threading.Thread):
         challenge = base64.urlsafe_b64encode(
             hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
         state = base64.urlsafe_b64encode(os.urandom(12)).rstrip(b"=").decode()
-        self.pending[state] = verifier
+        # Abgebrochene Logins aufraeumen. Wer das SSO-Fenster schliesst, liess
+        # bisher einen Eintrag mit code_verifier dauerhaft im Speicher stehen,
+        # und bei jedem neuen Versuch kam einer dazu. Umgekehrt lief ein vor
+        # Wochen begonnener Login nie ab: sein state blieb einloesbar, solange
+        # der Prozess laeuft, waehrend die Fehlermeldung "Die Login-Anfrage ist
+        # abgelaufen" ein Ablaufen behauptete, das es gar nicht gab. Beim Audit
+        # gefunden. 10 Minuten sind mehr als genug fuer einen Login.
+        jetzt = time.time()
+        self.pending = {s: (v, t) for s, (v, t) in self.pending.items()
+                        if jetzt - t < SSO_PENDING_TTL}
+        self.pending[state] = (verifier, jetzt)
         return SSO_AUTH + "?" + urllib.parse.urlencode({
             "response_type": "code", "redirect_uri": self.redirect_uri(),
             "client_id": self.client_id(), "scope": ESI_SCOPES,
@@ -4563,9 +4621,10 @@ class Esi(threading.Thread):
 
     def callback(self, code, state):
         """Auth-Code gegen Tokens tauschen. Liefert None bei Erfolg, sonst Fehlertext."""
-        verifier = self.pending.pop(state, None)
-        if not verifier:
+        eintrag = self.pending.pop(state, None)
+        if not eintrag or time.time() - eintrag[1] >= SSO_PENDING_TTL:
             return "Die Login-Anfrage ist abgelaufen. Bitte starte den Login noch einmal."
+        verifier = eintrag[0]
         try:
             tok = self._token_request({
                 "grant_type": "authorization_code", "code": code,
@@ -4574,11 +4633,21 @@ class Esi(threading.Thread):
             pay = json.loads(base64.urlsafe_b64decode(pay + "==="))
             name = pay["name"]
             with CONFIG_LOCK:
-                self.cfg()["chars"][name] = {
+                # ERSETZEN statt einfuegen. Rund zwanzig Stellen im HTTP-Thread
+                # laufen ueber .items() dieser Tabelle, ohne Sperre. Wuerde hier
+                # in eine laufende Schleife hinein eingefuegt, faellt der Abruf
+                # mit "dictionary changed size during iteration" aus und die
+                # Ansicht bleibt beim Verbinden eines Charakters kurz leer.
+                # Mit einer neuen Tabelle sieht ein Leser entweder die alte oder
+                # die neue, aber nie eine, die sich unter ihm aendert. Alle Leser
+                # anzufassen waere der groessere und riskantere Eingriff.
+                neu = dict(self.cfg().get("chars") or {})
+                neu[name] = {
                     "char_id": int(pay["sub"].split(":")[-1]),
                     "refresh": tok["refresh_token"], "access": tok["access_token"],
                     "exp": time.time() + tok.get("expires_in", 1199) - 60,
                     "assets_next": 0}
+                self.cfg()["chars"] = neu
             save_config()
             self.status[name] = "verbunden"
             return None
@@ -8993,7 +9062,12 @@ def query_timelines():
                    "mission": mission, "site": site, "faction": faction_info(enemies),
                    "kills": kills or 0, "bounty": round(bounty or 0),
                    "dmg_out": do or 0, "dmg_in": di or 0,
-                   "min": round(((et or 0) - (st or 0)) / 60),
+                   # Negative Dauer nicht durchreichen, sondern None: die
+                   # Missions-Historie macht das seit dem Fix an gleicher Stelle
+                   # so, der Verlauf zeigte daneben weiter "-107 min" fuer
+                   # dieselbe Mission. Beim Audit gefunden.
+                   "min": (round(((et or 0) - (st or 0)) / 60)
+                           if (et or 0) >= (st or 0) else None),
                    "sys": sysn or "?", "ewar": json.loads(ewj or "[]")})
     for char, ts, det in erows:
         try:
@@ -9149,8 +9223,16 @@ WB_GROUPS = {
     "industrie": ("industry_job_tax", "reprocessing_tax", "manufacturing", "copying"),
     "planeten": ("planetary_import_tax", "planetary_export_tax",
                  "planetary_construction"),
+    # contract_deposit_refund gehoert hier MIT hinein, nicht in WB_IGNORE:
+    # die Kaution ging als contract_deposit voll in die Ausgaben, die
+    # Rueckzahlung kam nie an. Wer Kurierauftraege annimmt, sammelte dadurch
+    # Ausgaben, die es nie gab (an echten Daten: 10 Kautionen ueber 52,5 Mio
+    # gegen 2 ignorierte Rueckzahlungen). Beide zu ignorieren waere falsch:
+    # eine VERFALLENE Kaution ist ein echter Verlust und muss stehen bleiben.
+    # Beim Audit gefunden.
     "vertraege": ("contract_price", "contract_reward", "contract_brokers_fee",
                   "contract_sales_tax", "contract_deposit",
+                  "contract_deposit_refund",
                   "contract_price_payment_corp", "contract_reward_deposited"),
     # Getrennt seit v2.7.0: wer sich Geld aus der Corp-Kasse holt, hat nichts
     # geschenkt bekommen. Beides stand vorher zusammen unter "Spenden", und
@@ -9176,7 +9258,7 @@ WB_GROUPS = {
 # sondern nur Geld, das fuer offene Kauforders geparkt wird und zurueckkommt,
 # sobald die Order zieht oder storniert wird. Ohne diese Ausnahme sieht jedes
 # Wallet eines Traders nach einer Katastrophe aus (hier: -2,0 Mrd).
-WB_IGNORE = ("market_escrow", "contract_deposit_refund", "market_escrow_refund")
+WB_IGNORE = ("market_escrow", "market_escrow_refund")
 
 
 _WCHARS = {"ts": 0.0, "liste": []}
@@ -9827,9 +9909,18 @@ def abyss_export_tsv():
 def _host_ok(headers):
     """Schuetzt vor DNS-Rebinding: nur localhost-Hosts duerfen zugreifen.
     Eine fremde Website, die per Rebinding auf 127.0.0.1 zeigt, sendet ihren
-    eigenen (fremden) Host-Header und wird hier abgewiesen."""
-    host = (headers.get("Host") or "").rsplit(":", 1)[0].strip("[]").lower()
-    return host in ("localhost", "127.0.0.1", "::1", "")
+    eigenen (fremden) Host-Header und wird hier abgewiesen.
+
+    Ein FEHLENDER Host-Kopf gilt jetzt ebenfalls als nicht in Ordnung. Vorher
+    liess ihn die Pruefung durch, und damit reichte es, den Kopf einfach
+    wegzulassen, um die Sperre zu umgehen. Ueber einen Browser ist das ohnehin
+    nicht erreichbar (Host ist dort seit HTTP/1.1 Pflicht), es ging um lokale
+    Programme mit eigenem HTTP-Client. Beim Audit gefunden."""
+    roh = headers.get("Host")
+    if not roh:
+        return False
+    host = roh.rsplit(":", 1)[0].strip("[]").lower()
+    return host in ("localhost", "127.0.0.1", "::1")
 
 
 def _origin_ok(headers, mein_port=None):
@@ -10477,7 +10568,10 @@ class Handler(BaseHTTPRequestHandler):
         elif action == "esi_forget":
             char = str(body.get("char") or "")
             with CONFIG_LOCK:
-                esi.cfg().get("chars", {}).pop(char, None)
+                # Ebenfalls ersetzen statt herausnehmen, siehe Esi.callback.
+                neu = dict(esi.cfg().get("chars") or {})
+                neu.pop(char, None)
+                esi.cfg()["chars"] = neu
                 esi.status.pop(char, None)
                 hw_entry = (CONFIG.get("heavy_water") or {}).get(char)
                 if hw_entry and hw_entry.get("esi"):
@@ -11961,7 +12055,8 @@ $('#gear').onclick=()=>{syncOpts();$('#opts').showModal();};
 $('#close').onclick=()=>$('#opts').close();
 $('#reset').onclick=async()=>{if(confirm('Auswertung ab jetzt neu starten? Alte Daten bleiben gespeichert, werden aber ausgeblendet.')){await post({action:'reset'});tick();syncOpts();}};
 $('#unreset').onclick=async()=>{await post({action:'clear_baseline'});tick();syncOpts();};
-$('#backup').onclick=async()=>{const r=await post({action:'backup'});alert('Backup: '+r.file);};
+$('#backup').onclick=async()=>{const r=await post({action:'backup'});
+ alert((lang==='en'?'Backup: ':'Sicherung: ')+r.file);};
 // Diagnose: Bericht holen, in die Zwischenablage legen und zum Nachlesen anzeigen
 $('#diagBtn').onclick=async()=>{
  const st=$('#diagStat');
@@ -12008,7 +12103,18 @@ $('#checkUpd').onclick=async()=>{
 $('#doUpd').onclick=async()=>{
  $('#updstatus').textContent='Lade Update …';
  const r=await post({action:'do_update'});
- $('#updstatus').textContent=r.ok?(r.message||''):r.error;
+ // Die Meldung kommt vom Server und war dort immer deutsch, auch im englischen
+ // Modus: sie enthaelt eine Versionsnummer und kann deshalb kein
+ // Woerterbuch-Schluessel sein. Deshalb formuliert die Oberflaeche sie jetzt
+ // selbst und nimmt den Servertext nur als Rueckfallebene.
+ const enU2=(lang==='en');
+ $('#updstatus').textContent=r.ok
+  ? (r.lage==='installiert'
+      ? (enU2?('Update to '+(r.latest||'')+' installed. Restarting, the page reloads in a moment.')
+             :('Update auf '+(r.latest||'')+' installiert. Neustart läuft, die Seite lädt gleich neu.'))
+     : r.lage==='aktuell' ? (enU2?'Already up to date.':'Bereits aktuell.')
+     : (r.message||''))
+  : r.error;
  if(r.ok&&r.updated)setTimeout(()=>location.reload(),4000);
 };
 document.querySelectorAll('#opts input[name=mode]').forEach(r=>r.onchange=()=>post({action:'mode',mode:r.value}));
@@ -12194,7 +12300,7 @@ let bootDone=false;
 // Zeichenregen auf dem Ladebildschirm. Die Zeichen sind die ECHTEN Dateinamen,
 // die der Parser gerade durchlaeuft (2026...-Ziffern), keine Zufallszeichen.
 // Laeuft nur, solange der Ladebildschirm steht, und raeumt sich danach selbst ab.
-let regenTimer=null, regenZeichen='0123456789';
+let regenTimer=null, regenZeichen='0123456789', regenMessen=null;
 function regenAn(){
  if(regenTimer)return;
  const c=$('#bootrain'); if(!c||!c.getContext)return;
@@ -12213,7 +12319,7 @@ function regenAn(){
   spalten=Array.from({length:n},()=>({y:Math.random()*c.height,v:SZ*(0.5+Math.random())}));
   ctx.font=SZ+'px ui-monospace,Consolas,monospace';
  };
- messen(); window.addEventListener('resize',messen);
+ messen(); regenMessen=messen; window.addEventListener('resize',messen);
  regenTimer=setInterval(()=>{
   if(!c.clientWidth)return;
   ctx.fillStyle=wisch; ctx.fillRect(0,0,c.width,c.height);
@@ -12230,6 +12336,11 @@ function regenAn(){
 function regenAus(){
  if(!regenTimer)return;
  clearInterval(regenTimer); regenTimer=null;
+ // Den resize-Horcher mit abhaengen. Sonst lief messen() nach dem
+ // Ladebildschirm bei JEDER Fenstergroessen-Aenderung weiter, auf einer
+ // versteckten Canvas mit Breite 0, und hielt Canvas und 2D-Kontext fest.
+ // Beim Audit gefunden.
+ if(regenMessen){window.removeEventListener('resize',regenMessen); regenMessen=null;}
 }
 function bootScreen(){
  if(bootDone)return;
@@ -12851,7 +12962,7 @@ function fleetCard(chars){
    <div class="mfpmain">
     <span class="mfpval cyan">${fmtC(totM3)}</span>
     <span class="mfpunit">m³ komprimiert</span>
-    <span class="mfpsub">≈ ${fmtM(totIsk)} ISK · Boost: ${ship}</span>
+    <span class="mfpsub">≈ ${fmtM(totIsk)} ISK · Boost: ${esc(ship)}</span>
    </div>
    ${list}
   </div>`;
@@ -12958,7 +13069,7 @@ function miningCardHtml(c){
       <td class="r">${fmt(o.units)} Stk</td><td class="r" style="color:var(--gold)">unbekannt</td></tr>`).join('')+`</table>`
      +(c.ores.some(o=>!o.known)?`<div class="sub" style="color:var(--gold)">⚠ Ein Erz ist Canary unbekannt (oben markiert). Bitte den Namen im Discord melden, dann nehme ich es auf.</div>`:''):''}
    ${c.compressed.length?`<div class="sect">Komprimiert (Session)</div><table>`+c.compressed.map(k=>
-     `<tr><td>${k.type}</td><td class="r">${fmt(k.units)} Stk</td><td class="r">${fmt(k.m3)} m³</td><td class="r isk">${fmtM(k.isk)}</td></tr>`).join('')+`</table>`:''}
+     `<tr><td>${esc(k.type)}</td><td class="r">${fmt(k.units)} Stk</td><td class="r">${fmt(k.m3)} m³</td><td class="r isk">${fmtM(k.isk)}</td></tr>`).join('')+`</table>`:''}
    ${c.weapons.length?`<div class="sect">Waffen</div><table>`+c.weapons.map(w=>
      `<tr><td>${esc(w[0])}</td><td class="r">${fmt(w[1])} dmg</td></tr>`).join('')+`</table>`:''}
    ${c.top_targets.length?`<div class="sect">Top-Ziele</div><table>`+c.top_targets.map(t=>
@@ -13023,7 +13134,9 @@ function wireCards(){
   if(v.trim()===''&&!b.dataset.fill)return;
   if(v.trim()==='0'){await post({action:'heavy_water',char:b.dataset.char});tick();return;}
   if(v.trim()===''){await post({action:'heavy_water',char:b.dataset.char,units:Number(b.dataset.fill),core:b.dataset.core||'t1'});tick();return;}
-  const core=b.dataset.core||(confirm('Industrial Core II (T2, 200/min)?\\nOK = T2 · Abbrechen = T1 (100/min)')?'t2':'t1');
+  const core=b.dataset.core||(confirm(lang==='en'
+   ? 'Industrial Core II (T2, 200/min)?\\nOK = T2 · Cancel = T1 (100/min)'
+   : 'Industrial Core II (T2, 200/min)?\\nOK = T2 · Abbrechen = T1 (100/min)')?'t2':'t1');
   await post({action:'heavy_water',char:b.dataset.char,units:Number(v.replace(/[^\\d]/g,''))||0,core});
   tick();
  });
@@ -13243,7 +13356,7 @@ function renderTotal(t){
   </div>
   <div class="card"><div class="char">Erz-Bilanz (nach Wert)</div><table>
    <thead><tr><th>Erz</th><th class="r">Menge</th><th class="r">Volumen</th><th class="r">Wert</th></tr></thead>${t.ores.map(o=>
-   `<tr><td>${o.ore}<div class="bar" style="width:${100*o.isk/maxOre}%"></div></td>
+   `<tr><td>${esc(o.ore)}<div class="bar" style="width:${100*o.isk/maxOre}%"></div></td>
     <td class="r">${fmt(o.units)}</td><td class="r">${fmt(o.m3)} m³</td><td class="r isk">${fmtM(o.isk)}</td></tr>`).join('')}</table></div>
   <div class="card"><div class="char">Pro Charakter</div><table>
    <thead><tr><th>Charakter</th><th class="r">Erz</th><th class="r">Bounties</th><th class="r">ISK gesamt</th></tr></thead>${Object.entries(t.chars).map(([n,c])=>
@@ -13270,12 +13383,12 @@ function compCard(comp){
   `<span class="pill ${k===compPeriod?'on':''}" data-p="${k}">${l}</span>`).join('');
  const tbl=rows=>'<thead><tr><th>Typ</th><th class="r">Menge</th>'
   +'<th class="r">Volumen</th><th class="r">Wert</th></tr></thead>'+rows.map(k=>
-  `<tr><td>${k.type}</td><td class="r">${fmt(k.units)} Stk</td><td class="r">${fmt(k.m3)} m³</td><td class="r isk">${fmtM(k.isk)}</td></tr>`).join('');
+  `<tr><td>${esc(k.type)}</td><td class="r">${fmt(k.units)} Stk</td><td class="r">${fmt(k.m3)} m³</td><td class="r isk">${fmtM(k.isk)}</td></tr>`).join('');
  const row=(key,label,d)=>{
   const open=compOpen.has(key);
-  return `<div class="chead" data-cc="${key}" style="padding:6px 0;border-top:1px solid var(--line)">
+  return `<div class="chead" data-cc="${esc(key)}" style="padding:6px 0;border-top:1px solid var(--line)">
     <span class="arr" style="${open?'':'transform:rotate(-90deg)'}">▼</span>
-    <span style="font-size:13px;font-weight:600;color:var(--white)">${label}</span>
+    <span style="font-size:13px;font-weight:600;color:var(--white)">${esc(label)}</span>
     <span class="mini">${fmt(d.units)} Stk · ${fmt(d.m3)} m³ · <span class="isk">${fmtM(d.isk)} ISK</span></span>
    </div>${open?`<table style="margin:0 0 8px 18px">${tbl(d.types)}</table>`:''}`;
  };
@@ -13299,13 +13412,18 @@ function renderAnalyse(a){
  }else{
   goalHtml=`<div class="card" style="grid-column:1/-1"><div class="sub">Kein Ziel gesetzt. Unter ⚙ Optionen kannst du ein ISK-Ziel mit Prognose anlegen.</div></div>`;
  }
- const maxP=Math.max(1,...a.playtime.map(p=>p.minutes));
+ // Nur die ANGEZEIGTEN Zeilen bestimmen die Balkenlaenge. Vorher lief das
+ // Maximum ueber die ganze Historie: wer vor einem Jahr einen 14-Stunden-Tag
+ // hatte und jetzt ein bis zwei Stunden spielt, sah in der ganzen Karte nur
+ // Stummel. Beim Audit gefunden.
+ const ptZeilen=a.playtime.slice(-14).reverse();
+ const maxP=Math.max(1,...ptZeilen.map(p=>p.minutes));
  $('#grid').innerHTML=goalHtml+compCard(a.compression||{})+
   `<div class="card"><div class="char">Erz-Effizienz (ISK/m³)</div>
    <div class="sub">Was lohnt sich am meisten pro Laderaum? Die erste Spalte entscheidet, die beiden anderen zeigen, wie viel du davon bisher gefoerdert hast.</div>
    <table><thead><tr><th>Erz</th><th class="r">ISK je m³</th>
     <th class="r">bisher gefoerdert</th><th class="r">Wert davon</th></tr></thead>${a.efficiency.map(e=>
-   `<tr><td>${e.ore}</td><td class="r">${e.isk_per_m3} ISK/m³</td><td class="r">${fmt(e.m3)} m³</td><td class="r isk">${fmtM(e.isk)}</td></tr>`).join('')}</table></div>
+   `<tr><td>${esc(e.ore)}</td><td class="r">${e.isk_per_m3} ISK/m³</td><td class="r">${fmt(e.m3)} m³</td><td class="r isk">${fmtM(e.isk)}</td></tr>`).join('')}</table></div>
   <div class="card"><div class="char">Stillstand-Verlust</div>
    <div class="sub">Geschätzt entgangenes ISK, weil Laser oder Drohnen standen oder die Rate einbrach (je Trip beim Docken erfasst).</div>
    <div class="v isk" style="font-size:22px">${fmtM(a.lost_isk||0)}</div></div>
@@ -13314,8 +13432,8 @@ function renderAnalyse(a){
    <table>${a.weapons.length?'<thead><tr><th>Waffe</th><th class="r">Schaden</th></tr></thead>'+a.weapons.map(w=>
    `<tr><td>${esc(w[0])}</td><td class="r out">${fmt(w[1])} dmg</td></tr>`).join(''):'<tr><td class="r">Noch keine Kampfdaten</td></tr>'}</table></div>
   <div class="card"><div class="char">Spielzeit</div>
-   <div class="sub">Die letzten 14 Tage, gerechnet aus den Zeiten in deinen Logdateien. Laufen mehrere Clients gleichzeitig, zählt die Zeit trotzdem nur einmal. In Klammern steht, was alle Clients zusammen ergeben.</div>
-   <table><thead><tr><th>Tag</th><th class="r">Zeit</th></tr></thead>${a.playtime.slice(-14).reverse().map(p=>
+   <div class="sub">Die letzten 14 Tage, an denen du gespielt hast, gerechnet aus den Zeiten in deinen Logdateien. Tage ohne Spiel stehen nicht dazwischen, bei einer Pause liegen die Zeilen also weiter auseinander. Laufen mehrere Clients gleichzeitig, zählt die Zeit trotzdem nur einmal. In Klammern steht, was alle Clients zusammen ergeben.</div>
+   <table><thead><tr><th>Tag</th><th class="r">Zeit</th></tr></thead>${ptZeilen.map(p=>
    `<tr><td>${p.day}<div class="bar" style="width:${100*p.minutes/maxP}%"></div></td>
     <td class="r">${Math.floor(p.minutes/60)}h ${p.minutes%60}m${
       (p.client_minutes&&p.client_minutes>p.minutes+1)
@@ -13325,7 +13443,7 @@ function renderAnalyse(a){
    <div class="sub">Wer dich als Spieler angegriffen hat, ueber den gesamten Zeitraum. NPCs stehen hier nicht.</div>
    <table>${a.pvp.length?'<thead><tr><th>Angreifer</th><th class="r">Dein Charakter</th>'
     +'<th class="r">Schaden</th><th class="r">Zuletzt</th></tr></thead>'+a.pvp.map(p=>
-   `<tr><td class="in">${p.attacker}</td><td class="r">${p.char}</td><td class="r">${fmt(p.dmg)} dmg</td><td class="r">${p.days[p.days.length-1]}</td></tr>`).join(''):'<tr><td>Keine Spieler-Angriffe erkannt ✓</td></tr>'}</table></div>`;
+   `<tr><td class="in">${esc(p.attacker)}</td><td class="r">${esc(p.char)}</td><td class="r">${fmt(p.dmg)} dmg</td><td class="r">${p.days[p.days.length-1]}</td></tr>`).join(''):'<tr><td>Keine Spieler-Angriffe erkannt ✓</td></tr>'}</table></div>`;
  document.querySelectorAll('[data-p]').forEach(el=>el.onclick=()=>{
   compPeriod=el.dataset.p;localStorage.setItem('compPeriod',compPeriod);
   if(lastAnalyse)renderAnalyse(lastAnalyse);});
@@ -13473,10 +13591,20 @@ function ovStatus(c,st){
  if(mineIdle(c,st))return['warn','KEIN ERZ SEIT '+Math.round(c.mine_idle/60)+' MIN'];
  return['ok',''];
 }
+// Sperre und Zeitgrenze wie beim Haupt-Takt. Ohne sie startete das Intervall
+// alle 2 Sekunden eine neue Abfrage, auch wenn die vorige noch offen war.
+// Trafen die Antworten in umgekehrter Reihenfolge ein, schrieb die AELTERE
+// zuletzt ins Overlay, und im Stream stand ein veralteter Stand. Beim Audit
+// gefunden.
+let ovBusy=false;
 async function overlayTick(){
  if(!pipWin&&!ffVid)return;
+ if(ovBusy)return;
+ ovBusy=true;
+ const stop=new AbortController();
+ const frist=setTimeout(()=>stop.abort(),15000);
  try{
-  const d=await (await fetch('/data?view=live')).json();
+  const d=await (await fetch('/data?view=live',{signal:stop.signal})).json();
   if(ffVid){drawOverlayCanvas(d);return;}   // Firefox/Safari: Canvas neu zeichnen
   const doc=pipWin.document, now=Date.now()/1000;
   doc.body.style.zoom={1:'1',2:'1.15',3:'1.3'}[fontsize]||'1';
@@ -13504,6 +13632,9 @@ async function overlayTick(){
   // Das Overlay ist ein EIGENES Dokument, tr(document.body) erreicht es nicht.
   if(lang!=='de')tr(doc.body);
  }catch(e){}
+ // MUSS finally sein: oben steht ein return im try (Firefox-Zweig), ohne das
+ // hier bliebe ovBusy fuer immer stehen und das Overlay waere eingefroren.
+ finally{clearTimeout(frist); ovBusy=false;}
 }
 setInterval(overlayTick,2000);
 // Nur wenn der Dialog offen ist: sonst baut der Takt staendig HTML, das
@@ -14013,7 +14144,7 @@ function tlRow(it){
   return `<div class="tlrow"><span class="tlt">${t}</span><span>⛏ <b>Mining-Trip</b> ${fmt(it.m3)} m³ · <span class="isk">${fmtM(it.isk)}</span> · ${it.min} min${it.ore?' · '+esc(it.ore):''}${it.sys&&it.sys!=='?'?' · '+esc(it.sys):''}</span></div>`;
  if(it.kind==='combat'){
   const nm=it.mission?missionHtml(it.mission):(it.site?siteHtml(it.site):(lang==='en'?'<b>Combat</b>':'<b>Kampf</b>'));
-  return `<div class="tlrow"><span class="tlt">${t}</span><span>⚔ ${nm} · ${it.kills} Kills · <span class="isk">${fmtM(it.bounty)}</span> · ${it.min} min${it.sys&&it.sys!=='?'?' · '+esc(it.sys):''}</span></div>`;
+  return `<div class="tlrow"><span class="tlt">${t}</span><span>⚔ ${nm} · ${it.kills} Kills · <span class="isk">${fmtM(it.bounty)}</span> · ${it.min!=null?it.min:'?'} min${it.sys&&it.sys!=='?'?' · '+esc(it.sys):''}</span></div>`;
  }
  if(it.kind==='reward')
   return `<div class="tlrow"><span class="tlt">${t}</span><span>✅ <b>${lang==='en'?'Mission reward':'Missions-Belohnung'}</b> <span class="isk">${fmtM(it.amount)}</span>${it.agent?' · '+esc(it.agent):''} <span class="tlsrc">ESI</span></span></div>`;
@@ -14721,7 +14852,7 @@ function renderMissions(d){
    <thead><tr><th>Tag</th><th>Charakter</th><th class="r">Runs</th><th class="r">Bounty</th>
     <th class="r">Belohnung</th><th class="r">Zeitbonus</th><th class="r">Loot</th><th class="r">Summe</th></tr></thead>`+
    zeig.map(x=>`<tr><td>${esc(x.tag)}</td><td>${esc(x.char)}</td>
-    <td class="r">${x.runs}${x.mit_loot<x.runs?`<span title="${x.runs-x.mit_loot} Run(s) ohne eingetragenen Loot" style="color:var(--gold)"> *</span>`:''}</td>
+    <td class="r">${x.runs}${x.mit_loot<x.runs?`<span title="${x.runs-x.mit_loot}${lang==='en'?' run(s) without loot entered':' Run(s) ohne eingetragenen Loot'}" style="color:var(--gold)"> *</span>`:''}</td>
     <td class="r grn">${x.bounty?fmtM(x.bounty):'&middot;'}</td>
     <td class="r isk">${x.reward?fmtM(x.reward):'&middot;'}</td>
     <td class="r isk">${x.bonus?fmtM(x.bonus):'&middot;'}</td>
@@ -14747,7 +14878,7 @@ function renderMissions(d){
  ${(m.chars&&m.chars.length)?`<div class="card">
   <div class="sect">Nach Charakter (gesamt)</div><table>
   <tr><th>Charakter</th><th class="r">Missionen</th><th class="r">ISK</th></tr>`+
-  m.chars.map(c=>`<tr><td>${c.char}</td><td class="r">${c.missions}</td><td class="r isk">${fmtM(c.total)}</td></tr>`).join('')+'</table></div>':''}`;
+  m.chars.map(c=>`<tr><td>${esc(c.char)}</td><td class="r">${c.missions}</td><td class="r isk">${fmtM(c.total)}</td></tr>`).join('')+'</table></div>':''}`;
  // Gesicherten Zustand zurueckschreiben, bevor irgendein Handler haengt.
  Object.entries(lootOffen).forEach(([mid,z])=>{
   const box=[...document.querySelectorAll('.mlootedit')].find(e=>e.dataset.mid===mid);
@@ -15223,7 +15354,6 @@ const EN = {
 '🔎 Einzel-Item':'🔎 Single item','📦 Frachtraum':'📦 Cargo',
 '⚙ Optionen':'⚙ Options','◱ Overlay':'◱ Overlay',
 '◱ Mini-Overlay öffnen/schließen':'Open/close mini overlay',
-'Sprache umschalten / switch language':'Sprache umschalten / switch language',
 'Neue Version verfügbar, Klick installiert sie':'New version available, click to install',
 // Hero-Leiste
 '⛏ Geminert heute':'⛏ Mined today','🎯 Verdient heute':'🎯 Earned today',
@@ -15240,7 +15370,6 @@ const EN = {
 'seit Abdocken':'since undocking','Asteroiden leergebaggert':'asteroids depleted',
 'Lieferungen mit vervielfachtem Ertrag. Canary erkennt sie daran, dass die Menge ein exaktes Vielfaches deiner Normallieferung ist. Gezeigt wird nur der Teil, der über die Normalmenge hinausging.':
  'Deliveries with multiplied yield. Canary spots them because the amount is an exact multiple of your normal delivery. Only the part beyond the normal amount is shown.',
-'Asteroiden leergebaggert · Preise':'asteroids depleted · prices',
 'per ⛽ setzen':'set via ⛽',
 'noch keine Kompression, Verbrauch pausiert':'no compression yet, consumption paused',
 'Keine Kompression im Zeitraum.':'No compression in this period.',
@@ -15337,8 +15466,6 @@ const EN = {
  '✨ Connect your EVE account and Canary automatically shows portrait, current ship, wallet balance, Heavy Water and mission income. No setup needed, just log in.',
 'Login konnte nicht gestartet werden.':'Could not start the login.',
 'Installiert: EVE Canary v':'Installed: EVE Canary v','Neue Version verfügbar':'New version available',
-'Update auf v':'Update to v','installieren? Canary startet danach automatisch neu.':
- '? Canary restarts automatically afterwards.',
 'Update läuft …':'Update running …','Lade Update …':'Downloading update …',
 'Update fehlgeschlagen.':'Update failed.','⬆ Update v':'⬆ Update v',
 'In die Zwischenablage kopiert. Einfach an Askend schicken.':'Copied to the clipboard. Just send it to Askend.',
@@ -15370,7 +15497,11 @@ const EN = {
  'Enter the name from your mission journal. Canary memorises the enemies alongside it and recognises future runs of the same mission by itself.',
 'Legt Name und Gegnerliste als fertigen Text in die Zwischenablage. Canary lädt nichts von selbst hoch, du fügst den Block bewusst in eine Meldung ein.':
  'Puts the name and the enemy list into your clipboard as ready made text. Canary uploads nothing by itself, you paste the block into a report deliberately.',
-'PvP- und Missions-Ansicht':'PvP and mission view',
+'PvP- und Missions-Ansicht':'PvP and mission view','Mining-Ansicht':'Mining view','Als Bild teilen':'Share as an image',
+'OBS-Einrichtung':'OBS setup','z.B. Tritanium':'e.g. Tritanium',
+'EVE-Server (Tranquility)':'EVE server (Tranquility)',
+'Overlay fuer OBS einrichten: Aussehen waehlen, Adresse kopieren, in OBS als Browser-Quelle einfuegen. Mit Anleitung.':
+ 'Set up the overlay for OBS: pick how it looks, copy the address, add it in OBS as a browser source. Instructions included.',
 'Stoppuhr fuer eine Aktivitaet: starten, pausieren, am Ende als Trip speichern. Zaehlt mit, wieviel in der Zeit gefoerdert wurde.':
  'A stopwatch for one activity: start, pause, save as a trip at the end. It also counts how much you mined in that time.',
 'EVE-Einstellungen sichern, wiederherstellen und das UI eines Charakters auf andere uebertragen. Alpha.':
@@ -15453,9 +15584,7 @@ const EN = {
 // "Summe" statt "Gesamt" als Spaltenkopf: der Reiter oben heisst auch "Gesamt",
 // und da der deutsche Text der Schluessel ist, hat der zweite Eintrag den ersten
 // ueberschrieben. Der Reiter hiess dadurch auf Englisch "Total" statt "All time".
-'Pro Tag':'Per day','Runs':'Runs','Belohnung':'Reward','Loot':'Loot','Summe':'Total',
-'Was an einem Tag zusammenkam, je Charakter. Bounty kommt aus den Gamelogs, die Belohnung aus dem Wallet-Journal, der Loot ist von dir eingetragen. EVE schreibt beim Plündern nichts mit, deshalb steht dort nur, was du selbst an den Runs hinterlegt hast.':
- 'What a day brought in, per character. Bounties come from the game logs, rewards from the wallet journal, and the loot is what you entered yourself. EVE records nothing when you loot, so that column only holds what you put on the runs.',
+'Runs':'Runs','Belohnung':'Reward','Loot':'Loot','Summe':'Total',
 '* An diesen Tagen gibt es Runs ohne eingetragenen Loot. Die Summe ist dann niedriger als das, was wirklich rumkam.':
  '* On those days there are runs with no loot entered. The total is then lower than what actually came in.',
 'Noch nichts erfasst. Sobald ein Run abgeschlossen ist, steht er hier.':
@@ -15470,8 +15599,8 @@ const EN = {
  'What pays best per unit of cargo space? The first column is the one that decides, the other two show how much of it you have mined so far.',
 'Womit du deinen Schaden gemacht hast, aus dem Kampflog.':
  'What you dealt your damage with, taken from the combat log.',
-'Die letzten 14 Tage, gerechnet aus den Zeiten in deinen Logdateien. Laufen mehrere Clients gleichzeitig, zählt die Zeit trotzdem nur einmal. In Klammern steht, was alle Clients zusammen ergeben.':
- 'The last 14 days, worked out from the timestamps in your log files. When several clients run at the same time, that time still counts only once. In brackets you see what all clients add up to.',
+'Die letzten 14 Tage, an denen du gespielt hast, gerechnet aus den Zeiten in deinen Logdateien. Tage ohne Spiel stehen nicht dazwischen, bei einer Pause liegen die Zeilen also weiter auseinander. Laufen mehrere Clients gleichzeitig, zählt die Zeit trotzdem nur einmal. In Klammern steht, was alle Clients zusammen ergeben.':
+ 'The last 14 days you actually played, worked out from the timestamps in your log files. Days without play are not listed in between, so after a break the rows sit further apart. When several clients run at the same time, that time still counts only once. In brackets you see what all clients add up to.',
 'Wer dich als Spieler angegriffen hat, ueber den gesamten Zeitraum. NPCs stehen hier nicht.':
  'Which players have attacked you, over the whole period. NPCs are not listed here.',
 // Spaltenkoepfe und Erklaerungen der Gesamt-Ansicht
@@ -15523,7 +15652,6 @@ const EN = {
 '🤖 Drohnen ohne Erz':'🤖 Drones without ore',
 'Komprimiert (Session)':'Compressed (session)','Rolle …':'Role …','Mining':'Mining',
 'Watchlist (Local-Chat, ein Name pro Zeile)':'Watchlist (local chat, one name per line)',
-'Spieler-Angriffe (gesamt)':'Player attacks (total)',
 'Live-Session (aus den Gamelogs)':'Live session (from the game logs)',
 // PvP/Missionen-Ansicht
 '⛏ Mining':'⛏ Mining','⚔ PvP & Missionen':'⚔ PvP & missions','⚔ PvP':'⚔ PvP',
@@ -15534,7 +15662,7 @@ const EN = {
 'Kampfverlauf (Schaden/min)':'Combat over time (damage/min)','gleiche Skala':'same scale',
 '▮ raus':'▮ out','▮ rein':'▮ in',
 'Missionen einzeln (aus den Gamelogs)':'Missions individually (from the game logs)',
-'Loot bewerten':'Value loot','noch nicht eingefügt':'not pasted yet',
+'Loot bewerten':'Value loot',
 '＋ Loot eintragen':'＋ Add loot','✎ Loot ändern':'✎ Edit loot',
 'Frachtraum-Loot dieser Mission hier einfügen (im Spiel Strg+A, Strg+C)':"Paste this mission's cargo loot here (in game Ctrl+A, Ctrl+C)",
 'Noch keine abgeschlossenen Missionen erfasst. Eine Mission gilt als abgeschlossen, sobald du fürs nächste Mal wieder abdockst.':'No completed missions recorded yet. A mission counts as complete once you undock again for the next one.',
@@ -15552,16 +15680,12 @@ const EN = {
  '(The content stays local, only recognised pilot names are looked up at ESI and zKillboard.)',
 'Kommt direkt aus den Gamelogs. Reine Belt-Ratten-Trips (nur Flotten-Bounty ohne echten Kampf) werden herausgefiltert.':
  'Comes straight from the game logs. Pure belt-rat trips (fleet bounty without real combat) are filtered out.',
-'Noch keine Journal-Daten. Nach dem ersten ESI-Abgleich (spätestens in einer Stunde) erscheinen hier die letzten 30 Tage.':
- 'No journal data yet. After the first ESI sync (within an hour at the latest) the last 30 days appear here.',
 'Im Spiel den Frachtraum oder Container öffnen, alles markieren (Strg+A) und kopieren (Strg+C), dann hier einfügen. Einzelne Zeilen wie "Compressed Veldspar 50000" funktionieren genauso. Auch die Ergebnisse der Bergbauvermessung lassen sich so einfügen, dann steht hier, wie viel Volumen und ISK im Belt liegen.':
  'Open your cargo hold or a container in game, select everything (Ctrl+A) and copy (Ctrl+C), then paste it here. Single lines like "Compressed Veldspar 50000" work just as well. Survey scanner results can be pasted the same way, then you see how much volume and ISK the belt holds.',
 'Photon (angelehnt ans EVE-Interface: dunkel, kantig, Gold-Akzente)':
  'Photon (modelled on the EVE interface: dark, angular, gold accents)',
 'Das Overlay ist ein schwebendes Always-on-top-Fenster mit Status und Alarmen, bleibt über dem EVE-Client (Fenstermodus/randlos). In Chrome und Edge klickbar, in Firefox als Bild. Start nur per Klick.':
  'The overlay is a floating always-on-top window with status and alerts, staying above the EVE client (windowed or borderless). Clickable in Chrome and Edge, an image in Firefox. Starts only by click.',
-'Das Mini-Overlay benötigt Chrome oder Edge (Document Picture-in-Picture).':
- 'The mini overlay needs Chrome or Edge (Document Picture-in-Picture).',
 'Canary beim Systemstart automatisch mitstarten (still im Hintergrund, ohne Konsolenfenster)':
  'Start Canary automatically with the system (quietly in the background, no console window)',
 'Neue Versionen selbst installieren':'Install new versions automatically',
@@ -15576,8 +15700,6 @@ const EN = {
  'The last 30 days, one bar per day. That way you can see at a glance which days went well.',
 'Daten: die Datenbank von Canary auf diesem Rechner, gefüllt aus deinen Logdateien.':
  'Data: the Canary database on this machine, filled from your log files.',
-'Alles zusammengezählt, seit Canary mitschreibt: Erz, ISK, Schaden und Gegner, aufgeteilt nach Charakter.':
- 'Everything added up since Canary started recording: ore, ISK, damage and enemies, split by character.',
 'Auswertung über längere Zeit. Welche Waffen du benutzt, wer dich angegriffen hat, welches Erz am meisten einbringt und zu welchen Zeiten du spielst.':
  'A look at the longer run. Which weapons you use, who attacked you, which ore pays best and what times you play.',
 'Daten: die Datenbank von Canary auf diesem Rechner, dazu Marktpreise von Fuzzwork.':
@@ -15627,8 +15749,6 @@ const EN = {
  'Heavy Water in the cargo hold (units). After refilling just press Enter, 0 removes the display',
 'Piloten-Namen einfügen … (Auto-Scan gibt es nur unter Windows)':
  'Paste pilot names … (auto-scan is Windows only)',
-'Always-on-top Mini-Overlay (Chrome/Edge)':'Always-on-top mini overlay (Chrome/Edge)',
-'Open/Close Mini-Overlay':'Open/close mini overlay',
 '🤖 Drohnen liefern gerade kein Erz (gestoppt, voll oder auf dem Rückweg).':
  '🤖 Drones are not delivering ore right now (stopped, full or on their way back).'
 };
@@ -15710,7 +15830,11 @@ const EN_PATTERNS = [
  [/~([0-9]+)% sicher/, '~$1% sure'],
  [/([0-9]+) Spieler komprimieren:/, '$1 pilots compressing:'],
  [/([0-9]+) Spieler komprimiert:/, '$1 pilot compressing:'],
- [/([0-9]+) Chars/, '$1 chars'], [/([0-9]+) Char\b/, '$1 char'],
+ // \\b MUSS doppelt stehen: PAGE ist kein Roh-String, ein einfaches \\b wird
+ // schon von Python zu einem echten Backspace-Zeichen. Im ausgelieferten JS
+ // stand dadurch /([0-9]+) Char\\x08/ und "1 Char" blieb im Englischen deutsch,
+ // waehrend "2 Chars" uebersetzt wurde. Beim Audit gefunden.
+ [/([0-9]+) Chars/, '$1 chars'], [/([0-9]+) Char\\b/, '$1 char'],
  [/([0-9]+) Schiffe? · geschätzt aus Log/, '$1 ships · estimated from log'],
  [/([0-9]+) Schiffe? · ✅ ESI-verifiziert/, '$1 ships · ✅ ESI-verified'],
  [/([0-9]+) von ([0-9]+) ESI-verifiziert · Rest geschätzt/, '$1 of $2 ESI-verified · rest estimated'],
