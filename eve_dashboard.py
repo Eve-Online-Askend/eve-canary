@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.8.1"
+VERSION = "2.8.2"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -8077,17 +8077,55 @@ def query_analyse():
         play_rows = DB.execute(
             "SELECT name, char_name, first_ts, last_ts FROM files "
             "WHERE first_ts IS NOT NULL AND skipped=0").fetchall()
+    # Zwei verschiedene Zahlen, die vorher eine einzige waren:
+    #
+    # "minutes"        = Zeit AM RECHNER. Laeuft in derselben Minute mehr als
+    #                    ein Client, zaehlt sie trotzdem nur einmal.
+    # "client_minutes" = alle Clients zusammengezaehlt, also die alte Zahl.
+    #
+    # Vorher wurde nur summiert, deshalb kamen bei drei parallelen Clients
+    # 36 Stunden an einem Tag heraus. Gemeldet von Eron Solette.
+    # Ausserdem landete eine Sitzung ueber Mitternacht komplett auf dem
+    # Vortag, weil allein der Startzeitpunkt den Tag bestimmte. Beides wird
+    # hier behoben, indem jedes Intervall am Tageswechsel geschnitten wird.
+    TAG = 86400
+    stuecke = {}      # Tag -> Liste von (start, ende) innerhalb dieses Tages
     for name, cname, first_ts, last_ts in play_rows:
-        if last_ts and last_ts > b_ts:
-            day = datetime.fromtimestamp(max(first_ts, b_ts),
-                                         timezone.utc).strftime("%Y-%m-%d")
-            d = play.setdefault(day, {"day": day, "minutes": 0, "chars": {}})
-            mins = (last_ts - max(first_ts, b_ts)) / 60
-            d["minutes"] += mins
-            d["chars"][cname] = d["chars"].get(cname, 0) + mins
+        if not last_ts or last_ts <= b_ts:
+            continue
+        a, e = max(first_ts, b_ts), last_ts
+        if e <= a:
+            continue
+        t = (a // TAG) * TAG
+        while t < e:                       # Intervall auf die Tage verteilen
+            s1, e1 = max(a, t), min(e, t + TAG)
+            if e1 > s1:
+                tag = datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%d")
+                d = play.setdefault(tag, {"day": tag, "minutes": 0,
+                                          "client_minutes": 0, "chars": {}})
+                mins = (e1 - s1) / 60
+                d["client_minutes"] += mins
+                d["chars"][cname] = d["chars"].get(cname, 0) + mins
+                stuecke.setdefault(tag, []).append((s1, e1))
+            t += TAG
+    # Ueberlappungen zusammenlegen: das ist die echte Zeit am Rechner.
+    for tag, liste in stuecke.items():
+        liste.sort()
+        summe, akt_a, akt_e = 0.0, None, None
+        for s, e in liste:
+            if akt_e is None or s > akt_e:
+                if akt_e is not None:
+                    summe += akt_e - akt_a
+                akt_a, akt_e = s, e
+            else:
+                akt_e = max(akt_e, e)
+        if akt_e is not None:
+            summe += akt_e - akt_a
+        play[tag]["minutes"] = summe / 60
     play_list = sorted(play.values(), key=lambda x: x["day"])
     for p in play_list:
         p["minutes"] = round(p["minutes"])
+        p["client_minutes"] = round(p["client_minutes"])
         p["chars"] = {k: round(v) for k, v in p["chars"].items()}
     # Ziel & Prognose
     goal = CONFIG.get("goal")
@@ -12790,10 +12828,13 @@ function renderAnalyse(a){
    <table>${a.weapons.length?'<thead><tr><th>Waffe</th><th class="r">Schaden</th></tr></thead>'+a.weapons.map(w=>
    `<tr><td>${esc(w[0])}</td><td class="r out">${fmt(w[1])} dmg</td></tr>`).join(''):'<tr><td class="r">Noch keine Kampfdaten</td></tr>'}</table></div>
   <div class="card"><div class="char">Spielzeit</div>
-   <div class="sub">Die letzten 14 Tage, gerechnet aus den Zeiten in deinen Logdateien.</div>
+   <div class="sub">Die letzten 14 Tage, gerechnet aus den Zeiten in deinen Logdateien. Laufen mehrere Clients gleichzeitig, zählt die Zeit trotzdem nur einmal. In Klammern steht, was alle Clients zusammen ergeben.</div>
    <table><thead><tr><th>Tag</th><th class="r">Zeit</th></tr></thead>${a.playtime.slice(-14).reverse().map(p=>
    `<tr><td>${p.day}<div class="bar" style="width:${100*p.minutes/maxP}%"></div></td>
-    <td class="r">${Math.floor(p.minutes/60)}h ${p.minutes%60}m</td></tr>`).join('')}</table></div>
+    <td class="r">${Math.floor(p.minutes/60)}h ${p.minutes%60}m${
+      (p.client_minutes&&p.client_minutes>p.minutes+1)
+        ? ' <span class="sub">('+Math.floor(p.client_minutes/60)+'h '+(p.client_minutes%60)+'m '+(lang==='en'?'across clients':'über alle Clients')+')</span>'
+        : ''}</td></tr>`).join('')}</table></div>
   <div class="card"><div class="char">Sicherheit</div>
    <div class="sub">Wer dich als Spieler angegriffen hat, ueber den gesamten Zeitraum. NPCs stehen hier nicht.</div>
    <table>${a.pvp.length?'<thead><tr><th>Angreifer</th><th class="r">Dein Charakter</th>'
@@ -14813,8 +14854,8 @@ const EN = {
  'What pays best per unit of cargo space? The first column is the one that decides, the other two show how much of it you have mined so far.',
 'Womit du deinen Schaden gemacht hast, aus dem Kampflog.':
  'What you dealt your damage with, taken from the combat log.',
-'Die letzten 14 Tage, gerechnet aus den Zeiten in deinen Logdateien.':
- 'The last 14 days, worked out from the timestamps in your log files.',
+'Die letzten 14 Tage, gerechnet aus den Zeiten in deinen Logdateien. Laufen mehrere Clients gleichzeitig, zählt die Zeit trotzdem nur einmal. In Klammern steht, was alle Clients zusammen ergeben.':
+ 'The last 14 days, worked out from the timestamps in your log files. When several clients run at the same time, that time still counts only once. In brackets you see what all clients add up to.',
 'Wer dich als Spieler angegriffen hat, ueber den gesamten Zeitraum. NPCs stehen hier nicht.':
  'Which players have attacked you, over the whole period. NPCs are not listed here.',
 // Spaltenkoepfe und Erklaerungen der Gesamt-Ansicht

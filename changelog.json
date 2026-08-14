@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.8.2",
+  "d": "2026-08-14",
+  "de": [
+   "Die Spielzeit in der Analyse zaehlte jeden Client einzeln zusammen. Wer mit drei Clients spielt, hatte dort 36 Stunden an einem Tag stehen. Jetzt zaehlt gleichzeitige Zeit nur einmal, und was alle Clients zusammen ergeben, steht in Klammern daneben. Gemeldet von Eron Solette.",
+   "Nebenbei behoben: eine Sitzung ueber Mitternacht landete komplett auf dem Vortag, weil allein der Startzeitpunkt den Tag bestimmte. Jetzt wird am Tageswechsel geschnitten. An echten Daten gegengerechnet: kein Tag kommt mehr ueber 24 Stunden, und die Summe der Charaktere trifft die Client-Zahl genau."
+  ],
+  "en": [
+   "The playtime in the analysis view added up every client separately. Anyone playing with three clients saw 36 hours in a single day. Time that runs in parallel now counts only once, and what all clients add up to is shown in brackets next to it. Reported by Eron Solette.",
+   "Fixed along the way: a session running past midnight landed entirely on the previous day, because only the start time decided the day. It is now split at the day boundary. Cross checked against real data: no day exceeds 24 hours any more, and the sum of the characters matches the client figure exactly."
+  ]
+ },
+ {
   "v": "2.8.1",
   "d": "2026-08-14",
   "de": [
