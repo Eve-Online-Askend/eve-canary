@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.15.0",
+  "d": "2026-08-14",
+  "de": [
+   "Die englische Oberflaeche ist vollstaendig. Beim Audit kam heraus, dass ein Sprachvergleich nur sieht, was gerade auf dem Schirm steht: Dialoge, Fehlermeldungen und Leerzustaende tauchen dort nie auf und waren deshalb ueber Monate deutsch geblieben. Der ganze Kasten „EVE-Einstellungen“ mit Sichern, Uebertragen und Zurueckspielen war es komplett, samt aller Rueckfragen vor dem Ueberschreiben.",
+   "Dazu uebersetzt: der Ladebildschirm mit seiner Fortschrittszeile, die Fernunterstuetzung in der Live-Karte, die Knoepfe und Erklaerungen der Missions-Liste, der Hinweis auf zurueckgesetzte Sitzungen in der Stoppuhr-Liste, die Meldungen von Update-Pruefung, Diagnose und Overlay sowie die Steam- und Proton-Anleitung bei der Ordner-Einrichtung.",
+   "Neu im Ordner pruefungen: ein Skript, das den GESAMTEN Seitencode nach deutschen Texten ohne englische Fassung durchsucht, statt sich auf den Augenschein im Browser zu verlassen. Es hat 28 Stellen gefunden, die im Browser-Vergleich unsichtbar waren. Gegengeprueft wurde trotzdem auch im Browser, alle 13 Ansichten und beide Dialoge, in beiden Sprachen."
+  ],
+  "en": [
+   "The English interface is complete. The audit showed that comparing languages on screen only catches what is currently displayed: dialogs, error messages and empty states never appear there, and had stayed German for months. The entire “EVE settings” panel, with backing up, copying and restoring, was one of them, including every confirmation prompt before something gets overwritten.",
+   "Also translated: the loading screen with its progress line, remote assistance in the live map, the buttons and explanations of the mission list, the note about reset sessions in the stopwatch list, the messages from update check, diagnosis and overlay, plus the Steam and Proton instructions during folder setup.",
+   "New in the pruefungen folder: a script that searches the WHOLE page source for German texts without an English version, instead of relying on what happens to be visible in the browser. It found 28 places the on-screen comparison could not see. The browser check was still run as well, across all 13 views and both dialogs, in both languages."
+  ]
+ },
+ {
   "v": "2.14.0",
   "d": "2026-08-14",
   "de": [

@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.14.0"
+VERSION = "2.15.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -11792,7 +11792,7 @@ $('#diagBtn').onclick=async()=>{
   st.textContent=copied?'In die Zwischenablage kopiert. Einfach an Askend schicken.'
                        :'Kopieren ging nicht, Text ist markiert: Strg+C drücken.';
   st.style.color='var(--green)';
- }catch(e){st.textContent='Diagnose konnte nicht erstellt werden: '+e;st.style.color='var(--red)';}
+ }catch(e){st.textContent=(lang==='en'?'Could not build the diagnosis: ':'Diagnose konnte nicht erstellt werden: ')+e;st.style.color='var(--red)';}
 };
 $('#saveGoal').onclick=async()=>{await post({action:'goal',isk:Number($('#goalIsk').value)||null,deadline:$('#goalDate').value});syncOpts();};
 $('#clearGoal').onclick=async()=>{await post({action:'goal',isk:null});$('#goalIsk').value='';syncOpts();};
@@ -11810,8 +11810,9 @@ $('#checkUpd').onclick=async()=>{
  $('#updstatus').textContent='Prüfe …';$('#doUpd').hidden=true;
  const r=await post({action:'check_update'});
  if(!r.ok){$('#updstatus').textContent=r.error;return;}
- if(r.available){$('#updstatus').textContent='Neue Version verfügbar: '+r.latest+' (installiert: '+r.current+')';$('#doUpd').hidden=false;}
- else $('#updstatus').textContent='Du hast die aktuellste Version ('+r.current+').';
+ const enU=(lang==='en');
+ if(r.available){$('#updstatus').textContent=(enU?'New version available: ':'Neue Version verfügbar: ')+r.latest+(enU?' (installed: ':' (installiert: ')+r.current+')';$('#doUpd').hidden=false;}
+ else $('#updstatus').textContent=(enU?'You have the latest version (':'Du hast die aktuellste Version (')+r.current+').';
 };
 $('#doUpd').onclick=async()=>{
  $('#updstatus').textContent='Lade Update …';
@@ -12045,11 +12046,15 @@ function bootScreen(){
   regenAn();
   const pct=Math.round(100*p.done/p.total);
   $('#bootfill').style.width=pct+'%';
-  $('#bootnum').textContent=fmt(p.done)+' / '+fmt(p.total)+' Logdateien · '+pct+'%';
+  // Zahlen mitten im Satz: der Text muss hier in beiden Sprachen stehen, ein
+  // Woerterbuch-Eintrag kann darauf nie passen.
+  $('#bootnum').textContent=fmt(p.done)+' / '+fmt(p.total)
+    +(lang==='en'?' log files · ':' Logdateien · ')+pct+'%';
  }else if(!b.hidden){
   regenAus();
   $('#bootfill').style.width='100%';
-  $('#bootnum').textContent=fmt(p.total||0)+' Logdateien analysiert. Willkommen!';
+  $('#bootnum').textContent=fmt(p.total||0)
+    +(lang==='en'?' log files analysed. Welcome!':' Logdateien analysiert. Willkommen!');
   setTimeout(()=>b.classList.add('fade'),450);
   setTimeout(()=>{b.hidden=true;},1400);
   bootDone=true;
@@ -12975,12 +12980,18 @@ function logiBlock(c){
  if(!L)return '';
  const raus=logiZeile(L.out), rein=logiZeile(L.in);
  if(!raus&&!rein&&!L.unklar)return '';
- let h='<div class="sect">🔗 Fernunterstützung</div>';
- if(raus)h+='<div class="l">gegeben: '+raus+'</div>';
- if(rein)h+='<div class="l">bekommen: '+rein+'</div>';
- if(L.unklar)h+='<div class="l">ohne erkennbare Richtung: '+fmt(L.unklar)+'</div>';
+ // Alles hier steht mit Zahlen im Satz, deshalb beide Sprachen direkt im Code.
+ // Die Missions-Historie zeigt dieselbe Information laengst zweisprachig, die
+ // Live-Karte war als einzige deutsch geblieben.
+ const en=lang==='en';
+ let h='<div class="sect">🔗 '+(en?'Remote assistance':'Fernunterstützung')+'</div>';
+ if(raus)h+='<div class="l">'+(en?'given: ':'gegeben: ')+raus+'</div>';
+ if(rein)h+='<div class="l">'+(en?'received: ':'bekommen: ')+rein+'</div>';
+ if(L.unklar)h+='<div class="l">'+(en?'direction unclear: ':'ohne erkennbare Richtung: ')+fmt(L.unklar)+'</div>';
  if(L.partner&&L.partner.length){
-  h+='<table><tr><th>Pilot</th><th>Schiff</th><th class="r">gegeben</th><th class="r">bekommen</th></tr>'
+  h+='<table><tr><th>'+(en?'Pilot':'Pilot')+'</th><th>'+(en?'Ship':'Schiff')+'</th>'
+   +'<th class="r">'+(en?'given':'gegeben')+'</th>'
+   +'<th class="r">'+(en?'received':'bekommen')+'</th></tr>'
    +L.partner.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.ship||'')}</td>`
    +`<td class="r">${p.out?fmt(p.out):''}</td>`
    +`<td class="r">${p.in?fmt(p.in):''}</td></tr>`).join('')+'</table>';
@@ -13181,7 +13192,7 @@ async function toggleOverlay(){
  document.body.appendChild(vid);ffVid=vid;
  vid.addEventListener('leavepictureinpicture',ffCleanup);
  try{await vid.play();await vid.requestPictureInPicture();}
- catch(e){ffCleanup();alert('Overlay konnte nicht gestartet werden ('+(e&&e.message||e)+').');return;}
+ catch(e){ffCleanup();alert((lang==='en'?'The overlay could not be started (':'Overlay konnte nicht gestartet werden (')+(e&&e.message||e)+').');return;}
  overlayTick();
 }
 function ffCleanup(){
@@ -13371,6 +13382,7 @@ let setDaten=null, setOrdner=null;
 function setZeit(t){return new Date(t*1000).toLocaleString().slice(0,16);}
 async function setLaden(){
  const box=$('#setInhalt'); if(!box)return;
+ const en=(lang==='en');
  box.innerHTML='<div class="sub">wird gelesen …</div>';
  let d; try{ d=await post({action:'settings',was:'liste'}); }catch(e){ d=null; }
  if(!d||!d.ok||!d.ordner||!d.ordner.length){
@@ -13394,12 +13406,12 @@ async function setLaden(){
     ? `<div class="btnrow" style="align-items:center;gap:8px">
         <select id="setOrdnerWahl">${d.ordner.map(x=>
           `<option value="${esc(x.pfad)}"${x.pfad===o.pfad?' selected':''}>${esc(x.eltern)} / ${esc(x.name)}</option>`).join('')}</select>
-        <span class="sub">${d.ordner.length} Profile gefunden</span></div>`
+        <span class="sub">${d.ordner.length}${en?' profiles found':' Profile gefunden'}</span></div>`
     : '')
   +`<div class="sub" style="word-break:break-all">${esc(o.pfad)}</div>
     <table><thead><tr><th>Datei</th><th>Charakter</th><th class="r">Größe</th><th class="r">Stand</th></tr></thead>`
   +o.dateien.map(f=>`<tr><td>${esc(f.datei)}</td>
-     <td>${f.name?esc(f.name):'<span class="sub">'+(f.art==='user'?'Konto':'unbekannt')+'</span>'}</td>
+     <td>${f.name?esc(f.name):'<span class="sub">'+(f.art==='user'?(en?'account':'Konto'):(en?'unknown':'unbekannt'))+'</span>'}</td>
      <td class="r">${f.kb} KB</td><td class="r">${setZeit(f.stand)}</td></tr>`).join('')
   +`</table>
     <div class="btnrow" style="margin-top:10px"><button class="btn" id="setSichern">💾 Jetzt sichern</button>
@@ -13410,7 +13422,7 @@ async function setLaden(){
   +(chars.length<2
     ? '<div class="sub">Dafür braucht es mindestens zwei Charaktere im Ordner.</div>'
     : `<div class="btnrow" style="align-items:center;gap:8px;margin-top:6px">
-        <span class="sub">von</span>
+        <span class="sub">${en?'from':'von'}</span>
         <select id="setQuelle">${chars.map(f=>`<option value="${esc(f.datei)}">${esc(f.name||f.id)}</option>`).join('')}</select>
        </div>
        <div style="margin-top:6px">${chars.map(f=>`<label style="display:inline-flex;align-items:center;gap:6px;margin-right:14px">
@@ -13425,9 +13437,9 @@ async function setLaden(){
         return `<div style="border-top:1px solid var(--line);padding:8px 0">
          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <b>${setZeit(b.stand)}</b>
-          <span class="sub">${b.kb} KB · ${(b.inhalt||[]).length} Dateien</span>
+          <span class="sub">${b.kb} KB · ${(b.inhalt||[]).length}${en?' files':' Dateien'}</span>
           <span style="margin-left:auto"></span>
-          ${chars.length?`<span class="setAuf" data-i="${i}" style="cursor:pointer;color:var(--cyan);font-size:12px">▸ einzeln</span>`:''}
+          ${chars.length?`<span class="setAuf" data-i="${i}" style="cursor:pointer;color:var(--cyan);font-size:12px">▸ ${en?'one by one':'einzeln'}</span>`:''}
           <button class="btn setZurueck" data-f="${esc(b.datei)}">alles zurückspielen</button>
          </div>
          <div class="setEinzeln" data-i="${i}" hidden style="margin-top:6px">
@@ -13444,9 +13456,11 @@ async function setLaden(){
  if(wahl)wahl.onchange=()=>{setOrdner=wahl.value;setLaden();};
  const stat=(t)=>{const e=$('#setStat'); if(e)e.textContent=t;};
  $('#setSichern').onclick=async()=>{
-  stat('sichert …');
+  stat(en?'backing up …':'sichert …');
   const r=await post({action:'settings',was:'sichern',ordner:o.pfad});
-  stat(r.ok?('gesichert: '+r.gesichert.dateien+' Dateien'):('ging nicht: '+(r.msg||'')));
+  stat(r.ok?(en?('backed up: '+r.gesichert.dateien+' files')
+                :('gesichert: '+r.gesichert.dateien+' Dateien'))
+           :((en?'did not work: ':'ging nicht: ')+(r.msg||'')));
   if(r.ok)setLaden();
  };
  const kop=$('#setKopieren');
@@ -13454,43 +13468,60 @@ async function setLaden(){
   const quelle=$('#setQuelle').value;
   const ziele=[...document.querySelectorAll('.setZiel:checked')].map(e=>e.value)
     .filter(z=>z!==quelle);
-  if(!ziele.length){stat('kein Ziel angekreuzt');return;}
+  if(!ziele.length){stat(en?'no target ticked':'kein Ziel angekreuzt');return;}
   const namen=chars.filter(c=>ziele.includes(c.datei)).map(c=>c.name||c.id);
-  if(!confirm('Das Layout wird auf '+namen.join(', ')+' übertragen. '
-    +'Die bisherigen Einstellungen dieser Charaktere werden ersetzt. '
-    +'Vorher wird automatisch gesichert. Fortfahren?'))return;
-  stat('überträgt …');
+  if(!confirm(en?('The layout will be copied to '+namen.join(', ')+'. '
+      +'The current settings of those characters will be replaced. '
+      +'A backup is made first. Carry on?')
+    :('Das Layout wird auf '+namen.join(', ')+' übertragen. '
+      +'Die bisherigen Einstellungen dieser Charaktere werden ersetzt. '
+      +'Vorher wird automatisch gesichert. Fortfahren?')))return;
+  stat(en?'copying …':'überträgt …');
   const r=await post({action:'settings',was:'kopieren',ordner:o.pfad,quelle,ziele});
-  stat(r.ok?('übertragen auf '+r.kopiert+' Charakter(e)'):('ging nicht: '+(r.msg||'')));
+  stat(r.ok?(en?('copied to '+r.kopiert+' character(s)')
+                :('übertragen auf '+r.kopiert+' Charakter(e)'))
+           :((en?'did not work: ':'ging nicht: ')+(r.msg||'')));
   setLaden();
  };
  document.querySelectorAll('.setZurueck').forEach(b=>b.onclick=async()=>{
-  if(!confirm('Die GANZE Sicherung zurückspielen? Damit werden auch die '
-    +'anderen Charaktere auf diesen Stand gesetzt. Der aktuelle Stand wird '
-    +'vorher gesichert, geht also nicht verloren.'))return;
-  stat('spielt zurück …');
+  if(!confirm(en?('Restore the WHOLE backup? That puts the other characters '
+      +'back to this state as well. The current state is backed up first, so '
+      +'nothing is lost.')
+    :('Die GANZE Sicherung zurückspielen? Damit werden auch die '
+      +'anderen Charaktere auf diesen Stand gesetzt. Der aktuelle Stand wird '
+      +'vorher gesichert, geht also nicht verloren.')))return;
+  stat(en?'restoring …':'spielt zurück …');
   const r=await post({action:'settings',was:'zurueck',ordner:o.pfad,
                       sicherung:b.dataset.f});
-  stat(r.ok?('zurückgespielt: '+(r.dateien||[]).length+' Dateien'):('ging nicht: '+(r.msg||'')));
+  stat(r.ok?(en?('restored: '+(r.dateien||[]).length+' files')
+                :('zurückgespielt: '+(r.dateien||[]).length+' Dateien'))
+           :((en?'did not work: ':'ging nicht: ')+(r.msg||'')));
   setLaden();
  });
  document.querySelectorAll('.setAuf').forEach(a=>a.onclick=()=>{
   const k=document.querySelector('.setEinzeln[data-i="'+a.dataset.i+'"]');
   k.hidden=!k.hidden;
-  a.textContent=(k.hidden?'▸':'▾')+' einzeln';
+  a.textContent=(k.hidden?'▸':'▾')+(en?' one by one':' einzeln');
  });
  document.querySelectorAll('.setEinzelGo').forEach(b=>b.onclick=async()=>{
   const haken=[...document.querySelectorAll('.setEinzelHaken[data-i="'+b.dataset.i+'"]:checked')];
-  if(!haken.length){stat('kein Charakter angekreuzt');return;}
+  if(!haken.length){stat(en?'no character ticked':'kein Charakter angekreuzt');return;}
   const namen=haken.map(h=>h.parentElement.textContent.trim());
-  if(!confirm('Nur '+namen.join(', ')+' auf diesen Stand zurücksetzen? '
-    +'Die anderen Charaktere bleiben, wie sie sind.'))return;
-  stat('spielt zurück …');
+  if(!confirm(en?('Put only '+namen.join(', ')+' back to this state? '
+      +'The other characters stay as they are.')
+    :('Nur '+namen.join(', ')+' auf diesen Stand zurücksetzen? '
+      +'Die anderen Charaktere bleiben, wie sie sind.')))return;
+  stat(en?'restoring …':'spielt zurück …');
   const r=await post({action:'settings',was:'zurueck',ordner:o.pfad,
     sicherung:b.dataset.f, dateien:haken.map(h=>h.value)});
-  stat(r.ok?('zurückgespielt: '+(r.dateien||[]).join(', ')):('ging nicht: '+(r.msg||'')));
+  stat(r.ok?(en?('restored: '+(r.dateien||[]).join(', '))
+                :('zurückgespielt: '+(r.dateien||[]).join(', ')))
+           :((en?'did not work: ':'ging nicht: ')+(r.msg||'')));
   setLaden();
  });
+ // Der Kasten wird hier frisch gebaut, der naechste Poll uebersetzt ihn erst
+ // in bis zu zwei Sekunden. Deshalb gleich selbst nachziehen.
+ if(lang!=='de')tr(box);
 }
 $('#setBtn').onclick=()=>{setLaden();$('#setDlg').showModal();};
 $('#setZu').onclick=()=>$('#setDlg').close();
@@ -14442,7 +14473,9 @@ function renderMissions(d){
      <div class="btnrow" style="margin-top:4px"><button class="btn mnamego" data-mid="${esc(x.mid)}">Merken</button>
       <button class="btn geist mnameteil" data-mid="${esc(x.mid)}" title="Legt Name und Gegnerliste als fertigen Text in die Zwischenablage. Canary lädt nichts von selbst hoch, du fügst den Block bewusst in eine Meldung ein.">Für alle beitragen</button>
       <span class="mnamestat sub" data-mid="${esc(x.mid)}"></span></div>
-     <div class="sub" style="margin-top:4px">Wenn du fertig bist, drück <b>Merken</b>. Canary behält dann die ${x.enemies.length} Gegnertypen dieses Laufs und erkennt spätere Läufe mit ähnlicher Zusammenstellung von allein.</div>
+     <div class="sub" style="margin-top:4px">${lang==='en'
+       ? `When you are done, press <b>Save</b>. Canary then keeps the ${x.enemies.length} enemy types of this run and recognises later runs with a similar line-up by itself.`
+       : `Wenn du fertig bist, drück <b>Merken</b>. Canary behält dann die ${x.enemies.length} Gegnertypen dieses Laufs und erkennt spätere Läufe mit ähnlicher Zusammenstellung von allein.`}</div>
     </div>
     <div class="mlootedit" data-mid="${esc(x.mid)}" hidden>
      <textarea class="mlootin" data-mid="${esc(x.mid)}" rows="2" style="width:100%;margin-top:4px" placeholder="Frachtraum-Loot dieser Mission hier einfügen (im Spiel Strg+A, Strg+C)">${esc(x.loot_text)}</textarea>
@@ -14930,9 +14963,13 @@ function renderSetup(){
   <b>📁 Log-Ordner einrichten</b>
   <div class="sub" style="margin:8px 0">Canary hat die EVE-Gamelogs nicht automatisch gefunden.
    Bitte den Ordner <b>Gamelogs</b> angeben, dann geht es weiter.</div>
-  <div class="sub" style="margin:8px 0">Läuft EVE über <b>Steam/Proton</b>, liegt er im Wine-Präfix, etwa:<br>
+  <div class="sub" style="margin:8px 0">${lang==='en'
+    ? `If EVE runs through <b>Steam/Proton</b>, it sits in the Wine prefix, roughly:<br>
    <code>~/.steam/steam/steamapps/compatdata/8500/pfx/drive_c/users/steamuser/Documents/EVE/logs/Gamelogs</code><br>
-   Wichtig: bis einschließlich <b>Gamelogs</b>, nicht nur bis <code>logs</code>.</div>
+   Important: down to and including <b>Gamelogs</b>, not just to <code>logs</code>.`
+    : `Läuft EVE über <b>Steam/Proton</b>, liegt er im Wine-Präfix, etwa:<br>
+   <code>~/.steam/steam/steamapps/compatdata/8500/pfx/drive_c/users/steamuser/Documents/EVE/logs/Gamelogs</code><br>
+   Wichtig: bis einschließlich <b>Gamelogs</b>, nicht nur bis <code>logs</code>.`}</div>
   <div class="btnrow" style="margin-top:10px">
    <input id="setupDir" style="flex:1;min-width:280px" placeholder="Pfad zum Gamelogs-Ordner">
    <button class="btn" id="setupGo">Prüfen und übernehmen</button>
@@ -14944,7 +14981,7 @@ function renderSetup(){
  const go=async()=>{
   const st=$('#setupStat');st.textContent='Prüfe …';st.style.color='';
   let r;try{r=await post({action:'log_dir',path:$('#setupDir').value});}catch(e){r=null;}
-  if(!r){st.textContent='Server nicht erreichbar.';st.style.color='var(--red)';return;}
+  if(!r){st.textContent=(lang==='en'?'Server not reachable.':'Server nicht erreichbar.');st.style.color='var(--red)';return;}
   st.textContent=r.msg||'';st.style.color=r.ok?'var(--green)':'var(--red)';
   if(r.ok){if(r.state)state=r.state;box.dataset.built='';box.hidden=true;box.innerHTML='';tick();}
  };
@@ -15110,6 +15147,65 @@ const EN = {
 // Missionen
 'Missionen erledigt':'Missions completed','Belohnungen':'Rewards','Zeitboni':'Time bonuses',
 'Stufe wählen':'Pick tier','Wetter wählen':'Pick weather',
+// Beim Audit gefunden: Knoepfe und Tooltips der Missions-Liste, der Kopfzeile
+// und des Intel-Bereichs. Tooltips stehen nicht im sichtbaren Text, deshalb
+// waren sie beim ersten Sprachvergleich durchgerutscht.
+'↩ Läuft doch noch':'↩ Still running','🔖 Mission benennen':'🔖 Name this mission',
+'🔖 Name ändern':'🔖 Change name',
+'Merken':'Save','Für alle beitragen':'Contribute for everyone',
+'EVE protokolliert keine NPC-Tode. Ohne Bounty ist die Zahl der bekämpften Gegnertypen der einzige gesicherte Wert.':
+ 'EVE does not log NPC kills. Without bounties, the number of enemy types fought is the only solid figure.',
+'Andocken ist kein sicherer Abschluss. Wer nur kurz zum Reparieren reingeflogen ist, holt die Mission hiermit zurück und der weitere Kampf zählt dazu.':
+ 'Docking is not a reliable end. If you only flew in briefly to repair, this brings the mission back and the fighting that follows counts towards it.',
+'Trag den Namen aus deinem Missionsjournal ein. Canary merkt sich dazu die Gegner und erkennt künftige Läufe derselben Mission von allein.':
+ 'Enter the name from your mission journal. Canary memorises the enemies alongside it and recognises future runs of the same mission by itself.',
+'Legt Name und Gegnerliste als fertigen Text in die Zwischenablage. Canary lädt nichts von selbst hoch, du fügst den Block bewusst in eine Meldung ein.':
+ 'Puts the name and the enemy list into your clipboard as ready made text. Canary uploads nothing by itself, you paste the block into a report deliberately.',
+'PvP- und Missions-Ansicht':'PvP and mission view',
+'Stoppuhr fuer eine Aktivitaet: starten, pausieren, am Ende als Trip speichern. Zaehlt mit, wieviel in der Zeit gefoerdert wurde.':
+ 'A stopwatch for one activity: start, pause, save as a trip at the end. It also counts how much you mined in that time.',
+'EVE-Einstellungen sichern, wiederherstellen und das UI eines Charakters auf andere uebertragen. Alpha.':
+ 'Back up and restore EVE settings, and copy one character\\'s UI onto others. Alpha.',
+'Always-on-top Mini-Overlay (Chrome, Edge, Firefox)':'Always-on-top mini overlay (Chrome, Edge, Firefox)',
+'🚦 Local-Scan':'🚦 Local scan','🩸 Blutspur':'🩸 Blood trail',
+'Missionsname aus deinem Journal, z. B. Enemies Abound (1 of 5)':
+ 'Mission name from your journal, e.g. Enemies Abound (1 of 5)',
+'Cockpit (neu, in Erprobung: Seitenleiste statt Reiterzeile, größere Schrift, mehr Luft, höhere Kontraste)':
+ 'Cockpit (new, still being tried out: sidebar instead of a tab row, larger type, more room to breathe, stronger contrast)',
+// EVE-Einstellungen (Sichern, Übertragen, Zurückspielen). Der Kasten wird per
+// innerHTML gebaut, tr() zieht am Ende von setLaden() gleich selbst nach.
+'wird gelesen …':'reading …','wird geprüft …':'checking …',
+'Kein EVE-Einstellungsordner gefunden. Canary sucht ihn unter AppData (Windows), Application Support (Mac) und im Wine-Präfix (Linux).':
+ 'No EVE settings folder found. Canary looks under AppData (Windows), Application Support (Mac) and in the Wine prefix (Linux).',
+'⚠ EVE läuft gerade. Sichern geht, Zurückspielen und Übertragen sind gesperrt: der Client würde beim Beenden alles überschreiben.':
+ '⚠ EVE is running. Backing up works, restoring and copying are blocked: the client would overwrite everything when it closes.',
+'Ordner':'Folder','Datei':'File','Größe':'Size','Stand':'Changed',
+'💾 Jetzt sichern':'💾 Back up now','Sicherungen':'Backups',
+'UI von einem Charakter übertragen':'Copy the UI from one character',
+'Das Fensterlayout der Quelle wird auf die angekreuzten Charaktere kopiert. Vorher wird automatisch gesichert.':
+ 'The window layout of the source is copied onto the ticked characters. A backup is made first.',
+'Dafür braucht es mindestens zwei Charaktere im Ordner.':
+ 'That needs at least two characters in the folder.',
+'→ Übertragen':'→ Copy',
+'Ganz zurückspielen, oder aufklappen und einzelne Charaktere auswählen. Der aktuelle Stand wird vorher gesichert.':
+ 'Restore the lot, or expand and pick single characters. The current state is backed up first.',
+'alles zurückspielen':'restore everything','nur diese zurückspielen':'restore only these',
+'Noch keine Sicherung vorhanden.':'No backup yet.',
+// Stoppuhr-Liste
+'* Während dieser Trips wurde eine Sitzung zurückgesetzt. Erz und Wert sind dann der Stand am Ende statt der Differenz.':
+ '* During these trips a session was reset. Ore and value are then the reading at the end rather than the difference.',
+'Während des Trips wurde eine Sitzung zurückgesetzt (Andocken). Erz und Wert sind deshalb der Stand am Ende, nicht die Differenz.':
+ 'During this trip a session was reset (docking). Ore and value are therefore the reading at the end, not the difference.',
+// Meldungen und Leerzustaende
+'Dein Browser unterstützt kein schwebendes Overlay (kein Picture-in-Picture).':
+ 'Your browser has no floating overlay (no picture-in-picture).',
+'Keine Mission erkannt. Entweder Ratting ohne feste Mission oder eine Signatur, die Canary noch nicht kennt.':
+ 'No mission recognised. Either ratting without a set mission, or a signature Canary does not know yet.',
+'Keine Preisdaten von den Handelsplätzen erhalten. Bitte später erneut versuchen.':
+ 'No price data received from the trade hubs. Please try again later.',
+'keine Preisdaten':'no price data',
+'⛏ Strip Miner liefert gerade kein Erz, während die Drohnen weiterlaufen.':
+ '⛏ The strip miner is not bringing in ore right now while the drones keep going.',
 // Rechner
 'Berechnen':'Calculate','Was lohnt sich am meisten pro Laderaum?':'What pays off most per cargo hold?',
 'Sofortverkauf · mit Sell-Order':'Instant sale · with sell order',
