@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.8.2"
+VERSION = "2.9.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -11315,6 +11315,13 @@ const VIEWS=['live','month','total','analyse','intel','missionen','timeline','pr
 // den Namen des Laufs und liest sie dort auch wieder heraus.
 const ABYSS_STUFEN=['Calm','Agitated','Fierce','Raging','Chaotic','Cataclysmic'];
 const ABYSS_WETTER=['Dark','Electrical','Exotic','Firestorm','Gamma'];
+// Was im Namen steht, ausser Stufe und Wetter. Das ist die freie Notiz, die
+// beim Bearbeiten im eigenen Feld landet, damit sie beim Speichern nicht
+// verlorengeht. Ohne Regex, damit kein Backslash-Aerger im Seiten-String entsteht.
+function abyssNotiz(label){
+ const bekannt=new Set(ABYSS_STUFEN.concat(ABYSS_WETTER).map(s=>s.toLowerCase()));
+ return String(label||'').split(' ').filter(w=>w&&!bekannt.has(w.toLowerCase())).join(' ');
+}
 let view=location.pathname.replace(/^\\//,'')||'live', state=null, lastAlertId=Number(localStorage.getItem('lastAlertId')||0);
 if(!VIEWS.includes(view))view='live';
 window.addEventListener('popstate',()=>{
@@ -12584,6 +12591,15 @@ function ewarHtml(ewar){
  if(!ewar||!ewar.length)return '';
  return `<div class="cardwarn drone">⚠ ${lang==='en'?'EWAR against you':'EWAR gegen dich'}: `
    +ewar.map(e=>(EWAR_LABEL[e[0]]||e[0])+' ×'+e[1]).join(' · ')+`</div>`;
+}
+// Dieselbe Information fuer einen ABGESCHLOSSENEN Lauf: dort ist sie Rueckblick
+// und keine Warnung mehr, also gehoert sie in die Zeile mit den Schadenszahlen
+// statt in einen roten Kasten ueber die volle Breite. In der laufenden Mission
+// bleibt der Kasten, dort ist es eine echte Warnung. Vorschlag von Nirahse.
+function ewarInline(ewar){
+ if(!ewar||!ewar.length)return '';
+ return ' · '+(lang==='en'?'EWAR':'EWAR')+' '
+   +ewar.map(e=>(EWAR_LABEL[e[0]]||e[0])+' ×'+e[1]).join(', ');
 }
 function cargoLine(cg){
  if(!cg)return '<div class="l">über EVE-Login</div>';
@@ -14121,36 +14137,35 @@ function renderMissions(d){
      <span style="margin-left:auto" class="isk"><b>${fmtM(x.total)} ISK</b></span>
     </div>
     ${(!x.kills&&!x.bounty&&!x.dmg_out&&(x.logi_out||x.logi_in))
-      ? `<div class="sub">${lang==='en'?'Support run, no damage of your own':'Unterstützungseinsatz, kein eigener Schaden'}${x.dmg_in?' · '+fmt(x.dmg_in)+' '+(lang==='en'?'damage taken':'Schaden rein'):''}</div>`
-      : `<div class="sub">${x.kills} Kills · Bounty ${fmtM(x.bounty)} · Schaden ${fmt(x.dmg_out)} raus / ${fmt(x.dmg_in)} rein${x.hit!=null?' · Trefferquote '+x.hit+'%':''}${x.enemies.length?' · Top: '+esc(x.enemies[0][0]):''}</div>`}
+      ? `<div class="sub">${lang==='en'?'Support run, no damage of your own':'Unterstützungseinsatz, kein eigener Schaden'}${x.dmg_in?' · '+fmt(x.dmg_in)+' '+(lang==='en'?'damage taken':'Schaden rein'):''}${ewarInline(x.ewar)}</div>`
+      : `<div class="sub">${x.kills} Kills · Bounty ${fmtM(x.bounty)} · Schaden ${fmt(x.dmg_out)} raus / ${fmt(x.dmg_in)} rein${x.hit!=null?' · Trefferquote '+x.hit+'%':''}${x.enemies.length?' · Top: '+esc(x.enemies[0][0]):''}${ewarInline(x.ewar)}</div>`}
     ${(x.reward!=null||x.bonus!=null)?`<div class="sub vreward">✅ ${lang==='en'?'ESI verified':'ESI-verifiziert'}: ${lang==='en'?'reward':'Belohnung'} <b class="isk">${fmtM(x.reward||0)}</b>${x.bonus?` + ${lang==='en'?'time bonus':'Zeitbonus'} <b class="isk">${fmtM(x.bonus)}</b>`:''}${x.min>0?` · ${fmtM(Math.round(((x.reward||0)+(x.bonus||0))/(x.min/60)))}/h`:''}</div>`:''}
     ${factionHtml(x.faction)}
-    ${ewarHtml(x.ewar)}
     ${(x.logi_out||x.logi_in)?`<div class="sub">🔗 ${lang==='en'?'Remote assistance':'Fernunterstützung'}: ${fmt(x.logi_out||0)} ${lang==='en'?'given':'gegeben'} · ${fmt(x.logi_in||0)} ${lang==='en'?'received':'bekommen'}</div>`:''}
     ${(x.npc&&x.npc.length)?`<div class="npc">${x.npc.map(l=>`<div>💬 ${esc(l)}</div>`).join('')}</div>`:''}
     <div class="sub" style="margin-top:6px">${x.loot_isk!=null?'Loot: <b class="isk">'+fmtM(x.loot_isk)+'</b>':''}
      <span class="mloottoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px">${x.loot_isk!=null?'✎ Loot ändern':'＋ Loot eintragen'}</span>
      <span class="mreopen" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--dim);font-size:11px;margin-left:10px" title="Andocken ist kein sicherer Abschluss. Wer nur kurz zum Reparieren reingeflogen ist, holt die Mission hiermit zurück und der weitere Kampf zählt dazu.">↩ Läuft doch noch</span>
      <span class="mnametoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px;margin-left:10px" title="Trag den Namen aus deinem Missionsjournal ein. Canary merkt sich dazu die Gegner und erkennt künftige Läufe derselben Mission von allein.">${x.label?'🔖 Name ändern':'🔖 Mission benennen'}</span></div>
-    ${x.abyss?`<div class="sub" style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-     <span>🌀 Abyss:</span>
-     <select class="abysstier" data-mid="${esc(x.mid)}">
-      <option value="">Stufe wählen</option>
-      ${ABYSS_STUFEN.map((n,i)=>`<option value="${n}"${x.tier_name===i+1?' selected':''}>T${i+1} ${n}</option>`).join('')}
-     </select>
-     <select class="abysswetter" data-mid="${esc(x.mid)}">
-      <option value="">Wetter wählen</option>
-      ${ABYSS_WETTER.map(n=>`<option value="${n}"${(x.wetter||'')===n.toLowerCase()?' selected':''}>${n}</option>`).join('')}
-     </select>
-     <span class="abystat sub" data-mid="${esc(x.mid)}"></span>
-     ${(x.tier_gegner&&x.tier_name!==x.tier_gegner)?`<span class="sub">·
-       ${lang==='en'?'the enemies say':'die Gegner sagen'} <b>T${x.tier_gegner}</b>
+    <div class="mnameedit" data-mid="${esc(x.mid)}" hidden>
+     ${x.abyss?`<div class="btnrow" style="margin-top:4px;align-items:center">
+      <select class="abysstier" data-mid="${esc(x.mid)}">
+       <option value="">Stufe wählen</option>
+       ${ABYSS_STUFEN.map((n,i)=>`<option value="${n}"${x.tier_name===i+1?' selected':''}>T${i+1} ${n}</option>`).join('')}
+      </select>
+      <select class="abysswetter" data-mid="${esc(x.mid)}">
+       <option value="">Wetter wählen</option>
+       ${ABYSS_WETTER.map(n=>`<option value="${n}"${(x.wetter||'')===n.toLowerCase()?' selected':''}>${n}</option>`).join('')}
+      </select>
+      <input class="mnamein" data-mid="${esc(x.mid)}" style="flex:1;min-width:130px"
+       placeholder="${lang==='en'?'note, optional':'Notiz, optional'}" value="${esc(abyssNotiz(x.label))}">
+     </div>
+     ${(x.tier_gegner&&x.tier_name!==x.tier_gegner)?`<div class="sub" style="margin-top:4px">
+       ${lang==='en'?'The enemies say':'Die Gegner sagen'} <b>T${x.tier_gegner}</b>
        <button class="btn geist abystake" data-mid="${esc(x.mid)}" data-tier="${x.tier_gegner}"
         title="${lang==='en'?'A rogue drone battleship is named per tier, so this one is certain. It is only there in about one run out of five.':'Ein Rogue-Drone-Schlachtschiff heißt je Stufe anders, das ist also sicher. Dabei ist es nur in etwa jedem fünften Durchgang.'}"
-        >${lang==='en'?'apply':'übernehmen'}</button></span>`:''}
-    </div>`:''}
-    <div class="mnameedit" data-mid="${esc(x.mid)}" hidden>
-     <input class="mnamein" data-mid="${esc(x.mid)}" style="width:100%;margin-top:4px" placeholder="Missionsname aus deinem Journal, z. B. Enemies Abound (1 of 5)" value="${esc(x.label||'')}">
+        >${lang==='en'?'apply':'übernehmen'}</button></div>`:''}`
+     :`<input class="mnamein" data-mid="${esc(x.mid)}" style="width:100%;margin-top:4px" placeholder="Missionsname aus deinem Journal, z. B. Enemies Abound (1 of 5)" value="${esc(x.label||'')}">`}
      <div class="btnrow" style="margin-top:4px"><button class="btn mnamego" data-mid="${esc(x.mid)}">Merken</button>
       <button class="btn geist mnameteil" data-mid="${esc(x.mid)}" title="Legt Name und Gegnerliste als fertigen Text in die Zwischenablage. Canary lädt nichts von selbst hoch, du fügst den Block bewusst in eine Meldung ein.">Für alle beitragen</button>
       <span class="mnamestat sub" data-mid="${esc(x.mid)}"></span></div>
@@ -14321,29 +14336,13 @@ function renderMissions(d){
   }else setzStatus(r?(en2?'Error':'Fehler')
                     :(en2?'Server not reachable':'Server nicht erreichbar'));
  });
- // Zwei Auswahlfelder statt Freitext, gewuenscht von Nirahse. Gespeichert wird
- // trotzdem der gewohnte Name ("Chaotic Firestorm"), damit Export, Anzeige und
- // Stufenerkennung unveraendert weiterarbeiten und nichts auseinanderlaeuft.
- const abyssSpeichern=async(mid,tier,wetter)=>{
-  const finde=sel=>[...document.querySelectorAll(sel)].find(e=>e.dataset.mid===mid);
-  const name=[tier,wetter].filter(Boolean).join(' ');
-  const st=finde('.abystat'); if(st)st.textContent=lang==='en'?'Saving …':'Speichere …';
-  let r;try{r=await post({action:'mission_label',mid,name});}catch(e){r=null;}
-  const s2=finde('.abystat');
-  if(s2)s2.textContent=(r&&r.ok)?'✓':(lang==='en'?'Error':'Fehler');
-  setTimeout(tick,600);
- };
- document.querySelectorAll('.abysstier,.abysswetter').forEach(sel=>sel.onchange=()=>{
-  const mid=sel.dataset.mid;
-  const finde=k=>[...document.querySelectorAll(k)].find(e=>e.dataset.mid===mid);
-  const t=finde('.abysstier'), w=finde('.abysswetter');
-  abyssSpeichern(mid,t?t.value:'',w?w.value:'');
- });
+ // Die vom Gegner verratene Stufe nur in das Auswahlfeld setzen, NICHT gleich
+ // speichern. Gespeichert wird ausschliesslich ueber "Merken", genau wie beim
+ // Missionsnamen. Vorschlag von Nirahse, damit beides gleich funktioniert.
  document.querySelectorAll('.abystake').forEach(b=>b.onclick=()=>{
   const mid=b.dataset.mid;
-  const finde=k=>[...document.querySelectorAll(k)].find(e=>e.dataset.mid===mid);
-  const w=finde('.abysswetter');
-  abyssSpeichern(mid,ABYSS_STUFEN[Number(b.dataset.tier)-1],w?w.value:'');
+  const t=[...document.querySelectorAll('.abysstier')].find(e=>e.dataset.mid===mid);
+  if(t)t.value=ABYSS_STUFEN[Number(b.dataset.tier)-1]||'';
  });
  document.querySelectorAll('.mnametoggle').forEach(t=>t.onclick=()=>{
   const box=[...document.querySelectorAll('.mnameedit')].find(e=>e.dataset.mid===t.dataset.mid);
@@ -14389,7 +14388,14 @@ function renderMissions(d){
   const finde=sel=>[...document.querySelectorAll(sel)].find(e=>e.dataset.mid===mid);
   const setzStatus=txt=>{const s=finde('.mnamestat'); if(s)s.textContent=txt;};
   const inp=finde('.mnamein');
-  const name=inp?inp.value.trim():'';
+  // Beim Abyss setzt sich der Name aus Stufe, Wetter und der freien Notiz
+  // zusammen, sonst ist das Feld der ganze Name. Gespeichert wird in beiden
+  // Faellen dasselbe Feld in der Datenbank, deshalb liest der Export die
+  // Stufe hinterher unveraendert wieder heraus.
+  const tSel=finde('.abysstier'), wSel=finde('.abysswetter');
+  const name=(tSel||wSel)
+    ? [tSel?tSel.value:'',wSel?wSel.value:'',inp?inp.value.trim():''].filter(Boolean).join(' ')
+    : (inp?inp.value.trim():'');
   const en2=lang==='en';
   setzStatus(en2?'Saving …':'Speichere …');
   let r;try{r=await post({action:'mission_label',mid,name});}catch(e){r=null;}

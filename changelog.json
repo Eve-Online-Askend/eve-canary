@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.9.0",
+  "d": "2026-08-14",
+  "de": [
+   "Bei einem abgeschlossenen Einsatz steht das gegnerische EWAR jetzt hinten in der Zeile mit den Schadenszahlen, grau wie der Rest, statt in einem roten Kasten ueber die volle Breite. Im laufenden Einsatz bleibt der Kasten, dort ist es eine Warnung und kein Rueckblick. Vorschlag von Nirahse.",
+   "Die beiden Auswahlfelder fuer Stufe und Wetter stehen nicht mehr dauerhaft unter jedem Abyss-Lauf, sondern erscheinen erst ueber „Name aendern“, genau wie das Namensfeld bei den Missionen. Dazu gibt es ein freies Feld fuer eine Notiz, alles in einer Zeile: Stufe, Wetter, Notiz. Gespeichert wird mit „Merken“, danach klappt der Kasten wieder zu. Ebenfalls von Nirahse.",
+   "Die Notiz stoert die Auswertung nicht: aus „Chaotic Firestorm Vedmak-Fit“ liest Canary weiterhin T5 und Firestorm, und beim naechsten Oeffnen steht die Notiz wieder in ihrem eigenen Feld. Verraet ein Gegner die Stufe, setzt der Knopf „uebernehmen“ sie nur ins Auswahlfeld; gespeichert wird erst mit „Merken“."
+  ],
+  "en": [
+   "For a finished run the enemy EWAR now sits at the end of the line with the damage figures, grey like the rest, instead of in a full width red box. During a running engagement the box stays, because there it is a warning and not a review. Suggested by Nirahse.",
+   "The two dropdowns for tier and weather no longer sit permanently under every abyssal run; they appear via “rename”, just like the name field on missions. There is also a free field for a note, all in one row: tier, weather, note. Saving happens with “save”, after which the box closes again. Also from Nirahse.",
+   "The note does not disturb the analysis: from “Chaotic Firestorm Vedmak-Fit” Canary still reads T5 and Firestorm, and on reopening the note is back in its own field. If an enemy reveals the tier, the “apply” button only fills the dropdown; nothing is stored until you press save."
+  ]
+ },
+ {
   "v": "2.8.2",
   "d": "2026-08-14",
   "de": [
