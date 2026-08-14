@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.5.1"
+VERSION = "2.5.2"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -11247,7 +11247,15 @@ function ladeAn(was){
   const b=$('#loadbar');if(b)b.hidden=false;
   if(t){
    t.className='';
-   t.textContent=(lang==='en'?'Loading ':'Lade ')+(was||'')+' …';
+   // Laeuft noch eine Abfrage, kann der Wechsel erst danach passieren. Das
+   // gehoert hingeschrieben: sonst steht der Name des vorigen Bereichs da und
+   // es sieht aus, als haenge der falsche Tab. Gemeldet von Nirahse, der im
+   // Beute-Bereich stand und "Lade Wallet Buddy" las.
+   t.textContent=tickBusy
+     ?(lang==='en'
+        ?'Please wait, a fetch is still running. '+(was||'')+' follows right after.'
+        :'Bitte warten, es läuft noch ein Abruf. '+(was||'')+' kommt gleich danach.')
+     :(lang==='en'?'Loading ':'Lade ')+(was||'')+' …';
    t.hidden=false;
   }
   // Zweite Stufe: dauert es ungewoehnlich lange, sagen wir das auch. Sonst
@@ -11266,6 +11274,17 @@ function ladeAus(){
  const b=$('#loadbar');if(b)b.hidden=true;
  const t=$('#loadtxt');if(t){t.hidden=true;t.className='';}
 }
+// Sicherheitsgurt: eine Ladeanzeige ohne laufende Abfrage ist IMMER falsch,
+// egal wie sie dort hingekommen ist. Nirahse hatte sie in v2.4.0 stehen, und
+// ich konnte den Weg dorthin nicht nachstellen, auch nicht mit kuenstlich auf
+// drei Sekunden verlangsamtem Wallet-Abruf. Statt weiter zu raten raeumt diese
+// Sekundenpruefung auf. Sie kann nichts kaputtmachen: solange wirklich etwas
+// laeuft, steht tickBusy auf true und die Anzeige bleibt.
+setInterval(()=>{
+ if(tickBusy)return;
+ const t=$('#loadtxt'), b=$('#loadbar');
+ if((t&&!t.hidden)||(b&&!b.hidden))ladeAus();
+},2000);
 document.querySelectorAll('nav span').forEach(el=>el.onclick=()=>{
  if(view===el.dataset.v)return;            // derselbe Tab, nichts zu tun
  document.querySelectorAll('nav span').forEach(x=>x.classList.remove('on'));

@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.5.2",
+  "d": "2026-08-14",
+  "de": [
+   "Die Ladeanzeige konnte stehen bleiben, nachdem der Wallet Buddy geladen hatte, und zeigte dann im naechsten Bereich weiter „Lade Wallet Buddy“. Gemeldet von Nirahse. Eine Ladeanzeige ohne laufenden Abruf raeumt Canary jetzt von selbst weg, spaetestens nach zwei Sekunden, egal wie sie dort hingekommen ist.",
+   "Und wenn du den Bereich wechselst, waehrend noch ein Abruf laeuft, steht das jetzt auch da: „Bitte warten, es laeuft noch ein Abruf. X kommt gleich danach.“ Vorher stand dort der Name des vorigen Bereichs, was aussah, als haenge der falsche Tab. Der Wallet-Abruf geht ueber den EVE-Login und dauert bei vielen Buchungen laenger, genau dann faellt es auf."
+  ],
+  "en": [
+   "The loading indicator could stay on screen after the Wallet Buddy had loaded, still reading “Loading Wallet Buddy” in the next view. Reported by Nirahse. A loading indicator without a running fetch is now cleared automatically, after two seconds at the latest, no matter how it got there.",
+   "And when you switch views while a fetch is still running, it now says so: “Please wait, a fetch is still running. X follows right after.” Before that it showed the name of the previous view, which looked like the wrong tab was stuck. The wallet fetch goes through the EVE login and takes longer with many journal entries, which is exactly when this shows up."
+  ]
+ },
+ {
   "v": "2.5.1",
   "d": "2026-08-14",
   "de": [
