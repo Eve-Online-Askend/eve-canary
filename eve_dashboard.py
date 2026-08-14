@@ -8352,6 +8352,34 @@ def inventar_summe(text):
             "hat_m3": hat_m3, "hat_isk": hat_isk}
 
 
+def einzelpreise(text):
+    """{Name: ISK je Stueck} aus einer Frachtraum-Kopie, sofern die Wertspalte
+    eingeblendet ist. Leeres Dict, wenn nicht — dann bleibt die Wertangabe im
+    Ergebnis einfach weg, statt eine Null zu behaupten."""
+    out = {}
+    for raw in (text or "").splitlines():
+        line = raw.rstrip()
+        if not line.strip():
+            continue
+        cols = ([c.strip() for c in line.split("\t")] if "\t" in line
+                else [c.strip() for c in SPALTEN_RE.split(line.strip())])
+        name = cols[0]
+        if not name:
+            continue
+        wert = None
+        for c in cols[1:]:
+            mi = ISK_SPALTE_RE.match(c)
+            if mi:
+                wert = zahl_f(mi.group(1))
+                break
+        if wert is None:
+            continue
+        menge = parse_inventar_text(line).get(name) or 1
+        if menge:
+            out[name] = wert / menge
+    return out
+
+
 def cargo_diff(vorher, nachher):
     """Zwei Frachtraum-Kopien vergleichen: was ist dazugekommen, was ist weg.
 
@@ -8444,32 +8472,6 @@ def cargo_wert(vorher, nachher):
             "unbekannt": unbekannt[:12]}
 
 
-def einzelpreise(text):
-    """{Name: ISK je Stueck} aus einer Frachtraum-Kopie, sofern die Wertspalte
-    eingeblendet ist. Leeres Dict, wenn nicht — dann bleibt die Wertangabe im
-    Ergebnis einfach weg, statt eine Null zu behaupten."""
-    out = {}
-    for raw in (text or "").splitlines():
-        line = raw.rstrip()
-        if not line.strip():
-            continue
-        cols = ([c.strip() for c in line.split("\t")] if "\t" in line
-                else [c.strip() for c in SPALTEN_RE.split(line.strip())])
-        name = cols[0]
-        if not name:
-            continue
-        wert = None
-        for c in cols[1:]:
-            mi = ISK_SPALTE_RE.match(c)
-            if mi:
-                wert = zahl_f(mi.group(1))
-                break
-        if wert is None:
-            continue
-        menge = parse_inventar_text(line).get(name) or 1
-        if menge:
-            out[name] = wert / menge
-    return out
 
 
 def market_item(name):
