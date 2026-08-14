@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.5.0"
+VERSION = "2.5.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -54,6 +54,7 @@ ERROR_HELP = {
     "CN-CHAT-01": "Chatlogs nicht lesbar (Systemanzeige faellt aus)",
     "CN-CHAT-02": "NPC-Funk aus aelteren Chatlogs nicht lesbar (Missionserkennung eingeschraenkt)",
     "CN-DB-01": "Datenbankfehler",
+    "CN-DB-02": "Einsatz mit unmoeglicher Dauer verworfen",
     "CN-NET-01": "Marktpreise nicht abrufbar",
     "CN-NET-02": "EVE-Serverstatus nicht abrufbar",
     "CN-NET-03": "System-Gefahrenlage nicht abrufbar",
@@ -1499,6 +1500,20 @@ try:  # v1.71: Fernunterstuetzung je Einsatz. Ohne diese Spalten ist die
     DB.commit()
 except sqlite3.OperationalError:
     pass
+# v2.5.1: Einsaetze wegraeumen, die vor ihrem Beginn enden. Bei Nirahse standen
+# zwei davon in der Liste (-82 und -107 Minuten), beides Dubletten schon
+# gespeicherter Abyss-Laeufe. Seit save_mission das abfaengt, entstehen keine
+# neuen mehr; die alten muessen einmalig weg. NUR ohne eingetragenen Loot: wo
+# jemand Arbeit reingesteckt hat, wird nichts geloescht, dort zeigt die Liste
+# die Dauer nur nicht mehr negativ an.
+try:
+    _weg = DB.execute("DELETE FROM missions WHERE end_ts < start_ts "
+                      "AND (loot_text IS NULL OR TRIM(loot_text)='')").rowcount
+    DB.commit()
+    if _weg:
+        print(f"{_weg} Einsatz/Einsaetze mit unmoeglicher Dauer entfernt")
+except sqlite3.OperationalError:
+    pass
 # v1.54: Zeitachse/Verlauf. Schlanke Ereignis-Tabelle fuer Episoden, die sonst
 # nirgends zeitgestempelt liegen: Mining-Trips und Bedrohungen. Kampf kommt aus
 # missions, ISK aus journal (beide schon zeitgestempelt) und werden bei der
@@ -1690,6 +1705,18 @@ def save_mission(m):
     """Abgeschlossene Mission speichern (mid=char:start). Bei erneutem Einlesen
     werden die Kampf- und Ort-Felder aktualisiert, der vom Nutzer eingefügte
     LOOT bleibt aber erhalten (nicht in der ON-CONFLICT-Aktualisierung)."""
+    # Ein Einsatz, der vor seinem Beginn endet, ist immer falsch. Aufgefallen an
+    # echten Daten von Nirahse: dort standen zwei Eintraege mit -82 und -107
+    # Minuten in der Liste, beide Dubletten schon gespeicherter Abyss-Laeufe,
+    # beide mit demselben Endzeitpunkt. Hier ist die Stelle, an der alle Wege
+    # zusammenlaufen, deshalb wird es hier abgefangen, statt jeden Aufrufer
+    # einzeln zu flicken. Der Fehlercode macht es in der Diagnose sichtbar,
+    # damit die Ursache nicht still unter den Tisch faellt.
+    if (m.get("end_ts") or 0) < (m.get("start_ts") or 0):
+        log_error("CN-DB-02", "save_mission",
+                  "Einsatz endet vor seinem Beginn, nicht gespeichert "
+                  f"(start {int(m.get('start_ts') or 0)}, end {int(m.get('end_ts') or 0)})")
+        return
     mid = f"{m['char_id']}:{int(m['start_ts'])}"
     DB.execute("""INSERT INTO missions
         (mid,char_id,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
@@ -8143,7 +8170,12 @@ def query_mission_history(limit=40):
         vbonus = round(ver["bonus"]) if ver else None
         out.append({
             "mid": mid, "char": char, "start": int(st or 0), "end": int(et or 0),
-            "min": round(((et or 0) - (st or 0)) / 60), "system": sysn or "?",
+            # Negative Dauer NICHT als Zahl durchreichen: lieber "?" anzeigen als
+            # "-107 min". Betrifft nur Alteintraege mit Loot, die bewusst nicht
+            # geloescht werden.
+            "min": (round(((et or 0) - (st or 0)) / 60)
+                    if (et or 0) >= (st or 0) else None),
+            "system": sysn or "?",
             "dmg_out": do or 0, "dmg_in": di or 0, "kills": kills or 0,
             "bounty": round(bounty or 0), "hit": round(100 * hits / shots) if shots else None,
             "mission": mission, "site": site, "npc": dlines,
@@ -13806,7 +13838,7 @@ function renderMissions(d){
    <div style="border-top:1px solid var(--line);padding:10px 0">
     <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:baseline">
      <b>${new Date(x.start*1000).toLocaleString().slice(0,16)}</b>
-     <span class="sys">${x.system&&x.system!=='?'?'· '+esc(x.system)+' ':''}· ${x.min} min</span>
+     <span class="sys">${x.system&&x.system!=='?'?'· '+esc(x.system)+' ':''}· ${x.min!=null?x.min:'?'} min</span>
      ${x.mission?`<span class="mtag">${missionHtml(x.mission)}</span>`:x.site?`<span class="mtag">${siteHtml(x.site)}</span>`:''}
      <span style="margin-left:auto" class="isk"><b>${fmtM(x.total)} ISK</b></span>
     </div>

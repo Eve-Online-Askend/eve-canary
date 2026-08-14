@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.5.1",
+  "d": "2026-08-14",
+  "de": [
+   "In der Missionsliste konnten Eintraege mit unmoeglicher Dauer stehen, etwa „-107 min“. Es waren Dubletten von Abyss-Durchgaengen, die schon einzeln gespeichert waren, mit einem Ende vor ihrem Anfang. Solche Eintraege werden jetzt gar nicht mehr angelegt, und die vorhandenen raeumt Canary beim naechsten Start weg. Wo du Loot eingetragen hast, wird NICHTS geloescht: dort steht die Dauer dann nur als Fragezeichen statt als Minuszahl. Gefunden an echten Daten von Nirahse.",
+   "Woher die falschen Eintraege kamen, ist noch nicht geklaert. Deshalb landet jeder weitere Fall als CN-DB-02 in der Diagnose, statt still verworfen zu werden."
+  ],
+  "en": [
+   "The mission list could show entries with an impossible duration such as “-107 min”. They were duplicates of abyssal runs already stored on their own, ending before they began. Such entries are no longer created at all, and Canary clears existing ones on the next start. Where you entered loot, NOTHING is deleted: the duration simply shows a question mark instead of a negative number. Found in real data from Nirahse.",
+   "Where those entries came from is not yet understood. Any further case is therefore logged as CN-DB-02 in the diagnostics instead of being dropped silently."
+  ]
+ },
+ {
   "v": "2.5.0",
   "d": "2026-08-14",
   "de": [
