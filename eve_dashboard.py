@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.7.0"
+VERSION = "2.7.1"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -10965,7 +10965,6 @@ dialog{background:var(--card);color:var(--txt);border:1px solid var(--line);bord
 padding:20px 22px;max-width:620px;width:94%;margin:auto;
 max-height:88vh;overflow-y:auto}
 dialog::backdrop{background:rgba(0,0,0,.55)}
-#newsGas{max-width:560px}
 #obsDlg{max-width:660px}
 #setDlg{max-width:720px}
 /* Die Einrichtungsseite bringt ihre eigenen Farben mit und ist durchsichtig,
@@ -10973,12 +10972,6 @@ dialog::backdrop{background:rgba(0,0,0,.55)}
    auf weissem Grund unlesbar, also bekommt der Rahmen einen dunklen Boden. */
 #obsFrame{display:block;width:100%;height:min(70vh,660px);border-radius:10px;
  border:1px solid var(--line);background:#0b0e14}
-#newsGas p{margin:0 0 10px}
-/* Danksagung an den Melder: bewusst groesser und mit Gold-Akzent, das ist
-   die Botschaft, die haengen bleiben soll. */
-#newsGas .thanks{font-size:14px;line-height:1.55;color:var(--txt);margin:16px 0 0;
- padding:11px 13px;border-left:3px solid var(--gold);background:var(--inset);border-radius:6px}
-#newsGas .thanks b{color:var(--gold);font-size:15px}
 dialog h2{font-size:14px;margin-bottom:12px;color:var(--white)}
 dialog label{display:block;font-size:13px;margin:8px 0;cursor:pointer}
 dialog .hint{font-size:11px;color:var(--dim);margin:2px 0 10px 0}
@@ -11174,20 +11167,6 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  </div>
 
  <div style="text-align:right"><button class="btn" id="close">Schließen</button></div>
-</dialog>
-
-<!-- Einmaliger Hinweis nach dem Update auf Gas-Mining. Wird ueber einen eigenen
-     localStorage-Schluessel gemerkt und danach nie wieder gezeigt. -->
-<dialog id="newsGas">
- <h2>🫧 Neu: Gas-Mining wird jetzt erkannt</h2>
- <p>Canary erfasst ab sofort auch Gas: Mykoserocin, Cytoserocin und Fullerite, roh und komprimiert.
- Menge, m³ und ISK-Wert stehen damit genauso in deiner Statistik wie beim Erz.</p>
- <p>Deine bisherigen Logs werden dafür einmalig neu eingelesen, die Gas-Ausbeute der letzten Tage
- taucht also rückwirkend auf. Nebenbei behoben: Rückstände wurden beim Gas fälschlich als Ertrag
- mitgezählt, das ist jetzt sauber getrennt.</p>
- <p class="thanks">Danke an <b>And-I</b> für die Meldung, dass Gas-Mining nicht erkannt wurde. Wenn dir
- etwas auffällt, sag Bescheid, genau so entstehen diese Verbesserungen.</p>
- <div style="text-align:right"><button class="btn" id="newsGasOk">Alles klar</button></div>
 </dialog>
 
 <!-- Belt-Auswertung. Bewusst ein eigener Dialog im festen HTML und NICHT im
@@ -14639,17 +14618,6 @@ const EN = {
 'Übernehmen':'Apply','Log-Ordner':'Log folder',
 // Optionen
 'Schließen':'Close','Backup erstellen':'Create backup','🩺 Diagnose kopieren':'🩺 Copy diagnostics',
-'🫧 Neu: Gas-Mining wird jetzt erkannt':'🫧 New: gas mining is now recognised',
-'Canary erfasst ab sofort auch Gas: Mykoserocin, Cytoserocin und Fullerite, roh und komprimiert. Menge, m³ und ISK-Wert stehen damit genauso in deiner Statistik wie beim Erz.':
- 'Canary now tracks gas as well: Mykoserocin, Cytoserocin and Fullerite, raw and compressed. Amount, m³ and ISK value show up in your statistics just like ore.',
-'Deine bisherigen Logs werden dafür einmalig neu eingelesen, die Gas-Ausbeute der letzten Tage taucht also rückwirkend auf. Nebenbei behoben: Rückstände wurden beim Gas fälschlich als Ertrag mitgezählt, das ist jetzt sauber getrennt.':
- 'Your existing logs are read in once more for this, so the gas you mined over the last days shows up retroactively. Fixed along the way: residue was wrongly counted as yield for gas, that is cleanly separated now.',
-'Alles klar':'Got it',
-// Der <b>-Tag um den Spielernamen zerlegt den Satz in drei Textknoten, deshalb
-// zwei Schluessel statt einem. xlate() trimmt und haengt den Leerraum wieder an.
-'Danke an':'Thanks to',
-'für die Meldung, dass Gas-Mining nicht erkannt wurde. Wenn dir etwas auffällt, sag Bescheid, genau so entstehen diese Verbesserungen.':
- 'for reporting that gas mining was not being recognised. If you spot anything, let me know, that is exactly how these improvements come about.',
 'Nach Update suchen':'Check for updates','Update installieren':'Install update',
 'Alle vorhandenen Logs auswerten':'Evaluate all existing logs',
 'Nur ab Installation zählen':'Count from installation onwards',
@@ -15147,21 +15115,6 @@ document.querySelectorAll('.langsel').forEach(b=>b.onclick=()=>{setLang(b.datase
 setLang(lang);
 tick();setInterval(tick,2000);
 
-// Einmaliger Gas-Hinweis nach dem Update. Der Schluessel haengt am THEMA, nicht
-// an der Version: einmal weggeklickt, kommt er nie wieder, auch nach spaeteren
-// Updates nicht. Steht bewusst GANZ AM ENDE des Skripts, denn hier sind lang,
-// tr() und setLang() fertig initialisiert — weiter oben wuerde der Zugriff auf
-// das spaeter mit let deklarierte lang eine ReferenceError werfen und damit den
-// ganzen Rest des Skripts (und das Dashboard) stilllegen.
-(function(){
- const dlg=$('#newsGas'); if(!dlg||!dlg.showModal) return;
- try{ if(localStorage.getItem('news_gas')==='1') return; }catch(e){ return; }
- const zu=()=>{ try{localStorage.setItem('news_gas','1');}catch(e){} };
- $('#newsGasOk').onclick=()=>dlg.close();
- dlg.addEventListener('close',zu);
- if(lang!=='de')tr(dlg);
- dlg.showModal();
-})();
 </script></body></html>"""
 
 

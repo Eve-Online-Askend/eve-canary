@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.7.1",
+  "d": "2026-08-14",
+  "de": [
+   "Der einmalige Hinweis zum Gas-Mining beim Start ist raus. Er hat seinen Zweck erfuellt, das Gas wird laengst erfasst. Wer ihn nie weggeklickt hat, bekommt ihn jetzt auch nicht mehr zu sehen."
+  ],
+  "en": [
+   "The one-off gas mining notice on startup is gone. It did its job, gas has been tracked for a while now. Anyone who never clicked it away will not see it any more either."
+  ]
+ },
+ {
   "v": "2.7.0",
   "d": "2026-08-14",
   "de": [
