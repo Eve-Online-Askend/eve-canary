@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.22.0"
+VERSION = "2.23.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1873,6 +1873,103 @@ def zu_merken(char_id, ts):
 #      "need to deposit their current loads", die es sechs Versionen lang nur
 #      in einer Fassung gab, die im Log gar nicht vorkommt.
 PARSE_VER = "12"
+
+
+def _paare_summieren(*listen):
+    """Mehrere [Name, Wert]-Listen zu einer zusammenrechnen, groesster zuerst.
+    So sind Waffen, Gegner und EWAR in der Datenbank abgelegt."""
+    summe = {}
+    for liste in listen:
+        for eintrag in (liste or []):
+            try:
+                k, v = eintrag[0], eintrag[1]
+            except (TypeError, IndexError):
+                continue
+            summe[k] = summe.get(k, 0) + (v or 0)
+    return sorted(summe.items(), key=lambda x: -x[1])
+
+
+def mission_verbinden(mid):
+    """Einen Einsatz mit dem VORHERIGEN desselben Charakters verschmelzen.
+
+    Wer zwischendurch andockt, um zu reparieren, bekommt zwei Eintraege: das
+    Andocken schliesst den Einsatz ab, danach beginnt ein neuer. Automatisch
+    laesst sich das nicht sauber trennen — ein Reparaturstopp sieht im Log
+    genauso aus wie das Ende einer Mission und der Beginn der naechsten.
+    Deshalb entscheidet hier der Mensch. Gewuenscht von Askend.
+
+    Verschmolzen wird IN DEN FRUEHEREN Eintrag: dessen Beginn ist der wahre
+    Beginn, und seine mid bleibt damit gueltig (mid = Charakter:Startzeit).
+    Der spaetere Eintrag wird geloescht.
+    """
+    with DB_LOCK:
+        spalten = ("mid,char_id,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,"
+                   "bounty,hits,miss_out,miss_in,weapons,enemies,loot_isk,"
+                   "loot_text,dialog,ewar,logi_out,logi_in,label")
+        row = DB.execute("SELECT %s FROM missions WHERE mid=?" % spalten,
+                         (mid,)).fetchone()
+        if not row:
+            return {"ok": False, "error": "Eintrag nicht gefunden"}
+        vor = DB.execute(
+            "SELECT %s FROM missions WHERE char_id=? AND start_ts<? "
+            "ORDER BY start_ts DESC LIMIT 1" % spalten,
+            (row[1], row[3])).fetchone()
+    if not vor:
+        return {"ok": False, "error": "Davor gibt es keinen Einsatz dieses Charakters."}
+
+    def d(r):
+        return dict(zip(spalten.split(","), r))
+
+    spaet, frueh = d(row), d(vor)
+    lu = (frueh["loot_text"] or "").strip()
+    lo = (spaet["loot_text"] or "").strip()
+    neu = {
+        "char_id": frueh["char_id"], "char": frueh["char"],
+        "start_ts": frueh["start_ts"],
+        "end_ts": max(frueh["end_ts"] or 0, spaet["end_ts"] or 0),
+        # Ort des ERSTEN Kampfes, wie ueberall sonst auch.
+        "system": frueh["system"] or spaet["system"],
+        "dmg_out": (frueh["dmg_out"] or 0) + (spaet["dmg_out"] or 0),
+        "dmg_in": (frueh["dmg_in"] or 0) + (spaet["dmg_in"] or 0),
+        "kills": (frueh["kills"] or 0) + (spaet["kills"] or 0),
+        "bounty": (frueh["bounty"] or 0) + (spaet["bounty"] or 0),
+        "hits": (frueh["hits"] or 0) + (spaet["hits"] or 0),
+        "miss_out": (frueh["miss_out"] or 0) + (spaet["miss_out"] or 0),
+        "miss_in": (frueh["miss_in"] or 0) + (spaet["miss_in"] or 0),
+        "weapons": _paare_summieren(json.loads(frueh["weapons"] or "[]"),
+                                    json.loads(spaet["weapons"] or "[]"))[:6],
+        "enemies": _paare_summieren(json.loads(frueh["enemies"] or "[]"),
+                                    json.loads(spaet["enemies"] or "[]"))[:30],
+        "ewar": _paare_summieren(json.loads(frueh["ewar"] or "[]"),
+                                 json.loads(spaet["ewar"] or "[]")),
+        "logi_out": (frueh["logi_out"] or 0) + (spaet["logi_out"] or 0),
+        "logi_in": (frueh["logi_in"] or 0) + (spaet["logi_in"] or 0),
+        # Loot beider Teile behalten, nichts stillschweigend wegwerfen.
+        "loot_isk": (frueh["loot_isk"] or 0) + (spaet["loot_isk"] or 0) or None,
+        "loot_text": ("\n".join(x for x in (lu, lo) if x)) or None,
+        "dialog": (" ".join(x for x in ((frueh["dialog"] or "").strip(),
+                                        (spaet["dialog"] or "").strip()) if x))[:2000] or None,
+        # Ein selbst vergebener Name gewinnt, egal an welchem Teil er hing.
+        "label": (frueh["label"] or "").strip() or (spaet["label"] or "").strip() or None,
+    }
+    with DB_LOCK:
+        DB.execute(
+            "UPDATE missions SET end_ts=?,system=?,dmg_out=?,dmg_in=?,kills=?,"
+            "bounty=?,hits=?,miss_out=?,miss_in=?,weapons=?,enemies=?,ewar=?,"
+            "logi_out=?,logi_in=?,loot_isk=?,loot_text=?,dialog=?,label=? "
+            "WHERE mid=?",
+            (neu["end_ts"], neu["system"], neu["dmg_out"], neu["dmg_in"],
+             neu["kills"], neu["bounty"], neu["hits"], neu["miss_out"],
+             neu["miss_in"], json.dumps(neu["weapons"]), json.dumps(neu["enemies"]),
+             json.dumps(neu["ewar"]), neu["logi_out"], neu["logi_in"],
+             neu["loot_isk"], neu["loot_text"], neu["dialog"], neu["label"],
+             frueh["mid"]))
+        DB.execute("DELETE FROM missions WHERE mid=?", (spaet["mid"],))
+        DB.commit()
+    return {"ok": True, "mid": frueh["mid"],
+            "min": round((neu["end_ts"] - neu["start_ts"]) / 60),
+            "loot_isk": round(neu["loot_isk"] or 0),
+            "kills": neu["kills"], "bounty": round(neu["bounty"] or 0)}
 
 
 def abyss_bloecke_aufraeumen():
@@ -9120,6 +9217,12 @@ def query_mission_history(limit=40):
     #
     # Die enge Toleranz von 90 s an BEIDEN Enden ist der Unterschied zwischen
     # "zufaellig gleichzeitig unterwegs" und "zusammen rein und zusammen raus".
+    # Gibt es davor ueberhaupt einen Einsatz desselben Charakters? Nur dann
+    # lohnt der Knopf zum Verbinden. Die Liste ist nach start absteigend
+    # sortiert, "davor" ist also weiter hinten.
+    for i, a in enumerate(out):
+        a["hat_vorher"] = any(b["char"] == a["char"] and b["start"] < a["start"]
+                              for b in out[i + 1:])
     for a in out:
         a["zusammen"] = sorted({b["char"] for b in out
                                 if b["mid"] != a["mid"] and b["char"] != a["char"]
@@ -10713,6 +10816,9 @@ class Handler(BaseHTTPRequestHandler):
             # Eintrag entsteht spaeter neu: beides gehoert in die Rueckmeldung.
             self._send(json.dumps({"ok": True, "sitzung_aktiv": bool(s),
                                    "loot_war_da": bool(row[13] or row[14])}))
+            return
+        elif action == "mission_verbinden":
+            self._send(json.dumps(mission_verbinden(str(body.get("mid") or ""))))
             return
         elif action == "pack_sim_run" and CONFIG.get("sim_mode"):
             # Anflug-Demo starten (nur lokal, wie der Missions-Simulator).
@@ -15416,6 +15522,9 @@ function renderMissions(d){
     <div class="sub" style="margin-top:6px">${x.loot_isk!=null?'Loot: <b class="isk">'+fmtM(x.loot_isk)+'</b>':''}
      <span class="mloottoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px">${x.loot_isk!=null?'✎ Loot ändern':'＋ Loot eintragen'}</span>
      <span class="mreopen" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--dim);font-size:11px;margin-left:10px" title="Andocken ist kein sicherer Abschluss. Wer nur kurz zum Reparieren reingeflogen ist, holt die Mission hiermit zurück und der weitere Kampf zählt dazu.">↩ Läuft doch noch</span>
+     ${x.hat_vorher?`<span class="mmerge" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--dim);font-size:11px;margin-left:10px" title="${lang==='en'
+        ? 'For a repair stop in between: docking closes a run, so the same mission ends up as two entries. This merges this one INTO the previous run of the same character. Damage, kills, bounty and loot are added up, the earlier start is kept. Cannot be undone.'
+        : 'Für den Reparaturstopp zwischendurch: Andocken schließt einen Einsatz ab, dieselbe Mission steht dann als zwei Einträge da. Das hier schiebt diesen Eintrag IN den vorherigen Einsatz desselben Charakters. Schaden, Kills, Bounty und Loot werden addiert, der frühere Beginn bleibt. Nicht umkehrbar.'}">🔗 ${lang==='en'?'Merge into the previous run':'Mit dem vorigen verbinden'}</span>`:''}
      <span class="mnametoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px;margin-left:10px" title="Trag den Namen aus deinem Missionsjournal ein. Canary merkt sich dazu die Gegner und erkennt künftige Läufe derselben Mission von allein.">${x.label?'🔖 Name ändern':'🔖 Mission benennen'}</span></div>
     <div class="mnameedit" data-mid="${esc(x.mid)}" hidden>
      ${x.abyss?`<div class="btnrow" style="margin-top:4px;align-items:center">
@@ -15576,6 +15685,24 @@ function renderMissions(d){
          :'✓ entfernt (Char offline, es läuft keine Sitzung mehr)');
    setTimeout(()=>tick(),1200);
   }else t.textContent=en3?'failed':'hat nicht geklappt';
+ });
+ // Zwei Eintraege zu einem machen. Nicht umkehrbar, deshalb mit Rueckfrage,
+ // und die Rueckfrage sagt, was danach in der Zeile steht.
+ document.querySelectorAll('.mmerge').forEach(t=>t.onclick=async()=>{
+  const en3=lang==='en';
+  if(!confirm(en3
+   ?'Merge this run into the previous run of the same character? Damage, kills, bounty and loot are added up, the earlier start is kept. The two entries become one. This cannot be undone.'
+   :'Diesen Einsatz mit dem vorherigen desselben Charakters verbinden? Schaden, Kills, Bounty und Loot werden addiert, der frühere Beginn bleibt stehen. Aus den zwei Einträgen wird einer. Das lässt sich nicht rückgängig machen.'))return;
+  const alt=t.textContent;
+  t.textContent=en3?'Merging …':'Verbinde …';
+  let r;try{r=await post({action:'mission_verbinden',mid:t.dataset.mid});}catch(e){r=null;}
+  if(r&&r.ok){
+   t.textContent=(en3?'✓ merged, now ':'✓ verbunden, jetzt ')+r.min+' min';
+   setTimeout(()=>tick(),1200);
+  }else{
+   t.textContent=(r&&r.error)||(en3?'failed':'hat nicht geklappt');
+   setTimeout(()=>{t.textContent=alt;},2500);
+  }
  });
  document.querySelectorAll('[data-blatt]').forEach(el=>el.onclick=()=>{
   const zu=parseInt(el.dataset.zu,10);

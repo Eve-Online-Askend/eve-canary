@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.23.0",
+  "d": "2026-08-14",
+  "de": [
+   "ZWEI EINSAETZE NACHTRAEGLICH ZU EINEM MACHEN. Wer zwischendurch andockt, um zu reparieren, bekommt zwei Eintraege: das Andocken schliesst den Einsatz ab, danach beginnt ein neuer. Automatisch laesst sich das nicht trennen, denn ein Reparaturstopp sieht im Log genauso aus wie das Ende einer Mission und der Beginn der naechsten. Deshalb entscheidet das jetzt der Mensch: in jeder Zeile steht „Mit dem vorigen verbinden“.",
+   "Verschmolzen wird IN DEN FRUEHEREN Eintrag, dessen Beginn ist der wahre Beginn. Schaden, Kills, Bounty, Treffer, Fehlschuesse und beide Loot-Betraege werden addiert, Waffen, Gegner und EWAR zusammengezaehlt und neu sortiert, der NPC-Funk beider Teile bleibt erhalten. Ein selbst vergebener Name gewinnt, egal an welchem der beiden Teile er hing. Der Ort bleibt der des ersten Kampfes.",
+   "Weil sich das nicht rueckgaengig machen laesst, fragt Canary vorher nach und sagt in der Rueckfrage, was danach in der Zeile steht. Und der aelteste Eintrag bekommt den Knopf gar nicht erst, dort gibt es nichts zu verbinden.",
+   "Nachgerechnet an einem echten Fall mit 29 und 26 Minuten: daraus werden 60 Minuten (die Pause dazwischen zaehlt mit, sie gehoert zur Mission), 443.941 Schaden, 47 Kills, 18,1 Mio Bounty. 24 Einzelpruefungen, darunter die Gegenproben, dass ein Einsatz eines ANDEREN Charakters nie angefasst wird und dass der Loot beider Teile erhalten bleibt."
+  ],
+  "en": [
+   "MERGE TWO RUNS INTO ONE AFTER THE FACT. Anyone who docks in between to repair gets two entries: docking closes the run, and a new one starts afterwards. It cannot be separated automatically, because a repair stop looks exactly like the end of one mission and the start of the next in the log. So the decision is yours now: every row carries “Merge into the previous run”.",
+   "The merge goes INTO THE EARLIER entry, because that start is the real start. Damage, kills, bounty, hits, misses and both loot amounts are added up; weapons, enemies and EWAR are summed and re-sorted; the NPC chatter of both halves is kept. A name you gave yourself wins, no matter which half carried it. The location stays the one of the first fight.",
+   "Because this cannot be undone, Canary asks first and the prompt states what the row will say afterwards. And the oldest entry does not get the button at all, there is nothing to merge it with.",
+   "Checked against a real case of 29 and 26 minutes: that becomes 60 minutes (the break in between counts, it belongs to the mission), 443,941 damage, 47 kills, 18.1 million bounty. 24 individual checks, including the counter-tests that a run of ANOTHER character is never touched and that the loot of both halves survives."
+  ]
+ },
+ {
   "v": "2.22.0",
   "d": "2026-08-14",
   "de": [
