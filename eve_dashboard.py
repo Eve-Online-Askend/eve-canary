@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.21.0"
+VERSION = "2.22.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -2809,7 +2809,16 @@ def do_update():
             # Schliessen des alten Konsolenfensters; Popen quotet Pfade
             # mit Leerzeichen korrekt (os.execv tut das unter Windows nicht!)
             kwargs["creationflags"] = 0x00000008 | 0x00000200
-        subprocess.Popen([sys.executable, str(APP_DIR / "eve_dashboard.py")], **kwargs)
+        # OHNE Browser neu starten. Vorher oeffnete JEDER Neustart nach einem
+        # Update einen neuen Tab, und beim automatischen Update passiert das
+        # ohne Zutun: wer einkaufen war, fand vier oder mehr Tabs vor, obwohl
+        # Canary gar nicht offen war. Gemeldet von Vile Gangster.
+        #
+        # Ein Tab wird hier auch nicht gebraucht: war die Seite offen, laedt
+        # sie sich nach dem Update selbst neu (siehe doUpd im Frontend). War
+        # sie es nicht, will auch niemand einen.
+        subprocess.Popen([sys.executable, str(APP_DIR / "eve_dashboard.py"),
+                          "--no-browser"], **kwargs)
         os._exit(0)
 
     threading.Timer(1.0, _restart).start()
@@ -12809,6 +12818,9 @@ function handleAlerts(){
  localStorage.setItem('lastAlertId',lastAlertId);
 }
 
+// Mit welcher Version diese Seite gestartet ist. Aendert der Server sie unter
+// uns (Update im Hintergrund), wird EINMAL neu geladen.
+let seiteVersion=null, neuladen=false;
 let bootDone=false;
 // Zeichenregen auf dem Ladebildschirm. Die Zeichen sind die ECHTEN Dateinamen,
 // die der Parser gerade durchlaeuft (2026...-Ziffern), keine Zufallszeichen.
@@ -16812,6 +16824,16 @@ async function tick(){
                         {cache:'no-store',signal:stop.signal})).json();
   }finally{ clearTimeout(wecker); }
   if(reqView!==view)return;  // Nutzer hat inzwischen gewechselt -> Antwort verwerfen
+  // Hat sich der Server unter uns aktualisiert? Dann laeuft diese Seite mit dem
+  // JavaScript der ALTEN Fassung gegen den neuen Server weiter. Beim Knopf
+  // "Jetzt aktualisieren" laedt sie sich selbst neu, beim automatischen Update
+  // hat das bisher niemand gemacht. Einmal neu laden, und nur einmal.
+  if(d.state&&d.state.version){
+   if(!seiteVersion)seiteVersion=d.state.version;
+   else if(d.state.version!==seiteVersion&&!neuladen){
+    neuladen=true; location.reload(); return;
+   }
+  }
   state=d.state;regionPills();handleAlerts();updateBadge();updateBanner();serverBadge();bootScreen();renderViewInfo();
   if(state.log_ok===false){renderSetup();return;}
   if(!$('#setup').hidden){$('#setup').hidden=true;$('#setup').dataset.built='';}

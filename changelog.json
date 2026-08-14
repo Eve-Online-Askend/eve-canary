@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.22.0",
+  "d": "2026-08-14",
+  "de": [
+   "KEINE NEUEN BROWSER-TABS MEHR NACH EINEM UPDATE. Gemeldet von Vile Gangster: bei eingeschaltetem automatischem Update oeffnete JEDER Neustart einen Tab. Wer zwischendurch einkaufen war, fand vier oder mehr davon vor, ohne Canary ueberhaupt geoeffnet zu haben. Der Neustart nach einem Update laeuft jetzt still. Ein Tab wird dort auch nicht gebraucht: war die Seite offen, laedt sie sich selbst neu, und war sie es nicht, will auch niemand einen.",
+   "Dazu die leise zweite Haelfte desselben Problems: nach einem automatischen Update lief eine offene Seite mit dem JavaScript der ALTEN Fassung gegen den neuen Server weiter, bis jemand von Hand neu geladen hat. Beim Knopf „Jetzt aktualisieren“ passierte das schon immer von selbst, im Hintergrund nie. Jetzt merkt sich die Seite die Version, mit der sie gestartet ist, und laedt sich EINMAL neu, sobald der Server eine andere meldet.",
+   "Neu im Ordner pruefungen: eine Pruefung, die genau diese drei Stellen im Quelltext festhaelt. Ein Tab, der sich wieder einschleicht, faellt damit vor dem Veroeffentlichen auf und nicht erst beim Nutzer."
+  ],
+  "en": [
+   "NO MORE NEW BROWSER TABS AFTER AN UPDATE. Reported by Vile Gangster: with automatic updates switched on, EVERY restart opened a tab. Anyone who went shopping in between came back to four or more of them without ever having opened Canary. The restart after an update now runs quietly. A tab is not needed there either: if the page was open it reloads itself, and if it was not, nobody wants one.",
+   "Along with it the quieter half of the same problem: after an automatic update an open page kept running the OLD version's JavaScript against the new server until somebody reloaded by hand. With the “update now” button that has always happened by itself, in the background never. The page now remembers the version it started with and reloads ONCE as soon as the server reports a different one.",
+   "New in the pruefungen folder: a check that pins down exactly these three places in the source. A tab that sneaks back in now shows up before publishing rather than at the user's."
+  ]
+ },
+ {
   "v": "2.21.0",
   "d": "2026-08-14",
   "de": [
