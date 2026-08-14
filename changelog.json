@@ -1,5 +1,23 @@
 [
  {
+  "v": "2.10.0",
+  "d": "2026-08-14",
+  "de": [
+   "Erz aus aelteren Logdateien wird endlich mitgerechnet. CCP hat die Erzvarianten umbenannt: aus „Concentrated Veldspar“ wurde „Veldspar II-Grade“, aus „Dense Veldspar“ wurde „Veldspar III-Grade“. Canarys Tabelle kennt nur die heutigen Namen, aeltere Logs tragen aber die alten. Diese Zeilen zaehlten bisher mit 0 Kubikmetern und 0 ISK.",
+   "Gemessen an 1.018 gespendeten Logdateien: vorher trafen nur 51 Prozent der Erz-Zeilen die Tabelle, 58 Prozent der geforderten MENGE blieben unbewertet. Jetzt sind es 100 Prozent, an zwei unabhaengigen Bestaenden mit zusammen ueber 158.000 Erz-Ereignissen gegengeprueft. Wer alte Logs hat, sieht dadurch deutlich mehr: an einem echten Bestand stieg das ausgewiesene Volumen um 74,9 Prozent.",
+   "Wie es gerechnet wird, ohne zu raten: ein unbekannter Variantenname faellt auf sein Basiserz zurueck („Concentrated Veldspar“ auf „Veldspar“). Das Volumen stimmt damit exakt, denn bei allen 32 Erzen mit Varianten ist es identisch, das wurde nachgemessen. Der Preis ist die vorsichtige Untergrenze, weil hoehere Stufen etwas mehr wert sind. Die Zuordnung ueber die typeID ist extern belegt (17470 und 17471 stehen bei EVE Ref, Adam4EVE und eveinfo unter beiden Namen).",
+   "Ein Neueinlesen der Logs ist dafuer NICHT noetig: die Mengen lagen laengst in der Datenbank, nur Volumen und Wert wurden falsch dazugerechnet. Nach dem Update stimmen die Zahlen sofort.",
+   "Nebenbei erledigt: „Compressed  Mordunium IV-Grade“ mit zwei Leerzeichen, der einzige Name, der auch danach noch danebenlag."
+  ],
+  "en": [
+   "Ore from older log files is finally counted. CCP renamed the ore variants: “Concentrated Veldspar” became “Veldspar II-Grade”, “Dense Veldspar” became “Veldspar III-Grade”. Canary's table only knows today's names, while older logs carry the old ones. Those lines used to count as 0 cubic metres and 0 ISK.",
+   "Measured across 1,018 donated log files: only 51 percent of ore lines hit the table before, and 58 percent of the mined AMOUNT went unvalued. It is 100 percent now, cross checked against two independent sets totalling over 158,000 ore events. Anyone with old logs sees noticeably more: on a real set the reported volume rose by 74.9 percent.",
+   "How it is worked out without guessing: an unknown variant name falls back to its base ore (“Concentrated Veldspar” to “Veldspar”). The volume is then exactly right, because across all 32 ores with variants it is identical, which was measured. The price is the cautious lower bound, since higher grades are worth a little more. The mapping via typeID is externally documented (17470 and 17471 appear under both names at EVE Ref, Adam4EVE and eveinfo).",
+   "No re-reading of the logs is needed: the amounts were in the database all along, only volume and value were computed wrongly on top. After the update the figures are correct immediately.",
+   "Also fixed: “Compressed  Mordunium IV-Grade” with two spaces, the only name still missing afterwards."
+  ]
+ },
+ {
   "v": "2.9.1",
   "d": "2026-08-14",
   "de": [

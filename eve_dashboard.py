@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.9.1"
+VERSION = "2.10.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -141,7 +141,98 @@ def load_json(name, default):
         return default
 
 
-ORE_TYPES = load_json("ore_types.json", {})
+class ErzTabelle(dict):
+    """ore_types.json mit Rueckfall auf das Basiserz.
+
+    CCP hat die Erzvarianten umbenannt: aus "Concentrated Veldspar" wurde
+    "Veldspar II-Grade", aus "Dense Veldspar" wurde "Veldspar III-Grade".
+    Belegt ueber die typeID, die dabei gleich geblieben ist (17470 und 17471,
+    nachgeschlagen bei EVE Ref, Adam4EVE und eveinfo). Die Tabelle wird aus
+    dem heutigen SDE gebaut und kennt deshalb nur die NEUEN Namen. Wer aeltere
+    Logdateien einliest, hat aber die alten darin stehen.
+
+    Ohne Rueckfall zaehlten diese Zeilen mit 0 m3 und 0 ISK. An 1.018
+    Logdateien gemessen betraf das 58,4 Prozent der geforderten Menge.
+
+    Der Rueckfall nimmt das BASISERZ. Das ist beim Volumen exakt richtig: an
+    allen 32 Erzen mit Varianten nachgemessen, kein einziges weicht ab. Beim
+    Preis ist es vorsichtig gerechnet, denn die hoeheren Stufen sind etwas mehr
+    wert. Lieber eine belegbare Untergrenze als eine geratene Zuordnung.
+
+    Nur get/in/[] fallen zurueck. Wer ueber die Tabelle ITERIERT, sieht
+    weiterhin ausschliesslich die echten Namen, damit nichts doppelt in
+    Listen oder Summen landet."""
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        # Basiserze: alles ohne Stufenzusatz und ohne Komprimat-Praefix.
+        self._basen = sorted((n for n in self
+                              if "-Grade" not in n
+                              and not n.startswith("Compressed")
+                              and not n.startswith("Batch")),
+                             key=len, reverse=True)
+        self.ersatz = {}      # alter Name -> genommenes Basiserz, fuer die Diagnose
+
+    def _basis(self, name):
+        if not isinstance(name, str) or not name:
+            return None
+        # EVE schreibt vereinzelt zwei Leerzeichen ("Compressed  Mordunium
+        # IV-Grade"). An Erons Bestand 16 mal aufgetaucht, sonst waere der
+        # Name als einziger unbekannt geblieben.
+        glatt = " ".join(name.split())
+        if glatt != name:
+            e = dict.get(self, glatt)
+            if e is not None:
+                if name not in self.ersatz:
+                    self.ersatz[name] = glatt
+                return e
+        name = glatt
+        komp = name.startswith("Compressed ")
+        rest = name[len("Compressed "):] if komp else name
+        for b in self._basen:            # laengster Treffer zuerst
+            if rest.endswith(b):
+                return self._nimm(name, b, komp)
+        # Zweite Stufe fuer zweiteilige Basisnamen: "Onyx Ochre" endet nicht auf
+        # "Dark Ochre". Passt genau EIN Basiserz auf das letzte Wort, ist die
+        # Zuordnung eindeutig und damit kein Raten. Passen mehrere, wird nichts
+        # genommen: dann lieber "unbekannt" als falsch zugeordnet.
+        letztes = rest.rsplit(" ", 1)[-1] if " " in rest else ""
+        if letztes:
+            kandidaten = [b for b in self._basen if b.endswith(" " + letztes)]
+            if len(kandidaten) == 1:
+                return self._nimm(name, kandidaten[0], komp)
+        return None
+
+    def _nimm(self, name, basis, komp):
+        ziel = ("Compressed " + basis) if komp else basis
+        eintrag = dict.get(self, ziel)
+        if eintrag is None:
+            return None
+        if name not in self.ersatz:
+            self.ersatz[name] = ziel
+        return eintrag
+
+    def get(self, name, default=None):
+        e = dict.get(self, name)
+        if e is not None:
+            return e
+        e = self._basis(name)
+        return default if e is None else e
+
+    def __contains__(self, name):
+        return dict.__contains__(self, name) or self._basis(name) is not None
+
+    def __getitem__(self, name):
+        try:
+            return dict.__getitem__(self, name)
+        except KeyError:
+            e = self._basis(name)
+            if e is None:
+                raise
+            return e
+
+
+ORE_TYPES = ErzTabelle(load_json("ore_types.json", {}))
 # typeID -> (Name, Volumen je Einheit). Fuer das ESI Mining Ledger, das nur
 # type_id + Stueckzahl liefert; so rechnen wir Einheiten in m³ um.
 ORE_BY_TID = {v["typeID"]: (n, v.get("volume", 0.0)) for n, v in ORE_TYPES.items()}
