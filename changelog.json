@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.8.0",
+  "d": "2026-08-14",
+  "de": [
+   "Der Ladebildschirm traegt jetzt das richtige Canary-Logo statt des alten Kueken-Symbols. Das Bild steckt in der Programmdatei selbst, es braucht also weder einen Bilderordner noch Internet. Dieselbe Aenderung auf der Reparatur-Seite und der Seite nach dem EVE-Login.",
+   "Und waehrend Canary deine Logs einliest, regnet es im Hintergrund Zeichen wie in der Matrix. Das sind keine ausgedachten Zeichen: es sind die Namen der Logdateien, die in diesem Moment wirklich durch den Parser laufen. Der Regen laeuft nur waehrend des Ladens und hoert danach von selbst auf."
+  ],
+  "en": [
+   "The loading screen now carries the proper Canary logo instead of the old chick symbol. The image sits inside the program file itself, so it needs neither an image folder nor an internet connection. Same change on the repair page and on the page after the EVE login.",
+   "And while Canary reads your logs, characters rain down in the background like in the Matrix. Those are not made up characters: they are the names of the log files actually going through the parser at that moment. The rain only runs during loading and stops by itself afterwards."
+  ]
+ },
+ {
   "v": "2.7.1",
   "d": "2026-08-14",
   "de": [
