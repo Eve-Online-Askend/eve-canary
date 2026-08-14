@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.21.0",
+  "d": "2026-08-14",
+  "de": [
+   "MULTIBOXING IM ABYSS SIEHT NICHT MEHR NACH EINER DUBLETTE AUS. Gemeldet von Nirahse, der mit mehreren Charakteren in einer Flotte denselben Abyss fliegt. In der Liste standen dann zwei Zeilen mit gleicher Uhrzeit, gleichem System und gleicher Dauer, aber unterschiedlichen Zahlen. Der Grund war schlicht, dass die Zeile das SYSTEM zeigte und nicht den Charakter: zwei verschiedene Piloten sahen aus wie derselbe Lauf, zweimal gespeichert.",
+   "Jetzt steht der Charakter in der Zeile, und wenn zwei gleichzeitig unterwegs waren, sagt es die Zeile auch: „gemeinsam mit ...“. Die Bedingung ist eng und messbar: gleiches System, rein UND raus innerhalb von 90 Sekunden. Zwei Laeufe, die nur zufaellig ueberlappen, bekommen die Markierung nicht.",
+   "Zusammengelegt werden die Eintraege bewusst NICHT. Jeder Charakter hat sein eigenes Log, seinen eigenen Schaden und sein eigenes EWAR, eine Summe waere weniger Information statt mehr. Und ob es EIN Filament fuer die Flotte war oder mehrere gleichzeitig gestartete, steht in keiner Logdatei — eine Flotte durch ein Filament sieht dort genauso aus wie zwei Filamente nebeneinander. Deshalb wird die Beobachtung vermerkt und nicht gedeutet.",
+   "Der Abyss-Export hat dafuer eine neue Spalte gemeinsam_mit. Ohne sie zaehlt jede Auswertung des Exports einen Flottendurchgang als mehrere Durchgaenge, und genau das ist das, was man beim Rechnen nicht merkt."
+  ],
+  "en": [
+   "ABYSS MULTIBOXING NO LONGER LOOKS LIKE A DUPLICATE. Reported by Nirahse, who flies the same abyss with several characters in one fleet. The list then held two rows with the same time, the same system and the same duration, but different numbers. The reason was simply that the row showed the SYSTEM and not the character: two different pilots looked like one run stored twice.",
+   "The character is now in the row, and when two were out at the same time the row says so: “together with ...”. The condition is tight and measurable: same system, in AND out within 90 seconds of each other. Two runs that merely overlap by chance do not get the marker.",
+   "The entries are deliberately NOT merged. Every character has its own log, its own damage and its own EWAR; a sum would be less information rather than more. And whether it was ONE filament for the fleet or several started at the same time is in no log file — a fleet through one filament looks exactly like two filaments side by side. So the observation is recorded, not interpreted.",
+   "The abyss export gained a column gemeinsam_mit for this. Without it, any analysis of the export counts one fleet run as several runs, and that is exactly the kind of thing you do not notice while doing the maths."
+  ]
+ },
+ {
   "v": "2.20.2",
   "d": "2026-08-14",
   "de": [

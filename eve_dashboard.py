@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.20.2"
+VERSION = "2.21.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -9095,6 +9095,28 @@ def query_mission_history(limit=40):
             "tier_name": abyss_tier_aus_name(label),
             "wetter": abyss_wetter_aus_name(label),
             "total": round((bounty or 0) + (loot or 0) + (vreward or 0) + (vbonus or 0))})
+    # Multiboxing: zwei Charaktere gleichzeitig im Abyss erzeugen je einen
+    # Eintrag. Das ist richtig so, jeder hat seinen eigenen Schaden und sein
+    # eigenes Log. In der Liste sah es trotzdem nach einer Dublette aus, weil
+    # dort nur das SYSTEM stand und nicht, wer geflogen ist: zwei Zeilen,
+    # gleiche Zeit, gleiches System, unterschiedliche Zahlen. Gemeldet von
+    # Nirahse.
+    #
+    # ZUSAMMENGELEGT wird trotzdem nichts. Jeder Charakter hat sein eigenes Log,
+    # seinen eigenen Schaden und sein eigenes EWAR; eine Summe waere weniger
+    # Information, nicht mehr. Und ob zwei Charaktere im SELBEN Abyss-Fenster
+    # sassen oder in zwei parallel gestarteten, steht in keiner Logdatei: eine
+    # Flotte durch ein Filament sieht dort genauso aus wie zwei Filamente
+    # gleichzeitig. Deshalb wird die Beobachtung vermerkt und nicht gedeutet.
+    #
+    # Die enge Toleranz von 90 s an BEIDEN Enden ist der Unterschied zwischen
+    # "zufaellig gleichzeitig unterwegs" und "zusammen rein und zusammen raus".
+    for a in out:
+        a["zusammen"] = sorted({b["char"] for b in out
+                                if b["mid"] != a["mid"] and b["char"] != a["char"]
+                                and (b["system"] or "?") == (a["system"] or "?")
+                                and abs(b["start"] - a["start"]) <= 90
+                                and abs(b["end"] - a["end"]) <= 90})
     return out, {"liste": ohne_mission, "summe": ohne_summe, "n": len(offen)}
 
 
@@ -10198,7 +10220,11 @@ def abyss_export_tsv():
                # Der Wert hinter jedem Gegner ist der SCHADEN, den er
                # abbekommen hat, keine Stueckzahl. Ohne das im Spaltennamen
                # liest sich "Striking Damavik 8420" wie 8.420 Schiffe.
-               "ewar", "gegner_top_mit_schaden"]
+               "ewar", "gegner_top_mit_schaden",
+               # Multiboxing: mehrere Charaktere gleichzeitig durch denselben
+               # Abyss ergeben mehrere Zeilen. Ohne diese Spalte zaehlt jede
+               # Auswertung sie als getrennte Durchgaenge. Gemeldet von Nirahse.
+               "gemeinsam_mit"]
     zeilen = ["\t".join(spalten)]
     nummern, n = {}, 0
     with DB_LOCK:
@@ -10206,14 +10232,18 @@ def abyss_export_tsv():
             "SELECT start_ts,end_ts,char_id,system,label,dmg_out,dmg_in,hits,"
             "miss_out,miss_in,kills,bounty,loot_isk,ewar,enemies "
             "FROM missions ORDER BY start_ts").fetchall()
-    for (start, ende, cid, system, label, dout, din, hits, mout, min_, kills,
-         bounty, loot, ewar_j, enemies_j) in rows:
+    # Erst alle Abyss-Zeilen sammeln, dann die Nachbarn bestimmen: fuer die
+    # Spalte muss jede Zeile die anderen kennen.
+    abyss_rows = []
+    for r in rows:
         try:
-            enemies = json.loads(enemies_j or "[]")
+            gg = json.loads(r[14] or "[]")
         except Exception:
-            enemies = []
-        if not ist_abyss(system, enemies):
-            continue
+            gg = []
+        if ist_abyss(r[3], gg):
+            abyss_rows.append((r, gg))
+    for (start, ende, cid, system, label, dout, din, hits, mout, min_, kills,
+         bounty, loot, ewar_j, enemies_j), enemies in abyss_rows:
         if cid not in nummern:
             n += 1
             nummern[cid] = n
@@ -10235,6 +10265,14 @@ def abyss_export_tsv():
             int(bounty or 0), int(loot or 0),
             " ".join(f"{k}x{v}" for k, v in ewar) if ewar else "",
             " ".join(f"{k} ({v} dmg)" for k, v in enemies[:8]).replace("\t", " "),
+            # Gleiches System, rein und raus innerhalb von 90 s, anderer
+            # Charakter. Dieselbe Regel wie in der Missions-Liste.
+            " ".join("Char " + str(nummern.setdefault(
+                o[0][2], len(nummern) + 1))
+                for o in abyss_rows
+                if o[0][2] != cid and (o[0][3] or "?") == (system or "?")
+                and abs((o[0][0] or 0) - (start or 0)) <= 90
+                and abs((o[0][1] or 0) - (ende or 0)) <= 90),
         ]))
     if len(zeilen) == 1:
         zeilen.append("# keine Abyss-Durchgaenge gefunden")
@@ -12008,6 +12046,10 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  .diffgap .pfeil{transform:rotate(90deg)}
  .diffgap .was{writing-mode:horizontal-tb;transform:none}
 }
+/* Multiboxing: zwei Charaktere, ein Abyss. Leise gehalten, es ist eine
+   Einordnung und keine Warnung. */
+.zusammen{font-size:11px;color:var(--cyan);border:1px solid var(--line);
+ border-radius:20px;padding:1px 8px;cursor:help;white-space:nowrap}
 /* ---------- Blutspur-Karte
    Gedeckelt statt seitenhoch: die Karte belegt sonst den ganzen Bildschirm,
    obwohl sie nur die BEGRUENDUNG fuer die Warnung ist. Wer sie gross braucht,
@@ -15344,7 +15386,11 @@ function renderMissions(d){
    <div style="border-top:1px solid var(--line);padding:10px 0">
     <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:baseline">
      <b>${new Date(x.start*1000).toLocaleString().slice(0,16)}</b>
+     <span class="char" style="font-size:12px">${esc(x.char||'')}</span>
      <span class="sys">${x.system&&x.system!=='?'?'· '+esc(x.system)+' ':''}· ${x.min!=null?x.min:'?'} min</span>
+     ${(x.zusammen&&x.zusammen.length)?`<span class="zusammen" title="${lang==='en'
+        ? 'Same system, in and out within 90 seconds of each other. Every character keeps its own entry, because each has its own log, its own damage and its own EWAR. Whether it was one filament for the fleet or several started at the same time is not in any log file.'
+        : 'Gleiches System, rein und raus innerhalb von 90 Sekunden. Jeder Charakter behält seinen eigenen Eintrag, denn jeder hat sein eigenes Log, seinen eigenen Schaden und sein eigenes EWAR. Ob es ein Filament für die Flotte war oder mehrere gleichzeitig gestartete, steht in keiner Logdatei.'}">🤝 ${lang==='en'?'together with':'gemeinsam mit'} ${esc(x.zusammen.join(', '))}</span>`:''}
      ${x.mission?`<span class="mtag">${missionHtml(x.mission)}</span>`:x.site?`<span class="mtag">${siteHtml(x.site)}</span>`:''}
      <span style="margin-left:auto" class="isk"><b>${fmtM(x.total)} ISK</b></span>
     </div>
