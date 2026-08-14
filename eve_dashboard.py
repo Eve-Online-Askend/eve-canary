@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.19.1"
+VERSION = "2.20.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -5802,7 +5802,35 @@ KMSTREAM = "https://killmail.stream/poll/"
 # den naechsten Undock ohne Bedeutung.
 PACK_NEAR_JUMPS = 10   # Annaeherung (Distanz sinkt) wird ab hier gemeldet
 PACK_INFO_JUMPS = 5    # "sitzt schon da"-Hinweis nur direkt in der Nachbarschaft
-PACK_WATCH_JUMPS = 15  # bekannte Gank-Gruppen (gank_groups.json) frueher melden
+PACK_ALARM_JUMPS = 3   # ab hier lauter Alarm statt stiller Notiz
+PACK_FLAG_PLUS = 5     # bekannte Gank-Gruppen so viele Spruenge frueher melden
+
+
+# Drei Reichweiten statt einer. Anlass: Wunsch von Eron Solette. In Highsec
+# direkt neben Lowsec sind 20 Spruenge eine Menge Meldungen, und dazwischen geht
+# die eine wichtige unter. Die Blase, die BEOBACHTET wird, bleibt davon
+# unberuehrt (pack_radius) — die Karte zeigt weiter alles, nur das Melden und
+# das Alarmieren sind jetzt eigene, engere Reichweiten.
+def pack_melden_ab():
+    """Ab wieviel Spruengen ueberhaupt eine Meldung erscheint. Obergrenze fuer
+    JEDE Rudel-Meldung, auch fuer den 'sitzt schon da'-Hinweis."""
+    try:
+        n = int(CONFIG.get("pack_melden", PACK_NEAR_JUMPS))
+    except (TypeError, ValueError):
+        n = PACK_NEAR_JUMPS
+    return max(0, min(n, 50))
+
+
+def pack_alarm_ab():
+    """Ab wieviel Spruengen die Meldung laut wird (Banner in Rot, Ton, wenn
+    eingeschaltet). Darueber bleibt es eine stille Notiz in der Liste."""
+    try:
+        n = int(CONFIG.get("pack_alarm", PACK_ALARM_JUMPS))
+    except (TypeError, ValueError):
+        n = PACK_ALARM_JUMPS
+    # Nie lauter als ueberhaupt gemeldet wird: ein Alarm ohne Meldung waere ein
+    # Ton ohne Text.
+    return max(0, min(n, pack_melden_ab()))
 
 
 class PackIntel(threading.Thread):
@@ -6059,19 +6087,25 @@ class PackIntel(threading.Thread):
                 p["dist"] = d
                 best = p.get("dist_alerted")
                 flag = self._flagged(p)
-                grenze = PACK_WATCH_JUMPS if flag else PACK_NEAR_JUMPS
+                # Bekannte Gank-Gruppen ein Stueck frueher, aber mitwachsend:
+                # wer "melden ab 3" einstellt, will auch von denen keine Meldung
+                # aus fuenfzehn Spruengen Entfernung.
+                melden = pack_melden_ab()
+                laut = pack_alarm_ab()
+                grenze = melden + PACK_FLAG_PLUS if flag else melden
                 if (prevd is not None and d < prevd and d <= grenze
                         and (best is None or d < best)):
                     p["dist_alerted"] = d
                     sysn = (self.sysrow.get(sysid) or (None, "?"))[1]
                     self._resolve_ids([self._top_corp(p)])   # Name vor dem Alarm
                     if flag:
-                        alerts.push("pack" if d <= 5 else "packinfo", self._label(p),
+                        alerts.push("pack" if d <= laut + PACK_FLAG_PLUS else "packinfo",
+                                    self._label(p),
                                     f"🩸 Achtung, {flag['name']}: Rudel nähert sich, "
                                     f"{prevd} → {d} Sprünge ({sysn}). "
                                     f"{flag['miner']} Miner-Kills zuletzt.",
                                     self._logo(p, flag))
-                    elif d <= 3:
+                    elif d <= laut:
                         alerts.push("pack", self._label(p),
                                     f"🩸 Rudel [{self._label(p)}] nähert sich deinem "
                                     f"System: noch {d} Sprünge ({sysn})",
@@ -6304,18 +6338,21 @@ class PackIntel(threading.Thread):
                 alerts.push("packinfo", sp.get("name") or low,
                             f"🩸 Rudel-Corp im Local: {sp.get('name') or low} "
                             f"ist in der Corp von Rudel [{hit[1]}]")
-        # GOLD: Rudel-Kill nahe (<=2 Spruenge) an einem eigenen System.
+        # GOLD: Rudel-Kill nahe an einem eigenen System. Auch das ist eine
+        # Meldung und haelt sich an die eingestellte Reichweite: wer "melden ab
+        # 1" setzt, will nichts aus zwei Spruengen Entfernung.
+        naehe = min(2, pack_melden_ab())
         own = set()
         with ingest.lock:
             for s in ingest.sessions.values():
                 if s.system and s.last_event_ts and now - s.last_event_ts < 900:
                     own.add(s.system)
-        if own:
+        if own and naehe >= 1:
             name2id = {v[1]: sid for sid, v in self.sysrow.items() if v[1]}
             own_ids = {name2id[n] for n in own if n in name2id}
             near = set()
             for oid in own_ids:
-                near |= self._bfs(oid, 2)
+                near |= self._bfs(oid, naehe)
             with self.lock:
                 for pid, p in self.packs.items():
                     if not p["systems"] or not self._visible(p):
@@ -6348,7 +6385,10 @@ class PackIntel(threading.Thread):
                 if self._status(p, now) != "aktiv":
                     continue
                 d = p.get("dist")
-                if d is None or d > PACK_INFO_JUMPS:
+                # Der Nachbarschafts-Hinweis bleibt enger als die Annaeherung,
+                # aber nie weiter als die eingestellte Melde-Reichweite: sie ist
+                # die Obergrenze fuer jede Rudel-Meldung.
+                if d is None or d > min(PACK_INFO_JUMPS, pack_melden_ab()):
                     continue
                 self.info_alerted.add(pid)
                 self._resolve_ids([self._top_corp(p)])   # Name vor dem Alarm
@@ -6381,6 +6421,7 @@ class PackIntel(threading.Thread):
                "center": CONFIG.get("pack_center"),
                "radius": int(CONFIG.get("pack_radius", 20) or 20),
                "corp_alert": bool(CONFIG.get("pack_corp_alert")),
+               "melden": pack_melden_ab(), "alarm": pack_alarm_ab(),
                "follow": bool(CONFIG.get("pack_follow")),
                "map_progress": list(self.map_progress),
                "last_kill_age": int(now - self.last_kill_ts) if self.last_kill_ts else None,
@@ -10422,6 +10463,18 @@ class Handler(BaseHTTPRequestHandler):
                     CONFIG["pack_radar"] = bool(body.get("on"))
                 if "corp" in body:
                     CONFIG["pack_corp_alert"] = bool(body.get("corp"))
+                # Reichweiten. Der beobachtete Umkreis (pack_radius) bleibt
+                # davon unberuehrt, die Karte zeigt weiter alles.
+                if "melden" in body:
+                    try:
+                        CONFIG["pack_melden"] = max(0, min(50, int(body["melden"])))
+                    except (TypeError, ValueError):
+                        pass
+                if "alarm" in body:
+                    try:
+                        CONFIG["pack_alarm"] = max(0, min(50, int(body["alarm"])))
+                    except (TypeError, ValueError):
+                        pass
             save_config()
             ok = True
             if "follow" in body:
@@ -11811,6 +11864,33 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  .diffgap .pfeil{transform:rotate(90deg)}
  .diffgap .was{writing-mode:horizontal-tb;transform:none}
 }
+/* ---------- Blutspur-Karte
+   Gedeckelt statt seitenhoch: die Karte belegt sonst den ganzen Bildschirm,
+   obwohl sie nur die BEGRUENDUNG fuer die Warnung ist. Wer sie gross braucht,
+   klappt sie auf. Gemeldet von Eron Solette. */
+.packmap{position:relative;height:300px;overflow:hidden;border-radius:8px;
+ border:1px solid var(--line);background:#04070c}
+.packmap.gross{height:min(74vh,760px)}
+.packzoom{position:absolute;right:8px;bottom:8px;background:rgba(4,7,12,.82);
+ border:1px solid #2b7f96;color:#9fd8e8;font-size:11px;padding:3px 10px;
+ border-radius:6px;cursor:pointer}
+.packzoom:hover{color:#eaf6ff;border-color:#5fc1d4}
+/* Woher kommt das Übel: steht ueber der Karte und ist die eigentliche Antwort. */
+.packwoher{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+ background:var(--inset);border:1px solid var(--line);border-left:3px solid var(--red);
+ border-radius:8px;padding:8px 12px;margin-bottom:8px}
+.packwoher .zahl{font-size:19px;font-weight:700;color:var(--red);line-height:1}
+.packwoher .wo{font-size:13px;font-weight:600;color:var(--txt)}
+.packwoher .rest{font-size:11px;color:var(--dim)}
+.packwoher.ruhig{border-left-color:var(--green)}
+.packwoher.ruhig .zahl{color:var(--green)}
+/* Innerhalb der Alarm-Reichweite: kraeftiger, damit man es beim Hinsehen
+   unterscheidet, ohne die Zahl lesen zu muessen. */
+.packwoher.laut{border-left-width:5px;background:color-mix(in srgb,var(--red) 9%,var(--inset))}
+.packwoher.laut .zahl{font-size:23px}
+/* Ausserhalb der Alarm-Reichweite bleibt es eine Notiz, keine Warnung. */
+.packwoher:not(.laut):not(.ruhig){border-left-color:var(--gold)}
+.packwoher:not(.laut):not(.ruhig) .zahl{color:var(--gold)}
 /* Das Ergebnis: eigene Zone, damit es nicht wie ein viertes Eingabefeld wirkt. */
 .diffout{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
 /* Lange Listen rollen im Kasten, statt die Seite zu strecken. Ein voller
@@ -12530,6 +12610,14 @@ function handleAlerts(){
   else if(a.kind==='hw'){
    if($('#sndDep').checked)beep(430,2,0.2);
    notify('EVE: Heavy Water fast leer!',a);
+  }
+  // Blutspur: nur der LAUTE Alarm ('pack') macht Ton und Meldung, die stille
+  // Notiz ('packinfo') bleibt in der Liste stehen. Der Haken sitzt im
+  // Blutspur-Bereich selbst, nicht bei den Mining-Toenen: er gehoert dorthin,
+  // wo man die Reichweiten einstellt. Gewuenscht von Eron Solette.
+  else if(a.kind==='pack'){
+   if(localStorage.getItem('sndPack')==='1')beep(300,4,0.22);
+   notify(lang==='en'?'EVE: gank pack closing in!':'EVE: Rudel nähert sich!',a);
   }
  }
  localStorage.setItem('lastAlertId',lastAlertId);
@@ -14202,10 +14290,27 @@ function secFarbe(s){
 }
 function packMapSvg(mp,en){
  const S=mp.systems||[];
+ // Ausschnitt auf die WIRKLICH vorhandenen Systeme zusammenziehen. Fest
+ // 0 0 1000 700 hiess: bei einer Nachbarschaft von einem Dutzend Systemen
+ // stand die Haelfte der Karte leer und der Rest war trotzdem seitenhoch.
+ // Gemeldet von Eron Solette ("die Karte ist ganz schön groß").
+ let vb='0 0 1000 700', bx=0, by=0, bw=1000, bh=700;
+ if(S.length){
+  const xs=S.map(s=>s.x), ys=S.map(s=>s.y);
+  const rand=60;   // Platz für die Beschriftung rechts vom Punkt
+  bx=Math.max(0,Math.min(...xs)-rand); by=Math.max(0,Math.min(...ys)-rand);
+  bw=Math.min(1000,Math.max(...xs)+rand*2.4)-bx;
+  bh=Math.min(700,Math.max(...ys)+rand)-by;
+  // Nicht schmaler als ein vernünftiges Seitenverhältnis, sonst zerrt eine
+  // Kette aus drei Systemen die Punkte zu Riesen auseinander.
+  if(bw/bh>2.6)bh=bw/2.6;
+  if(bw/bh<1.2)bw=bh*1.2;
+  vb=bx.toFixed(0)+' '+by.toFixed(0)+' '+bw.toFixed(0)+' '+bh.toFixed(0);
+ }
  // Die Karte bleibt schwarz, auch im hellen Thema. Eine Sternenkarte ist im
  // Spiel schwarz, und der Sicherheitsstatus ist nur auf dunklem Grund zu
  // lesen: 0.5-Gelb auf Weiss kaeme auf keinen brauchbaren Kontrast.
- const grund=`<rect x="0" y="0" width="1000" height="700" fill="#04070c"/>`;
+ const grund=`<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" fill="#04070c"/>`;
  const edges=(mp.edges||[]).map(e=>{const a=S[e[0]],b=S[e[1]];
   return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#2b7f96" stroke-width="1" stroke-opacity=".85"/>`;}).join('');
  // Kill-Spur je Rudel: verbundene Segmente, aeltere Abschnitte blasser.
@@ -14240,7 +14345,12 @@ function packMapSvg(mp,en){
    +`<circle cx="${s.x}" cy="${s.y}" r="3.2" fill="${sf}"><title>${nm} · Sec ${s.sec!=null?s.sec:'?'}`
    +`${s.jumps!=null?` · ${s.jumps} ${en?'jumps':'Sprünge'}`:''}${s.heat?` · ${s.heat} Kills/2h`:''}</title></circle>`
    +pk+beschriftung;}).join('');
- return `<div style="overflow-x:auto"><svg viewBox="0 0 1000 700" style="width:100%;height:auto">${grund}${edges}${trails}${arrows}${dots}</svg></div>`
+ // Hoehe gedeckelt. Die Karte ist die Begruendung fuer die Warnung, nicht die
+ // Warnung selbst — sie soll nicht die halbe Seite fuellen. Wer sie gross
+ // will, klappt sie auf.
+ return `<div class="packmap"><svg viewBox="${vb}" preserveAspectRatio="xMidYMid meet"`
+  +` style="width:100%;height:100%;display:block">${grund}${edges}${trails}${arrows}${dots}</svg>`
+  +`<button class="packzoom" type="button">${en?'enlarge':'größer'}</button></div>`
   +`<div class="sub">${en?'dot = system (colour = sec) · red halo = kills last 2h · cyan ring = you · red line = pack kill trail · 🩸 = pack last seen here':'Punkt = System (Farbe = Sec) · roter Halo = Kills der letzten 2h · Cyan-Ring = du · rote Linie = Kill-Spur des Rudels · 🩸 = Rudel zuletzt hier'}</div>`;
 }
 function renderBlutspur(bs){
@@ -14274,14 +14384,57 @@ function renderBlutspur(bs){
    <input id="packCenter" placeholder="${esc(bs.center||'')}" style="width:120px;font-size:12px;padding:3px 7px;background:var(--inset);border:1px solid var(--line);border-radius:6px;color:var(--txt)">
    <button class="btn" id="packCenterGo" style="font-size:11px">${en?'Set':'Setzen'}</button>
    <span id="packCenterStat" class="sub">${bs.follow?(en?'follows your location':'folgt deinem Standort'):(en?'fixed':'fest gewählt')}</span></div>
+  <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px">
+   <span class="sub" style="margin:0">${en?'Reporting range:':'Reichweiten:'}</span>
+   <label>${en?'report from':'melden ab'}
+    <input type="number" id="packMelden" min="0" max="50" value="${bs.melden!=null?bs.melden:10}"
+     style="width:52px;font-size:12px;padding:3px 6px"> ${en?'jumps':'Sprünge'}</label>
+   <label>${en?'alarm from':'Alarm ab'}
+    <input type="number" id="packAlarm" min="0" max="50" value="${bs.alarm!=null?bs.alarm:3}"
+     style="width:52px;font-size:12px;padding:3px 6px"> ${en?'jumps':'Sprünge'}</label>
+   <button class="btn" id="packRangeGo" style="font-size:11px">${en?'Save':'Speichern'}</button>
+   <label><input type="checkbox" id="sndPack"> 🔊 ${en?'sound on alarm':'Ton beim Alarm'}</label>
+   <span id="packRangeStat" class="sub" style="margin:0"></span></div>
+  <div class="sub" style="margin-top:4px">${en
+    ? 'The map keeps showing the whole watched bubble. These two only decide when a message appears in the list and when it gets loud.'
+    : 'Die Karte zeigt weiter die ganze überwachte Blase. Diese beiden entscheiden nur, ab wann eine Meldung in der Liste erscheint und ab wann sie laut wird.'}</div>
   <div class="alphabanner" style="margin-top:10px">🧪 <b>${en?'Alpha phase, module in development':'Alpha-Phase, Modul in Entwicklung'}</b> · ${en?'pack detection, scores and warnings are still being tuned against real traffic. Feedback welcome.':'Rudel-Erkennung, Scores und Warnungen werden noch am echten Verkehr feinjustiert. Rückmeldungen willkommen.'}</div></div>`;
  if(bs.mode==='laden'){const mp=bs.map_progress||[0,0];
   html+=`<div class="card"><div class="sub">🗺 ${en?'Building region map':'Karte wird aufgebaut'} (${mp[0]}/${mp[1]} ${en?'systems':'Systeme'}) · ${en?'one-time, takes a few minutes, radar starts right after':'einmalig, dauert ein paar Minuten, danach startet das Radar von selbst'}</div></div>`;}
  // EINE kompakte Ansicht: Karte + Annaeherung + letzte Kills in einer Karte.
  let inner='';
  const mp0=(bs.maps||[])[0];
- if(mp0)inner+=`<div class="sub" style="margin-bottom:4px">🗺 ${esc(bs.center||'')} ${en?'centered':'zentriert'} · ${en?'neighbourhood':'Nachbarschaft'} ${mp0.depth} ${en?'jumps':'Sprünge'} · ${en?'watching':'überwacht'} ${bs.radius||20} ${en?'jumps':'Sprünge'}</div>`+packMapSvg(mp0,en);
  const near=(bs.packs||[]).filter(p=>p.dist!=null||p.last_system).sort((a,b)=>(a.dist??99)-(b.dist??99));
+ // WOHER KOMMT ES: die eine Zeile, die man beim Reinschauen sucht. Sie steht
+ // ueber der Karte, denn die Karte ist die Begruendung und nicht die Antwort.
+ // Gemeldet von Eron Solette ("das muss schneller sichtbar sein, woher das
+ // Übel kommt").
+ {
+  const naechst=near.find(p=>p.dist!=null);
+  if(naechst){
+   const d=naechst.dist;
+   const richtung=(naechst.dist_prev!=null&&naechst.dist_prev!==d)
+    ? (d<naechst.dist_prev
+        ? `<span style="color:var(--red)">${en?'closing in':'kommt näher'} ${naechst.dist_prev} → ${d}</span>`
+        : `<span style="color:var(--green)">${en?'moving away':'zieht ab'} ${naechst.dist_prev} → ${d}</span>`)
+    : `<span class="rest">${en?'no movement yet':'noch keine Bewegung'}</span>`;
+   const w=naechst.achtung
+    ? `<span class="pwatch">${en?'CAUTION':'ACHTUNG'} ${esc(naechst.achtung.name)}</span> ` : '';
+   const laut=d<=(bs.alarm!=null?bs.alarm:3);
+   inner+=`<div class="packwoher${laut?' laut':''}">`
+    +`<span class="zahl">${d}</span>`
+    +`<span><div class="wo">${w}${en?'jumps away, out of':'Sprünge entfernt, aus'} `
+    +`<b>${esc(naechst.last_system||'?')}</b></div>`
+    +`<div class="rest">${richtung} · [${esc(naechst.label)}] · ${naechst.members} `
+    +`${en?'pilots':'Piloten'} · ${en?'last kill':'letzter Kill'} ${packAge(now-naechst.last_seen,en)}</div></span>`
+    +`</div>`;
+  }else{
+   inner+=`<div class="packwoher ruhig"><span class="zahl">✓</span>`
+    +`<span><div class="wo">${en?'Nothing approaching':'Nichts im Anmarsch'}</div>`
+    +`<div class="rest">${en?'no pack with a known distance in the bubble':'kein Rudel mit bekannter Entfernung in der Blase'}</div></span></div>`;
+  }
+ }
+ if(mp0)inner+=`<div class="sub" style="margin-bottom:4px">🗺 ${esc(bs.center||'')} ${en?'centered':'zentriert'} · ${en?'neighbourhood':'Nachbarschaft'} ${mp0.depth} ${en?'jumps':'Sprünge'} · ${en?'watching':'überwacht'} ${bs.radius||20} ${en?'jumps':'Sprünge'} · ${en?'reporting from':'meldet ab'} ${bs.melden!=null?bs.melden:10} · ${en?'alarm from':'Alarm ab'} ${bs.alarm!=null?bs.alarm:3}</div>`+packMapSvg(mp0,en);
  if(near.length){
   inner+=`<div class="pistat2"><b>⚠ ${en?'Approach watch':'Annäherung'}</b>`+near.slice(0,6).map(p=>{
    const d=p.dist,cls=d!=null&&d<=3?'bad':(d!=null&&d<=10?'warn':'dim');
@@ -14317,6 +14470,38 @@ function renderBlutspur(bs){
  }
  html+=`<div class="card">${inner}</div>`;
  box.innerHTML=html;
+ // Karte gross/klein. Zustand bleibt gemerkt, sonst klappt sie beim naechsten
+ // Zwei-Sekunden-Takt wieder zu.
+ const mapbox=box.querySelector('.packmap');
+ if(mapbox){
+  const gross=localStorage.getItem('packMapGross')==='1';
+  mapbox.classList.toggle('gross',gross);
+  const zb=mapbox.querySelector('.packzoom');
+  if(zb){
+   zb.textContent=gross?(en?'smaller':'kleiner'):(en?'enlarge':'größer');
+   zb.onclick=()=>{
+    const neu=!mapbox.classList.contains('gross');
+    localStorage.setItem('packMapGross',neu?'1':'0');
+    mapbox.classList.toggle('gross',neu);
+    zb.textContent=neu?(en?'smaller':'kleiner'):(en?'enlarge':'größer');
+   };
+  }
+ }
+ // Reichweiten. Ton ist wie die anderen Toene rein oertlich (localStorage).
+ const sp=document.getElementById('sndPack');
+ if(sp){sp.checked=localStorage.getItem('sndPack')==='1';
+  sp.onchange=()=>localStorage.setItem('sndPack',sp.checked?'1':'0');}
+ const rg=document.getElementById('packRangeGo');
+ if(rg)rg.onclick=async()=>{
+  const m=Number(document.getElementById('packMelden').value);
+  const a=Number(document.getElementById('packAlarm').value);
+  const st=document.getElementById('packRangeStat');
+  await post({action:'pack_cfg',melden:m,alarm:a});
+  if(st){st.textContent=(en?'✓ saved':'✓ gespeichert');
+   setTimeout(()=>{const x=document.getElementById('packRangeStat'); if(x)x.textContent='';},2000);}
+ };
+ ['packMelden','packAlarm'].forEach(id=>{const e=document.getElementById(id);
+  if(e)e.onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();rg&&rg.click();e.blur();}};});
  const pc=document.getElementById('packCorp'); if(pc)pc.onchange=()=>post({action:'pack_cfg',corp:pc.checked});
  const po=document.getElementById('packOff'); if(po)po.onclick=()=>post({action:'pack_cfg',on:false});
  const pf=document.getElementById('packFollow');

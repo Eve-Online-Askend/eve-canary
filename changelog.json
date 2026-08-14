@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.20.0",
+  "d": "2026-08-14",
+  "de": [
+   "BLUTSPUR: DREI REICHWEITEN STATT EINER. Gewuenscht von Eron Solette. In Highsec direkt neben Lowsec waren 20 Spruenge eine Menge Meldungen, und dazwischen ging die eine wichtige unter. Jetzt gibt es zwei eigene Einstellungen: MELDEN AB (Standard 10 Spruenge) und ALARM AB (Standard 3). Die beobachtete Blase bleibt davon unberuehrt, die Karte zeigt weiter alles — nur das Melden und das Lautwerden sind jetzt getrennt einstellbar. Bekannte Gank-Gruppen melden sich weiterhin fuenf Spruenge frueher, aber mitwachsend: wer „melden ab 3“ einstellt, bekommt auch von denen nichts aus fuenfzehn Spruengen Entfernung.",
+   "DAZU EIN WARNTON, opt-in wie die uebrigen Toene. Bisher hatte die Blutspur ueberhaupt keinen: die Meldung stand nur in der Liste. Der Haken sitzt direkt bei den Reichweiten, nicht bei den Mining-Toenen — er gehoert dorthin, wo man auch einstellt, ab wann es laut wird. Nur der laute Alarm gibt Ton und Desktop-Meldung, die stille Notiz bleibt still.",
+   "DIE KARTE ZEIGT JETZT, WOHER DAS UEBEL KOMMT, ohne dass man sie lesen muss. Ueber der Karte steht eine Zeile mit der Entfernung als grosser Zahl, dem System, aus dem es kommt, und ob es naeher kommt oder abzieht. Innerhalb der Alarm-Reichweite ist sie rot, darueber gelb, und wenn nichts unterwegs ist, gruen.",
+   "Und die Karte ist kleiner. Sie war fest auf ein Format von 1000 mal 700 gezeichnet, egal wie viele Systeme wirklich drin standen — bei einem Dutzend Systemen stand die Haelfte leer und der Rest war trotzdem seitenhoch. Jetzt zieht sich der Ausschnitt auf die tatsaechlich vorhandenen Systeme zusammen, und die Hoehe ist auf 300 Pixel gedeckelt. Wer sie gross will, klappt sie mit einem Knopf auf, und das bleibt gemerkt."
+  ],
+  "en": [
+   "BLOOD TRAIL: THREE RANGES INSTEAD OF ONE. Requested by Eron Solette. In highsec right next to lowsec, 20 jumps meant a lot of messages, and the one that mattered got lost among them. There are now two separate settings: REPORT FROM (default 10 jumps) and ALARM FROM (default 3). The watched bubble is untouched and the map still shows everything — only reporting and going loud are now set separately. Known gank groups still report five jumps earlier, but it scales: set “report from 3” and you will not hear from them at fifteen jumps either.",
+   "PLUS A WARNING TONE, opt-in like the other sounds. Until now the blood trail had none at all: the message only appeared in the list. The checkbox sits right next to the ranges rather than with the mining sounds — it belongs where you also decide when things get loud. Only the loud alarm makes a sound and a desktop notification; the quiet note stays quiet.",
+   "THE MAP NOW SHOWS WHERE THE TROUBLE IS COMING FROM without you having to read it. Above the map there is one line with the distance as a large number, the system it comes from, and whether it is closing in or moving away. Inside the alarm range it is red, above that gold, and when nothing is on its way, green.",
+   "And the map is smaller. It was drawn to a fixed 1000 by 700 frame no matter how many systems were actually in it — with a dozen systems half of it stood empty and the rest still filled the page. The frame now shrinks to the systems that are really there, and the height is capped at 300 pixels. If you want it large, one button expands it and that is remembered."
+  ]
+ },
+ {
   "v": "2.19.1",
   "d": "2026-08-14",
   "de": [
