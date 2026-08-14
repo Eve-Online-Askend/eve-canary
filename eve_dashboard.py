@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.6.0"
+VERSION = "2.7.0"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -8731,7 +8731,12 @@ WB_GROUPS = {
     "vertraege": ("contract_price", "contract_reward", "contract_brokers_fee",
                   "contract_sales_tax", "contract_deposit",
                   "contract_price_payment_corp", "contract_reward_deposited"),
-    "geschenke": ("player_donation", "corporation_account_withdrawal"),
+    # Getrennt seit v2.7.0: wer sich Geld aus der Corp-Kasse holt, hat nichts
+    # geschenkt bekommen. Beides stand vorher zusammen unter "Spenden", und
+    # eine Abhebung von 50 Mio sah dadurch aus wie eine Zuwendung.
+    # Gemeldet von Vile Gangster.
+    "geschenke": ("player_donation",),
+    "corpkasse": ("corporation_account_withdrawal",),
     "skills": ("skill_purchase",),
     "versicherung": ("insurance",),
     # Nachgetragen, weil diese Arten in einem echten Wallet zusammen 450 Mio ISK
@@ -8753,7 +8758,18 @@ WB_GROUPS = {
 WB_IGNORE = ("market_escrow", "contract_deposit_refund", "market_escrow_refund")
 
 
-def query_wallet(days=30):
+def wallet_chars():
+    """Welche Charaktere haben ueberhaupt Wallet-Daten? Fuer die Auswahl im
+    Wallet Buddy. Aus beiden Quellen, denn wer nur handelt, steht nicht im
+    Journal, und wer nur rattet, hat keine Transaktionen."""
+    with DB_LOCK:
+        rows = DB.execute(
+            "SELECT char FROM wbook WHERE char IS NOT NULL "
+            "UNION SELECT char FROM trades WHERE char IS NOT NULL").fetchall()
+    return sorted({r[0] for r in rows if r[0]})
+
+
+def query_wallet(days=30, char=None):
     """Wallet Buddy: vollstaendige Wallet-Analyse mit Schwerpunkt Handel.
 
     Handelsgewinn wird per FIFO gerechnet: jeder Verkauf wird gegen die
@@ -8769,20 +8785,28 @@ def query_wallet(days=30):
 
     days=0 heisst "alles, was in der Datenbank steht"."""
     seit = (time.time() - days * 86400) if days else 0
+    # Auf einen Charakter einschraenken, wenn gewuenscht. Die Spalte gab es
+    # in allen drei Tabellen laengst, ausgewertet wurde sie nur nie.
+    # Gewuenscht von Vile Gangster ("welcher Char hat was gekauft/verkauft").
+    nur = " AND char=?" if char else ""
+    arg = [char] if char else []
     with DB_LOCK:
         tx = DB.execute("SELECT char, ts, type_id, qty, price, is_buy, loc_id "
-                        "FROM trades WHERE ts>=? ORDER BY ts", (seit,)).fetchall()
+                        "FROM trades WHERE ts>=?" + nur + " ORDER BY ts",
+                        [seit] + arg).fetchall()
         jr = DB.execute("SELECT ref_type, SUM(amount), COUNT(*) FROM wbook "
-                        "WHERE ts>=? GROUP BY ref_type", (seit,)).fetchall()
+                        "WHERE ts>=?" + nur + " GROUP BY ref_type",
+                        [seit] + arg).fetchall()
         # Fuer die Bilanz: Ein- und Ausgaben je Art getrennt. Eine Art kann
         # beides haben (Spenden gehen hin UND her), eine Summe allein wuerde
         # das verschlucken.
         jr_vz = DB.execute(
             "SELECT ref_type, SUM(CASE WHEN amount>0 THEN amount ELSE 0 END), "
             "SUM(CASE WHEN amount<0 THEN amount ELSE 0 END), COUNT(*) "
-            "FROM wbook WHERE ts>=? GROUP BY ref_type", (seit,)).fetchall()
-        zeitraum = DB.execute("SELECT MIN(ts), MAX(ts) FROM wbook WHERE ts>=?",
-                              (seit,)).fetchone()
+            "FROM wbook WHERE ts>=?" + nur + " GROUP BY ref_type",
+            [seit] + arg).fetchall()
+        zeitraum = DB.execute("SELECT MIN(ts), MAX(ts) FROM wbook WHERE ts>=?" + nur,
+                              [seit] + arg).fetchone()
     gekauft = {t[2] for t in tx if t[5]}
     verkauft = {t[2] for t in tx if not t[5]}
     rund = gekauft & verkauft            # nur diese gelten als Handel
@@ -9448,7 +9472,19 @@ class Handler(BaseHTTPRequestHandler):
                         if "days=" in self.path else 30
                 except ValueError:
                     tage = 30
-                data["wallet"] = query_wallet(tage if tage in (0, 7, 30, 90) else 30)
+                # Optional auf einen Charakter einschraenken. Nur Namen, die
+                # wirklich Wallet-Daten haben, alles andere wird ignoriert.
+                wchar = ""
+                if "wchar=" in self.path:
+                    wchar = urllib.parse.unquote(
+                        self.path.split("wchar=")[1].split("&")[0])
+                erlaubt = wallet_chars()
+                if wchar not in erlaubt:
+                    wchar = ""
+                data["wallet"] = query_wallet(tage if tage in (0, 7, 30, 90) else 30,
+                                              wchar or None)
+                data["wallet"]["chars"] = erlaubt
+                data["wallet"]["char"] = wchar
             elif view == "timeline":
                 data["timeline"] = query_timelines()
             elif view == "profil":
@@ -11263,6 +11299,9 @@ let fontsize=Number(localStorage.getItem('fontsize')||1);
 // nicht bei jedem Start wieder umgestellt werden muss.
 let walletTage=Number(localStorage.getItem('walletTage')??30);
 if(![0,7,30].includes(walletTage))walletTage=30;
+// Auf welchen Charakter der Wallet Buddy eingeschraenkt ist. Leer = alle.
+// Der Server prueft den Namen ohnehin gegen die vorhandenen Wallet-Daten.
+let walletChar=localStorage.getItem('walletChar')||'';
 function applyFs(){
  document.documentElement.dataset.fs=fontsize;
  $('#fontsize').textContent=FS_LABEL[fontsize];
@@ -13466,12 +13505,14 @@ function renderWallet(w){
  // Herkunfts-Tabelle nie auseinanderlaufen.
  const KAT=en?{handel:'Market trades',gebuehren:'Fees & tax',bounty:'Bounty & missions',
                industrie:'Industry',planeten:'Planetary',vertraege:'Contracts',
-               versicherung:'Insurance',geschenke:'Donations',skills:'Skills',
+               versicherung:'Insurance',geschenke:'Donations',corpkasse:'Corp wallet',
+               skills:'Skills',
                hypernet:'Hypernet',reparatur:'Repairs',klone:'Clones',
                belohnungen:'Rewards',direkthandel:'Direct trades',sonstiges:'Other'}
             :{handel:'Markt-Geschäfte',gebuehren:'Gebühren & Steuer',bounty:'Bounty & Missionen',
               industrie:'Industrie',planeten:'Planeten',vertraege:'Verträge',
-              versicherung:'Versicherung',geschenke:'Spenden',skills:'Skills',
+              versicherung:'Versicherung',geschenke:'Spenden',corpkasse:'Corp-Kasse',
+              skills:'Skills',
               hypernet:'Hypernet',reparatur:'Reparaturen',klone:'Klone',
               belohnungen:'Belohnungen',direkthandel:'Direkthandel',sonstiges:'Sonstiges'};
 
@@ -13481,6 +13522,16 @@ function renderWallet(w){
    <span class="mfptitle">${en?'Period':'Zeitraum'}</span>
    <span>`+ZR.map(([t,l])=>`<span class="pill wtage${walletTage===t?' on':''}" data-wt="${t}">${l}</span>`).join(' ')
    +`</span></div></div>`;
+ // ---- Charakter-Umschalter ------------------------------------------------
+ // Nur zeigen, wenn es ueberhaupt mehr als einen gibt: bei einem Charakter
+ // waere die Zeile nur Platzverschwendung.
+ if((w.chars||[]).length>1){
+  h0+=`<div class="card" style="grid-column:1/-1"><div class="mfphead">
+    <span class="mfptitle">${en?'Character':'Charakter'}</span>
+    <span><span class="pill wchar${!w.char?' on':''}" data-wc="">${en?'all':'alle'}</span> `
+   +w.chars.map(c=>`<span class="pill wchar${w.char===c?' on':''}" data-wc="${esc(c)}">${esc(c)}</span>`).join(' ')
+   +`</span></div></div>`;
+ }
  // ---- Bilanz: Einnahmen, Ausgaben, Saldo ---------------------------------
  const B=w.bilanz;
  if(B&&(B.ein||B.aus)){
@@ -13591,6 +13642,14 @@ function renderWallet(w){
   el.onclick=()=>{
    walletTage=Number(el.dataset.wt);
    localStorage.setItem('walletTage',walletTage);
+   tick();
+  };
+ });
+ // Charakter umschalten, gleiche Mechanik wie beim Zeitraum.
+ $('#grid').querySelectorAll('.wchar').forEach(el=>{
+  el.onclick=()=>{
+   walletChar=el.dataset.wc||'';
+   localStorage.setItem('walletChar',walletChar);
    tick();
   };
  });
@@ -15049,7 +15108,9 @@ async function tick(){
  try{
   // Der Wallet-Bereich hat einen eigenen Zeitraum (7/30/alles), der Server
   // rechnet die Bilanz danach. Bei allen anderen Ansichten bleibt die URL wie sie war.
-  const zusatz=(reqView==='wallet')?('&days='+walletTage):'';
+  const zusatz=(reqView==='wallet')
+    ?('&days='+walletTage+(walletChar?'&wchar='+encodeURIComponent(walletChar):''))
+    :'';
   const d=await (await fetch('/data?view='+reqView+zusatz,{cache:'no-store'})).json();
   if(reqView!==view)return;  // Nutzer hat inzwischen gewechselt -> Antwort verwerfen
   state=d.state;regionPills();handleAlerts();updateBadge();updateBanner();serverBadge();bootScreen();renderViewInfo();

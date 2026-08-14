@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.7.0",
+  "d": "2026-08-14",
+  "de": [
+   "Der Wallet Buddy laesst sich jetzt auf einen einzelnen Charakter einschraenken. Ueber dem Zeitraum steht eine zweite Reihe mit deinen Charakteren, und die Auswahl gilt fuer alles: Bilanz, Top 10 nach Umsatz, Eigenbedarf und den Handel im Detail. Sie wird gemerkt, du findest sie beim naechsten Mal wieder. Die Zeile erscheint nur, wenn es mehr als einen Charakter mit Wallet-Daten gibt. Gewuenscht von Vile Gangster.",
+   "Das war weniger Aufwand als gedacht: welcher Charakter was gebucht hat, stand laengst in der Datenbank, es hat nur nie jemand danach gefragt. Gegengerechnet: die Summe der einzelnen Charaktere trifft die Gesamtzahl auf den ISK genau, es geht also nichts verloren und nichts wird doppelt gezaehlt.",
+   "„Spenden“ und Abhebungen aus der Corp-Kasse sind jetzt zwei getrennte Kategorien. Vorher lagen sie zusammen, und wer sich 50 Mio aus der Corp-Kasse holte, sah das als Spende ausgewiesen. Ebenfalls von Vile Gangster gemeldet."
+  ],
+  "en": [
+   "The Wallet Buddy can now be narrowed down to a single character. Above the period there is a second row with your characters, and the choice applies to everything: balance, top 10 by turnover, own use and the trade details. It is remembered for next time. The row only appears when more than one character has wallet data. Requested by Vile Gangster.",
+   "This took less work than expected: which character booked what was in the database all along, nobody had ever asked for it. Cross checked: the sum of the individual characters matches the overall figure to the ISK, so nothing is lost and nothing is counted twice.",
+   "“Donations” and withdrawals from the corp wallet are now two separate categories. Before they sat together, so taking 50 million out of the corp wallet showed up as a donation. Also reported by Vile Gangster."
+  ]
+ },
+ {
   "v": "2.6.0",
   "d": "2026-08-14",
   "de": [
