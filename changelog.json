@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.20.2",
+  "d": "2026-08-14",
+  "de": [
+   "Das Aufraeumen der Abyss-Bloecke greift jetzt auch, wenn zwischen zwei Updates nur EIN Durchgang lag. Bisher verlangte die Regel zwei oder mehr umschlossene Eintraege, weil zwei Einsaetze nicht zufaellig zusammen genau den Schaden eines dritten ergeben koennen. Bei nur einem umschlossenen Eintrag koennte das theoretisch eine harmlose Ueberschneidung sein, deshalb muss dort etwas dazukommen, das im Spiel unmoeglich ist: der Block dauert laenger als ein Abyss-Durchgang dauern kann, oder er ist mehr als doppelt so lang wie das, was er umschliesst. An Nirahses Bestand nachgerechnet: entfernt wird weiterhin genau der eine Block, alles andere bleibt unangetastet."
+  ],
+  "en": [
+   "The abyss block cleanup now also catches the case where only ONE run happened between two updates. The rule used to require two or more enclosed entries, because two runs cannot add up to exactly the damage of a third by chance. With only one enclosed entry that could in theory be a harmless overlap, so something else has to be true that the game makes impossible: the block lasts longer than an abyss run can, or it is more than twice as long as what it encloses. Checked against Nirahse's data: it still removes exactly that one block and leaves everything else alone."
+  ]
+ },
+ {
   "v": "2.20.1",
   "d": "2026-08-14",
   "de": [

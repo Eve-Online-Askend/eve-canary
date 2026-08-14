@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.20.1"
+VERSION = "2.20.2"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1880,10 +1880,19 @@ def abyss_bloecke_aufraeumen():
     Block aus mehreren Abyss-Durchgaengen sind.
 
     Die Signatur ist eindeutig und braucht keinen Chatlog: ein Eintrag, der
-    ZWEI ODER MEHR andere Eintraege desselben Charakters vollstaendig umschliesst
-    UND dessen Schaden genau ihrer Summe entspricht, kann kein eigener Einsatz
-    sein. An Nirahses Daten: 512.952 = 258.753 + 254.199, dazu Treffer,
-    Fehlschuesse und EWAR ebenfalls aufs Stueck genau.
+    andere Eintraege desselben Charakters vollstaendig umschliesst UND dessen
+    Schaden genau ihrer Summe entspricht, kann kein eigener Einsatz sein. An
+    Nirahses Daten: 512.952 = 258.753 + 254.199, dazu Treffer, Fehlschuesse und
+    EWAR ebenfalls aufs Stueck genau.
+
+    Bei ZWEI oder mehr umschlossenen Eintraegen reicht das schon: zwei Einsaetze
+    koennen nicht gleichzeitig in einem dritten stecken und zufaellig genau
+    dessen Schaden ergeben. Bei nur EINEM umschlossenen Eintrag koennte das
+    theoretisch auch eine harmlose Ueberschneidung sein, deshalb muss dort noch
+    etwas dazukommen, das im Spiel unmoeglich ist: entweder dauert der Block
+    laenger als ein Abyss-Durchgang dauern kann, oder er ist laenger als das
+    Doppelte dessen, was er umschliesst. Dieser Fall entsteht, wenn ein Update
+    NACH nur einem Durchgang kam.
 
     Nur Eintraege OHNE eingetragenen Loot werden entfernt. Wer an so einem
     Block schon Beute hinterlegt hat, verliert sie sonst — dann bleibt er
@@ -1892,13 +1901,13 @@ def abyss_bloecke_aufraeumen():
     try:
         with DB_LOCK:
             rows = DB.execute(
-                "SELECT mid,char_id,start_ts,end_ts,dmg_out,loot_isk,loot_text "
-                "FROM missions ORDER BY start_ts").fetchall()
+                "SELECT mid,char_id,start_ts,end_ts,dmg_out,loot_isk,loot_text,"
+                "system,enemies FROM missions ORDER BY start_ts").fetchall()
         proChar = {}
         for r in rows:
             proChar.setdefault(str(r[1]), []).append(r)
         for cid, liste in proChar.items():
-            for mid, _c, a, b, dmg, loot_isk, loot_text in liste:
+            for mid, _c, a, b, dmg, loot_isk, loot_text, system, enemies_j in liste:
                 if not a or not b or b <= a or not dmg:
                     continue
                 if (loot_isk or 0) or (loot_text or "").strip():
@@ -1906,10 +1915,20 @@ def abyss_bloecke_aufraeumen():
                 drin = [x for x in liste
                         if x[0] != mid and x[2] and x[3]
                         and x[2] >= a - 1 and x[3] <= b + 1]
-                if len(drin) < 2:
+                if not drin:
                     continue
-                if abs(sum(x[4] or 0 for x in drin) - dmg) < 1:
-                    weg.append(mid)
+                if abs(sum(x[4] or 0 for x in drin) - dmg) >= 1:
+                    continue
+                if len(drin) == 1:
+                    innen = (drin[0][3] or 0) - (drin[0][2] or 0)
+                    try:
+                        gg = json.loads(enemies_j or "[]")
+                    except Exception:
+                        gg = []
+                    zu_lang = ist_abyss(system or "", gg) and (b - a) > ABYSS_MAX_S
+                    if not zu_lang and (b - a) < innen * 2:
+                        continue
+                weg.append(mid)
         if weg:
             with DB_LOCK:
                 DB.executemany("DELETE FROM missions WHERE mid=?", [(x,) for x in weg])
