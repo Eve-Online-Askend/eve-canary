@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.18.0"
+VERSION = "2.19.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -8361,6 +8361,48 @@ def cargo_diff(vorher, nachher):
             "minus_text": "\n".join(r["name"] + "\t" + zahl(r["qty"]) for r in minus)}
 
 
+def cargo_wert(vorher, nachher):
+    """Beide Frachtraum-Kopien ueber den Markt bewerten, in EINEM Durchgang.
+
+    Gedacht fuer den haeufigen Fall, dass im Frachtraum-Fenster gar keine
+    Wertspalte eingeblendet ist: dann steht unter den Feldern sonst nur die
+    Stueckzahl. Bewertet wird zum Jita-Sofortverkauf (Buy), also zu dem, was man
+    wirklich bekommt, und das ist auch die Bezugsgroesse im Rest von Canary.
+
+    Bewusst EIN Aufruf fuer beide Seiten: die Namen ueberschneiden sich fast
+    vollstaendig, getrennt bewertet waeren es zwei Preisabrufe fuer dieselbe
+    Liste. An einem echten Bestand mit 229 und 52 Positionen sind das 241
+    verschiedene Namen statt 281 Abfragen."""
+    a, b = parse_inventar_text(vorher), parse_inventar_text(nachher)
+    alle = sorted(set(a) | set(b))
+    if not alle:
+        return {"ok": False, "msg": "Keine Posten gefunden."}
+    ids_map = resolve_item_ids(alle)
+    unbekannt = [n for n in alle if n not in ids_map]
+    ids = set(ids_map.values())
+    try:
+        pm = hub_prices("10000002", ids) if ids else {}
+    except Exception as e:
+        log_error("CN-NET-01", "cargo_wert", e)
+        return {"ok": False, "msg": "Preisabfrage fehlgeschlagen."}
+
+    def stueck(name):
+        return pm.get(ids_map.get(name), (0, 0))[0]
+
+    def summe(mengen):
+        return round(sum(q * stueck(n) for n, q in mengen.items()))
+
+    plus = {n: b.get(n, 0) - a.get(n, 0) for n in alle if b.get(n, 0) > a.get(n, 0)}
+    minus = {n: a.get(n, 0) - b.get(n, 0) for n in alle if a.get(n, 0) > b.get(n, 0)}
+    return {"ok": True, "hub": "Jita",
+            "vorher": summe(a), "nachher": summe(b),
+            "plus": summe(plus), "minus": summe(minus),
+            # Je Posten, damit die Tabellen dieselbe Spalte fuellen koennen.
+            "je_stueck": {n: round(stueck(n), 2) for n in alle if stueck(n)},
+            "bewertet": len(alle) - len(unbekannt), "gesamt": len(alle),
+            "unbekannt": unbekannt[:12]}
+
+
 def einzelpreise(text):
     """{Name: ISK je Stueck} aus einer Frachtraum-Kopie, sofern die Wertspalte
     eingeblendet ist. Leeres Dict, wenn nicht — dann bleibt die Wertangabe im
@@ -10640,6 +10682,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send(json.dumps({"ok": True,
                                    **inventar_summe(body.get("text") or "")}))
             return
+        elif action == "cargo_wert":
+            self._send(json.dumps(cargo_wert(body.get("vorher") or "",
+                                             body.get("nachher") or "")))
+            return
         elif action == "loot_calc":
             # Beliebige Frachtraum-Kopie bewerten, ohne sie an eine Mission zu
             # haengen. Gleiche Rechnung wie beim Loot-Feld der Missionen.
@@ -11759,6 +11805,17 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 }
 /* Das Ergebnis: eigene Zone, damit es nicht wie ein viertes Eingabefeld wirkt. */
 .diffout{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+/* Lange Listen rollen im Kasten, statt die Seite zu strecken. Ein voller
+   Frachtraum bringt hier dreistellig viele Zeilen mit. Der Spaltenkopf bleibt
+   dabei stehen, sonst weiss man nach zwanzig Zeilen nicht mehr, was wo steht. */
+.difftabelle{max-height:330px;overflow:auto;margin-top:2px}
+.difftabelle thead th{position:sticky;top:0;background:var(--card);z-index:1}
+.diffminus>summary{cursor:pointer;list-style:none;display:flex;align-items:baseline;
+ gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--line)}
+.diffminus>summary::-webkit-details-marker{display:none}
+.diffminus>summary::before{content:"▸";color:var(--dim);font-size:11px}
+.diffminus[open]>summary::before{content:"▾"}
+.diffminus>summary:hover{color:var(--txt)}
 .note{font-size:11px;color:var(--dim);margin-top:10px}
 </style></head><body>
 <!--NOTFALL-->
@@ -15378,11 +15435,14 @@ function renderBeute(){
    </div>
   </div>
   <div class="btnrow" style="margin:10px 0 0"><button class="btn pri" id="diffGo">Vergleichen</button>
+   <button class="btn" id="diffMarkt" title="Bewertet BEIDE Kopien zum Jita-Sofortverkauf. Nötig, wenn im Frachtraum-Fenster die Spalte Wert nicht eingeblendet ist: dann steht in der Kopie kein einziger Preis.">💰 Marktwert holen</button>
    <button class="btn" id="diffNext" title="Für den nächsten Durchgang: der Stand von rechts wandert nach links, rechts wird leer. Spart das doppelte Einfügen, wenn du mehrere Läufe hintereinander machst.">⬅ Nachher wird Vorher</button>
    <button class="btn" id="diffClr">Felder leeren</button>
-   <span id="diffStat" style="font-size:12px;color:var(--dim);align-self:center"></span></div>
+   <span id="diffStat" style="font-size:12px;color:var(--dim);align-self:center"></span>
+   <span id="diffMarktStat" style="font-size:12px;color:var(--dim);align-self:center"></span></div>
   <div id="diffOut"></div></div>`;
  $('#diffGo').onclick=doDiff;
+ $('#diffMarkt').onclick=diffMarktwert;
  $('#diffClr').onclick=()=>{
   ['diffA','diffB'].forEach(id=>{$('#'+id).value='';localStorage.removeItem(id);});
   $('#diffOut').innerHTML='';$('#diffStat').textContent='';
@@ -15414,6 +15474,34 @@ function renderBeute(){
   diffSumme(id);
  });
 }
+// Marktwert BEIDER Kopien in einem Rutsch. Nötig, sobald im Frachtraum-Fenster
+// die Wertspalte fehlt: dann steht in der Kopie kein einziger Preis, und unter
+// den Feldern koennte sonst nur die Stueckzahl stehen.
+let diffMarkt=null;          // zuletzt geholte Marktwerte, fuer die Anzeige
+async function diffMarktwert(){
+ // Eigene Statuszeile: doDiff() raeumt seine eigene auf, und die Herkunft der
+ // Preise soll stehen bleiben, wenn danach neu verglichen wird.
+ const en=(lang==='en'), st=$('#diffMarktStat');
+ const vorher=$('#diffA').value, nachher=$('#diffB').value;
+ if(!vorher.trim()&&!nachher.trim()){
+  st.textContent=en?'Please paste a cargo copy first.':'Bitte zuerst eine Frachtraum-Kopie einfügen.';
+  return;}
+ const knopf=$('#diffMarkt'); knopf.disabled=true;
+ st.textContent=en?'Fetching prices …':'Hole Preise …';
+ let r;try{r=await post({action:'cargo_wert',vorher,nachher});}catch(e){r=null;}
+ if(!$('#diffMarkt'))return;               // Bereich zwischendurch gewechselt
+ knopf.disabled=false;
+ if(!r||!r.ok){st.textContent=(r&&r.msg)||(en?'Price lookup failed.':'Preisabfrage fehlgeschlagen.');return;}
+ diffMarkt=r;
+ st.innerHTML=(en?'Valued at ':'Bewertet zu ')+esc(r.hub)+(en?' buy · ':'-Sofortverkauf · ')
+  +r.bewertet+'/'+r.gesamt+(en?' items priced':' Posten mit Preis')
+  +(r.unbekannt.length?' <span style="opacity:.7">('+(en?'unknown: ':'unbekannt: ')
+    +esc(r.unbekannt.slice(0,4).join(', '))+')</span>':'');
+ diffSumme('diffA'); diffSumme('diffB');
+ // Das Ergebnis darunter kennt jetzt Preise: neu zeichnen, damit die drei
+ // Kennzahlen und die Wert-Spalten gefuellt sind.
+ if($('#diffOut')&&$('#diffOut').innerHTML.trim())doDiff();
+}
 // Summe unter einem Frachtraum-Feld. Der Server zerlegt, damit unter dem Feld
 // dasselbe gezaehlt wird wie in der Tabelle darunter.
 const diffTimer={};
@@ -15421,13 +15509,23 @@ function diffSummeSpaeter(id){
  clearTimeout(diffTimer[id]);
  diffTimer[id]=setTimeout(()=>diffSumme(id),350);   // nicht bei jedem Anschlag fragen
 }
-async function diffSumme(id){
+// Was zuletzt in jedem Feld stand, damit das rechte Feld die Differenz zum
+// linken bilden kann, ohne dieselbe Zerlegung zweimal zu holen.
+const diffWerte={};
+function diffFeldWert(id){
+ const s=diffWerte[id];
+ if(s&&s.hat_isk)return s.isk;
+ if(diffMarkt)return (id==='diffA')?diffMarkt.vorher:diffMarkt.nachher;
+ return null;
+}
+async function diffSumme(id,neuzeichnen){
  const feld=$('#'+id), kasten=$('#diffSum'+id.slice(-1));
  const slot=$('#diffSlot'+id.slice(-1));
  if(!feld||!kasten)return;
  const en=(lang==='en');
  if(slot)slot.classList.toggle('voll',!!feld.value.trim());
  if(!feld.value.trim()){
+  diffWerte[id]=null;
   kasten.innerHTML='<span style="opacity:.7">'
    +(en?'nothing pasted yet':'noch nichts eingefügt')+'</span>';
   return;}
@@ -15436,12 +15534,32 @@ async function diffSumme(id){
  if(!s||!s.ok){kasten.textContent='';return;}
  // Nur zeigen, was wirklich in der Kopie steht: wer die Wert- oder
  // Volumenspalte im Spiel ausgeblendet hat, bekommt hier keine erfundene Null.
+ diffWerte[id]=s;
+ const P='  <span style="opacity:.55">·</span> ';
  let h='<b>'+fmt(s.n)+'</b> '+(en?(s.n===1?'position':'positions'):(s.n===1?'Position':'Positionen'));
- h+=' <span style="opacity:.55">·</span> <b>'+fmt(s.stueck)+'</b> '+(en?'units':'Stück');
- if(s.hat_m3)h+=' <span style="opacity:.55">·</span> <b>'+fmt(Math.round(s.m3))+'</b> m³';
- if(s.hat_isk)h+=' <span style="opacity:.55">·</span> <span class="isk">'+fmtM(s.isk)+' ISK</span>';
+ h+=P+'<b>'+fmt(s.stueck)+'</b> '+(en?'units':'Stück');
+ if(s.hat_m3)h+=P+'<b>'+fmt(Math.round(s.m3))+'</b> m³';
+ // Wert der Kopie: bevorzugt aus der Wertspalte, sonst der geholte Marktwert.
+ // Nie beides nebeneinander, das waeren zwei Zahlen fuer dieselbe Sache.
+ const iskA=diffFeldWert('diffA'), iskB=diffFeldWert('diffB');
+ const eigen=(id==='diffA')?iskA:iskB;
+ if(eigen!=null){
+  h+=P+'<span class="isk">'+fmtM(eigen)+' ISK</span>';
+  if(!s.hat_isk&&diffMarkt)h+=' <span style="opacity:.7">('+esc(diffMarkt.hub)+')</span>';
+ }
+ // Im rechten Feld dazu, wieviel es gegenueber links geworden ist. Genau danach
+ // sucht man beim Vergleich, und bisher musste man es selbst abziehen.
+ if(id==='diffB'&&iskA!=null&&iskB!=null){
+  const d=iskB-iskA;
+  h+=P+'<b style="color:var(--'+(d>=0?'green':'red')+')">'+(d>=0?'+':'−')+fmtM(Math.abs(d))+' ISK</b> '
+   +'<span style="opacity:.7">'+(en?'vs. before':'gegenüber vorher')+'</span>';
+ }
  kasten.innerHTML=h;
  if(lang!=='de')tr(kasten);
+ // Das linke Feld kennt die Differenz nicht, das rechte schon: nach einer
+ // Aenderung links muss rechts also mitgezogen werden.
+ if(id==='diffA'&&$('#diffB')&&$('#diffB').value.trim()&&!neuzeichnen)
+  diffSumme('diffB',true);
 }
 // Frachtraum vorher gegen nachher. Der Vergleich laeuft im Server, damit
 // derselbe Parser zaehlt, der spaeter auch das Loot-Feld liest.
@@ -15459,8 +15577,17 @@ async function doDiff(){
   if(lang!=='de')tr(document.body);
   return;}
  const en=(lang==='en');
- const wert=i=>i.isk!=null?'<span class="isk">'+fmtM(i.isk)+'</span>':'<span style="opacity:.4">·</span>';
- const zeilen=(liste,farbe,zeichen)=>liste.map(i=>
+ // Wert je Posten: bevorzugt aus der Frachtraum-Kopie (steht dort schon drin),
+ // sonst aus dem zuletzt geholten Marktwert. Fehlt beides, ein Strich statt
+ // einer Null — eine Null waere eine Behauptung.
+ const je=(diffMarkt&&diffMarkt.je_stueck)||{};
+ const iskVon=i=>i.isk!=null?i.isk:(je[i.name]?Math.round(je[i.name]*i.qty):null);
+ const wert=i=>{const v=iskVon(i);
+  return v!=null?'<span class="isk">'+fmtM(v)+'</span>':'<span style="opacity:.4">·</span>';};
+ // Nach Wert sortieren, wo es einen gibt: bei dreistellig vielen Zeilen ist
+ // das Teuerste die Zeile, die man sucht, nicht die mit der groessten Stueckzahl.
+ const sortiert=l=>l.slice().sort((x,y)=>(iskVon(y)||0)-(iskVon(x)||0)||y.qty-x.qty);
+ const zeilen=(liste,farbe,zeichen)=>sortiert(liste).map(i=>
   '<tr><td>'+esc(i.name)+'</td><td class="r">'+fmt(i.vor)+'</td><td class="r">'+fmt(i.nach)
   +'</td><td class="r" style="color:'+farbe+'">'+zeichen+fmt(i.qty)+'</td>'
   +'<td class="r">'+wert(i)+'</td></tr>').join('');
@@ -15469,22 +15596,31 @@ async function doDiff(){
  // und das verbrauchte Filament abgezogen sind. Nur zeigen, wenn die Wertspalte
  // im Frachtraum-Fenster ueberhaupt eingeblendet war.
  let h='<div class="diffout">';
- const mitWert=(r.plus_isk!=null||r.minus_isk!=null);
+ // Wo die Zahlen herkommen: aus der Kopie selbst, sonst vom Markt.
+ const marktQuelle=(r.plus_isk==null&&r.minus_isk==null&&diffMarkt);
+ const pIsk=r.plus_isk!=null?r.plus_isk:(diffMarkt?diffMarkt.plus:null);
+ const mIsk=r.minus_isk!=null?r.minus_isk:(diffMarkt?diffMarkt.minus:null);
+ const mitWert=(pIsk!=null||mIsk!=null);
  if(mitWert){
-  const netto=(r.plus_isk||0)-(r.minus_isk||0);
+  const netto=(pIsk||0)-(mIsk||0);
+  // Woher die Zahlen stammen, gehoert dazu: die Schaetzung des Spiels und der
+  // Jita-Sofortverkauf sind zwei verschiedene Betraege, und wer nachrechnet,
+  // muss wissen, welchen er vor sich hat.
+  const quelle=marktQuelle
+   ? (en?'at '+esc(diffMarkt.hub)+' buy':esc(diffMarkt.hub)+'-Sofortverkauf')
+   : (en?'as valued by the game':'laut Frachtraum-Fenster');
   h+='<div class="stats" style="grid-template-columns:repeat(3,1fr)">'
    +'<div class="stat"><div class="l">'+(en?'Added':'Dazugekommen')+'</div>'
-   +'<div class="v isk">'+fmtM(r.plus_isk||0)+' ISK</div>'
+   +'<div class="v isk">'+fmtM(pIsk||0)+' ISK</div>'
    +'<div class="sub" style="margin:2px 0 0">'+r.plus.length+' '
    +(en?(r.plus.length===1?'position':'positions'):(r.plus.length===1?'Position':'Positionen'))+'</div></div>'
    +'<div class="stat"><div class="l">'+(en?'Used up':'Verbraucht')+'</div>'
-   +'<div class="v in">-'+fmtM(r.minus_isk||0)+' ISK</div>'
+   +'<div class="v in">-'+fmtM(mIsk||0)+' ISK</div>'
    +'<div class="sub" style="margin:2px 0 0">'+r.minus.length+' '
    +(en?(r.minus.length===1?'position':'positions'):(r.minus.length===1?'Position':'Positionen'))+'</div></div>'
    +'<div class="stat"><div class="l">'+(en?'Bottom line':'Unterm Strich')+'</div>'
    +'<div class="v '+(netto>=0?'isk':'in')+'">'+(netto<0?'-':'')+fmtM(Math.abs(netto))+' ISK</div>'
-   +'<div class="sub" style="margin:2px 0 0">'
-   +(en?'as valued by the game':'laut Frachtraum-Fenster')+'</div></div></div>';
+   +'<div class="sub" style="margin:2px 0 0">'+quelle+'</div></div></div>';
  }
  if(!mitWert&&(r.plus.length||r.minus.length)){
   // Leerer Zustand mit Ausweg statt einer fehlenden Zeile: ohne die Wertspalte
@@ -15503,17 +15639,30 @@ async function doDiff(){
    +'<span id="diffCopyStat" style="font-size:12px;color:var(--green);align-self:center"></span>'
    +'<button class="btn" id="diffWert">Marktwert holen</button>'
    +'<span id="diffWertStat" style="font-size:12px;color:var(--dim);align-self:center"></span></div>'
-   +'<div style="overflow-x:auto"><table><thead><tr><th>Item</th><th class="r">Vorher</th>'
+   +'<div class="difftabelle"><table><thead><tr><th>Item</th><th class="r">Vorher</th>'
    +'<th class="r">Nachher</th><th class="r">Dazu</th><th class="r">Wert</th></tr></thead>'
    +zeilen(r.plus,'var(--gold)','+')+'</table></div>';
  }
  if(r.minus.length){
-  h+='<div class="sect" style="margin-top:14px">Weniger geworden</div>'
-   +'<div class="sub" style="margin:2px 0 0">'
-   +'verbraucht oder abgeladen, zum Beispiel Munition, Drohnen oder Filamente</div>'
-   +'<div style="overflow-x:auto"><table><thead><tr><th>Item</th><th class="r">Vorher</th>'
+  // Zugeklappt, und zwar aus Erfahrung: wer seinen Frachtraum vor dem Lauf
+  // ausraeumt, hat hier hunderte Zeilen stehen (gemeldet mit 229 gegen 52
+  // Positionen), und die schoben die eigentliche Antwort aus dem Bild.
+  // Die Zusammenfassung in der Kopfzeile sagt schon alles Wichtige, der Rest
+  // ist einen Klick entfernt. Nichts wird abgeschnitten, die Tabelle rollt.
+  const mn=r.minus.length;
+  h+='<details class="diffminus" style="margin-top:14px">'
+   +'<summary><span class="sect" style="margin:0">'
+   +(en?'Gone from the hold':'Weniger geworden')+'</span> '
+   +'<span class="sub" style="margin:0">'+mn+' '
+   +(en?(mn===1?'position':'positions'):(mn===1?'Position':'Positionen'))
+   +(r.minus_isk!=null?' <span style="opacity:.55">·</span> <span class="in">-'
+     +fmtM(r.minus_isk)+' ISK</span>':'')+'</span></summary>'
+   +'<div class="sub" style="margin:6px 0 0">'
+   +(en?'used up or dropped off, for example ammunition, drones or filaments'
+       :'verbraucht oder abgeladen, zum Beispiel Munition, Drohnen oder Filamente')+'</div>'
+   +'<div class="difftabelle"><table><thead><tr><th>Item</th><th class="r">Vorher</th>'
    +'<th class="r">Nachher</th><th class="r">Weg</th><th class="r">Wert</th></tr></thead>'
-   +zeilen(r.minus,'var(--red)','-')+'</table></div>';
+   +zeilen(r.minus,'var(--red)','-')+'</table></div></details>';
  }
  if(r.gleich>0)h+='<div class="sub" style="margin-top:8px">'+r.gleich
   +(lang==='en'?(r.gleich===1?' kind stayed the same.':' kinds stayed the same.')
@@ -15839,7 +15988,9 @@ const EN = {
 'Vorher':'Before','Nachher':'After','Dazu':'Added','Weg':'Gone',
 'Frachtraum vor der Aktion':'Cargo hold before','Frachtraum nach der Aktion':'Cargo hold after',
 'Vergleichen':'Compare','Felder leeren':'Clear the boxes','Kopieren':'Copy',
-'Marktwert holen':'Get market value',
+'Marktwert holen':'Get market value','💰 Marktwert holen':'💰 Get market value',
+'Bewertet BEIDE Kopien zum Jita-Sofortverkauf. Nötig, wenn im Frachtraum-Fenster die Spalte Wert nicht eingeblendet ist: dann steht in der Kopie kein einziger Preis.':
+ 'Values BOTH copies at the Jita buy price. Needed when the value column is not visible in your cargo hold window: the copy then holds no price at all.',
 '⬅ Nachher wird Vorher':'⬅ After becomes before',
 'Für den nächsten Durchgang: der Stand von rechts wandert nach links, rechts wird leer. Spart das doppelte Einfügen, wenn du mehrere Läufe hintereinander machst.':
  'For the next run: what is on the right moves to the left and the right box is emptied. Saves pasting the same copy twice when you do several runs in a row.',

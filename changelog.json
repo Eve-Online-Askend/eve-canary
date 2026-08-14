@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.19.0",
+  "d": "2026-08-14",
+  "de": [
+   "MARKTWERT FUER BEIDE FRACHTRAUM-KOPIEN, auf einen Knopf. Bisher konnte Canary nur ISK zeigen, wenn im Frachtraum-Fenster die Spalte Wert eingeblendet war — bei vielen ist sie das nicht, und dann stand unter den Feldern nur die Stueckzahl. Der neue Knopf bewertet vorher UND nachher zum Jita-Sofortverkauf, in EINEM Preisabruf fuer beide Seiten, weil sich die Namen fast vollstaendig ueberschneiden.",
+   "UND DIE ZAHL, NACH DER MAN EIGENTLICH SUCHT, steht jetzt direkt im rechten Feld: wieviel ISK mehr oder weniger es gegenueber vorher geworden ist. Vorher musste man zwei Betraege im Kopf abziehen. Die drei Kennzahlen darunter sagen dazu, WOHER die Zahlen kommen: aus der Schaetzung des Spiels oder vom Markt. Das sind zwei verschiedene Betraege, und wer nachrechnet, muss wissen, welchen er vor sich hat.",
+   "„WENIGER GEWORDEN“ IST ZUGEKLAPPT. Gemeldet mit einem echten Fall: 229 Positionen vorher gegen 52 nachher, also ueber 180 Zeilen verbrauchte Munition, die das eigentliche Ergebnis aus dem Bild geschoben haben. Jetzt steht in der Kopfzeile, wieviele Positionen und wieviel ISK es waren, der Rest ist einen Klick entfernt. Abgeschnitten wird nichts: die Tabellen rollen im Kasten, und der Spaltenkopf bleibt dabei stehen.",
+   "Beide Tabellen sind nach WERT sortiert, nicht mehr nach Stueckzahl. Bei dreistellig vielen Zeilen ist der teuerste Posten die Zeile, die man sucht, und nicht die mit den meisten Stueck."
+  ],
+  "en": [
+   "MARKET VALUE FOR BOTH CARGO COPIES, at one button. Until now Canary could only show ISK when the value column was visible in your cargo hold window — for many people it is not, and then only the unit count appeared under the boxes. The new button values before AND after at the Jita buy price, in ONE price lookup for both sides, because the names overlap almost entirely.",
+   "AND THE NUMBER YOU ARE ACTUALLY LOOKING FOR now sits right in the box on the right: how much ISK more or less it became compared to before. You used to have to subtract two figures in your head. The three key figures below also state WHERE the numbers come from: the game's own estimate, or the market. Those are two different amounts, and anyone checking the maths needs to know which one is in front of them.",
+   "“GONE FROM THE HOLD” IS COLLAPSED. Reported with a real case: 229 positions before against 52 after, so over 180 rows of spent ammunition pushing the actual result out of view. The header now says how many positions and how much ISK it was, and the rest is one click away. Nothing is cut off: the tables scroll inside their box, and the column header stays put while you scroll.",
+   "Both tables are now sorted by VALUE rather than by quantity. With hundreds of rows, the most expensive item is the row you are looking for, not the one with the most units."
+  ]
+ },
+ {
   "v": "2.18.0",
   "d": "2026-08-14",
   "de": [
