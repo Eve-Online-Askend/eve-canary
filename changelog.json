@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.14.0",
+  "d": "2026-08-14",
+  "de": [
+   "Der Verschnitt beim Bergbau wird jetzt auch aus aelteren Logdateien erfasst. Frueher schrieb der Client ihn in DIESELBE Zeile wie den Ertrag („You mined 1310 units of Veldspar with a lost residue of 655 units“), und diese Angabe wurde nur abgeschnitten und weggeworfen. An 1.018 gespendeten Logdateien gemessen: 4.425 solcher Zeilen mit 9,87 Mio Einheiten gegenueber 428 Zeilen der neueren Form, es fehlten also 85,6 Prozent des Verschnitts.",
+   "Damit gibt es endlich die VERSCHNITTQUOTE JE ERZSORTE. In der alten Schreibweise steht der Erzname naemlich mit in der Zeile, die neuere eigene Rueckstandszeile nennt ihn nicht. An einem echten Bestand kamen so 13 Sorten mit eigener Quote zusammen, zwischen 11,9 und 22,4 Prozent.",
+   "Beim einmaligen Neu-Einlesen nach einem Parser-Update werden die Vergleichswerte fuer „Zaehler zuruecksetzen“ neu aufgebaut. Vorher blieben sie stehen und passten danach nicht mehr: neue Posten hatten gar keinen Vergleichswert und wurden voll gezaehlt, obwohl sie vor dem Zuruecksetzen lagen.",
+   "Achtung: dieses Update liest deine Logs einmalig neu ein. Je nach Bestand dauert das ein paar Minuten, der Ladebildschirm zeigt den Fortschritt. Gegengeprueft, dass sich dabei nichts verschiebt: Menge, Volumen, Bounty und Schaden waren vorher und nachher auf die Einheit gleich."
+  ],
+  "en": [
+   "Mining residue is now also captured from older log files. The client used to write it into the SAME line as the yield (“You mined 1310 units of Veldspar with a lost residue of 655 units”), and that figure was merely cut off and discarded. Measured across 1,018 donated log files: 4,425 such lines holding 9.87 million units versus 428 lines in the newer form, so 85.6 percent of the residue was missing.",
+   "This finally gives a RESIDUE RATE PER ORE TYPE. The old wording carries the ore name in the same line, whereas the newer separate residue line does not name it. On a real data set that produced 13 ore types with their own rate, between 11.9 and 22.4 percent.",
+   "During the one-off re-read after a parser update, the reference values for “reset counters” are rebuilt. They used to stay as they were and no longer matched afterwards: new entries had no reference value at all and were counted in full even though they predate the reset.",
+   "Note: this update re-reads your logs once. Depending on your archive that takes a few minutes; the loading screen shows the progress. Verified that nothing shifts in the process: amount, volume, bounty and damage were identical to the unit before and after."
+  ]
+ },
+ {
   "v": "2.13.0",
   "d": "2026-08-14",
   "de": [

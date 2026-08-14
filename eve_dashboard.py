@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.13.0"
+VERSION = "2.14.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1022,6 +1022,11 @@ BOOST_MOD_RE = re.compile(r"(?:Your|Ihr|Ihre|Dein|Deine)\s+([A-Za-z' ]{4,40}?)\s
 # Zusatz, den der englische Client seit 2022 an die Ertragszeile haengt. Muss
 # vom Erznamen abgeschnitten werden, sonst ist der Schluessel unbrauchbar.
 RESIDUE_SUFFIX_RE = re.compile(r"\s+with a lost residue of\b.*$", re.I)
+# Dieselbe Stelle, aber um die MENGE zu holen statt sie nur abzuschneiden.
+# Wird auf den bereits von Auszeichnungen befreiten Text angewendet: im Log
+# steht zwischen "of" und der Zahl noch <font>- und <color>-Markup, auf dem
+# Rohtext findet ein Muster hier gar nichts.
+RESIDUE_INLINE_RE = re.compile(r"with a lost residue of\s+([\d.,\xa0 ']+?)\s*units?\b", re.I)
 
 
 def classify_rest(base, tag, text):
@@ -1126,7 +1131,19 @@ def parse_line(raw):
                 # Fleet Power.
                 ore = RESIDUE_SUFFIX_RE.split(ore)[0].strip()
         if ore and n:
-            return {**base, "kind": "ore", "key": ore, "value": num(n.group(1))}
+            ev = {**base, "kind": "ore", "key": ore, "value": num(n.group(1))}
+            # Der Verschnitt steht in diesen Zeilen MIT im Satz und wurde bisher
+            # nur abgeschnitten und weggeworfen. An 1.018 gespendeten Logdateien
+            # gemessen: 4.425 solcher Zeilen mit 9,87 Mio Einheiten gegenueber
+            # nur 428 Zeilen der neueren Form, also gingen 85,6 Prozent des
+            # Verschnitts verloren. Er wird jetzt am Ertrags-Ereignis
+            # mitgegeben; der Aufrufer schreibt daraus einen eigenen Posten.
+            # Schoener Nebeneffekt: hier steht der ERZNAME dabei, die neuere
+            # eigene Zeile nennt ihn nicht.
+            mres = RESIDUE_INLINE_RE.search(text)
+            if mres:
+                ev["residue"] = num(mres.group(1))
+            return ev
     elif tag == "combat":
         low = body.lower()
         # ---- Cap-Kriegsfuehrung: eigene Farben, sprachunabhaengig -----------
@@ -1771,7 +1788,7 @@ def zu_merken(char_id, ts):
 #      die englischen Fassungen zaehlten. Dazu die englische Drohnen-Meldung
 #      "need to deposit their current loads", die es sechs Versionen lang nur
 #      in einer Fassung gab, die im Log gar nicht vorkommt.
-PARSE_VER = "11"
+PARSE_VER = "12"
 
 
 def rebuild_if_needed():
@@ -1784,9 +1801,28 @@ def rebuild_if_needed():
     with DB_LOCK:
         DB.execute("DELETE FROM daily")
         DB.execute("DELETE FROM files")
+        # Die Baseline-Offsets MUESSEN mit weg. Sie sind ein Abbild der
+        # Tageswerte zum Zeitpunkt des Zuruecksetzens, und nach einem
+        # Parser-Update passen sie nicht mehr: neue Posten (etwa der jetzt
+        # erfasste Verschnitt) haben gar keinen Offset und wuerden voll
+        # gezaehlt, geaenderte Schluessel laufen ins Leere. Der Tag und die
+        # Uhrzeit des Zuruecksetzens bleiben stehen, und der Ingest baut die
+        # Offsets beim Neu-Einlesen aus den Logs wieder auf: jedes Ereignis,
+        # das VOR dem Zuruecksetzen liegt, landet dort. Beim Audit gefunden.
+        DB.execute("DELETE FROM baseline_offsets")
         DB.execute("INSERT OR REPLACE INTO meta VALUES('parse_ver', ?)", (PARSE_VER,))
         DB.commit()
     print("Parser aktualisiert: Logs werden einmalig neu eingelesen …")
+
+
+def baseline_add(day, char_id, kind, key, value):
+    """Einen Posten in die Baseline-Offsets legen. Wird beim Einlesen fuer
+    alles aufgerufen, was VOR dem Zuruecksetzen passiert ist, damit der
+    Zaehler 'seit Zuruecksetzen' auch nach einem Rebuild wieder stimmt."""
+    DB.execute("""INSERT INTO baseline_offsets VALUES(?,?,?,?,?)
+                  ON CONFLICT(day,char_id,kind,key)
+                  DO UPDATE SET value=value+excluded.value""",
+               (day, char_id, kind, key, value))
 
 
 def db_add(day, char_id, char_name, kind, key, value):
@@ -3698,14 +3734,32 @@ class Ingest(threading.Thread):
                                     mined_now = True
                 with DB_LOCK:
                     try:
+                        # Zaehler "seit Zuruecksetzen": alles, was VOR dem
+                        # Zuruecksetzen passiert ist, gehoert in die Offsets.
+                        # Beim Neu-Einlesen entstehen sie dadurch wieder, auch
+                        # fuer Posten, die es beim Zuruecksetzen noch gar nicht
+                        # gab. Einmal je Stapel lesen, nicht je Ereignis.
+                        b_day = meta_get("baseline_day")
+                        b_ts = float(meta_get("baseline_ts") or 0) if b_day else 0.0
+
+                        def merken(day, kind, key, wert, ts):
+                            db_add(day, cid, cname, kind, key, wert)
+                            if b_day and day == b_day and ts and ts < b_ts:
+                                baseline_add(day, cid, kind, key, wert)
+
                         for ev in batch:
                             if ev["kind"] in ("drone_engage", "hold_reset", "travel"):
                                 continue  # reine Live-Signale, nicht historisieren
-                            db_add(ev["day"], cid, cname, ev["kind"], ev["key"], ev["value"])
+                            merken(ev["day"], ev["kind"], ev["key"], ev["value"], ev.get("ts"))
                             if ev["kind"] == "dmg_out" and "weapon" in ev:
-                                db_add(ev["day"], cid, cname, "weapon", ev["weapon"], ev["value"])
+                                merken(ev["day"], "weapon", ev["weapon"], ev["value"], ev.get("ts"))
+                            # Verschnitt, der in der Ertragszeile mitsteht (aeltere
+                            # Client-Fassungen). Unter dem ERZNAMEN ablegen, damit
+                            # sich die Quote je Sorte rechnen laesst.
+                            if ev["kind"] == "ore" and ev.get("residue"):
+                                merken(ev["day"], "residue", ev["key"], ev["residue"], ev.get("ts"))
                             if ev["kind"] == "dmg_in" and ev.get("player"):
-                                db_add(ev["day"], cid, cname, "pvp_in", ev["key"], ev["value"])
+                                merken(ev["day"], "pvp_in", ev["key"], ev["value"], ev.get("ts"))
                         # Erst die zurueckgenommenen loeschen, dann speichern:
                         # sonst schriebe ein spaeterer Abschluss denselben
                         # Eintrag neu und der geloeschte waere wieder da.
