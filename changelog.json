@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.9.1",
+  "d": "2026-08-14",
+  "de": [
+   "Erste Ergebnisse aus einem grossen Pruefdurchlauf ueber das ganze Programm. Im Wallet Buddy wurde das Geld, das in offenen KAUFORDERS steckt, immer als null gefuehrt, weil intern der falsche Schluessel abgefragt wurde. Dadurch fehlte die Erklaerung, warum der Saldo nicht zum Kontostand passt. An echten Daten nachgerechnet: 552.389.000 ISK aus 18 offenen Kauforders, die vorher nirgends auftauchten.",
+   "Ein Charakter, der nur rattet, Missionen fliegt oder Planeten betreibt, sah im Wallet Buddy „Noch keine Wallet-Daten“, sobald er im gewaehlten Zeitraum nichts ueber den Markt gehandelt hatte. Seine Bounty, Belohnungen und Planeten-Buchungen waren aber laengst da. Die Bilanz erscheint jetzt immer, nur das Handelsergebnis faellt weg, wenn es nichts zu handeln gab.",
+   "Der Reiter „Gesamt“ hiess auf Englisch „Total“ statt „All time“. Grund war ein doppelter Eintrag im Woerterbuch: der Spaltenkopf einer Tabelle heisst ebenfalls „Gesamt“ und hat den Reiter ueberschrieben. Die Spalte heisst jetzt „Summe“, damit beide ihre eigene Uebersetzung behalten."
+  ],
+  "en": [
+   "First results from a large audit run across the whole program. In the Wallet Buddy the money sitting in open BUY ORDERS was always reported as zero, because the code asked for the wrong key internally. That removed the explanation for why the balance does not match your wallet. Verified against real data: 552,389,000 ISK across 18 open buy orders that never showed up anywhere.",
+   "A character who only rats, runs missions or works planets saw “no wallet data yet” in the Wallet Buddy as soon as they had not traded on the market in the selected period, even though their bounties, rewards and planetary entries were long since there. The balance now always appears; only the trading result is left out when there was nothing to trade.",
+   "The “Gesamt” tab read “Total” instead of “All time” in English. The cause was a duplicate dictionary entry: a table column header carries the same German word and overwrote the tab. The column is now called “Summe” so both keep their own translation."
+  ]
+ },
+ {
   "v": "2.9.0",
   "d": "2026-08-14",
   "de": [

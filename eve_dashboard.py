@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.9.0"
+VERSION = "2.9.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -8999,9 +8999,13 @@ def query_wallet(days=30, char=None):
     aus_ges = sum(aus_kat.values())
     # Was noch in offenen Kauforders geparkt ist. Weder ausgegeben noch
     # verfuegbar, gehoert deshalb weder in Einnahmen noch in Ausgaben.
+    # Der Schluessel heisst "buy", nicht "is_buy": so legt ihn die ESI-Abfrage ab
+    # (siehe Esi.sync_orders, "buy": bool(o.get("is_buy_order"))). Abgefragt wurde
+    # bisher "is_buy", das gibt es nicht, also war die Summe IMMER null und die
+    # Erklaerzeile im Wallet Buddy erschien nie. Beim Audit gefunden.
     geparkt = round(sum((o.get("price") or 0) * (o.get("rest") or 0)
                         for n, c in ((CONFIG.get("esi") or {}).get("chars") or {}).items()
-                        for o in (c.get("orders") or []) if o.get("is_buy")))
+                        for o in (c.get("orders") or []) if o.get("buy")))
     bilanz = {
         "ein": ein_ges, "aus": aus_ges, "saldo": ein_ges - aus_ges,
         "ein_kat": sorted(({"k": k, "isk": v} for k, v in ein_kat.items()),
@@ -13650,17 +13654,6 @@ function renderWallet(w){
    +(w.chars||[]).map(c=>`<span class="pill wchar${w.char===c?' on':''}" data-wc="${esc(c)}">${esc(c)}</span>`).join(' ')
    +`</span></div></div>`;
  }
- if(!w.trades){
-  $('#grid').innerHTML=kopf+'<div class="card" style="grid-column:1/-1"><div class="sub">'
-   +(w.char
-     ?(en?'No trades for this character in this period. Pick another character or period above.'
-         :'Für diesen Charakter gibt es in diesem Zeitraum keine Geschäfte. Wähle oben einen anderen Charakter oder Zeitraum.')
-     :(en?'No wallet data yet. Connect your characters via the EVE login (⚙ Options). After the first sync (up to 1 hour) your trades appear here.'
-         :'Noch keine Wallet-Daten. Verbinde deine Chars per EVE-Login (⚙ Optionen). Nach dem ersten Abgleich (bis zu 1 Stunde) erscheinen hier deine Geschäfte.'))
-   +'</div></div>';
-  walletSchalter();
-  return;
- }
  const g=w.gruppen||{};
  const kachel=(l,v,cls)=>`<div class="stat"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div></div>`;
  const vz=n=>(n>=0?'grn':'in');
@@ -13704,6 +13697,25 @@ function renderWallet(w){
   </div>`;
  }
 
+ // Ohne Markt-Geschaefte gibt es kein Handelsergebnis, aber sehr wohl eine
+ // Bilanz: Bounty, Missionsbelohnungen, Planeten und Kampagnen stehen im
+ // Journal, auch wenn nie etwas gekauft oder verkauft wurde. Vorher stieg die
+ // Ansicht hier komplett aus und behauptete "keine Wallet-Daten". Beim Audit
+ // gefunden, betrifft jeden Charakter, der nur rattet oder Missionen fliegt.
+ if(!w.trades){
+  $('#grid').innerHTML=h0+'<div class="card" style="grid-column:1/-1"><div class="sub">'
+   +((w.bilanz&&(w.bilanz.ein||w.bilanz.aus))
+     ?(en?'No market trades in this period. The balance above still holds everything from the journal: bounties, mission rewards, planets and so on.'
+         :'Keine Markt-Geschäfte in diesem Zeitraum. Die Bilanz oben zeigt trotzdem alles aus dem Journal: Bounty, Missionsbelohnungen, Planeten und so weiter.')
+     :(w.char
+       ?(en?'Nothing recorded for this character in this period. Pick another character or period above.'
+           :'Für diesen Charakter ist in diesem Zeitraum nichts erfasst. Wähle oben einen anderen Charakter oder Zeitraum.')
+       :(en?'No wallet data yet. Connect your characters via the EVE login (⚙ Options). After the first sync (up to 1 hour) your trades appear here.'
+           :'Noch keine Wallet-Daten. Verbinde deine Chars per EVE-Login (⚙ Optionen). Nach dem ersten Abgleich (bis zu 1 Stunde) erscheinen hier deine Geschäfte.')))
+   +'</div></div>';
+  walletSchalter();
+  return;
+ }
  let h=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">🧾 ${en?'Trading result':'Handelsergebnis'}</span>
    <span class="sub">· ${w.tage?((en?'last ':'letzte ')+w.tage+(en?' days':' Tage')):(en?'all data':'alle Daten')} · ${w.trades} ${en?'executions':'Ausführungen'}</span></div>
   <div class="stats" style="grid-template-columns:repeat(4,1fr)">
@@ -14204,7 +14216,7 @@ function renderMissions(d){
     const zeig=alle.slice(seiteTage*PRO_SEITE,(seiteTage+1)*PRO_SEITE);
     return `<div style="overflow-x:auto"><table>
    <thead><tr><th>Tag</th><th>Charakter</th><th class="r">Runs</th><th class="r">Bounty</th>
-    <th class="r">Belohnung</th><th class="r">Zeitbonus</th><th class="r">Loot</th><th class="r">Gesamt</th></tr></thead>`+
+    <th class="r">Belohnung</th><th class="r">Zeitbonus</th><th class="r">Loot</th><th class="r">Summe</th></tr></thead>`+
    zeig.map(x=>`<tr><td>${esc(x.tag)}</td><td>${esc(x.char)}</td>
     <td class="r">${x.runs}${x.mit_loot<x.runs?`<span title="${x.runs-x.mit_loot} Run(s) ohne eingetragenen Loot" style="color:var(--gold)"> *</span>`:''}</td>
     <td class="r grn">${x.bounty?fmtM(x.bounty):'&middot;'}</td>
@@ -14843,7 +14855,10 @@ const EN = {
 'Speichern':'Save','nicht gefunden!':'not found!',
 'Erz-Bilanz (nach Wert)':'Ore balance (by value)','Gegner (letzte 30 Tage)':'Enemies (last 30 days)',
 // Blaetterung\n'‹ Zurück':'‹ Back','Weiter ›':'Next ›',\n'Je Charakter und Tag. Bounty kommt aus den Gamelogs, Belohnung und Zeitbonus aus dem Wallet-Journal, der Loot ist von dir an den Runs eingetragen. EVE schreibt beim Plündern nichts mit, deshalb steht dort nur, was du selbst hinterlegt hast.':\n 'Per character and day. Bounties come from the game logs, rewards and time bonuses from the wallet journal, and the loot is what you entered on the runs. EVE records nothing when you loot, so that column only holds what you put there yourself.',\n// Loot pro Tag
-'Pro Tag':'Per day','Runs':'Runs','Belohnung':'Reward','Loot':'Loot','Gesamt':'Total',
+// "Summe" statt "Gesamt" als Spaltenkopf: der Reiter oben heisst auch "Gesamt",
+// und da der deutsche Text der Schluessel ist, hat der zweite Eintrag den ersten
+// ueberschrieben. Der Reiter hiess dadurch auf Englisch "Total" statt "All time".
+'Pro Tag':'Per day','Runs':'Runs','Belohnung':'Reward','Loot':'Loot','Summe':'Total',
 'Was an einem Tag zusammenkam, je Charakter. Bounty kommt aus den Gamelogs, die Belohnung aus dem Wallet-Journal, der Loot ist von dir eingetragen. EVE schreibt beim Plündern nichts mit, deshalb steht dort nur, was du selbst an den Runs hinterlegt hast.':
  'What a day brought in, per character. Bounties come from the game logs, rewards from the wallet journal, and the loot is what you entered yourself. EVE records nothing when you loot, so that column only holds what you put on the runs.',
 '* An diesen Tagen gibt es Runs ohne eingetragenen Loot. Die Summe ist dann niedriger als das, was wirklich rumkam.':
