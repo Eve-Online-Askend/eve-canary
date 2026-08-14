@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.20.1",
+  "d": "2026-08-14",
+  "de": [
+   "ABYSS: DER ERFUNDENE EINSATZ NACH EINEM UPDATE IST WEG. Gemeldet von Nirahse, mit Beleg. In seiner Liste stand nach dem Update ein Eintrag ueber 40 Minuten, dessen Werte Feld fuer Feld die SUMME zweier echter Durchgaenge waren: 512.952 Schaden = 258.753 + 254.199, ebenso Treffer, Fehlschuesse und EWAR. Sein Local-Chat sagt dazu Abyss von 14:16:07 bis 14:30:57 und von 14:35:05 bis 14:49:17 — der Block begann 125 Sekunden vor dem ersten Eintritt und endete 288 Sekunden nach dem zweiten Ausstieg.",
+   "Woran es lag: jedes Update startet Canary neu und liest dabei die Logs erneut ein. Die Abyss-Ausstiege meldet der Chat-Beobachter beim Nachlesen aber bewusst NICHT an — sonst schliesst ein Ausstieg von vorgestern die gerade laufende Sitzung ab, und genau das waren die Eintraege mit -82 und -107 Minuten aus einer frueheren Meldung. Damit blieb die neu aufgebaute Sitzung ungeteilt, und das naechste Andocken schrieb den ganzen Block als EINEN Einsatz weg.",
+   "Jetzt gibt es zwei voneinander unabhaengige Sperren, beide an der Stelle, an der alle Wege zusammenlaufen. Erstens: ein Einsatz, der eine dem Chatlog bekannte Abyss-Spanne vollstaendig umschliesst, wird nicht gespeichert. Zweitens, auch ohne Chatlog: ein als Abyss erkannter Einsatz ueber 22 Minuten kann keiner sein, denn im Spiel gilt eine harte Grenze von 20 Minuten. Nirahses eigenes Argument, jetzt im Code.",
+   "Und die Altlasten raeumt Canary beim naechsten Start selbst weg. Erkannt wird ein solcher Block an einer eindeutigen Signatur: er umschliesst zwei oder mehr andere Eintraege desselben Charakters vollstaendig UND sein Schaden ist genau deren Summe. Eintraege, an denen schon Loot haengt, bleiben stehen — lieber eine auffaellig lange Zeile als verlorene Beute."
+  ],
+  "en": [
+   "ABYSS: THE INVENTED RUN AFTER AN UPDATE IS GONE. Reported by Nirahse, with evidence. After the update his list held a 40-minute entry whose values were, field by field, the SUM of two real runs: 512,952 damage = 258,753 + 254,199, and the same for hits, misses and EWAR. His local chat says abyss from 14:16:07 to 14:30:57 and from 14:35:05 to 14:49:17 — the block started 125 seconds before the first entry and ended 288 seconds after the second exit.",
+   "The cause: every update restarts Canary, and the logs are read again. But the chat watcher deliberately does NOT report abyss exits while catching up — otherwise an exit from two days ago closes the session that is running right now, which is exactly what produced the -82 and -107 minute entries in an earlier report. So the rebuilt session was never split, and the next docking wrote the whole block away as ONE run.",
+   "There are now two independent guards, both at the point where all paths meet. First: a run that completely encloses an abyss period known from the chat log is not saved. Second, even without a chat log: a run recognised as abyss lasting over 22 minutes cannot be one, because the game enforces a hard 20-minute limit. Nirahse's own argument, now in the code.",
+   "And Canary clears out the leftovers on the next start. Such a block is recognised by an unambiguous signature: it fully encloses two or more other entries of the same character AND its damage is exactly their sum. Entries that already carry loot are left alone — better a suspiciously long row than lost loot."
+  ]
+ },
+ {
   "v": "2.20.0",
   "d": "2026-08-14",
   "de": [

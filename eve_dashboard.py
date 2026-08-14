@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.20.0"
+VERSION = "2.20.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -78,6 +78,7 @@ ERROR_HELP = {
     "CN-CHAT-02": "NPC-Funk aus aelteren Chatlogs nicht lesbar (Missionserkennung eingeschraenkt)",
     "CN-DB-01": "Datenbankfehler",
     "CN-DB-02": "Einsatz mit unmoeglicher Dauer verworfen",
+    "CN-DB-03": "Einsatz umschloss mehrere Abyss-Durchgaenge, verworfen",
     "CN-NET-01": "Marktpreise nicht abrufbar",
     "CN-NET-02": "EVE-Serverstatus nicht abrufbar",
     "CN-NET-03": "System-Gefahrenlage nicht abrufbar",
@@ -1874,6 +1875,52 @@ def zu_merken(char_id, ts):
 PARSE_VER = "12"
 
 
+def abyss_bloecke_aufraeumen():
+    """Einmalig: schon gespeicherte Einsaetze wegwerfen, die in Wahrheit ein
+    Block aus mehreren Abyss-Durchgaengen sind.
+
+    Die Signatur ist eindeutig und braucht keinen Chatlog: ein Eintrag, der
+    ZWEI ODER MEHR andere Eintraege desselben Charakters vollstaendig umschliesst
+    UND dessen Schaden genau ihrer Summe entspricht, kann kein eigener Einsatz
+    sein. An Nirahses Daten: 512.952 = 258.753 + 254.199, dazu Treffer,
+    Fehlschuesse und EWAR ebenfalls aufs Stueck genau.
+
+    Nur Eintraege OHNE eingetragenen Loot werden entfernt. Wer an so einem
+    Block schon Beute hinterlegt hat, verliert sie sonst — dann bleibt er
+    lieber stehen und faellt in der Liste als lange Dauer auf."""
+    weg = []
+    try:
+        with DB_LOCK:
+            rows = DB.execute(
+                "SELECT mid,char_id,start_ts,end_ts,dmg_out,loot_isk,loot_text "
+                "FROM missions ORDER BY start_ts").fetchall()
+        proChar = {}
+        for r in rows:
+            proChar.setdefault(str(r[1]), []).append(r)
+        for cid, liste in proChar.items():
+            for mid, _c, a, b, dmg, loot_isk, loot_text in liste:
+                if not a or not b or b <= a or not dmg:
+                    continue
+                if (loot_isk or 0) or (loot_text or "").strip():
+                    continue
+                drin = [x for x in liste
+                        if x[0] != mid and x[2] and x[3]
+                        and x[2] >= a - 1 and x[3] <= b + 1]
+                if len(drin) < 2:
+                    continue
+                if abs(sum(x[4] or 0 for x in drin) - dmg) < 1:
+                    weg.append(mid)
+        if weg:
+            with DB_LOCK:
+                DB.executemany("DELETE FROM missions WHERE mid=?", [(x,) for x in weg])
+                DB.commit()
+            print(f"Aufgeraeumt: {len(weg)} Einsatz-Block(s) entfernt, die mehrere "
+                  "Abyss-Durchgaenge umschlossen.", flush=True)
+    except Exception as e:
+        log_error("CN-DB-01", "abyss_bloecke_aufraeumen", e)
+    return len(weg)
+
+
 def rebuild_if_needed():
     """Einmaliges Neu-Aufbereiten nach einem Parser-Update: Tages-Statistik und
     Datei-Offsets loeschen, damit alle Logs frisch mit dem neuen Parser gelesen
@@ -1938,6 +1985,48 @@ def log_event(char_id, char, kind, detail, ts=None):
         log_error("CN-DB-01", "log_event", e)
 
 
+# Harte Zeitgrenze eines Abyss-Durchgangs plus Luft fuer den Anflug. Wer sie
+# reisst, verliert im Spiel das Schiff — laenger KANN ein Durchgang nicht sein.
+ABYSS_MAX_S = 22 * 60
+
+
+def _spannt_abyss(m):
+    """Umschliesst dieser Einsatz einen ganzen Abyss-Durchgang? Dann ist er
+    keiner, sondern ein Block aus mehreren. Gibt den Grund als Text zurueck,
+    sonst None.
+
+    Zwei voneinander unabhaengige Pruefungen, damit eine reicht:
+      1. der Chatlog kennt eine Abyss-Spanne, die KOMPLETT in diesem Einsatz
+         liegt und kuerzer ist als er selbst,
+      2. der Einsatz sieht nach Abyss aus und dauert laenger, als ein Abyss
+         ueberhaupt dauern kann."""
+    a, b = m.get("start_ts") or 0, m.get("end_ts") or 0
+    if b <= a:
+        return None
+    cid = str(m.get("char_id") or "")
+    try:
+        spannen = list((chatwatch.abyss_zeiten or {}).get(cid) or [])
+    except Exception:
+        spannen = []
+    for ein, raus in spannen:
+        # Etwas Luft an den Raendern: der Kampf beginnt selten auf die Sekunde
+        # mit dem Local-Wechsel.
+        if ein is None or raus is None:
+            continue
+        if a <= ein + 60 and b >= raus - 60 and (raus - ein) < (b - a) - 60:
+            return ("Einsatz umschliesst einen ganzen Abyss-Durchgang "
+                    f"({int(raus - ein)} s in {int(b - a)} s), nicht gespeichert")
+    if (b - a) > ABYSS_MAX_S:
+        try:
+            enemies = m.get("enemies") or []
+            if ist_abyss(m.get("system") or "", enemies):
+                return (f"Abyss-Einsatz ueber {int((b - a) / 60)} min, laenger als "
+                        "im Spiel moeglich, nicht gespeichert")
+        except Exception:
+            pass
+    return None
+
+
 def save_mission(m):
     """Abgeschlossene Mission speichern (mid=char:start). Bei erneutem Einlesen
     werden die Kampf- und Ort-Felder aktualisiert, der vom Nutzer eingefügte
@@ -1953,6 +2042,26 @@ def save_mission(m):
         log_error("CN-DB-02", "save_mission",
                   "Einsatz endet vor seinem Beginn, nicht gespeichert "
                   f"(start {int(m.get('start_ts') or 0)}, end {int(m.get('end_ts') or 0)})")
+        return
+    # Ein Einsatz, der einen GANZEN Abyss-Durchgang umschliesst, ist keiner.
+    #
+    # Belegt an Nirahses Daten vom 14.08.2026: nach dem Update stand dort ein
+    # Eintrag ueber 40 Minuten, dessen Werte Feld fuer Feld die SUMME der beiden
+    # echten Durchgaenge waren (512.952 = 258.753 + 254.199 Schaden, ebenso
+    # Treffer, Fehlschuesse und EWAR). Der Local-Chat sagt dazu: Abyss von
+    # 14:16:07 bis 14:30:57 und von 14:35:05 bis 14:49:17. Der Eintrag begann
+    # 125 s vor dem ersten Eintritt und endete 288 s nach dem zweiten Ausstieg.
+    #
+    # Wie es dazu kam: jedes Update startet Canary neu, dabei werden die Logs
+    # noch einmal gelesen und die Sitzung neu aufgebaut. Die Abyss-Ausstiege
+    # meldet der Chat-Beobachter beim Nachlesen aber bewusst NICHT an (sonst
+    # schliesst ein Ausstieg von vorgestern die laufende Sitzung ab, genau das
+    # waren die Eintraege mit -82 und -107 Minuten). Damit blieb die Sitzung
+    # ungeteilt, und das naechste Andocken schrieb den ganzen Block als einen
+    # Einsatz weg. Hier ist die Stelle, an der alle Wege zusammenlaufen.
+    grund = _spannt_abyss(m)
+    if grund:
+        log_error("CN-DB-03", "save_mission", grund)
         return
     mid = f"{m['char_id']}:{int(m['start_ts'])}"
     # Die Sperre gehoert HIERHER und nicht an die Aufrufstellen: von den dreien
@@ -3976,6 +4085,9 @@ class ChatWatch(threading.Thread):
         # Rueckkehr aus dem Abyss, vorgemerkt fuer den Log-Thread: [(char_id, ts)].
         # Der arbeitet die Liste ab und schliesst den Durchgang als Einsatz ab.
         self.abyss_ende = []
+        # char_id -> [(Eintritt, Ausstieg), ...] aller erkannten Abyss-Zeitspannen
+        # der letzten drei Tage. Wird auch beim Nachlesen gefuellt.
+        self.abyss_zeiten = {}
         self.npc = {}          # char_id -> deque[(ts, text)] NPC-/Missions-Funk (Absender "Message")
         self.offsets = {}      # file -> offset
         # Waehrend backfill() laeuft, sind alle gelesenen Zeilen ALT. Der Ort
@@ -4037,8 +4149,19 @@ class ChatWatch(threading.Thread):
                 # die Eintraege mit -82 und -107 Minuten: beide endeten auf
                 # 18:57:48, dem ersten Abyss-Ausstieg des Abends, obwohl sie um
                 # 20:20 und 20:45 begannen. Belegt an seinem Gamelog und Chatlog.
-                if not self.im_backfill:
-                    with self.lock:
+                # Die Zeitspanne IMMER merken, auch beim Nachlesen. Sie ist die
+                # Wahrheit darueber, wann jemand im Abyss war, und wird
+                # gebraucht, um beim Andocken zu erkennen, dass eine Sitzung
+                # ueber mehrere Durchgaenge hinweg gelaufen ist. Angemeldet zum
+                # Abschliessen wird sie weiterhin nur im Live-Betrieb.
+                with self.lock:
+                    liste = self.abyss_zeiten.setdefault(cid, [])
+                    if (eintritt, raus) not in liste:
+                        liste.append((eintritt, raus))
+                        # Drei Tage reichen: so weit liest backfill zurueck.
+                        grenze = time.time() - 3 * 86400
+                        self.abyss_zeiten[cid] = [x for x in liste if x[1] >= grenze][-200:]
+                    if not self.im_backfill:
                         self.abyss_ende.append((cid, raus, eintritt))
             return
         self.systems[cid] = ABYSS_ORT
@@ -16739,6 +16862,7 @@ if __name__ == "__main__":
         except Exception:
             pass
     rebuild_if_needed()   # nach Parser-Update einmal alle Logs frisch neu einlesen
+    abyss_bloecke_aufraeumen()   # Altlasten: Bloecke aus mehreren Durchgaengen
     for _name, _t in (("Ingest", ingest), ("ChatWatch", chatwatch),
                       ("Prices", prices), ("Esi", esi), ("ThreatIntel", threat),
                       ("ClipWatch", clipwatch), ("ServerStatus", serverstatus),
