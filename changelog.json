@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.5.3",
+  "d": "2026-08-14",
+  "de": [
+   "Die Ursache der Eintraege mit unmoeglicher Dauer ist gefunden. Beim Start liest Canary die Local-Dateien der letzten drei Tage nach, damit der NPC-Funk und der Ort einer schon laufenden Sitzung nicht fehlen. Dabei meldete es aber auch JEDEN Abyss-Ausstieg dieser drei Tage erneut, und der erste davon schloss den gerade laufenden Kampf ab, mit einem Zeitstempel von vor Stunden. Genau so entstanden die -82 und -107 Minuten. Beim Nachlesen wird jetzt kein Durchgang mehr abgeschlossen, Ort und Funk kommen weiterhin mit.",
+   "Zusaetzlich wird ein Abyss-Ausstieg verworfen, der zeitlich vor dem Beginn der laufenden Sitzung liegt: er kann nicht zu ihr gehoeren.",
+   "Nachgestellt mit den echten Log- und Chatdateien von Nirahse: mit dem alten Stand entsteht der Fehler zuverlaessig (Ende 18:57:48, Beginn 21:39:19, also minus 161 Minuten), mit dem neuen nicht mehr. Danke fuers Schicken, ohne die Dateien waere das Raten geblieben."
+  ],
+  "en": [
+   "The cause of the entries with an impossible duration has been found. On start Canary reads back the local chat files of the last three days so that NPC chatter and the location of an already running session are not missing. In doing so it also re-reported EVERY abyssal exit of those three days, and the first one closed the combat that was running right then, using a timestamp from hours earlier. That is exactly how the -82 and -107 minutes came about. Reading back no longer closes any run; location and chatter still come along.",
+   "In addition, an abyssal exit that lies before the start of the running session is discarded: it cannot belong to it.",
+   "Reproduced with the real log and chat files from Nirahse: with the old build the fault appears reliably (end 18:57:48, start 21:39:19, so minus 161 minutes), with the new one it does not. Thanks for sending them, without the files this would have stayed guesswork."
+  ]
+ },
+ {
   "v": "2.5.2",
   "d": "2026-08-14",
   "de": [

@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.5.2"
+VERSION = "2.5.3"
 UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
@@ -3267,6 +3267,11 @@ class Ingest(threading.Thread):
                 a_sess = self.sessions.get(a_cid)
             if not a_sess:
                 continue
+            # Zweite Absicherung: ein Ausstieg, der VOR dem Beginn der laufenden
+            # Sitzung liegt, kann nicht zu ihr gehoeren. Sonst schliesst ein alt
+            # gemeldeter Chatlog-Uebergang den gerade laufenden Kampf ab.
+            if a_sess.first_ts and a_ts < a_sess.first_ts:
+                continue
             a_md = a_sess.mission_dict(a_ts)
             if a_md:
                 # Der Durchgang beginnt mit dem EINTRITT in den Abyss, nicht
@@ -3615,6 +3620,9 @@ class ChatWatch(threading.Thread):
         self.abyss_ende = []
         self.npc = {}          # char_id -> deque[(ts, text)] NPC-/Missions-Funk (Absender "Message")
         self.offsets = {}      # file -> offset
+        # Waehrend backfill() laeuft, sind alle gelesenen Zeilen ALT. Der Ort
+        # darf daraus gesetzt werden, ein Abyss-Abschluss nicht.
+        self.im_backfill = False
         self.started_full = False
         # Jeder Local-Sprecher (name_lower -> {name, system, ts}), rollend, fuer die
         # passive Gank-Flotten-Erkennung (mehrere geflaggte Piloten derselben Corp).
@@ -3663,8 +3671,17 @@ class ChatWatch(threading.Thread):
                                         tzinfo=timezone.utc).timestamp()
                     except (ValueError, OverflowError):
                         pass
-                with self.lock:
-                    self.abyss_ende.append((cid, raus, eintritt))
+                # NICHT beim Nachlesen alter Chatlogs anmelden. backfill() laeuft
+                # bei JEDEM Start ueber die Local-Dateien der letzten drei Tage
+                # und meldete dabei jeden Abyss-Ausstieg erneut. Der Ingest hat
+                # damit die GERADE LAUFENDE Sitzung abgeschlossen, mit einem
+                # Zeitstempel von vor Stunden. Genau so entstanden bei Nirahse
+                # die Eintraege mit -82 und -107 Minuten: beide endeten auf
+                # 18:57:48, dem ersten Abyss-Ausstieg des Abends, obwohl sie um
+                # 20:20 und 20:45 begannen. Belegt an seinem Gamelog und Chatlog.
+                if not self.im_backfill:
+                    with self.lock:
+                        self.abyss_ende.append((cid, raus, eintritt))
             return
         self.systems[cid] = ABYSS_ORT
         if cid not in self.abyss_seit:
@@ -3733,6 +3750,13 @@ class ChatWatch(threading.Thread):
         d = self.chat_dir()
         if not d or not d.exists():
             return
+        self.im_backfill = True
+        try:
+            self._backfill(d)
+        finally:
+            self.im_backfill = False
+
+    def _backfill(self, d):
         files = list(d.glob("Local_*.txt")) + list(d.glob("Lokal_*.txt"))
         # Nur die letzten Tage, sonst wächst der Speicher unnötig.
         files = [f for f in files if (time.time() - f.stat().st_mtime) < 3 * 86400]
