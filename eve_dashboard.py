@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.19.0"
+VERSION = "2.19.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -11791,6 +11791,14 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;min-height:27px}
 .difffoot b{color:var(--txt);font-weight:600}
 .difffoot .isk{font-weight:600}
+/* Kopieren der Kopie selbst. Sitzt am Feld, nicht in der grossen Knopfreihe:
+   es gehoert zu genau dieser einen Kopie und zu keiner anderen. Leise
+   gehalten, damit es die Summe daneben nicht uebertoent. */
+.feldcopy{margin-left:auto;background:none;border:none;color:var(--dim);
+ font-size:11px;cursor:pointer;padding:0 0 0 8px;white-space:nowrap}
+.feldcopy:hover{color:var(--cyan)}
+.feldcopy:disabled{opacity:.4;cursor:default}
+.feldcopy.ok{color:var(--green)}
 /* Zwischen den beiden Feldern liegt eine ganze Mission. Genau das steht hier. */
 .diffgap{display:flex;flex-direction:column;align-items:center;justify-content:center;
  gap:6px;padding:0 2px;color:var(--dim);text-align:center}
@@ -15422,7 +15430,8 @@ function renderBeute(){
     <div class="diffhead"><span class="diffstep">1</span>
      <span class="difftitle">Vor dem Lauf</span></div>
     <textarea id="diffA" class="paste" rows="9" placeholder="Frachtraum vor der Aktion"></textarea>
-    <div class="difffoot" id="diffSumA"></div>
+    <div class="difffoot"><span id="diffSumA"></span>
+     <button class="feldcopy" data-feld="diffA" title="Diese Frachtraum-Kopie in die Zwischenablage">⧉ Kopieren</button></div>
    </div>
    <div class="diffgap" aria-hidden="true">
     <span class="pfeil">➜</span><span class="was">dazwischen liegt der Lauf</span>
@@ -15431,7 +15440,8 @@ function renderBeute(){
     <div class="diffhead"><span class="diffstep">2</span>
      <span class="difftitle">Nach dem Lauf</span></div>
     <textarea id="diffB" class="paste" rows="9" placeholder="Frachtraum nach der Aktion"></textarea>
-    <div class="difffoot" id="diffSumB"></div>
+    <div class="difffoot"><span id="diffSumB"></span>
+     <button class="feldcopy" data-feld="diffB" title="Diese Frachtraum-Kopie in die Zwischenablage">⧉ Kopieren</button></div>
    </div>
   </div>
   <div class="btnrow" style="margin:10px 0 0"><button class="btn pri" id="diffGo">Vergleichen</button>
@@ -15443,6 +15453,23 @@ function renderBeute(){
   <div id="diffOut"></div></div>`;
  $('#diffGo').onclick=doDiff;
  $('#diffMarkt').onclick=diffMarktwert;
+ // Kopieren je Feld: die Kopie wieder herausholen, ohne sie von Hand zu
+ // markieren. Bei zweihundert Zeilen ist Markieren mit der Maus keine Option.
+ document.querySelectorAll('.feldcopy').forEach(b=>b.onclick=async()=>{
+  const feld=$('#'+b.dataset.feld), alt=b.textContent;
+  if(!feld||!feld.value.trim())return;
+  const zurueck=()=>{b.textContent=alt;b.classList.remove('ok');};
+  try{
+   await navigator.clipboard.writeText(feld.value);
+   b.textContent=(lang==='en'?'✓ Copied':'✓ Kopiert'); b.classList.add('ok');
+  }catch(e){
+   // Kein Zugriff auf die Zwischenablage: dann wenigstens alles markieren,
+   // damit Strg+C reicht.
+   feld.focus(); feld.select();
+   b.textContent=(lang==='en'?'selected, Ctrl+C':'markiert, Strg+C');
+  }
+  clearTimeout(b._weg); b._weg=setTimeout(zurueck,2000);
+ });
  $('#diffClr').onclick=()=>{
   ['diffA','diffB'].forEach(id=>{$('#'+id).value='';localStorage.removeItem(id);});
   $('#diffOut').innerHTML='';$('#diffStat').textContent='';
@@ -15523,8 +15550,12 @@ async function diffSumme(id,neuzeichnen){
  const slot=$('#diffSlot'+id.slice(-1));
  if(!feld||!kasten)return;
  const en=(lang==='en');
- if(slot)slot.classList.toggle('voll',!!feld.value.trim());
- if(!feld.value.trim()){
+ const gefuellt=!!feld.value.trim();
+ if(slot)slot.classList.toggle('voll',gefuellt);
+ // Kopieren nur anbieten, wenn es etwas zu kopieren gibt.
+ const kbtn=document.querySelector('.feldcopy[data-feld="'+id+'"]');
+ if(kbtn)kbtn.disabled=!gefuellt;
+ if(!gefuellt){
   diffWerte[id]=null;
   kasten.innerHTML='<span style="opacity:.7">'
    +(en?'nothing pasted yet':'noch nichts eingefügt')+'</span>';
@@ -15989,6 +16020,8 @@ const EN = {
 'Frachtraum vor der Aktion':'Cargo hold before','Frachtraum nach der Aktion':'Cargo hold after',
 'Vergleichen':'Compare','Felder leeren':'Clear the boxes','Kopieren':'Copy',
 'Marktwert holen':'Get market value','💰 Marktwert holen':'💰 Get market value',
+'⧉ Kopieren':'⧉ Copy',
+'Diese Frachtraum-Kopie in die Zwischenablage':'Copy this cargo listing to the clipboard',
 'Bewertet BEIDE Kopien zum Jita-Sofortverkauf. Nötig, wenn im Frachtraum-Fenster die Spalte Wert nicht eingeblendet ist: dann steht in der Kopie kein einziger Preis.':
  'Values BOTH copies at the Jita buy price. Needed when the value column is not visible in your cargo hold window: the copy then holds no price at all.',
 '⬅ Nachher wird Vorher':'⬅ After becomes before',

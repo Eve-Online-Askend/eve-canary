@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.19.1",
+  "d": "2026-08-14",
+  "de": [
+   "Jede der beiden Frachtraum-Kopien hat jetzt einen eigenen Kopieren-Knopf, unten rechts an ihrem Feld. Bei zweihundert Zeilen ist Markieren mit der Maus keine Option, und den Text wieder herauszubekommen war bisher gar nicht vorgesehen. Klemmt die Zwischenablage, markiert der Knopf stattdessen alles, dann reicht Strg+C."
+  ],
+  "en": [
+   "Each of the two cargo copies now has its own copy button, bottom right of its box. With two hundred rows, selecting with the mouse is not an option, and getting the text back out was not provided for at all. If the clipboard is blocked, the button selects everything instead, so Ctrl+C is enough."
+  ]
+ },
+ {
   "v": "2.19.0",
   "d": "2026-08-14",
   "de": [
