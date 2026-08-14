@@ -1,5 +1,23 @@
 [
  {
+  "v": "2.12.0",
+  "d": "2026-08-14",
+  "de": [
+   "Die Signatur „Slave Pen“ ist raus. Sie benannte Einsaetze als „The Rogue Slave Trader“, obwohl diese Struktur in Missionen ganz verschiedener Fraktionen steht: in echten Logs taucht sie 2.736 mal auf, zusammen mit Guristas, Angel UND Blood Raider. Eine falsche Benennung ist schlechter als gar keine, deshalb steht dort jetzt nichts mehr. Die Mission „The Damsel in Distress“ wird weiterhin sicher erkannt (ueber Kruul, 95 Prozent).",
+   "Die Diagnose verraet nicht mehr den Kontonamen des Rechners. Der Log-Ordner steht weiterhin drin, weil er bei fast jedem Problem die erste Frage ist, aber als „~\\Documents\\EVE\\logs\\Gamelogs“. Der Text ist ausdruecklich zum Verschicken gedacht, und bei vielen ist der Kontoname der Klarname.",
+   "Der Charakterfilter im Wallet Buddy gilt jetzt auch fuer die offenen Orders und fuer das Geld, das in Kauforders geparkt ist. Vorher zeigte die Karte trotz Filter die Orders aller Charaktere.",
+   "Im Abyss gingen Stufe und Wetter verloren, wenn man sie ausgewaehlt und dann zwei Sekunden gewartet hat, ohne zu speichern. Die Auswahl uebersteht den Neuaufbau der Ansicht jetzt, genau wie das Namensfeld.",
+   "Im Abyss-Export heisst die letzte Spalte jetzt „gegner_top_mit_schaden“ und schreibt „Striking Damavik (8420 dmg)“. Vorher stand dort „Striking Damavikx8420“, was sich wie eine Stueckzahl liest."
+  ],
+  "en": [
+   "The “Slave Pen” signature is gone. It labelled runs as “The Rogue Slave Trader” even though that structure appears in missions of entirely different factions: in real logs it shows up 2,736 times, alongside Guristas, Angel AND Blood Raider. A wrong label is worse than none, so nothing is shown there now. “The Damsel in Distress” is still recognised reliably (via Kruul, 95 percent).",
+   "The diagnostics no longer reveal the machine's account name. The log folder is still included, because it is the first question with almost any problem, but as “~\\Documents\\EVE\\logs\\Gamelogs”. That text is explicitly meant for sharing, and for many people the account name is their real name.",
+   "The character filter in the Wallet Buddy now also applies to open orders and to the money parked in buy orders. Before, the card listed every character's orders regardless of the filter.",
+   "In the abyss, tier and weather were lost if you picked them and then waited two seconds without saving. The selection now survives the view being rebuilt, just like the name field.",
+   "In the abyssal export the last column is now called “gegner_top_mit_schaden” and writes “Striking Damavik (8420 dmg)”. It previously read “Striking Damavikx8420”, which looks like a unit count."
+  ]
+ },
+ {
   "v": "2.11.0",
   "d": "2026-08-14",
   "de": [

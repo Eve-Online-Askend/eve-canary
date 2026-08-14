@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.11.0"
+VERSION = "2.12.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -7292,9 +7292,27 @@ def diagnose_text():
     Charakternamen, Tokens oder Pfade mit Klarnamen-Anteil ausserhalb des
     Log-Ordners — nur was zur Fehlersuche noetig ist."""
     ok, n = log_dir_status()
+
+    def ohne_namen(p):
+        """Den Kontonamen aus einem Pfad nehmen. Der Log-Ordner steht in der
+        Diagnose, weil er bei fast jedem Problem die erste Frage ist. Er
+        enthaelt aber den Windows- oder Mac-Kontonamen, und die Diagnose ist
+        ausdruecklich zum Verschicken gedacht: wer sie in ein Issue stellt,
+        veroeffentlichte damit bisher seinen Klarnamen. Beim Audit gefunden."""
+        p = str(p or "")
+        if not p:
+            return "(nicht gesetzt)"
+        try:
+            heim = str(Path.home())
+            if heim and p.lower().startswith(heim.lower()):
+                return "~" + p[len(heim):]
+        except Exception:
+            pass
+        return p
+
     L = [f"EVE Canary Diagnose v{VERSION}",
          f"System   : {sys.platform} / {os.name} / Python {sys.version.split()[0]}",
-         f"Log-Ordner: {CONFIG.get('log_dir') or '(nicht gesetzt)'}",
+         f"Log-Ordner: {ohne_namen(CONFIG.get('log_dir'))}",
          f"           gefunden={ok}, Gamelogs={n}",
          f"Modus    : {CONFIG.get('mode')}   Autostart={AUTOSTART_OK} Clipboard={CLIPBOARD_OK}"]
     try:
@@ -9097,11 +9115,19 @@ def query_wallet(days=30, char=None):
     # Einkauf gar nicht auftauchten (Begruendung siehe Bilanz weiter unten).
     # Jetzt steht dort der Saldo, wie bei jeder anderen Gruppe auch.
     grupp["handel"] = round(m_verk - m_kauf)
+    # Auch Kontostaende und offene Orders folgen dem Charakterfilter. Ohne das
+    # zeigte die Karte "Offene Orders" die Orders ALLER Charaktere, obwohl oben
+    # auf einen eingeschraenkt war. Beim Audit gefunden.
+    def _gewaehlt(n):
+        return (not char) or n == char
+
     wallets = {n: c.get("wallet") for n, c in
                ((CONFIG.get("esi") or {}).get("chars") or {}).items()
-               if c.get("wallet") is not None}
+               if c.get("wallet") is not None and _gewaehlt(n)}
     orders = []
     for n, c in ((CONFIG.get("esi") or {}).get("chars") or {}).items():
+        if not _gewaehlt(n):
+            continue
         for o in (c.get("orders") or []):
             orders.append({**o, "char": n,
                            "name": esi.type_name(o["type_id"]) or str(o["type_id"])})
@@ -9142,6 +9168,7 @@ def query_wallet(days=30, char=None):
     # Erklaerzeile im Wallet Buddy erschien nie. Beim Audit gefunden.
     geparkt = round(sum((o.get("price") or 0) * (o.get("rest") or 0)
                         for n, c in ((CONFIG.get("esi") or {}).get("chars") or {}).items()
+                        if _gewaehlt(n)
                         for o in (c.get("orders") or []) if o.get("buy")))
     bilanz = {
         "ein": ein_ges, "aus": aus_ges, "saldo": ein_ges - aus_ges,
@@ -9513,7 +9540,10 @@ def abyss_export_tsv():
     spalten = ["start_utc", "dauer_s", "char", "system", "name", "stufe_name",
                "stufe_gegner", "wetter", "dmg_out", "dmg_in", "treffer",
                "fehl_out", "fehl_in", "kills", "bounty", "loot_isk",
-               "ewar", "gegner_top"]
+               # Der Wert hinter jedem Gegner ist der SCHADEN, den er
+               # abbekommen hat, keine Stueckzahl. Ohne das im Spaltennamen
+               # liest sich "Striking Damavik 8420" wie 8.420 Schiffe.
+               "ewar", "gegner_top_mit_schaden"]
     zeilen = ["\t".join(spalten)]
     nummern, n = {}, 0
     with DB_LOCK:
@@ -9549,7 +9579,7 @@ def abyss_export_tsv():
             int(mout or 0), int(min_ or 0), int(kills or 0),
             int(bounty or 0), int(loot or 0),
             " ".join(f"{k}x{v}" for k, v in ewar) if ewar else "",
-            " ".join(f"{k}x{v}" for k, v in enemies[:8]).replace("\t", " "),
+            " ".join(f"{k} ({v} dmg)" for k, v in enemies[:8]).replace("\t", " "),
         ]))
     if len(zeilen) == 1:
         zeilen.append("# keine Abyss-Durchgaenge gefunden")
@@ -14225,10 +14255,17 @@ function renderMissions(d){
  document.querySelectorAll('.mnameedit').forEach(b=>{
   if(b.hidden)return;
   const inp=b.querySelector('.mnamein');
+  // Stufe und Wetter mitsichern: sie stehen bis zum Druck auf "Merken" NUR im
+  // Formular. Der Tippschutz oben greift nur, solange das Auswahlfeld selbst
+  // den Fokus hat, nach einem Klick auf "übernehmen" liegt der aber auf dem
+  // Knopf, und der naechste Takt hat die Auswahl wieder weggeworfen.
+  // Beim Audit gefunden.
+  const tSel=b.querySelector('.abysstier'), wSel=b.querySelector('.abysswetter');
   nameOffen[b.dataset.mid]={
    text:inp?inp.value:'',
    start:inp?inp.selectionStart:0, end:inp?inp.selectionEnd:0,
    fokus:document.activeElement===inp,
+   tier:tSel?tSel.value:null, wetter:wSel?wSel.value:null,
    status:(([...document.querySelectorAll('.mnamestat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||''};
  });
  // Lokale Demo (nur mit sim_mode-Flag, reine Frontend-Simulation): Live-Char,
@@ -14412,6 +14449,11 @@ function renderMissions(d){
    if(z.fokus)inp.focus();
    try{inp.setSelectionRange(z.start,z.end);}catch(e){}
   }
+  // Stufe und Wetter zurueckschreiben, sonst ist eine noch nicht gespeicherte
+  // Auswahl nach zwei Sekunden weg.
+  const tSel=box.querySelector('.abysstier'), wSel=box.querySelector('.abysswetter');
+  if(tSel&&z.tier!=null)tSel.value=z.tier;
+  if(wSel&&z.wetter!=null)wSel.value=z.wetter;
   const st=[...document.querySelectorAll('.mnamestat')].find(s=>s.dataset.mid===mid);
   if(st&&z.status)st.textContent=z.status;
  });
