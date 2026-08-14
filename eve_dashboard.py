@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.10.0"
+VERSION = "2.11.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1704,6 +1704,14 @@ def meta_get(key, default=None):
     return r[0] if r else default
 
 
+def meta_set(key, value):
+    """Kleinen Merkposten dauerhaft ablegen. Ueberlebt einen Neustart, und
+    genau darauf kommt es beim Schutz gegen die Update-Schleife an."""
+    with DB_LOCK:
+        DB.execute("INSERT OR REPLACE INTO meta VALUES(?,?)", (key, str(value)))
+        DB.commit()
+
+
 def zu_laden():
     """Von Hand abgeschlossene Missionen: Charakter-ID -> Zeitpunkt.
 
@@ -1819,6 +1827,17 @@ def save_mission(m):
                   f"(start {int(m.get('start_ts') or 0)}, end {int(m.get('end_ts') or 0)})")
         return
     mid = f"{m['char_id']}:{int(m['start_ts'])}"
+    # Die Sperre gehoert HIERHER und nicht an die Aufrufstellen: von den dreien
+    # hatten zwei keine (Abyss-Abschluss im Ingest-Thread und das Zuruecknehmen
+    # ueber die Oberflaeche), und sie schreiben auf dieselbe Verbindung, auf der
+    # der HTTP-Thread gerade liest. DB_LOCK ist ein RLock, der dritte Aufruf
+    # steht bereits in einem DB_LOCK-Block und laeuft deshalb weiterhin sauber
+    # durch. Beim Audit gefunden.
+    with DB_LOCK:
+        _save_mission_sql(mid, m)
+
+
+def _save_mission_sql(mid, m):
     DB.execute("""INSERT INTO missions
         (mid,char_id,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
          hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,ewar,
@@ -1983,8 +2002,17 @@ def auto_update_pruefen():
         return
     if time.time() - AUTO_UPDATE["versuch"] < 3600:
         return
-    AUTO_UPDATE["versuch"] = time.time()
     ziel = UPDATE_INFO.get("latest") or "?"
+    # Schutz gegen die Neustart-Schleife: meldet version.json eine neue Version,
+    # liegt der Code dafuer aber noch nicht bereit (Zeitfenster zwischen den
+    # beiden Pushs, oder ein Release ohne hochgeladene Dateien), dann startet
+    # Canary nach dem Update mit UNVERAENDERTER Versionsnummer neu und wuerde
+    # dasselbe sofort wieder versuchen. Deshalb wird jedes Ziel nur EINMAL
+    # angefasst, und das ueber einen Neustart hinweg gemerkt.
+    if meta_get("auto_update_ziel") == ziel:
+        return
+    meta_set("auto_update_ziel", ziel)
+    AUTO_UPDATE["versuch"] = time.time()
     try:
         r = do_update()
     except Exception as e:
@@ -4001,9 +4029,12 @@ class ChatWatch(threading.Thread):
                         # Jeden Local-Sprecher still einstufen; Alarm nur bei Rot
                         threat.request([sender], alert="red")
                         # Fuer die Gank-Flotten-Erkennung merken, WO und WANN er sprach.
-                        self.speakers[sender.lower()] = {
-                            "name": sender, "system": self.systems.get(cid, "?"),
-                            "ts": time.time()}
+                        # Unter dieselbe Sperre wie das Lesen in _recent_hostiles,
+                        # sonst aendert sich die Groesse waehrend der Iteration.
+                        with self.lock:
+                            self.speakers[sender.lower()] = {
+                                "name": sender, "system": self.systems.get(cid, "?"),
+                                "ts": time.time()}
             except OSError:
                 pass
         self._fleet_watch()
@@ -4012,10 +4043,19 @@ class ChatWatch(threading.Thread):
         """Kuerzlich aktive Local-Sprecher, die zKill/ESI als geflaggt kennt, mit
         Corp/Level/System. Rein passiv aus den Chat-Nachrichten, kein Local-Kopieren."""
         now = time.time()
-        # Alte Sprecher ausduennen, damit die Struktur nicht waechst.
-        self.speakers = {k: v for k, v in self.speakers.items() if now - v["ts"] < window}
+        # Ausduennen UND Kopie ziehen unter der Sperre: dieser Weg laeuft im
+        # HTTP-Thread (Intel-Ansicht), waehrend der Chat-Thread neue Sprecher
+        # eintraegt. Ohne Sperre wirft die Iteration frueher oder spaeter
+        # "dictionary changed size during iteration" und der Intel-Tab bekommt
+        # einen Serverfehler. Beim Audit gefunden.
+        # threat.cached() wird bewusst AUSSERHALB der Sperre aufgerufen, es
+        # nimmt eine eigene und soll sich nicht mit dieser verschraenken.
+        with self.lock:
+            self.speakers = {k: v for k, v in self.speakers.items()
+                             if now - v["ts"] < window}
+            aktuelle = list(self.speakers.values())
         out = []
-        for v in self.speakers.values():
+        for v in aktuelle:
             prof = threat.cached(v["name"])            # zKill/ESI-Profil (gecacht)
             if not prof or prof.get("level") not in ("red", "yellow"):
                 continue
@@ -8155,11 +8195,17 @@ def query_analyse():
         agg[ore] = agg.get(ore, 0) + units
     eff_list = []
     for ore, units in agg.items():
-        t = ORE_TYPES.get(ore, {})
-        price = pm.get(t.get("typeID"), 0.0)
-        vol = t.get("volume", 0.0) or 1
-        eff_list.append({"ore": ore, "units": units, "isk_per_m3": round(price / vol, 1),
-                         "isk": round(units * price), "m3": round(units * vol)})
+        # Mit ore_value rechnen wie ueberall sonst: bewertet wird der
+        # KOMPRIMIERTE Preis, denn das ist der Wert, der beim Verkauf ankommt.
+        # Vorher stand hier der Rohpreis, wodurch diese Karte eine andere
+        # Rangfolge zeigte als der Rest des Programms, obwohl ihr Text sagt
+        # "die erste Spalte entscheidet". Beim Audit gefunden.
+        isk, m3 = ore_value(ore, units, pm)
+        vol = ORE_TYPES.get(ore, {}).get("volume", 0.0) or 1
+        preis_je_einheit = (isk / units) if units else 0.0
+        eff_list.append({"ore": ore, "units": units,
+                         "isk_per_m3": round(preis_je_einheit / vol, 1),
+                         "isk": round(isk), "m3": round(m3)})
     eff_list.sort(key=lambda x: -x["isk_per_m3"])
     # Spielzeit pro Tag (aus Session-Dateien)
     b_ts = float(meta_get("baseline_ts") or 0)
@@ -13181,7 +13227,12 @@ function uhrMalen(){
    <button class="btn warn" id="uhrWeg">Verwerfen</button></div>`;
  $('#uhrPause').onclick=()=>uhrTun(u.pause?'weiter':'pause');
  $('#uhrSpeichern').onclick=()=>uhrTun('speichern');
- $('#uhrWeg').onclick=()=>{if(confirm('Stoppuhr verwerfen? Der Trip wird nicht gespeichert.'))uhrTun('verwerfen');};
+ // confirm() zeigt reinen Text und geht nie durch tr(), die Sprache muss hier
+ // also im Code stehen. Vorher bekam ein englischer Nutzer eine deutsche
+ // Sicherheitsabfrage und wusste nicht, was er bestaetigt.
+ $('#uhrWeg').onclick=()=>{if(confirm(lang==='en'
+   ?'Discard the stopwatch? The trip will not be saved.'
+   :'Stoppuhr verwerfen? Der Trip wird nicht gespeichert.'))uhrTun('verwerfen');};
 }
 async function uhrListeMalen(){
  const box=$('#uhrListe'); if(!box)return;
@@ -14866,6 +14917,30 @@ const EN = {
 'Übernehmen':'Apply','Log-Ordner':'Log folder',
 // Optionen
 'Schließen':'Close','Backup erstellen':'Create backup','🩺 Diagnose kopieren':'🩺 Copy diagnostics',
+// Beim Audit als unuebersetzt gefunden: Stoppuhr, EVE-Einstellungen, OBS-Dialog
+// und der Erklaertext zur Laser-Meldung. Gefunden ueber den Vergleich der
+// gerenderten Seite auf DE gegen EN, nicht ueber eine Wortliste.
+'⏱ Stoppuhr':'⏱ Stopwatch','💾 EVE-Einstellungen':'💾 EVE settings',
+'Fuer eine einzelne Aktivitaet: einen Belt, eine Runde Abyss, ein Event. Beim Speichern haelt Canary fest, wie lange es lief und wieviel in der Zeit gefoerdert wurde. Das ist etwas anderes als die Trips, die Canary selbst am Abdocken zaehlt.':
+ 'For a single activity: one belt, one abyssal run, one event. On saving, Canary records how long it ran and how much was mined in that time. That is something different from the trips Canary counts by itself at undock.',
+'Wofür? z.B. Belt Gisleres, Abyss T4':'What for? e.g. belt Gisleres, abyssal T4',
+'▶ Starten':'▶ Start','Gespeicherte Trips':'Saved trips',
+'Noch keine Trips gespeichert.':'No trips saved yet.',
+'Wann':'When','Wofür':'What for','Dauer':'Duration',
+'EVE legt sein Fensterlayout je Charakter in einer Datei ab, dazu die Konto- und Grafikeinstellungen. Canary kann den ganzen Ordner sichern, zurueckspielen und das Layout eines Charakters auf andere uebertragen.':
+ 'EVE stores its window layout per character in a file, along with account and graphics settings. Canary can back up the whole folder, restore it, and copy one character\\'s layout onto others.',
+'EVE muss dabei geschlossen sein':'EVE has to be closed while you do this',
+', der Client schreibt seine Einstellungen erst beim Beenden und wuerde sonst alles ueberschreiben.':
+ ', the client only writes its settings on exit and would otherwise overwrite everything.',
+'🎥 Overlay für OBS einrichten':'🎥 Set up the overlay for OBS',
+'In eigenem Tab öffnen':'Open in its own tab',
+'immer':'always','Bei Einbruch':'On a drop','Nur bei leer':'Only when empty',
+'meldet jede Abschaltung, auch wenn du sofort nachzielst.':
+ 'reports every shutdown, even if you retarget straight away.',
+'meldet nur, wenn deine Ausbeute wirklich fällt, das ist der sinnvolle Standard.':
+ 'only reports when your yield actually drops, which is the sensible default.',
+'ist am stillsten, verschweigt aber den Ausfall eines einzelnen von mehreren Lasern, weil die übrigen weiter liefern. Wie oft du am Ende etwas siehst, hängt stark von Flottengröße, Erz und Brockengröße ab.':
+ 'is the quietest, but hides one laser dropping out of several, because the others keep delivering. How often you see anything at all depends a lot on fleet size, ore and rock size.',
 'Nach Update suchen':'Check for updates','Update installieren':'Install update',
 'Alle vorhandenen Logs auswerten':'Evaluate all existing logs',
 'Nur ab Installation zählen':'Count from installation onwards',
@@ -15116,7 +15191,6 @@ const EN = {
  'Off by default. When on, Canary fetches one more empty file once a month whose name carries the size band of what you mined last month (for example "from 3M m³ up"). Nothing is sent here either: no exact figure, no identifier, no names, no characters, no locations. Adding up all the bands produces a total on the homepage that is deliberately published as a lower bound. Your own numbers stay on your machine, only the order of magnitude is revealed.',
 'Einmal am Tag holt Canary eine leere Datei von GitHub, deren Name nur das Datum enthält. Gesendet wird dabei nichts: keine Kennung, keine Namen, keine Spieldaten. GitHub zählt nur, wie oft die Datei ausgeliefert wurde, und daraus wird sichtbar, wie viele Installationen es gibt. Ohne diese Zahl gibt es keinen Nachweis für die EVE-Partnerschaft.':
  'Once a day Canary fetches an empty file from GitHub whose name only contains the date. Nothing is sent: no identifier, no names, no game data. GitHub merely counts how often that file was served, which shows how many installations exist. Without that number there is no proof for the EVE partnership.',
-'Rolle zuweisen (für die Filter oben)':'Assign role (for the filters above)',
 'Schriftgröße (3 Stufen)':'Font size (3 steps)',
 'Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern" aktivieren.)':
  'Waiting for game log data … (Is the EVE client running? Enable „Log game to file" in the client.)',

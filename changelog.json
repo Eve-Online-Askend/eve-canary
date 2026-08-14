@@ -1,5 +1,23 @@
 [
  {
+  "v": "2.11.0",
+  "d": "2026-08-14",
+  "de": [
+   "Zwei Stellen, an denen sich Hintergrund-Abläufe und die Weboberflaeche in die Quere kommen konnten, sind abgesichert. Beim Intel-Bereich konnte die Liste der Local-Sprecher waehrend des Lesens veraendert werden, was einen Serverfehler ausloest; und abgeschlossene Einsaetze wurden ohne Sperre in die Datenbank geschrieben, waehrend die Oberflaeche daraus las. Nachgemessen: 40 gleichzeitige Intel-Abfragen, alle beantwortet, Median 8 ms.",
+   "Die Karte „Erz-Effizienz“ rechnete als einzige Stelle mit dem Rohpreis statt mit dem Preis der komprimierten Variante. Dadurch stand dort eine andere Rangfolge als ueberall sonst, obwohl der Text sagt „die erste Spalte entscheidet“. Jetzt rechnet sie wie der Rest.",
+   "Mehrere Bereiche waren auf Englisch noch deutsch: der Stoppuhr-Dialog samt Sicherheitsabfrage, der Dialog fuer die EVE-Einstellungen, der OBS-Dialog und der Erklaertext zur Laser-Meldung. Gefunden ueber einen Vergleich der fertig gerenderten Seite auf Deutsch gegen Englisch, nicht ueber eine Wortliste.",
+   "Ein doppelter Eintrag im Woerterbuch ist raus. Neu dabei ist eine Pruefung, die genau das kuenftig findet: steht derselbe deutsche Text zweimal drin, gewinnt in JavaScript der letzte und der andere ist still wirkungslos.",
+   "Das selbsttaetige Update versucht dieselbe Zielversion jetzt nur noch EINMAL, und das ueber einen Neustart hinweg gemerkt. Meldet die Versionsdatei eine Fassung, deren Dateien noch nicht bereitliegen, kann daraus keine Neustart-Schleife mehr werden."
+  ],
+  "en": [
+   "Two places where background work and the web interface could collide are now guarded. In the intel view the list of local speakers could be modified while it was being read, which raises a server error; and finished engagements were written to the database without a lock while the interface was reading from it. Measured: 40 simultaneous intel requests, all answered, median 8 ms.",
+   "The “ore efficiency” card was the only place computing with the raw price instead of the compressed one. It therefore showed a different ranking than everywhere else, even though its text says “the first column decides”. It now computes like the rest.",
+   "Several areas were still German in English: the stopwatch dialog including its confirmation prompt, the EVE settings dialog, the OBS dialog and the explanation of the laser alert. Found by comparing the fully rendered page in German against English, not via a word list.",
+   "A duplicate dictionary entry is gone. New alongside it is a check that finds exactly this in future: if the same German text appears twice, JavaScript keeps the last one and the other is silently ineffective.",
+   "The automatic update now attempts the same target version only ONCE, remembered across a restart. If the version file announces a build whose files are not in place yet, that can no longer turn into a restart loop."
+  ]
+ },
+ {
   "v": "2.10.0",
   "d": "2026-08-14",
   "de": [
