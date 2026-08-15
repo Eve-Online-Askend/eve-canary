@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.30.0",
+  "d": "2026-08-15",
+  "de": [
+   "EIGENE REIHENFOLGE FUER DIE CHARAKTER-KARTEN, gewuenscht von Eron Solette: Multiboxer haben durch Werkzeuge wie Eve-O-Preview eine feste Fenster-Anordnung im Kopf, und die Karten sollen ihr folgen koennen. Neuer Knopf \"Reihenfolge\" in der Live-Ansicht, dann die Karten mit den Pfeilen verschieben. Die Ordnung liegt in Canary selbst (config.json), nicht im Browser: sie gilt damit in jedem Browser, im Overlay und nach jedem Neustart. Neue Charaktere haengen sich hinten an, statt die gelernte Ordnung zu verschieben.",
+   "KARTENBREITE UMSCHALTBAR, ebenfalls fuer Multiboxer: der Knopf \"Karten\" schaltet zwischen normal, kompakt und schmal. Schmaler heisst mehr Charaktere nebeneinander in einer Zeile. Gilt nur fuer die Live-Ansicht, die uebrigen Bereiche behalten ihr Raster."
+  ],
+  "en": [
+   "CUSTOM ORDER FOR THE CHARACTER CARDS, requested by Eron Solette: multiboxers have a fixed window layout in their head through tools like Eve-O-Preview, and the cards should be able to follow it. New button \"Order\" in the live view, then move the cards with the arrows. The order lives in Canary itself (config.json), not in the browser: it therefore applies in every browser, in the overlay and after every restart. New characters attach at the end instead of shifting the learned order.",
+   "CARD WIDTH SWITCHABLE, also for multiboxers: the \"Cards\" button cycles between normal, compact and narrow. Narrower means more characters side by side in one row. Live view only, the other sections keep their layout."
+  ]
+ },
+ {
   "v": "2.29.0",
   "d": "2026-08-15",
   "de": [

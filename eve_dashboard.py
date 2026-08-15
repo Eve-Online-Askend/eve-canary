@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.29.0"
+VERSION = "2.30.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -8558,7 +8558,12 @@ def snapshot_live():
             "spark_in": [b[1]["in"] for b in list(s.dmg_min)[-60:]],
             "spark": [round(sum(mix.values())) for _, mix in list(s.rate_min)[-60:]],
         })
-    chars.sort(key=lambda c: c["name"])
+    # Eigene Reihenfolge zuerst (Wunsch von Eron Solette: Multiboxer haben
+    # durch Eve-O-Preview eine feste Fenster-Anordnung im Kopf, die Karten
+    # sollen ihr folgen koennen). Unbekannte Namen haengen alphabetisch hinten
+    # an, damit ein neuer Charakter nicht mitten in die gelernte Ordnung faellt.
+    ordnung = {n: i for i, n in enumerate(CONFIG.get("char_reihenfolge") or [])}
+    chars.sort(key=lambda c: (ordnung.get(c["name"], len(ordnung)), c["name"]))
     return chars
 
 
@@ -11358,6 +11363,14 @@ class Handler(BaseHTTPRequestHandler):
         elif action == "laser_off_mode":
             if body.get("modus") in ("immer", "rate", "leer", "aus"):
                 CONFIG["laser_off_mode"] = body["modus"]
+        elif action == "char_reihenfolge":
+            # Eigene Reihenfolge der Charakter-Karten (Wunsch von Eron
+            # Solette: Multiboxer haben ueber Eve-O-Preview eine feste
+            # Fenster-Anordnung, die Karten sollen ihr folgen). Liegt in der
+            # config.json und gilt damit fuer jeden Browser und das Overlay.
+            namen = [str(n).strip()[:64] for n in (body.get("namen") or [])][:50]
+            CONFIG["char_reihenfolge"] = [n for n in namen if n]
+            save_config()
         elif action == "tool_warn_delay":
             # Nach oben begrenzt: die Warnung steht ohnehin nur 60 Sekunden,
             # ein groesserer Wert wuerde sie schlicht nie erscheinen lassen.
@@ -12030,6 +12043,8 @@ html[data-skin=photon] .optgroup{border-radius:1px}
 .pill{background:var(--card);border:1px solid var(--line);color:var(--dim);font-size:11px;
 padding:4px 11px;border-radius:20px;cursor:pointer;user-select:none}
 .pill.on{background:var(--cyan);color:var(--bg);border-color:var(--cyan)}
+.sortpf{cursor:pointer;color:var(--cyan);padding:0 4px;user-select:none;font-size:13px}
+.sortpf:hover{color:var(--txt)}
 .pill.rolef{padding:4px 9px}
 .rolesel{appearance:none;-webkit-appearance:none;background:var(--inset);border:1px solid var(--line);
  color:var(--dim);font-size:10px;padding:2px 6px;border-radius:20px;cursor:pointer;flex:none}
@@ -12937,6 +12952,8 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span class="pill" id="showOffline" title="Standardmäßig zeigt Live nur eingeloggte Charaktere. Hier einschalten, um auch Offline-Charaktere zu sehen.">💤 Offline zeigen</span>
  <select class="pill" id="charFilter" title="Charakter-Filter"><option value="">Alle Charaktere</option></select>
  <span class="pill" id="collapseAll">Alle einklappen</span>
+ <span class="pill" id="sortChars" title="Reihenfolge der Charakter-Karten festlegen, mit den Pfeilen an den Karten. Wird in Canary gespeichert und gilt in jedem Browser und im Overlay.">↕ Reihenfolge</span>
+ <span class="pill" id="cardScale" title="Breite der Charakter-Karten. Schmaler heißt mehr Karten nebeneinander.">▭ Karten</span>
  <span class="pill" id="beltBtn" title="Ergebnisse der Bergbauvermessung einfügen und sehen, wie viel Volumen und ISK im Belt liegen">🪨 Belt auswerten</span>
  <span class="pill langsel" data-l="de" title="Deutsch">DE</span><span class="pill langsel" data-l="en" title="English">EN</span>
  <div class="pills" id="regions"></div>
@@ -13850,6 +13867,40 @@ function toggleChar(name){
  renderLiveView();
 }
 let lastChars=null,lastSummary=null;
+// ---- Eigene Karten-Reihenfolge und Kartenbreite (Wunsch von Eron Solette) ----
+let charSortMode=false;
+const KARTEN_STUFEN=[420,340,280];
+let kartenBreite=parseInt(lsGet('kartenbreite',420))||420;
+function kartenAnwenden(){
+ // Nur die Live-Ansicht: die anderen Bereiche behalten ihr normales Raster.
+ const g=$('#grid'); if(!g)return;
+ g.style.gridTemplateColumns=(view==='live'&&kartenBreite!==420)
+   ?`repeat(auto-fit,minmax(${kartenBreite}px,1fr))`:'';
+}
+function cardScaleLabel(){
+ const en2=lang==='en';
+ const n=kartenBreite===420?'normal':(kartenBreite===340?(en2?'compact':'kompakt'):(en2?'narrow':'schmal'));
+ const e=$('#cardScale'); if(e)e.textContent='▭ '+n;
+}
+function sortPf(c){
+ if(!charSortMode)return '';
+ return `<span class="sortpf" data-char="${esc(c.name)}" data-d="-1" title="nach vorn">◀</span><span class="sortpf" data-char="${esc(c.name)}" data-d="1" title="nach hinten">▶</span> `;
+}
+async function charVerschieben(name,d){
+ const namen=(lastChars||[]).map(c=>c.name);
+ const i=namen.indexOf(name),z=i+d;
+ if(i<0||z<0||z>=namen.length)return;
+ [namen[i],namen[z]]=[namen[z],namen[i]];
+ // Sofort lokal umsortieren, der Server merkt sich die Ordnung dauerhaft
+ // (config.json) und bestaetigt sie mit dem naechsten Tick.
+ lastChars.sort((a,b)=>namen.indexOf(a.name)-namen.indexOf(b.name));
+ renderLiveView();
+ try{await post({action:'char_reihenfolge',namen});}catch(e){}
+}
+document.addEventListener('click',e=>{
+ const t=e.target.closest&&e.target.closest('.sortpf');
+ if(t){e.stopPropagation();charVerschieben(t.dataset.char,parseInt(t.dataset.d));}
+},true);
 // ---- Lokale Missions-Simulation (nur Frontend, keine Logs/DB, nie hochgeladen) ----
 // Sichtbar nur mit lokalem sim_mode-Flag. Ein Demo-Char durchlaeuft komplette
 // Missions-Zyklen (Abdocken -> Warp -> Anflug -> Kampf -> Andocken) und fuellt
@@ -13986,6 +14037,17 @@ $('#charFilter').onchange=()=>{
  }
  if(view==='planeten')renderPlaneten(lastPlaneten);else renderLiveView();};
 {const ms=$('#mainCharSel'); if(ms)ms.onchange=()=>localStorage.setItem('mainChar',ms.value);}
+$('#sortChars').onclick=()=>{
+ charSortMode=!charSortMode;
+ $('#sortChars').classList.toggle('on',charSortMode);
+ renderLiveView();
+};
+$('#cardScale').onclick=()=>{
+ const i=KARTEN_STUFEN.indexOf(kartenBreite);
+ kartenBreite=KARTEN_STUFEN[(i+1)%KARTEN_STUFEN.length];
+ localStorage.setItem('kartenbreite',JSON.stringify(kartenBreite));
+ kartenAnwenden();cardScaleLabel();
+};
 $('#collapseAll').onclick=()=>{
  const pi=view==='planeten';
  const names=(pi?(lastPlaneten&&lastPlaneten.chars||[]):(lastChars||[])).map(c=>c.name);
@@ -14390,7 +14452,7 @@ function miningCardHtml(c){
     <span class="arr">▼</span>
     ${c.portrait?`<img class="pf" src="${c.portrait}" alt="">`
       :(!c.esi_linked?`<span class="pf pf-none" data-esihint="1" title="Noch nicht mit EVE-Login verbunden. Klick für Portrait, Schiff, Wallet und automatisches Heavy Water.">👤</span>`:'')}
-    <span class="char">${esc(c.name)} <span class="sys">· ${esc(c.system)}${abyssUhr(c)}${c.ship?' · '+esc(c.ship):''}</span></span>
+    ${sortPf(c)}<span class="char">${esc(c.name)} <span class="sys">· ${esc(c.system)}${abyssUhr(c)}${c.ship?' · '+esc(c.ship):''}</span></span>
     <select class="rolesel" data-c="${esc(c.name)}" title="Rolle zuweisen (für die Filter oben)">
      <option value=""${c.role?'':' selected'}>Rolle …</option>
      <option value="mining"${c.role==='mining'?' selected':''}>⛏ Mining</option>
@@ -14598,7 +14660,7 @@ function combatCardHtml(c){
    <div class="chead" data-c="${esc(c.name)}">
     <span class="arr">▼</span>
     ${c.portrait?`<img class="pf" src="${c.portrait}" alt="">`:''}
-    <span class="char">${esc(c.name)} <span class="sys">· ${esc(c.system)}${abyssUhr(c)}${c.ship?' · '+esc(c.ship):''}</span></span>
+    ${sortPf(c)}<span class="char">${esc(c.name)} <span class="sys">· ${esc(c.system)}${abyssUhr(c)}${c.ship?' · '+esc(c.ship):''}</span></span>
     <select class="rolesel pill" data-c="${esc(c.name)}" title="Rolle zuweisen (für die Filter oben)">
      <option value=""${c.role?'':' selected'}>Rolle …</option>
      <option value="mining"${c.role==='mining'?' selected':''}>⛏ Mining</option>
@@ -17164,6 +17226,12 @@ function renderSetup(){
 const EN = {
 // Kopfleiste & Navigation
 'Alle':'All','Alle Charaktere':'All characters','Alle einklappen':'Collapse all',
+'↕ Reihenfolge':'↕ Order','▭ Karten':'▭ Cards',
+'nach vorn':'move forward','nach hinten':'move back',
+'Reihenfolge der Charakter-Karten festlegen, mit den Pfeilen an den Karten. Wird in Canary gespeichert und gilt in jedem Browser und im Overlay.':
+ 'Set the order of the character cards with the arrows on the cards. Stored in Canary, so it applies in every browser and in the overlay.',
+'Breite der Charakter-Karten. Schmaler heißt mehr Karten nebeneinander.':
+ 'Width of the character cards. Narrower means more cards side by side.',
 'Alle aufklappen':'Expand all','Charakter-Filter':'Character filter',
 'Nur Mining-Charaktere':'Mining characters only','Nur Mission-Runner':'Mission runners only',
 'Nur PvP-Charaktere':'PvP characters only','💤 Offline zeigen':'💤 Show offline',
@@ -17834,6 +17902,10 @@ async function tick(){
   if(view!=='live'&&view!=='month'&&view!=='total'&&view!=='analyse')$('#empty').hidden=true;
   // Der Mining/PvP-Umschalter gehört nur zur Live-Ansicht
   document.querySelectorAll('.modesel').forEach(b=>b.hidden=view!=='live');
+  ['sortChars','cardScale'].forEach(id=>{const e=$('#'+id);if(e)e.hidden=view!=='live';});
+  // Beides hier statt beim Seitenaufbau: dort waere `lang` noch nicht
+  // deklariert (TDZ) und der Fehler risse das ganze Seiten-Skript mit.
+  kartenAnwenden();cardScaleLabel();
   if(view==='live'){lastChars=d.chars;lastSummary=d.summary;renderLiveView();voiceWatch(d.chars);}
   else if(view==='missionen')renderMissions(d);
   else{
