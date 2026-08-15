@@ -50,6 +50,27 @@
   ]
  },
  {
+  "name": "Michael Starlight",
+  "role": {
+   "de": "Streamer",
+   "en": "Streamer",
+   "fr": "Streameur",
+   "ru": "Стример"
+  },
+  "note": {
+   "de": "Zeigt Canary im Stream neben dem Spiel. Schaut vorbei!",
+   "en": "Shows Canary on stream next to the game. Drop by!",
+   "fr": "Montre Canary en stream à côté du jeu. Passez le voir !",
+   "ru": "Показывает Canary в стриме рядом с игрой. Заходите!"
+  },
+  "links": [
+   {
+    "k": "twitch",
+    "u": "https://www.twitch.tv/michael_starlight"
+   }
+  ]
+ },
+ {
   "name": "Nirahse",
   "role": {
    "de": "Missionsdaten",
@@ -85,5 +106,69 @@
     "u": "https://github.com/NetManDE"
    }
   ]
+ },
+ {
+  "name": "Eron Solette",
+  "role": {
+   "de": "Ideen & Meldungen",
+   "en": "Ideas & reports",
+   "fr": "Idées et signalements",
+   "ru": "Идеи и сообщения"
+  },
+  "note": {
+   "de": "Denkt Canary als Multiboxer weiter: die eigene Karten-Reihenfolge, die einstellbaren Blutspur-Reichweiten und die breiten Spielzeit-Balken gehen auf seine Vorschläge zurück.",
+   "en": "Thinks Canary onward as a multiboxer: the custom card order, the adjustable Blood Trail ranges and the full-width playtime bars go back to his suggestions.",
+   "fr": "Fait avancer Canary côté multiboxing : l'ordre personnalisé des cartes, les portées réglables de Blood Trail et les barres de temps de jeu pleine largeur viennent de ses idées.",
+   "ru": "Развивает Canary как мультибоксер: свой порядок карточек, настраиваемые радиусы Blood Trail и широкие полосы игрового времени появились по его предложениям."
+  },
+  "links": []
+ },
+ {
+  "name": "Vile Gangster",
+  "role": {
+   "de": "Ideen & Meldungen",
+   "en": "Ideas & reports",
+   "fr": "Idées et signalements",
+   "ru": "Идеи и сообщения"
+  },
+  "note": {
+   "de": "Meldet die Dinge, die im Alltag stören, bevor sie andere überhaupt bemerken: der Versions-Chip, das Ende der Tab-Flut nach Updates und die Sprach-Flaggen kommen von ihm.",
+   "en": "Reports the things that annoy in daily use before anyone else even notices: the version chip, the end of the tab flood after updates and the language flags came from him.",
+   "fr": "Signale ce qui gêne au quotidien avant que d'autres ne le remarquent : la puce de version, la fin du déluge d'onglets après les mises à jour et les drapeaux de langue viennent de lui.",
+   "ru": "Замечает мешающие мелочи раньше всех: чип версии, конец потока вкладок после обновлений и языковые флаги появились благодаря ему."
+  },
+  "links": []
+ },
+ {
+  "name": "Impa",
+  "role": {
+   "de": "Meldungen",
+   "en": "Reports",
+   "fr": "Signalements",
+   "ru": "Сообщения"
+  },
+  "note": {
+   "de": "AoE-Ratting mit mehreren eigenen Charakteren löste Fehlalarme aus. Seine Meldung brachte die Eigenbeschuss-Erkennung, ganz ohne Pflegeliste.",
+   "en": "AoE ratting with several own characters triggered false alarms. His report brought the friendly-fire detection, with no list to maintain.",
+   "fr": "Le ratting AoE en multiboxing déclenchait de fausses alertes. Son signalement a apporté la détection du tir allié, sans liste à entretenir.",
+   "ru": "AoE-раттинг несколькими персонажами вызывал ложные тревоги. Его сообщение принесло распознавание дружественного огня без всяких списков."
+  },
+  "links": []
+ },
+ {
+  "name": "Dune2Man",
+  "role": {
+   "de": "Ideen",
+   "en": "Ideas",
+   "fr": "Idées",
+   "ru": "Идеи"
+  },
+  "note": {
+   "de": "Wünschte sich, dass Canary sich selbst aktuell hält. Daraus wurde das Auto-Update.",
+   "en": "Wished Canary would keep itself up to date. That became the auto update.",
+   "fr": "Voulait que Canary se mette à jour tout seul. C'est devenu la mise à jour automatique.",
+   "ru": "Хотел, чтобы Canary обновлялся сам. Так появилось автообновление."
+  },
+  "links": []
  }
 ]

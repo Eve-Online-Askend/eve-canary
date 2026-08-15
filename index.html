@@ -181,6 +181,11 @@ li{margin:5px 0}
 .missionCta{margin:16px 0 0}
 .missionCta .cta{display:inline-block;background:var(--cyan);color:#06222a;border-radius:9px;
  padding:11px 20px;font-weight:700;text-decoration:none;font-size:15px}
+/* Der Installations-Knopf ist ein <button>, die Nachbarn sind Links. Ohne
+   diesen Abgleich schlagen die Browser-Grundstile durch (weisser Rand,
+   eigene Schrift) und er faellt aus der Reihe. */
+.missionCta button.cta{border:none;font:inherit;font-weight:700;font-size:15px;
+ cursor:pointer;appearance:none;-webkit-appearance:none;line-height:inherit}
 .missionCta .cta:hover{filter:brightness(1.08)}
 .missionCta .cta+.cta{margin-left:8px}
 /* Discord-Blau statt Canary-Cyan: der Knopf soll als Discord erkennbar
