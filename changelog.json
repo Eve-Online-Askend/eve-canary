@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.27.0",
+  "d": "2026-08-15",
+  "de": [
+   "CANARY FRAGT JETZT NACH, statt zu schweigen. Sieht ein Einsatz zu 60 bis 80 Prozent aus wie eine geteilte Gegner-Vorlage, steht kein Name darueber, sondern eine Frage: „War es diese Mission?“ Ein Klick auf Ja benennt den Lauf, ein Klick auf Nein laesst die Frage nie wiederkommen. Der Grund: jede geteilte Vorlage steht bisher auf genau einem bestaetigten Lauf, und ein zweiter macht sie deutlich verlaesslicher. Die Antwort bleibt auf dem eigenen Rechner, Canary schickt nach wie vor nichts von selbst weg.",
+   "Die Untergrenze von 60 Prozent ist gemessen: ein nachweislich echtes Paar derselben Mission lag bei 62 Prozent, bei 65 waere genau dieser Fall durchgefallen. An einer echten Datenbank mit 40 Einsaetzen entsteht dabei genau EINE Rueckfrage, an 1.021 fremden Logdateien keine einzige.",
+   "ABYSS-EXPORT, EIN ECHTER FEHLER BEHOBEN: ab drei Charakteren bekamen zwei verschiedene dieselbe Nummer. Die Spalte „gemeinsam_mit“ vergab eigene Nummern, waehrend die Hauptschleife parallel hochzaehlte, und beide wussten nichts voneinander. In einer Auswertung verschmolzen dadurch zwei Leute zu einer Person. Bei zwei Charakteren war das nie zu sehen.",
+   "ABYSS-EXPORT, NEUE SPALTE „gruppe“: alle gleichzeitigen Laeufe tragen dieselbe Nummer, wer allein fliegt bekommt eine eigene. Damit laesst sich „wie viele Durchgaenge“ zaehlen, ohne die Zeilen zusammenzulegen, und Schaden und EWAR bleiben je Charakter lesbar. Die Spalte heisst bewusst nicht „Filament“: ob eine Flotte durch ein Filament ging oder durch mehrere gleichzeitig gestartete, steht in keiner Logdatei. Angeregt von Nirahse."
+  ],
+  "en": [
+   "CANARY NOW ASKS instead of staying silent. When a run looks 60 to 80 percent like a shared enemy template, there is no name above it but a question: “Was it this mission?” One click on Yes names the run, one click on No means the question never returns. The reason: every shared template so far rests on exactly one confirmed run, and a second one makes it noticeably more reliable. Your answer stays on your own computer, Canary still never sends anything by itself.",
+   "The lower bound of 60 percent is measured: a demonstrably genuine pair of the same mission sat at 62 percent, so at 65 exactly this case would have fallen through. On a real database with 40 runs it produces exactly ONE question, on 1,021 foreign log files not a single one.",
+   "ABYSSAL EXPORT, A REAL BUG FIXED: from three characters onwards, two different ones were given the same number. The “gemeinsam_mit” column handed out its own numbers while the main loop counted up in parallel, and neither knew about the other. In any analysis two people merged into one. With two characters it was never visible.",
+   "ABYSSAL EXPORT, NEW COLUMN “gruppe”: all simultaneous runs carry the same number, anyone flying alone gets their own. That makes “how many runs” countable without merging the rows, and damage and EWAR stay readable per character. The column is deliberately not called “filament”: whether a fleet went through one filament or several started at the same time is in no log file. Suggested by Nirahse."
+  ]
+ },
+ {
   "v": "2.26.0",
   "d": "2026-08-15",
   "de": [

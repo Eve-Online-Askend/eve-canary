@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.26.0"
+VERSION = "2.27.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -328,6 +328,31 @@ FP_MIN_GEMEINSAM = 4
 # Der eigene Bestand bleibt bei 65%: die eigenen Benennungen sind das eigene
 # Spiel, dort darf man sich selbst vertrauen.
 FP_MIN_GETEILT = 0.80
+# Darunter beginnt das Band, in dem Canary nicht behauptet, sondern FRAGT.
+#
+# Das Problem hinter dieser Zahl: jede geteilte Vorlage steht auf genau EINEM
+# Beleg. Ob zwei Laeufe derselben Mission immer so nah beieinander liegen, ist
+# damit unbelegt, und die Schwelle von 80 % ist eine vorsichtige Setzung und
+# keine bewiesene Trennung. Ein zweiter benannter Lauf wuerde beides klaeren,
+# nur kommt der nicht von selbst.
+#
+# Deshalb: liegt ein Lauf zwischen 60 und 80 %, sagt Canary nichts ueber ihn,
+# sondern fragt "war das X?". Ein Klick benennt ihn, und aus zwei Belegen wird
+# ein Kern statt einer Einzelaufnahme. Die Untergrenze steht bei 60 %, weil ein
+# nachweislich echtes Paar (Attack of the Drones) bei 62 % lag; bei 65 % waere
+# genau der Fall durchgefallen, um den es hier geht.
+#
+# EHRLICH GESAGT: wie laut das bei jemandem mit tausenden Laeufen ist, ist
+# unterhalb von 65 % nicht gemessen. Gemessen sind zwei Dinge. An der eigenen
+# Datenbank (40 Missionen) entsteht genau EINE Rueckfrage. An blacys 1.021
+# Logdateien mit 213 Kampf-Abschnitten entsteht keine einzige, allerdings
+# beruehrt der Bestand diese Vorlagen kaum. Der belastbarste Wert stammt aus
+# der Schwellenmessung: zwischen 65 und 79 % lagen 19 fremde Abschnitte von
+# 11.035, also rund eine Rueckfrage je 580 Kaempfe.
+#
+# Der Preis einer falschen Rueckfrage ist ausserdem klein: es steht nie ein
+# Name ueber dem Lauf, nur eine Frage, und ein "Nein" ist dauerhaft weg.
+FP_NACHFRAGE_MIN = 0.60
 # Ab welchem Vielfachen der Normallieferung gilt Erz als Bonus, und bis wohin.
 #
 # Erst hiess die Regel "exaktes ganzes Vielfaches". Das war an einem einzigen
@@ -518,6 +543,40 @@ def fingerprint_mission(enemies):
             if best is None or conf > best["conf"]:
                 best = {"name": m["name"], "conf": conf, "quelle": quelle,
                         "wie": m.get("ts")}
+    return best
+
+
+def fingerprint_nachfrage(enemies):
+    """Der Beinahe-Treffer: aehnlich genug zum Fragen, zu wenig zum Behaupten.
+
+    Gibt {'name','conf'} zurueck, wenn eine GETEILTE Vorlage zwischen
+    FP_NACHFRAGE_MIN und FP_MIN_GETEILT liegt, sonst None. Die Oberflaeche
+    macht daraus eine Frage, nie ein Etikett.
+
+    Warum nur die geteilten: eine eigene Benennung greift schon ab 65 % von
+    selbst, da gibt es nichts zu fragen. Die geteilten stehen dagegen auf einem
+    einzigen Beleg, und genau die brauchen den zweiten. Sagt der Nutzer ja, ist
+    der Lauf benannt und die Vorlage hat ihre Bestaetigung.
+
+    Aufgerufen wird das nur, wenn sonst gar nichts erkannt wurde. Eine Frage
+    ueber einem bereits erkannten Lauf waere Laerm."""
+    hier = {(n or "").strip().lower() for n, _ in (enemies or []) if n}
+    if len(hier) < FP_MIN_GEMEINSAM:
+        return None
+    best = None
+    for m in MISSION_FP:
+        gemeinsam = hier & m["set"]
+        if len(gemeinsam) < FP_MIN_GEMEINSAM:
+            continue
+        alle = hier | m["set"]
+        if not alle:
+            continue
+        j = len(gemeinsam) / len(alle)
+        if not (FP_NACHFRAGE_MIN <= j < FP_MIN_GETEILT):
+            continue
+        conf = int(round(j * 100))
+        if best is None or conf > best["conf"]:
+            best = {"name": m["name"], "conf": conf}
     return best
 
 
@@ -1678,6 +1737,10 @@ CREATE TABLE IF NOT EXISTS missions(mid TEXT PRIMARY KEY, char_id TEXT, char TEX
     CREATE TABLE IF NOT EXISTS uhr(id INTEGER PRIMARY KEY AUTOINCREMENT,
     label TEXT, start_ts REAL, end_ts REAL, sek REAL, m3 REAL, isk REAL,
     unsicher INTEGER);
+-- Beantwortete Rueckfragen zum Gegner-Fingerabdruck. Wer einmal "nein" gesagt
+-- hat, soll dieselbe Frage nie wieder sehen. Ein "ja" braucht hier nichts, das
+-- steht danach als Name in missions.label.
+    CREATE TABLE IF NOT EXISTS fp_nein(mid TEXT PRIMARY KEY, ts REAL);
 -- Genau EIN Register, und zwar das einzige, das nachweislich hilft:
 -- die Missions-Liste holt die neuesten 200 von zigtausend Zeilen.
 -- An 30.000 Missionen gemessen 3,3 ms ohne, 0,3 ms mit.
@@ -9099,6 +9162,11 @@ def query_mission_history(limit=40):
                FROM missions ORDER BY start_ts DESC LIMIT ?""", (limit * 5,)).fetchall()
     # (mid, char, start, end) je Missionszeile fuer die Zuordnung unten.
     cand = [(x[0], x[1], x[2] or 0, x[3] or 0) for x in rows]
+    # Rueckfragen, die schon mit "nein" beantwortet wurden. Einmal am Stueck
+    # holen statt je Zeile: die Tabelle ist winzig, die Schleife unten laeuft
+    # aber alle zwei Sekunden.
+    with DB_LOCK:
+        fp_nein = {r[0] for r in DB.execute("SELECT mid FROM fp_nein")}
     # Verifizierte Missions-Belohnungen aus dem Wallet-Journal (Server-Wahrheit).
     # Jede wird gleich der Mission zugeordnet, die kurz davor endete.
     #
@@ -9206,6 +9274,11 @@ def query_mission_history(limit=40):
             "dmg_out": do or 0, "dmg_in": di or 0, "kills": kills or 0,
             "bounty": round(bounty or 0), "hit": round(100 * hits / shots) if shots else None,
             "mission": mission, "site": site, "npc": dlines,
+            # Beinahe-Treffer an einer geteilten Vorlage: keine Erkennung,
+            # sondern eine Frage. Nur wenn sonst nichts erkannt wurde und die
+            # Frage nicht schon einmal verneint war.
+            "nachfrage": (fingerprint_nachfrage(enemies)
+                          if (not mission and mid not in fp_nein) else None),
             "faction": faction_info(enemies),
             "ewar": json.loads(ewj or "[]"),
             "logi_out": round(lo or 0), "logi_in": round(li or 0),
@@ -10360,9 +10433,29 @@ def abyss_export_tsv():
                # Multiboxing: mehrere Charaktere gleichzeitig durch denselben
                # Abyss ergeben mehrere Zeilen. Ohne diese Spalte zaehlt jede
                # Auswertung sie als getrennte Durchgaenge. Gemeldet von Nirahse.
-               "gemeinsam_mit"]
+               "gemeinsam_mit",
+               # Damit sich Durchgaenge OHNE Zeilen-Zusammenlegung zaehlen
+               # lassen: alle gleichzeitigen Laeufe tragen dieselbe Nummer, wer
+               # allein fliegt bekommt eine eigene. "Wie viele Durchgaenge?"
+               # ist damit die Anzahl verschiedener Gruppen, "wie viel Schaden?"
+               # bleibt je Charakter lesbar.
+               #
+               # Die Spalte heisst bewusst nicht "filament": ob eine Flotte
+               # durch EIN Filament ging oder durch mehrere gleichzeitig
+               # gestartete, steht in keiner Logdatei. Gezaehlt wird, was
+               # messbar ist, naemlich gleichzeitige Laeufe im selben System.
+               "gruppe"]
     zeilen = ["\t".join(spalten)]
-    nummern, n = {}, 0
+    nummern = {}
+
+    def nr(cid):
+        """GENAU EINE Stelle vergibt die Nummern, in der Reihenfolge des ersten
+        Auftretens. Vorher zaehlte die Schleife mit einem eigenen Zaehler hoch,
+        waehrend die Spalte 'gemeinsam_mit' zusaetzlich eigene Nummern vergab.
+        Die beiden wussten nichts voneinander: ab drei Charakteren bekamen zwei
+        verschiedene dieselbe Nummer und verschmolzen in jeder Auswertung."""
+        return nummern.setdefault(cid, len(nummern) + 1)
+
     with DB_LOCK:
         rows = DB.execute(
             "SELECT start_ts,end_ts,char_id,system,label,dmg_out,dmg_in,hits,"
@@ -10378,11 +10471,47 @@ def abyss_export_tsv():
             gg = []
         if ist_abyss(r[3], gg):
             abyss_rows.append((r, gg))
-    for (start, ende, cid, system, label, dout, din, hits, mout, min_, kills,
-         bounty, loot, ewar_j, enemies_j), enemies in abyss_rows:
-        if cid not in nummern:
-            n += 1
-            nummern[cid] = n
+
+    def zusammen_mit(a, b):
+        """Dieselbe Regel wie in der Missions-Liste: anderer Charakter,
+        gleiches System, rein UND raus innerhalb von 90 Sekunden."""
+        return (a[2] != b[2] and (a[3] or "?") == (b[3] or "?")
+                and abs((a[0] or 0) - (b[0] or 0)) <= 90
+                and abs((a[1] or 0) - (b[1] or 0)) <= 90)
+
+    # Gruppen bilden: wer mit wem gleichzeitig unterwegs war, landet in
+    # derselben Gruppe. Ueber die Verbindung, nicht nur paarweise, denn bei drei
+    # Charakteren soll auch dann eine Gruppe herauskommen, wenn der erste und
+    # der letzte 100 s auseinanderliegen und beide nur den mittleren beruehren.
+    # Der Preis: eine Kette kann laenger als 90 s werden. Bei einem Durchgang
+    # von hoechstens 20 Minuten ist das unbedenklich, und die Alternative
+    # (nur echte Cliquen) wuerde eine Flotte willkuerlich zerschneiden.
+    eltern = list(range(len(abyss_rows)))
+
+    def wurzel(i):
+        while eltern[i] != i:
+            eltern[i] = eltern[eltern[i]]
+            i = eltern[i]
+        return i
+
+    for i in range(len(abyss_rows)):
+        for j in range(i + 1, len(abyss_rows)):
+            if zusammen_mit(abyss_rows[i][0], abyss_rows[j][0]):
+                wi, wj = wurzel(i), wurzel(j)
+                if wi != wj:
+                    eltern[wj] = wi
+    # Durchnummerieren in der Reihenfolge des ersten Auftretens, damit die
+    # Nummern beim Lesen von oben nach unten aufsteigen.
+    gruppen_nr, gruppe_von = {}, {}
+    for i in range(len(abyss_rows)):
+        w = wurzel(i)
+        if w not in gruppen_nr:
+            gruppen_nr[w] = len(gruppen_nr) + 1
+        gruppe_von[i] = gruppen_nr[w]
+
+    for idx, ((start, ende, cid, system, label, dout, din, hits, mout, min_, kills,
+         bounty, loot, ewar_j, enemies_j), enemies) in enumerate(abyss_rows):
+        eigene = nr(cid)
         try:
             ewar = json.loads(ewar_j or "[]")
         except Exception:
@@ -10390,7 +10519,7 @@ def abyss_export_tsv():
         zeilen.append("\t".join(str(x) for x in [
             datetime.fromtimestamp(start or 0, timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
             int((ende or 0) - (start or 0)),
-            "Char " + str(nummern[cid]),
+            "Char " + str(eigene),
             (system or "?"),
             (label or "").replace("\t", " "),
             abyss_tier_aus_name(label) or "",
@@ -10401,14 +10530,9 @@ def abyss_export_tsv():
             int(bounty or 0), int(loot or 0),
             " ".join(f"{k}x{v}" for k, v in ewar) if ewar else "",
             " ".join(f"{k} ({v} dmg)" for k, v in enemies[:8]).replace("\t", " "),
-            # Gleiches System, rein und raus innerhalb von 90 s, anderer
-            # Charakter. Dieselbe Regel wie in der Missions-Liste.
-            " ".join("Char " + str(nummern.setdefault(
-                o[0][2], len(nummern) + 1))
-                for o in abyss_rows
-                if o[0][2] != cid and (o[0][3] or "?") == (system or "?")
-                and abs((o[0][0] or 0) - (start or 0)) <= 90
-                and abs((o[0][1] or 0) - (ende or 0)) <= 90),
+            " ".join("Char " + str(nr(o[0][2])) for k, o in enumerate(abyss_rows)
+                     if k != idx and zusammen_mit(o[0], abyss_rows[idx][0])),
+            gruppe_von[idx],
         ]))
     if len(zeilen) == 1:
         zeilen.append("# keine Abyss-Durchgaenge gefunden")
@@ -11076,8 +11200,30 @@ class Handler(BaseHTTPRequestHandler):
                            (name or None, mid))
                 DB.commit()
             marken_laden()
+            # Wer einen Lauf benennt, hat die Rueckfrage dazu beantwortet.
+            # Wer die Benennung wieder loescht, macht auch das rueckgaengig:
+            # dann ist der Lauf wieder unbekannt und darf wieder gefragt werden.
+            with DB_LOCK:
+                if name:
+                    DB.execute("INSERT OR REPLACE INTO fp_nein VALUES(?,?)",
+                               (mid, time.time()))
+                else:
+                    DB.execute("DELETE FROM fp_nein WHERE mid=?", (mid,))
+                DB.commit()
             self._send(json.dumps({"ok": True, "name": name,
                                    "vorlagen": len(MARKEN)}))
+            return
+        elif action == "fp_nein":
+            # "Nein, das war die Mission nicht." Die Frage kommt nicht wieder.
+            # Bewusst ohne Gegenstueck in der Oberflaeche: eine Liste
+            # abgelehnter Fragen zum Zurueckholen waere mehr Bedienung als
+            # Nutzen. Wer sich vertut, benennt den Lauf einfach selbst.
+            mid = str(body.get("mid") or "")
+            with DB_LOCK:
+                DB.execute("INSERT OR REPLACE INTO fp_nein VALUES(?,?)",
+                           (mid, time.time()))
+                DB.commit()
+            self._send(json.dumps({"ok": True}))
             return
         elif action == "threat_scan":
             names = [str(n).strip() for n in (body.get("names") or [])][:200]
@@ -15580,6 +15726,21 @@ function renderMissions(d){
      ${x.mission?`<span class="mtag">${missionHtml(x.mission)}</span>`:x.site?`<span class="mtag">${siteHtml(x.site)}</span>`:''}
      <span style="margin-left:auto" class="isk"><b>${fmtM(x.total)} ISK</b></span>
     </div>
+    ${x.nachfrage?`<div class="sub mfrage" data-mid="${esc(x.mid)}" style="margin-top:6px">
+      ❓ ${(()=>{const p='<b>'+x.nachfrage.conf+'%</b>', n='<b>'+esc(x.nachfrage.name)+'</b>';
+          // Die Auszeichnung steckt bewusst im Ausdruck und nicht als <b> im
+          // Satz: i18n_gesamt.py meldet sonst den deutschen Teil zwischen zwei
+          // Tags als unuebersetzt, obwohl die englische Fassung daneben steht.
+          return lang==='en'
+           ? `This run looks ${p} like the shared template ${n}. Not enough to say so. Was it that mission?`
+           : `Dieser Lauf sieht zu ${p} aus wie die geteilte Vorlage ${n}. Zu wenig, um es zu behaupten. War es die Mission?`;})()}
+      <button class="btn mfrageja" data-mid="${esc(x.mid)}" data-name="${esc(x.nachfrage.name)}" style="margin-left:8px">${lang==='en'?'Yes':'Ja'}</button>
+      <button class="btn geist mfragenein" data-mid="${esc(x.mid)}">${lang==='en'?'No':'Nein'}</button>
+      <span class="mfragestat sub" data-mid="${esc(x.mid)}"></span>
+      <div class="sub" style="margin-top:2px">${lang==='en'
+        ? 'Every shared template rests on a single confirmed run. A second one makes it noticeably more reliable, and your answer stays on this computer.'
+        : 'Jede geteilte Vorlage steht auf einem einzigen bestätigten Lauf. Ein zweiter macht sie deutlich verlässlicher, und deine Antwort bleibt auf diesem Rechner.'}</div>
+     </div>`:''}
     ${(!x.kills&&!x.bounty&&!x.dmg_out&&(x.logi_out||x.logi_in))
       ? `<div class="sub">${lang==='en'?'Support run, no damage of your own':'Unterstützungseinsatz, kein eigener Schaden'}${x.dmg_in?' · '+fmt(x.dmg_in)+' '+(lang==='en'?'damage taken':'Schaden rein'):''}${ewarInline(x.ewar)}</div>`
       : `<div class="sub">${x.kills} Kills · Bounty ${fmtM(x.bounty)} · Schaden ${fmt(x.dmg_out)} raus / ${fmt(x.dmg_in)} rein${x.hit!=null?' · Trefferquote '+x.hit+'%':''}${x.enemies.length?' · Top: '+esc(x.enemies[0][0]):''}${ewarInline(x.ewar)}</div>`}
@@ -15879,6 +16040,26 @@ function renderMissions(d){
    setTimeout(tick,600);
   }else setzStatus(r?(en2?'Error':'Fehler')
                     :(en2?'Server not reachable':'Server nicht erreichbar'));
+ });
+ // Die Rueckfrage bei Beinahe-Treffern. "Ja" benennt den Lauf mit genau dem
+ // Namen der Vorlage, damit aus beiden Laeufen ein Kern werden kann. "Nein"
+ // merkt sich die Ablehnung, die Frage kommt nicht wieder.
+ document.querySelectorAll('.mfrageja').forEach(b=>b.onclick=async()=>{
+  const mid=b.dataset.mid, name=b.dataset.name, en2=lang==='en';
+  const st=[...document.querySelectorAll('.mfragestat')].find(e=>e.dataset.mid===mid);
+  if(st)st.textContent=en2?'Saving …':'Speichere …';
+  let r;try{r=await post({action:'mission_label',mid,name});}catch(e){r=null;}
+  if(r&&r.ok){if(st)st.textContent=en2?'✓ named':'✓ benannt'; setTimeout(tick,600);}
+  else if(st)st.textContent=r?(en2?'Error':'Fehler')
+                             :(en2?'Server not reachable':'Server nicht erreichbar');
+ });
+ document.querySelectorAll('.mfragenein').forEach(b=>b.onclick=async()=>{
+  const mid=b.dataset.mid, en2=lang==='en';
+  const st=[...document.querySelectorAll('.mfragestat')].find(e=>e.dataset.mid===mid);
+  let r;try{r=await post({action:'fp_nein',mid});}catch(e){r=null;}
+  if(r&&r.ok){setTimeout(tick,300);}
+  else if(st)st.textContent=r?(en2?'Error':'Fehler')
+                             :(en2?'Server not reachable':'Server nicht erreichbar');
  });
 }
 function renderRechner(){
