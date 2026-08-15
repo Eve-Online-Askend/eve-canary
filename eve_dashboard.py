@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.32.0"
+VERSION = "2.33.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -6579,6 +6579,12 @@ class PackIntel(threading.Thread):
         self.near_alerted = {}         # (pack_id, system) -> ts (Gold-Hinweis)
         self.info_alerted = set()      # pack_id: Region-Hinweis schon gegeben
         self._seen = set()             # kill_ids (Dedupe, Session)
+        # Abschuesse der EIGENEN Charaktere, char_id -> [(ts, kill_id), ...].
+        # Der Feed liefert ALLE Kills von New Eden, gefiltert wird erst fuer
+        # die Blutspur-Blase. Eigene Kills werden deshalb VOR dem Filter
+        # abgegriffen, sonst zaehlte ein Roam ausserhalb der Blase nicht.
+        # Je Charakter auf 50 begrenzt, das deckt jede Session ab.
+        self.eigene_kills = {}
         self._pid = 0
         self._fails = 0
         self._last200 = time.time()
@@ -6691,10 +6697,49 @@ class PackIntel(threading.Thread):
             sc += 5
         return min(sc, 100)
 
+    def _eigener_kill(self, km, kid):
+        """Steht einer der eigenen Charaktere auf der Killmail als Angreifer?
+        Dann zaehlt der Abschuss fuer dessen Kill-Zaehler (OBS-Overlay).
+
+        Ehrlichkeit dazu: EVE loggt Spieler-Abschuesse NICHT, dieser Zaehler
+        kommt aus dem Killmail-Feed und hinkt ein paar Minuten hinterher
+        (Median ~2 min). Die eigenen char_ids kennt Canary aus den Namen der
+        Logdateien, es braucht keinen Login und keine Liste."""
+        zkb = km.get("zkb") or {}
+        if zkb.get("npc"):
+            return
+        atk_ids = {a.get("character_id") for a in km.get("attackers") or []}
+        atk_ids.discard(None)
+        if not atk_ids:
+            return
+        try:
+            kt = datetime.fromisoformat(
+                (km.get("killmail_time") or "").replace("Z", "+00:00")).timestamp()
+        except Exception:
+            kt = time.time()
+        for cid in list(ingest.sessions.keys()):
+            try:
+                if int(cid) not in atk_ids:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            liste = self.eigene_kills.setdefault(cid, [])
+            if any(k[1] == kid for k in liste):
+                continue   # Dedupe je Charakter, Listen sind klein
+            liste.append((kt, kid))
+            del liste[:-50]
+
     def _ingest(self, km, src, persist=True):
         kid = km.get("killmail_id")
         sysid = km.get("solar_system_id")
-        if not kid or kid in self._seen or sysid not in self.sysrow:
+        if not kid:
+            return False
+        # Eigene Kills VOR der Blasen-Filterung abgreifen. Bewusst NICHT ueber
+        # self._seen dedupliziert: das Set muesste sonst jeden Kill von ganz
+        # New Eden behalten und wuechse megabyteweise.
+        if kid not in self._seen:
+            self._eigener_kill(km, kid)
+        if kid in self._seen or sysid not in self.sysrow:
             return False
         self._seen.add(kid)
         kt = 0
@@ -7844,9 +7889,16 @@ function rechts(c) {
     if (iskH(c)) unten.push(fmtM(iskH(c)) + '/h');
   } else if (kampf) {
     // Ohne ISK traegt der Schaden die grosse Zahl, sonst stuende sie doppelt.
-    if (isk > 0 && raus > 0) unten.push(fmtC(raus) + ' Schaden');
-    else if (raus > 0) unten.push('Schaden');
-    if (rein > 0) unten.push(fmtC(rein) + ' rein');
+    // Beide Richtungen sind AUSGESCHRIEBEN: "923 / Schaden - 604 rein" liess
+    // die Zuschauer raetseln, was welche Zahl ist (Feedback von Askend aus
+    // einem echten Stream).
+    if (isk > 0 && raus > 0) unten.push(fmtC(raus) + ' Schaden raus');
+    else if (raus > 0) unten.push('Schaden raus');
+    if (rein > 0) unten.push(fmtC(rein) + ' Schaden rein');
+    // Abschuss-Zaehler: NPC-Kills sofort (Bounty-Zeilen), Spieler-Kills aus
+    // dem Killmail-Feed mit ein paar Minuten Verzug.
+    const kk = (c.kills || 0) + (c.pvp_kills || 0);
+    if (kk > 0) unten.push(kk + (kk === 1 ? ' Kill' : ' Kills'));
     // Bis v1.95 gab es hier nie eine Stundenrate: sie wurde ausschliesslich
     // aus dem Erz gerechnet. Ein Missionsflieger sah also immer nichts.
     if (iskH(c)) unten.push(fmtM(iskH(c)) + '/h');
@@ -8544,6 +8596,11 @@ def snapshot_live():
             "lost_paused": bool(s.traveling) or s.last_ore_ts is None
                            or (time.time() - s.last_ore_ts) > 180,
             "m3h": round(m3 / mins * 60), "bounty": s.bounty, "kills": s.kills,
+            # Spieler-Abschuesse dieser Sitzung, aus dem Killmail-Feed (ein
+            # paar Minuten verzoegert, EVE loggt Kills nicht). NPC-Kills
+            # stehen getrennt in "kills", die kommen sofort aus den Bounties.
+            "pvp_kills": sum(1 for kt, _ in packintel.eigene_kills.get(s.char_id, [])
+                             if kt >= (s.first_ts or s.start)),
             "total_isk": round(ore_isk + s.bounty),
             # Missionsbelohnungen dieser Sitzung, aus dem Wallet-Journal. Ohne
             # sie waere jede ISK/h fuer einen Missionsflieger nur die Bounty.

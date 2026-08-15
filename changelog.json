@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.33.0",
+  "d": "2026-08-15",
+  "de": [
+   "OBS-OVERLAY: KILL-ZAEHLER UND KLARE BESCHRIFTUNG. Aus \"923 / Schaden - 604 rein\" wird \"923 / Schaden raus - 604 Schaden rein\", die Zuschauer sollen nicht raetseln muessen, welche Zahl welche ist. Aufgefallen live im Stream von Michael Starlight, dessen Solo-PvP dem Overlay den bisher besten Praxistest verschafft hat.",
+   "NEU DAZU EIN ABSCHUSS-ZAEHLER je Charakter: NPC-Abschuesse kommen sofort aus den Bounty-Zeilen, Spieler-Abschuesse aus dem Killmail-Feed, den die Blutspur ohnehin einliest. Ehrlichkeit dazu: EVE loggt Spieler-Abschuesse nicht, der Feed hinkt deshalb ein paar Minuten hinterher. Gezaehlt wird jeder Kill, auf dem einer deiner Charaktere als Angreifer steht, auch weit ausserhalb der Blutspur-Umgebung, und die eigenen Charaktere erkennt Canary wie immer von allein an den Logdateien."
+  ],
+  "en": [
+   "OBS OVERLAY: KILL COUNTER AND CLEAR LABELS. \"923 / damage - 604 in\" becomes \"923 / damage out - 604 damage in\", viewers should not have to guess which number is which. Spotted live on Michael Starlight's stream, whose solo PvP gave the overlay its best field test so far.",
+   "NEW: A KILL COUNTER per character: NPC kills come instantly from the bounty lines, player kills from the killmail feed that Blood Trail already ingests. Honesty note: EVE does not log player kills, so the feed lags a few minutes. Every kill listing one of your characters as an attacker counts, even far outside the Blood Trail bubble, and Canary recognises your characters from the log files as always."
+  ]
+ },
+ {
   "v": "2.32.0",
   "d": "2026-08-15",
   "de": [
