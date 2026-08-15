@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.34.2",
+  "d": "2026-08-15",
+  "de": [
+   "DAS OBS-OVERLAY LAEDT SICH NACH EINEM UPDATE SELBST NEU, dasselbe Muster wie beim Dashboard seit 2.23.0. Vorher zeichnete die Browser-Quelle in OBS nach einem (Auto-)Update fuer immer mit dem alten Seiten-Code weiter, neue Overlay-Funktionen erschienen erst, wenn jemand die Quelle von Hand neu lud. Jetzt merkt das Overlay den Versionswechsel am naechsten Datenabruf und laedt sich genau einmal neu, gegen Neulade-Schleifen absichert. Fuer Streamer heisst das: Update laeuft durch, Overlay ist von selbst auf dem neuen Stand."
+  ],
+  "en": [
+   "THE OBS OVERLAY RELOADS ITSELF AFTER AN UPDATE, the same pattern the dashboard has had since 2.23.0. Before, the browser source in OBS kept rendering with the old page code forever after an (auto) update, new overlay features only appeared once someone reloaded the source by hand. Now the overlay notices the version change on its next data poll and reloads exactly once, guarded against reload loops. For streamers this means: the update runs through and the overlay is on the new version by itself."
+  ]
+ },
+ {
   "v": "2.34.1",
   "d": "2026-08-15",
   "de": [

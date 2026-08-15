@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.34.1"
+VERSION = "2.34.2"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -8146,8 +8146,20 @@ async function tick() {
   let d;
   try { d = await (await fetch('/data?view=live', { cache: 'no-store' })).json(); }
   catch (e) { return; }
+  // Nach einem (Auto-)Update laedt sich das Overlay einmalig selbst neu,
+  // dasselbe Muster wie im Dashboard seit v2.23.0. Ohne das rendert die
+  // OBS-Browser-Quelle fuer immer mit dem alten Seiten-JS weiter und neue
+  // Overlay-Felder erscheinen nie, bis jemand die Quelle von Hand neu laedt.
+  // Der Merker verhindert die Neulade-Schleife, falls der Server fluktuiert.
+  if (d.state && d.state.version) {
+    if (!obsVersion) obsVersion = d.state.version;
+    else if (d.state.version !== obsVersion && !obsNeuladen) {
+      obsNeuladen = true; location.reload(); return;
+    }
+  }
   zeichne(d);
 }
+let obsVersion = null, obsNeuladen = false;
 
 function zeichne(d) {
   zeigUhr((d.state || {}).uhr);
