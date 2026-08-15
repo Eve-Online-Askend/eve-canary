@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.28.0"
+VERSION = "2.28.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1805,6 +1805,11 @@ except sqlite3.OperationalError:
 DB.execute("CREATE TABLE IF NOT EXISTS job_topf(job_id TEXT, ts REAL, "
            "rest REAL, stand REAL)")
 DB.execute("CREATE INDEX IF NOT EXISTS ix_job_topf ON job_topf(job_id, ts)")
+# Auftrags-Details (Beruf, Ersteller, Ablauf) aendern sich nie, sind aber eine
+# Einzelabfrage JE JOB. Bei 310 Jobs auf der Liste wuerde jeder Neustart sonst
+# hunderte Abfragen wiederholen.
+DB.execute("CREATE TABLE IF NOT EXISTS job_detail(job_id TEXT PRIMARY KEY, "
+           "detail TEXT, ts REAL)")
 DB.commit()
 # v1.54: Zeitachse/Verlauf. Schlanke Ereignis-Tabelle fuer Episoden, die sonst
 # nirgends zeitgestempelt liegen: Mining-Trips und Bedrohungen. Kampf kommt aus
@@ -4813,9 +4818,11 @@ def erz_aus_jobtext(name, beschreibung=""):
     eines von beiden ist gesetzt.
 
     Bewusst vorsichtig, Fehlerkennung ist schlimmer als keine:
-    - Gesucht wird zuerst NUR im Jobnamen. Die Beschreibung ist Werbetext und
-      darf nur einspringen, wenn der Name gar kein Erz nennt, und auch dann
-      nur bei genau EINEM Treffer.
+    - Gesucht wird NUR im Jobnamen. Der Beschreibungs-Rueckfall ist wieder
+      RAUS: an echten Daten hat er zwei PI-Rueckkauf-Auftraege ("Core
+      Temperature Regulators") als Kernite gelesen, weil deren Werbetext
+      irgendwo ein Erz erwaehnt. Ein Auftrag, dessen NAME kein Erz nennt,
+      bleibt ohne Rechnung und steht schlicht in der Liste.
     - "Compressed" im Namen heisst Lieferauftrag fuer Komprimiertes, das ist
       ein anderes Spiel als Abbau und bleibt ohne Rechnung.
     - Schreibweisen wie "Veldspar Grade II" (der Spieler) gegen
@@ -4837,9 +4844,15 @@ def erz_aus_jobtext(name, beschreibung=""):
         return None, "Lieferauftrag fuer komprimiertes Erz"
     basen = suche(text)
     if not basen:
-        basen = suche(beschreibung)
-        text = beschreibung or ""
-    if not basen:
+        # Mineral-Lieferauftraege ("(M) Pyerite") sind KEIN Abbau: geliefert
+        # wird das raffinierte Mineral, nicht das Erz aus dem Laser. Die
+        # Foerder-Rechnung waere falsch, aber der Grund soll das Mineral
+        # nennen, damit die Zeile in der schlichten Liste lesbar bleibt.
+        for mineral in ("Tritanium", "Pyerite", "Mexallon", "Isogen",
+                        "Nocxium", "Zydrine", "Megacyte", "Morphite"):
+            if re.search(r"(?<![a-z])" + mineral.lower() + r"(?![a-z])",
+                         (name or "").lower()):
+                return None, "Mineral-Lieferauftrag (%s), Abgabe statt Abbau" % mineral
         return None, "kein Erzname im Auftrag gefunden"
     if len(basen) > 1:
         return None, "mehrere Erzsorten genannt (%s)" % ", ".join(sorted(basen))
@@ -4874,9 +4887,29 @@ class JobBoerse(threading.Thread):
         super().__init__()
         self.jobs = []        # rohe Jobliste der letzten Abfrage
         self.details = {}     # job_id -> details (career, expires, creator)
+        self.erze = {}        # job_id -> (erzname|None, grund|None), einmal gerechnet
         self.preise = {}      # type_id -> (buy, sell) fuer die erkannten Erze
         self.fetched = 0.0
         self.fehler = None
+        self.abgeschnitten = False   # Seiten-Deckel erreicht -> Liste unvollstaendig
+        self.details_offen = 0       # noch nicht geholte Auftrags-Details
+        # CCP begrenzt die Gruppe "freelance-job" auf 900 Anfragen je 15 min
+        # (steht in der Antwort-Kopfzeile X-Ratelimit-Limit). Ein Takt braucht
+        # rund 85, das Budget wird hier trotzdem mitgelesen: teilen sich
+        # mehrere Instanzen eine Leitung, drosselt Canary sich selbst, statt
+        # in 429-Fehler zu laufen.
+        self.rl_rest = None
+        # Details aendern sich nie und ueberleben den Neustart in der DB.
+        # Ohne das wuerde jeder Start hunderte Einzelabfragen wiederholen.
+        try:
+            with DB_LOCK:
+                for jid, dj in DB.execute("SELECT job_id, detail FROM job_detail"):
+                    try:
+                        self.details[jid] = json.loads(dj)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     def _hol(self, pfad):
         req = urllib.request.Request(
@@ -4884,56 +4917,118 @@ class JobBoerse(threading.Thread):
             headers={"User-Agent": ESI_UA, "Accept": "application/json",
                      "X-Compatibility-Date": JOBS_COMPAT})
         with urllib.request.urlopen(req, timeout=20) as r:
+            try:
+                self.rl_rest = int(r.headers.get("X-Ratelimit-Remaining"))
+            except (TypeError, ValueError):
+                pass
             return json.loads(r.read())
+
+    def _blaettern(self):
+        """Die GANZE Jobliste holen. Die erste Seite liegt am ENDE der
+        Sortierung (juengste Aenderung), fast alles steht dahinter in Richtung
+        'before'. Am 15.08.2026 real gemessen: die erste Seite hatte 10 Jobs,
+        die vollstaendige Liste 425. Der erste Wurf folgte nur 'after' und hat
+        deshalb dem User genau die zwei Jobs verschwiegen, die er im Spiel vor
+        sich hatte. Beide Richtungen laufen bis zur leeren Seite."""
+        d = self._hol("/freelance-jobs")
+        alle = {j["id"]: j for j in d.get("freelance_jobs") or [] if j.get("id")}
+        start = d.get("cursor") or {}
+        self.abgeschnitten = False
+        for richtung in ("before", "after"):
+            c = start.get(richtung)
+            for runde in range(100):   # 100 Seiten je Richtung = 1000 Jobs
+                if not c:
+                    break
+                d2 = self._hol("/freelance-jobs?%s=%s" % (richtung, urllib.parse.quote(c)))
+                teil = d2.get("freelance_jobs") or []
+                if not teil:
+                    break
+                for j in teil:
+                    if j.get("id"):
+                        alle[j["id"]] = j
+                c = (d2.get("cursor") or {}).get(richtung)
+                # Die neuen Endpunkte haben eine eigene Ratenbegrenzung, ein
+                # dichter Testlauf hat sie erreicht (429). Abstand halten.
+                time.sleep(0.2)
+            else:
+                self.abgeschnitten = True
+        return list(alle.values())
 
     def tick(self):
         if time.time() - self.fetched < JOBS_TAKT:
             return
-        alle, cursor = [], None
-        for _ in range(30):   # Sicherheitsdeckel, heute ist es EINE Seite
-            pfad = "/freelance-jobs"
-            if cursor:
-                pfad += "?after=" + urllib.parse.quote(cursor)
-            d = self._hol(pfad)
-            teil = d.get("freelance_jobs") or []
-            if not teil:
-                break
-            alle.extend(teil)
-            cursor = (d.get("cursor") or {}).get("after")
-            if not cursor:
-                break
-        # Die Cursor-Seiten koennen sich ueberlappen (an echten Daten gesehen:
-        # ein Job kam doppelt). Nach ID eindeutig machen, Reihenfolge bleibt.
-        gesehen = set()
-        alle = [j for j in alle
-                if j.get("id") and not (j["id"] in gesehen or gesehen.add(j["id"]))]
-        # Details (Beruf, Ablauf, Ersteller) aendern sich nicht, einmal je Job
-        # holen reicht. Ein Fehlschlag laesst den Job trotzdem in der Liste.
+        alle = self._blaettern()
+        # Erz-Zuordnung EINMAL je Job rechnen und merken: der Vergleich laeuft
+        # ueber alle Erznamen, und query_jobs fragt im 2-Sekunden-Takt. Bei 310
+        # Jobs waere das Neurechnen bei jedem Seiten-Tick purer Verschleiss.
         for j in alle:
-            jid = j.get("id")
-            if jid and jid not in self.details:
-                try:
-                    self.details[jid] = self._hol("/freelance-jobs/" + jid).get("details") or {}
-                except Exception:
-                    self.details[jid] = {}
-        # Topf-Verlauf ablegen und Altes wegputzen, daraus entsteht die
-        # Leerungs-Prognose in query_jobs.
+            jid = j["id"]
+            if jid not in self.erze:
+                self.erze[jid] = erz_aus_jobtext(
+                    j.get("name") or "",
+                    (self.details.get(jid) or {}).get("description") or "")
+        # Details sind eine Einzelabfrage JE JOB. Bei 310 Jobs nicht alle auf
+        # einmal: je Durchlauf hoechstens 60, Erz-Jobs zuerst (die brauchen
+        # Ablaufdatum und Ersteller fuer die Karte), dann die mit Topf (deren
+        # Beruf entscheidet, ob sie gelistet werden). Nach ein paar Takten ist
+        # alles da, und die DB merkt es sich ueber Neustarts.
+        je_id = {j["id"]: j for j in alle}
+        fehlen = [jid for jid in je_id if jid not in self.details]
+        fehlen.sort(key=lambda jid: (
+            0 if self.erze.get(jid, (None, None))[0] else
+            1 if je_id[jid].get("reward") else 2))
+        geholt = 0
+        for jid in fehlen[:40]:
+            # Budget-Bremse: unter 150 verbleibenden Anfragen keine Details
+            # mehr holen. Die Blaetterung des NAECHSTEN Takts braucht ~45,
+            # und die Liste selbst ist wichtiger als jedes Detail.
+            if self.rl_rest is not None and self.rl_rest < 150:
+                break
+            try:
+                det = self._hol("/freelance-jobs/" + jid).get("details") or {}
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    # Ratenbegrenzung: sofort aufhoeren, der naechste Takt in
+                    # 15 Minuten holt den Rest. Kein Grund fuer eine Warnung,
+                    # das ist normales Drosseln.
+                    break
+                continue
+            except Exception:
+                continue   # naechster Takt versucht es erneut
+            geholt += 1
+            self.details[jid] = det
+            # Beschreibung kann die Erz-Zuordnung nachliefern (Rueckfallweg).
+            self.erze[jid] = erz_aus_jobtext(
+                je_id[jid].get("name") or "", det.get("description") or "")
+            with DB_LOCK:
+                DB.execute("INSERT OR REPLACE INTO job_detail VALUES(?,?,?)",
+                           (jid, json.dumps(det), time.time()))
+                DB.commit()
+            time.sleep(0.3)
+        self.details_offen = max(0, len(fehlen) - geholt)
+        # Topf-Verlauf NUR fuer Erzsorten, die der Nutzer selbst foerdert, und
+        # nur bei gefuelltem Topf: nur dort zeigt die Karte die Leerungs-
+        # Prognose. Alle 144 Erz-Jobs der Liste mitzuschreiben waere fast eine
+        # halbe Million Zeilen im Monat.
         jetzt = time.time()
         with DB_LOCK:
+            meine_erze = {k for (k,) in DB.execute(
+                "SELECT DISTINCT key FROM daily WHERE kind='ore' "
+                "AND day >= date('now','-30 day')")}
             for j in alle:
                 r, p = j.get("reward") or {}, j.get("progress") or {}
-                if j.get("id") and r.get("remaining") is not None:
+                if (self.erze.get(j["id"], (None, None))[0] in meine_erze
+                        and (r.get("remaining") or 0) > 0):
                     DB.execute("INSERT INTO job_topf VALUES(?,?,?,?)",
                                (j["id"], jetzt, float(r.get("remaining") or 0),
                                 float(p.get("current") or 0)))
-            DB.execute("DELETE FROM job_topf WHERE ts < ?", (jetzt - 30 * 86400,))
+            DB.execute("DELETE FROM job_topf WHERE ts < ?", (jetzt - 14 * 86400,))
             DB.commit()
         # Marktpreise der erkannten Erze nachziehen, damit "+59% auf den
         # Marktpreis" nicht an einem fehlenden Preis scheitert.
         ids = set()
         for j in alle:
-            erz, _ = erz_aus_jobtext(j.get("name") or "",
-                                     (self.details.get(j.get("id")) or {}).get("description") or "")
+            erz = self.erze.get(j["id"], (None, None))[0]
             if erz:
                 tid = ORE_TYPES.get(erz, {}).get("typeID")
                 if tid:
@@ -4953,6 +5048,9 @@ class JobBoerse(threading.Thread):
             except Exception as e:
                 self.fehler = str(e)[:200]
                 log_error("CN-NET-04", "JobBoerse.tick", e)
+                # Rueckzug: nach einem Fehler (auch 429) fruehestens in drei
+                # Minuten wieder anklopfen, nicht im 60-Sekunden-Takt.
+                self.fetched = time.time() - JOBS_TAKT + 180
             time.sleep(60)
 
 
@@ -10764,7 +10862,9 @@ def query_jobs():
         if j.get("state") != "Active":
             continue
         det = jobboerse.details.get(j.get("id")) or {}
-        erz, grund = erz_aus_jobtext(j.get("name") or "", det.get("description") or "")
+        # Die Zuordnung ist im Thread vorgerechnet: 310 Jobs mal alle Erznamen
+        # im 2-Sekunden-Takt zu vergleichen waere purer Verschleiss.
+        erz, grund = jobboerse.erze.get(j.get("id")) or (None, "noch nicht geprueft")
         r, p = j.get("reward") or {}, j.get("progress") or {}
         basis = {
             "jobname": (j.get("name") or "")[:90],
@@ -10807,13 +10907,50 @@ def query_jobs():
             "live_einheiten_h": round(live.get(erz, 0)),
             "live_isk_h": round(live.get(erz, 0) * satz),
         }))
-    volle.sort(key=lambda x: -x["schnitt_isk"])
+    # 144 Erz-Jobs standen am ersten vollen Abzug auf der Liste, flach
+    # aufgelistet waere das unlesbar. Deshalb: gruppieren je Erzsorte, je
+    # Gruppe zaehlt der beste PLAUSIBLE Auftrag. Unplausibel heisst mehr als
+    # das 20-fache des Marktpreises: solche Saetze (gesehen: Kernite zu 2,75
+    # Mio je Einheit, das Zehntausendfache) sind bekannte Fallen oder tragen
+    # Sonderbedingungen, die nur das Auftragsfenster im Spiel nennt. Sie
+    # fliegen nicht raus, sie stehen in einer eigenen Warnliste.
+    leere = 0
+    gruppen = {}
+    warnung = []
+    for x in volle:
+        if x["topf_rest"] <= 0:
+            leere += 1          # leerer Topf: da ist nichts mehr zu holen
+            continue
+        if x["markt"] and x["satz"] > 20 * x["markt"]:
+            warnung.append(x)
+            continue
+        gruppen.setdefault(x["erz"], []).append(x)
+    meine, andere = [], []
+    for erz, js in gruppen.items():
+        best = max(js, key=lambda x: x["satz"])
+        zeile = dict(best)
+        zeile["anzahl"] = len(js)
+        zeile["topf_gesamt"] = round(sum(x["topf_rest"] for x in js))
+        (meine if zeile["schnitt_einheiten"] > 0 else andere).append(zeile)
+    meine.sort(key=lambda x: -x["schnitt_isk"])
+    andere.sort(key=lambda x: -x["topf_gesamt"])
+    warnung.sort(key=lambda x: -(x["satz"] / x["markt"] if x["markt"] else 0))
     schlichte.sort(key=lambda x: -x["topf_rest"])
     return {"stand": int(jobboerse.fetched), "takt_min": JOBS_TAKT // 60,
             "aktive_tage": aktive_tage, "region": region,
             "fehler": jobboerse.fehler,
-            "jobs": volle, "unklar": schlichte, "sonstige": sonstige,
-            "summe_tag": sum(x["schnitt_isk"] for x in volle)}
+            "gesamt": len(jobboerse.jobs),
+            "details_offen": jobboerse.details_offen,
+            "abgeschnitten": jobboerse.abgeschnitten,
+            "meine": meine,
+            "andere": andere[:12], "andere_mehr": max(0, len(andere) - 12),
+            "warnung": warnung[:8], "warnung_mehr": max(0, len(warnung) - 8),
+            "leere": leere,
+            "unklar": schlichte[:15], "unklar_mehr": max(0, len(schlichte) - 15),
+            "sonstige": sonstige,
+            # Mehr als drei Auftraege gleichzeitig gibt das Spiel ohne den
+            # Skill Freelancing nicht her, deshalb ist DAS die ehrliche Summe.
+            "top3": sum(x["schnitt_isk"] for x in meine[:3])}
 
 
 # ---------------------------------------------------------------- HTTP
@@ -16364,8 +16501,8 @@ function renderJobs(j){
     :(en?`pool ${topfPct}% full, drain still being watched`
         :`Topf ${topfPct}% voll, Leerung wird noch beobachtet`);
   return `<div style="border-top:1px solid var(--line);padding:10px 0;display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.1fr);gap:8px;align-items:center">
-   <div><b>${esc(x.erz)}</b>
-    <div class="sub" style="font-size:11px">"${esc(x.jobname)}" · ${esc(x.ersteller)}${x.endet?' · '+(en?'until':'bis')+' '+esc(x.endet):''}</div></div>
+   <div><b>${esc(x.erz)}</b>${x.anzahl>1?` <span class="sub" style="font-size:11px">${x.anzahl} ${en?'jobs, together':'Aufträge, zusammen'} ${fmtM(x.topf_gesamt)} ISK</span>`:''}
+    <div class="sub" style="font-size:11px">${en?'best job':'bester Auftrag'}: "${esc(x.jobname)}" · ${esc(x.ersteller)}${x.endet?' · '+(en?'until':'bis')+' '+esc(x.endet):''}</div></div>
    <div><div>${x.satz.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} ${en?'ISK per unit':'ISK je Einheit'}</div>
     <div class="sub" style="font-size:11px;color:var(--grn,#3ddc84)">${x.markt?`+${pct}% ${en?'on the market price':'auf den Marktpreis'} (${x.markt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})})`:(en?'market price missing':'Marktpreis fehlt noch')}</div></div>
    <div style="text-align:right">
@@ -16375,6 +16512,17 @@ function renderJobs(j){
     <div style="background:var(--line);border-radius:3px;height:4px;margin-top:4px"><div style="background:var(--cyan);width:${topfPct}%;height:4px;border-radius:3px"></div></div>
    </div></div>`;
  };
+ const kompakt=x=>{
+  const pct=x.markt?Math.round(100*x.satz/x.markt):null;
+  return `<div style="border-top:1px solid var(--line);padding:6px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline">
+   <b>${esc(x.erz)}</b>
+   <span class="sub" style="font-size:11px">${x.anzahl} ${en?'job(s)':'Auftrag/Aufträge'} · ${en?'best rate':'bester Satz'} ${x.satz.toLocaleString(undefined,{maximumFractionDigits:2})} ${en?'ISK per unit':'ISK je Einheit'}${pct?` (+${pct}%)`:''}</span>
+   <span style="margin-left:auto" class="isk">${fmtM(x.topf_gesamt)} ISK ${en?'in pools':'in Töpfen'}</span></div>`;
+ };
+ const warnZeile=x=>`<div style="border-top:1px solid var(--line);padding:6px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline">
+   <b>${esc(x.erz)}</b><span class="sub" style="font-size:11px">"${esc(x.jobname)}"</span>
+   <span class="sub" style="font-size:11px">${x.satz.toLocaleString(undefined,{maximumFractionDigits:0})} ${en?'ISK per unit at a market price of':'ISK je Einheit bei Marktpreis'} ${x.markt.toLocaleString(undefined,{maximumFractionDigits:2})}</span>
+   <span style="margin-left:auto" class="isk">${fmtM(x.topf_rest)} ISK</span></div>`;
  const unklarZeile=x=>`<div style="border-top:1px solid var(--line);padding:8px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline">
    <span>"${esc(x.jobname)}"</span><span class="sub" style="font-size:11px">${esc(x.ersteller)}${x.endet?' · '+(en?'until':'bis')+' '+esc(x.endet):''}</span>
    <span style="margin-left:auto" class="isk">${fmtM(x.topf_rest)} ISK ${en?'left in the pool':'im Topf'}</span>
@@ -16382,13 +16530,19 @@ function renderJobs(j){
  $('#grid').innerHTML=`
  <div class="card" style="grid-column:1/-1">
   <div class="sect" style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><span>💼 ${en?'Job board':'Job-Börse'}</span>
+   <span class="sub" style="font-size:11px">${j.gesamt} ${en?'jobs on the public list':'Aufträge auf der öffentlichen Liste'}</span>
    <span class="sub" style="font-size:11px;margin-left:auto">${en?'as of':'Stand'} ${stand}, ${en?'refreshed every':'neu geholt alle'} ${j.takt_min} min</span></div>
-  ${j.jobs.length?`
-   ${j.summe_tag?`<div style="color:var(--gold);font-size:13px;margin-bottom:6px">${en?'All together at your average':'Zusammen bei deinem Schnitt'}: <b>+${fmtM(j.summe_tag)} ${en?'ISK per mining day':'ISK je Mining-Tag'}</b> <span class="sub" style="font-size:11px">(${en?'average of your last':'Schnitt aus deinen letzten'} ${j.aktive_tage} ${en?'mining days':'Mining-Tagen'})</span></div>`:''}
-   ${j.jobs.map(zeile).join('')}`
-   :`<div class="sub">${en?'No ore-related jobs on the public list right now.':'Gerade steht kein Auftrag mit Erz-Bezug in der öffentlichen Liste.'}</div>`}
-  ${j.unklar.length?`<div class="sub" style="margin-top:10px"><b>${en?'Industry jobs without a clear ore type':'Industrie-Aufträge ohne eindeutige Erzsorte'}</b></div>${j.unklar.map(unklarZeile).join('')}`:''}
-  ${j.sonstige?`<div class="sub" style="border-top:1px solid var(--line);margin-top:10px;padding-top:8px;font-size:11px">${j.sonstige} ${en?'further jobs without ore or ISK pool are not shown.':'weitere Aufträge ohne Erz-Bezug oder ohne ISK-Topf werden nicht gezeigt.'}</div>`:''}
+  ${j.details_offen?`<div class="sub" style="font-size:11px;margin-bottom:6px">${en?'Details for':'Details zu'} ${j.details_offen} ${en?'jobs are still being fetched, the lists below fill up over the next refreshes.':'Aufträgen werden noch geholt, die Listen unten füllen sich mit den nächsten Abfragen.'}</div>`:''}
+  ${j.abgeschnitten?`<div class="sub" style="font-size:11px;margin-bottom:6px;color:var(--gold)">${en?'The public list is longer than Canary fetches (safety cap reached). What you see is incomplete.':'Die öffentliche Liste ist länger als Canary holt (Sicherheitsdeckel erreicht). Was hier steht, ist unvollständig.'}</div>`:''}
+  ${j.meine.length?`
+   <div class="sub" style="margin-bottom:2px"><b>${en?'For the ore you mine':'Für dein Erz'}</b></div>
+   ${j.top3?`<div style="color:var(--gold);font-size:13px;margin-bottom:6px">${en?'Your best 3 jobs together':'Deine besten 3 Aufträge zusammen'}: <b>+${fmtM(j.top3)} ${en?'ISK per mining day':'ISK je Mining-Tag'}</b> <span class="sub" style="font-size:11px">(${en?'more than 3 at once needs the Freelancing skill · average of your last':'mehr als 3 gleichzeitig braucht den Skill Freelancing · Schnitt aus deinen letzten'} ${j.aktive_tage} ${en?'mining days':'Mining-Tagen'})</span></div>`:''}
+   ${j.meine.map(zeile).join('')}`
+   :`<div class="sub">${en?'No job for an ore you mined in the last 30 days.':'Kein Auftrag für ein Erz, das du in den letzten 30 Tagen gefördert hast.'}</div>`}
+  ${j.andere.length?`<div class="sub" style="margin-top:12px"><b>${en?'Ore you do not mine':'Erze, die du nicht förderst'}</b> <span style="font-size:11px">(${en?'largest pools first':'größte Töpfe zuerst'})</span></div>${j.andere.map(kompakt).join('')}${j.andere_mehr?`<div class="sub" style="font-size:11px;padding-top:4px">+ ${j.andere_mehr} ${en?'more ore types with smaller pools':'weitere Erzsorten mit kleineren Töpfen'}</div>`:''}`:''}
+  ${j.warnung.length?`<div class="sub" style="margin-top:12px"><b style="color:var(--gold)">⚠ ${en?'Rates far above market price':'Sätze weit über dem Marktpreis'}</b> <span style="font-size:11px">${en?'often traps or special conditions, the job window in game decides':'oft Fallen oder Sonderbedingungen, das Auftragsfenster im Spiel entscheidet'}</span></div>${j.warnung.map(warnZeile).join('')}${j.warnung_mehr?`<div class="sub" style="font-size:11px;padding-top:4px">+ ${j.warnung_mehr} ${en?'more':'weitere'}</div>`:''}`:''}
+  ${j.unklar.length?`<div class="sub" style="margin-top:10px"><b>${en?'Industry jobs without a clear ore type':'Industrie-Aufträge ohne eindeutige Erzsorte'}</b> <span style="font-size:11px">(${en?'largest pools first':'größte Töpfe zuerst'})</span></div>${j.unklar.map(unklarZeile).join('')}${j.unklar_mehr?`<div class="sub" style="font-size:11px;padding-top:6px">+ ${j.unklar_mehr} ${en?'more industry jobs with smaller pools':'weitere Industrie-Aufträge mit kleineren Töpfen'}</div>`:''}`:''}
+  ${(j.sonstige||j.leere)?`<div class="sub" style="border-top:1px solid var(--line);margin-top:10px;padding-top:8px;font-size:11px">${j.sonstige?j.sonstige+' '+(en?'jobs without ore relation are not shown.':'Aufträge ohne Erz-Bezug werden nicht gezeigt.'):''} ${j.leere?j.leere+' '+(en?'ore jobs have an empty pool, there is nothing left to earn.':'Erz-Aufträge haben einen leeren Topf, da ist nichts mehr zu holen.'):''}</div>`:''}
  </div>
  <div class="card" style="grid-column:1/-1">
   <div class="sect">${en?'How to take a job in EVE':'So nimmst du einen Auftrag in EVE an'}</div>

@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.28.1",
+  "d": "2026-08-15",
+  "de": [
+   "JOB-BOERSE REPARIERT UND KRAEFTIG AUSGEBAUT, wenige Stunden nach 2.28.0. Der Abgleich mit dem Spielfenster deckte auf: die oeffentliche Liste hat 425 Auftraege, nicht 10. Canary blaetterte nur in eine Richtung durch die Seiten und verschwieg damit fast alles, auch die zwei Auftraege, die im Spiel direkt vor der Nase standen. Jetzt werden beide Richtungen bis zum Ende gelesen.",
+   "MIT 144 ERZ-AUFTRAEGEN braucht die Anzeige eine andere Form: gruppiert je Erzsorte, mit dem besten Auftrag obenan. Oben stehen die Sorten, die DU foerderst, darunter kompakt die uebrigen. Die Summe rechnet nur noch deine besten drei Auftraege zusammen, denn mehr laesst das Spiel ohne den Skill Freelancing nicht gleichzeitig zu.",
+   "NEU IST EINE WARNLISTE: Saetze ueber dem Zwanzigfachen des Marktpreises (gesehen: Kernite zu 2,75 Millionen ISK je Einheit, das Zehntausendfache) sind bekannte Fallen oder tragen Sonderbedingungen. Solche Auftraege werden nicht mitgerechnet, sondern mit Warnung gelistet. Leere Toepfe fliegen ganz raus, da ist nichts mehr zu holen.",
+   "Ausserdem: Mineral-Lieferauftraege (Pyerite, Zydrine und Co) werden als solche benannt, denn geliefert wird das raffinierte Mineral, nicht das Erz aus dem Laser. Die Erz-Erkennung liest nur noch den AUFTRAGSNAMEN, der Blick in die Beschreibung hatte an echten Daten zwei PI-Rueckkauf-Auftraege falsch als Erz gelesen. Und Canary haelt sich an CCPs Anfrage-Budget fuer diese Endpunkte (900 je Viertelstunde) und drosselt sich unterhalb davon selbst."
+  ],
+  "en": [
+   "JOB BOARD FIXED AND HEAVILY EXTENDED, a few hours after 2.28.0. Comparing with the in-game window revealed: the public list holds 425 jobs, not 10. Canary paged the list in one direction only and silently dropped almost everything, including the two jobs sitting right in front of the player in game. Both directions are now read to the end.",
+   "WITH 144 ORE JOBS the view needs a different shape: grouped per ore type, best job on top. First the ore YOU actually mine, below that the rest in compact form. The headline sum now adds up only your best three jobs, because the game does not allow more at once without the Freelancing skill.",
+   "NEW IS A WARNING LIST: rates above twenty times the market price (seen: Kernite at 2.75 million ISK per unit, ten thousand times market) are known traps or carry special conditions. Such jobs are not calculated, they are listed with a warning. Empty pools are dropped entirely, there is nothing left to earn.",
+   "Also: mineral delivery jobs (Pyerite, Zydrine and friends) are labelled as such, since they want the refined mineral, not the ore from your laser. Ore recognition now reads only the JOB NAME, looking into the description had misread two PI buyback jobs as ore on real data. And Canary respects CCP's request budget for these endpoints (900 per quarter hour) and throttles itself well below it."
+  ]
+ },
+ {
   "v": "2.28.0",
   "d": "2026-08-15",
   "de": [
