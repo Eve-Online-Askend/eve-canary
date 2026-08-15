@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.25.0",
+  "d": "2026-08-15",
+  "de": [
+   "NEUE MISSION ERKANNT: VENGEANCE (Stufe 4, Blood Raiders). Gemeldet von Nirahse. Erkannt wird sie am benannten Schlachtschiff Faramon Mundan, das ist der Anfuehrer der Mission und traegt als einziger Gegner einen Personennamen. Genauigkeit 95 Prozent.",
+   "Geprueft in beide Richtungen: die Meldung wird erkannt, der benannte Gegner allein reicht schon, und gewoehnliche Blood-Raider-Ratten OHNE ihn loesen NICHT aus. Ebenso wenig eine Blood-Raider-Anomalie, eine Sansha-Mission mit aehnlich klingenden Namen oder eine Guristas-Mission. Zusaetzlich extern belegt: Nirahses 27 gemeldete Gegner decken sich Name fuer Name mit der Missionsliste auf eve-survival.org und dem Wiki der EVE University.",
+   "Neu im Ordner pruefungen: ein Skript, das einen gemeldeten Gegner-Fingerabdruck gegen echte Logs haelt, bevor er aufgenommen wird. Es zaehlt, wie viele echte Kampf-Abschnitte die Vorlage erkennen WUERDE, und zeigt die knapp darunter mit an. Genau daran ist eine zweite Meldung diesmal gescheitert, und das ist gut so: eine Fehlerkennung ist schlimmer als keine Erkennung."
+  ],
+  "en": [
+   "NEW MISSION RECOGNISED: VENGEANCE (level 4, Blood Raiders). Reported by Nirahse. It is recognised by the named battleship Faramon Mundan, the leader of the mission and the only enemy carrying a personal name. Confidence 95 percent.",
+   "Checked in both directions: the report is recognised, the named enemy alone is enough, and ordinary Blood Raider rats WITHOUT him do NOT trigger it. Neither does a Blood Raider anomaly, a Sansha mission with similar sounding names, or a Guristas mission. Externally confirmed as well: Nirahse's 27 reported enemies match the mission list on eve-survival.org and the EVE University wiki name for name.",
+   "New in the pruefungen folder: a script that holds a reported enemy fingerprint against real logs before it is accepted. It counts how many real combat sections the template WOULD recognise and shows the near misses too. That is exactly what a second report failed on this time, and rightly so: a false recognition is worse than none."
+  ]
+ },
+ {
   "v": "2.24.0",
   "d": "2026-08-15",
   "de": [

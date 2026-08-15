@@ -1,5 +1,9 @@
 {
  "_hinweis": "Signatur (einzigartiger Gegner-/Struktur-Name ODER NPC-Funk-Teilstring, klein/gross egal) -> {m: Missionsname, c: Genauigkeit 50-95}. c = wie eindeutig die Signatur auf GENAU diese Mission zeigt. Nur GEPRUEFTE Eintraege (Web, nie aus dem Gedaechtnis). Wird gegen Gegnernamen UND Missions-Funk im Local geprueft. Passt mehr als eine Signatur, gewinnt die hoechste c. Quelle der L4-Signaturen: eve-survival (cyberrodent.github.io Mirror).",
+ "faramon mundan": {
+  "m": "Vengeance",
+  "c": 95
+ },
  "tiogo kargaz": {
   "m": "Angel Extravaganza",
   "c": 95
