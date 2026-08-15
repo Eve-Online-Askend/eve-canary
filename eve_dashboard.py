@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.30.0"
+VERSION = "2.30.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -12215,6 +12215,13 @@ thead th{font-size:10px;text-transform:uppercase;letter-spacing:.8px;
 thead th.r{text-align:right}
 .sect{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin-top:10px}
 .bar{height:4px;border-radius:2px;background:var(--cyan);opacity:.7}
+/* Spielzeit-Balken in voller Zeilenbreite (Wunsch von Eron Solette). Zwei
+   Schichten: hell = Summe aller Clients, kraeftig = Zeit am Rechner. */
+.ptbar td{border-top:none;padding:0 2px 7px}
+.ptwrap{position:relative;height:4px}
+.ptwrap .b1,.ptwrap .b2{position:absolute;left:0;top:0;height:4px;border-radius:2px}
+.ptwrap .b1{background:var(--line)}
+.ptwrap .b2{background:var(--cyan);opacity:.85}
 .spark{display:flex;align-items:flex-end;gap:1px;height:30px;margin-top:8px}
 .spark div{flex:1;background:var(--cyan);opacity:.75;border-radius:1px 1px 0 0;min-height:1px}
 .spark.dmgin div{background:var(--red)}
@@ -14850,7 +14857,9 @@ function renderAnalyse(a){
  // hatte und jetzt ein bis zwei Stunden spielt, sah in der ganzen Karte nur
  // Stummel. Beim Audit gefunden.
  const ptZeilen=a.playtime.slice(-14).reverse();
- const maxP=Math.max(1,...ptZeilen.map(p=>p.minutes));
+ // Skala: der laengste Tag der Liste, ueber BEIDE Werte (auch die Summe aller
+ // Clients), damit der helle Balken nie aus der Zeile laeuft.
+ const maxP=Math.max(1,...ptZeilen.map(p=>Math.max(p.minutes,p.client_minutes||0)));
  $('#grid').innerHTML=goalHtml+compCard(a.compression||{})+
   `<div class="card"><div class="char">Erz-Effizienz (ISK/m³)</div>
    <div class="sub">Was lohnt sich am meisten pro Laderaum? Die erste Spalte entscheidet, die beiden anderen zeigen, wie viel du davon bisher gefoerdert hast.</div>
@@ -14865,13 +14874,17 @@ function renderAnalyse(a){
    <table>${a.weapons.length?'<thead><tr><th>Waffe</th><th class="r">Schaden</th></tr></thead>'+a.weapons.map(w=>
    `<tr><td>${esc(w[0])}</td><td class="r out">${fmt(w[1])} dmg</td></tr>`).join(''):'<tr><td class="r">Noch keine Kampfdaten</td></tr>'}</table></div>
   <div class="card"><div class="char">Spielzeit</div>
-   <div class="sub">Die letzten 14 Tage, an denen du gespielt hast, gerechnet aus den Zeiten in deinen Logdateien. Tage ohne Spiel stehen nicht dazwischen, bei einer Pause liegen die Zeilen also weiter auseinander. Laufen mehrere Clients gleichzeitig, zählt die Zeit trotzdem nur einmal. In Klammern steht, was alle Clients zusammen ergeben.</div>
+   <div class="sub">Die letzten 14 Tage, an denen du gespielt hast, gerechnet aus den Zeiten in deinen Logdateien. Tage ohne Spiel stehen nicht dazwischen, bei einer Pause liegen die Zeilen also weiter auseinander. Laufen mehrere Clients gleichzeitig, zählt die Zeit trotzdem nur einmal. In Klammern steht, was alle Clients zusammen ergeben. Die Balken sind relativ zum längsten Tag der Liste, nicht zu 24 Stunden: der helle Balken ist die Summe über alle Clients, der kräftige deine Zeit am Rechner.</div>
    <table><thead><tr><th>Tag</th><th class="r">Zeit</th></tr></thead>${ptZeilen.map(p=>
-   `<tr><td>${p.day}<div class="bar" style="width:${100*p.minutes/maxP}%"></div></td>
+   `<tr><td>${p.day}</td>
     <td class="r">${Math.floor(p.minutes/60)}h ${p.minutes%60}m${
       (p.client_minutes&&p.client_minutes>p.minutes+1)
         ? ' <span class="sub">('+Math.floor(p.client_minutes/60)+'h '+(p.client_minutes%60)+'m '+(lang==='en'?'across clients':'über alle Clients')+')</span>'
-        : ''}</td></tr>`).join('')}</table></div>
+        : ''}</td></tr>
+    <tr class="ptbar"><td colspan="2"><div class="ptwrap">
+     <div class="b1" style="width:${Math.min(100,100*Math.max(p.client_minutes||0,p.minutes)/maxP)}%"></div>
+     <div class="b2" style="width:${Math.min(100,100*p.minutes/maxP)}%"></div>
+    </div></td></tr>`).join('')}</table></div>
   <div class="card"><div class="char">Sicherheit</div>
    <div class="sub">Wer dich als Spieler angegriffen hat, ueber den gesamten Zeitraum. NPCs stehen hier nicht.</div>
    <table>${a.pvp.length?'<thead><tr><th>Angreifer</th><th class="r">Dein Charakter</th>'
@@ -17510,8 +17523,8 @@ const EN = {
  'What pays best per unit of cargo space? The first column is the one that decides, the other two show how much of it you have mined so far.',
 'Womit du deinen Schaden gemacht hast, aus dem Kampflog.':
  'What you dealt your damage with, taken from the combat log.',
-'Die letzten 14 Tage, an denen du gespielt hast, gerechnet aus den Zeiten in deinen Logdateien. Tage ohne Spiel stehen nicht dazwischen, bei einer Pause liegen die Zeilen also weiter auseinander. Laufen mehrere Clients gleichzeitig, zählt die Zeit trotzdem nur einmal. In Klammern steht, was alle Clients zusammen ergeben.':
- 'The last 14 days you actually played, worked out from the timestamps in your log files. Days without play are not listed in between, so after a break the rows sit further apart. When several clients run at the same time, that time still counts only once. In brackets you see what all clients add up to.',
+'Die letzten 14 Tage, an denen du gespielt hast, gerechnet aus den Zeiten in deinen Logdateien. Tage ohne Spiel stehen nicht dazwischen, bei einer Pause liegen die Zeilen also weiter auseinander. Laufen mehrere Clients gleichzeitig, zählt die Zeit trotzdem nur einmal. In Klammern steht, was alle Clients zusammen ergeben. Die Balken sind relativ zum längsten Tag der Liste, nicht zu 24 Stunden: der helle Balken ist die Summe über alle Clients, der kräftige deine Zeit am Rechner.':
+ 'The last 14 days you actually played, worked out from the timestamps in your log files. Days without play are not listed in between, so after a break the rows sit further apart. When several clients run at the same time, that time still counts only once. In brackets you see what all clients add up to. The bars are relative to the longest day in the list, not to 24 hours: the light bar is the sum across all clients, the strong one your time at the computer.',
 'Wer dich als Spieler angegriffen hat, ueber den gesamten Zeitraum. NPCs stehen hier nicht.':
  'Which players have attacked you, over the whole period. NPCs are not listed here.',
 // Spaltenkoepfe und Erklaerungen der Gesamt-Ansicht

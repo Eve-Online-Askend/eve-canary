@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.30.1",
+  "d": "2026-08-15",
+  "de": [
+   "SPIELZEIT-BALKEN IN VOLLER BREITE, angeregt von Eron Solette: die Balken der Spielzeit-Tabelle in der Analyse steckten bisher in der schmalen Datumsspalte und waren kaum zu sehen. Jetzt laufen sie unter der ganzen Zeile durch, in zwei Schichten: der kraeftige Balken ist deine Zeit am Rechner, der helle dahinter die Summe ueber alle Clients. Und die Antwort auf die berechtigte Frage, ob die volle Breite 24 Stunden bedeutet: nein, sie bedeutet den laengsten Tag der Liste. Steht jetzt auch direkt in der Beschreibung."
+  ],
+  "en": [
+   "PLAYED-TIME BARS AT FULL WIDTH, suggested by Eron Solette: the bars in the played-time table of the analysis were stuck inside the narrow date column and barely visible. They now run under the whole row, in two layers: the strong bar is your time at the computer, the light one behind it the sum across all clients. And the answer to the fair question whether full width means 24 hours: no, it means the longest day in the list. That is now stated right in the description."
+  ]
+ },
+ {
   "v": "2.30.0",
   "d": "2026-08-15",
   "de": [
