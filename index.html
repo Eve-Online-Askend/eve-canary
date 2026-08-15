@@ -143,12 +143,14 @@ color:var(--txt);text-decoration:none;line-height:1.7}
 .msl{color:var(--txt)}
 #dlBadge{cursor:pointer;font:inherit;color:inherit}
 #dlBadge:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
-#dlModal{border:1px solid var(--line);border-radius:12px;background:#0d1113;color:var(--txt);max-width:520px;width:92%;padding:20px;max-height:86vh;overflow:auto}
-#dlModal::backdrop{background:rgba(0,0,0,.55)}
+#dlModal,#installModal{border:1px solid var(--line);border-radius:12px;background:#0d1113;color:var(--txt);max-width:520px;width:92%;padding:20px;max-height:86vh;overflow:auto}
+#installModal{max-width:640px}
+#installModal pre{overflow-x:auto}
+#dlModal::backdrop,#installModal::backdrop{background:rgba(0,0,0,.55)}
 .dlmodhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
 .dlmodhead b{font-size:18px}
-#dlModalClose{background:none;border:none;color:var(--dim);font-size:20px;line-height:1;cursor:pointer;padding:2px 6px}
-#dlModalClose:hover{color:var(--txt)}
+#dlModalClose,#installModalClose{background:none;border:none;color:var(--dim);font-size:20px;line-height:1;cursor:pointer;padding:2px 6px}
+#dlModalClose:hover,#installModalClose:hover{color:var(--txt)}
 .tiny{font-size:12px;color:var(--dim)}
 ul{padding-left:20px}
 li{margin:5px 0}
@@ -267,27 +269,9 @@ header.eng .missionCta{margin-left:auto}
   </p>
 </header>
 
-<h2 data-i18n="h.install">Installation</h2>
-<p data-i18n="install.intro">One command, that is all. Python is installed along the way if
-needed, then Canary starts by itself and creates a shortcut.</p>
-
-<div class="os" data-i18n="os.win">Windows</div>
-<p class="tiny" data-i18n="install.win.hint">Press the Windows key, type "PowerShell", open it and paste:</p>
-<pre><code>irm https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main/install.ps1 | iex</code></pre>
-
-<div class="os" data-i18n="os.linux">Linux (EVE via Steam/Proton or Wine)</div>
-<p class="tiny" data-i18n="install.linux.hint">Open a terminal and paste:</p>
-<pre><code>curl -fsSL https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main/install.sh | sh</code></pre>
-
-<div class="os" data-i18n="os.mac">macOS <span class="alpha">experimental</span></div>
-<p class="tiny" data-i18n="install.mac.hint">Same command in the Terminal. It installs to Library/Application Support and puts an
-"EVE Canary" launcher on your desktop, findable through Spotlight too. Autostart and the
-clipboard scan work, thanks to NetManDE. Still experimental, so if something breaks, please say so.</p>
-<pre><code>curl -fsSL https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main/install.sh | sh</code></pre>
-
-<p class="note" data-i18n="install.note">Canary finds the log folder on its own, including
-inside the Wine prefix on Linux. If that fails it simply asks you on first start. Game logging
-must be enabled in the EVE client, which is the default setting.</p>
+<p class="missionCta" style="margin-top:18px">
+  <button class="btn cta" id="installBtn">📥 <span data-i18n="h.install">Installation</span></button>
+</p>
 
 <h2 data-i18n="h.features">What it does</h2>
 <div class="grid">
@@ -366,6 +350,13 @@ must be enabled in the EVE client, which is the default setting.</p>
     and cargo hold. Everything it fetches is read only, the sole exception opens an info
     window in your own client as a shortcut. No setup, revocable at any time.</p></div>
 </div>
+
+<section id="thanksWrap" hidden>
+<h2 data-i18n="h.thanks">Thank you</h2>
+<p class="tiny" data-i18n="thanks.intro">Canary got better because people gave their time: streamers who put it on screen next to the game, players who handed over years of their log files, testers who reported the awkward bugs instead of just uninstalling. Every name here changed something in the tool.</p>
+<div id="thanks" class="thx"></div>
+<p class="tiny" data-i18n="thanks.cta">Helped out and not listed? <a href="https://github.com/Eve-Online-Askend/eve-canary/issues">Get in touch</a> and you go on the list.</p>
+</section>
 
 <h2 data-i18n="h.compare">How Canary compares</h2>
 <p data-i18n="compare.intro">Other tools each cover a single piece. Canary is the only one that fuses live mining, gank-pack warnings, your whole compression fleet and mission tactics in one window, and it does it fully locally, with no cloud and no account. Your data stays yours.</p>
@@ -453,13 +444,6 @@ directly. The report contains no character names and no credentials.</p>
 <p class="tiny" data-i18n="journey.intro">It started as a small log reader that just told you "strip miner off". Today it's a full cockpit: mining, missions, gank-pack radar, ore treasury, character sheets, planetary industry. Built in the open, one milestone at a time, always local and free.</p>
 <div id="journey"></div>
 
-<section id="thanksWrap" hidden>
-<h2 data-i18n="h.thanks">Thank you</h2>
-<p class="tiny" data-i18n="thanks.intro">Canary got better because people gave their time: streamers who put it on screen next to the game, players who handed over years of their log files, testers who reported the awkward bugs instead of just uninstalling. Every name here changed something in the tool.</p>
-<div id="thanks" class="thx"></div>
-<p class="tiny" data-i18n="thanks.cta">Helped out and not listed? <a href="https://github.com/Eve-Online-Askend/eve-canary/issues">Get in touch</a> and you go on the list.</p>
-</section>
-
 <h2 data-i18n="h.changelog">What's new</h2>
 <div id="changelog"><p class="tiny" data-i18n="cl.loading">Loading version history …</p></div>
 
@@ -476,6 +460,30 @@ directly. The report contains no character names and no credentials.</p>
 </footer>
 
 </div>
+<dialog id="installModal">
+  <div class="dlmodhead"><b data-i18n="h.install">Installation</b>
+   <button id="installModalClose" aria-label="Close">✕</button></div>
+<p data-i18n="install.intro">One command, that is all. Python is installed along the way if
+needed, then Canary starts by itself and creates a shortcut.</p>
+
+<div class="os" data-i18n="os.win">Windows</div>
+<p class="tiny" data-i18n="install.win.hint">Press the Windows key, type "PowerShell", open it and paste:</p>
+<pre><code>irm https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main/install.ps1 | iex</code></pre>
+
+<div class="os" data-i18n="os.linux">Linux (EVE via Steam/Proton or Wine)</div>
+<p class="tiny" data-i18n="install.linux.hint">Open a terminal and paste:</p>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main/install.sh | sh</code></pre>
+
+<div class="os" data-i18n="os.mac">macOS <span class="alpha">experimental</span></div>
+<p class="tiny" data-i18n="install.mac.hint">Same command in the Terminal. It installs to Library/Application Support and puts an
+"EVE Canary" launcher on your desktop, findable through Spotlight too. Autostart and the
+clipboard scan work, thanks to NetManDE. Still experimental, so if something breaks, please say so.</p>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main/install.sh | sh</code></pre>
+
+<p class="note" data-i18n="install.note">Canary finds the log folder on its own, including
+inside the Wine prefix on Linux. If that fails it simply asks you on first start. Game logging
+must be enabled in the EVE client, which is the default setting.</p>
+</dialog>
 <dialog id="dlModal">
   <div class="dlmodhead"><b data-i18n="h.downloads">Downloads</b>
    <button id="dlModalClose" aria-label="Close">✕</button></div>
@@ -811,7 +819,11 @@ const MILESTONES = [
   { v: '1.66', de: 'Blutspur erkennt bekannte Gank-Gruppen', en: 'Blood Trail flags known gank groups',       fr: 'Blood Trail signale les groupes de gankers connus', ru: 'Blood Trail распознаёт известные группы ганкеров' },
   { v: '1.70', de: 'Wallet Buddy: Handel &amp; Bilanz',          en: 'Wallet Buddy: trading &amp; balance',           fr: 'Wallet Buddy : commerce &amp; bilan',               ru: 'Wallet Buddy: торговля и баланс' },
   { v: '1.83', de: 'Missionen schließen sich von selbst ab', en: 'Missions close themselves',                 fr: 'Les missions se clôturent seules',              ru: 'Миссии закрываются сами' },
-  { v: '1.86', de: 'Stream-Overlay für OBS',                 en: 'Stream overlay for OBS',                    fr: 'Overlay de stream pour OBS',                    ru: 'Оверлей для стрима в OBS' }
+  { v: '1.86', de: 'Stream-Overlay für OBS',                 en: 'Stream overlay for OBS',                    fr: 'Overlay de stream pour OBS',                    ru: 'Оверлей для стрима в OBS' },
+  { v: '1.95', de: 'Missions-Erkennung: Fracht &amp; Fingerabdruck', en: 'Mission detection: cargo &amp; fingerprint', fr: 'Détection de missions : cargaison &amp; empreinte', ru: 'Распознавание миссий: груз и отпечаток' },
+  { v: '2.3',  de: 'Beute-Rechner &amp; Abyss-Export',          en: 'Loot calculator &amp; abyssal export',       fr: 'Calculateur de butin &amp; export abyssal',      ru: 'Калькулятор добычи и экспорт Бездны' },
+  { v: '2.28', de: 'Job-Börse: Freelance-Aufträge für Miner', en: 'Job board: freelance jobs for miners',      fr: 'Bourse aux jobs freelance pour mineurs',        ru: 'Биржа заказов: фриланс для майнеров' },
+  { v: '2.32', de: 'Neue Oberfläche &amp; Multiboxer-Komfort',   en: 'New interface &amp; multiboxer comfort',     fr: 'Nouvelle interface &amp; confort multiboxing',   ru: 'Новый интерфейс и удобства мультибокса' }
 ];
 
 /* ---------------------------------------------------------------------------
@@ -1171,6 +1183,11 @@ applyLang(start);
   if (badge) badge.onclick = openDlModal;
   if (modal) {
     document.getElementById('dlModalClose').onclick = () => modal.close();
+    // Installation als Popup (Wunsch von Askend, 15.08.2026): die Anleitung
+    // steht nicht mehr im Fliesstext, sondern hinter dem Knopf oben.
+    const im = document.getElementById('installModal');
+    document.getElementById('installBtn').onclick = () => im.showModal();
+    document.getElementById('installModalClose').onclick = () => im.close();
     modal.addEventListener('click', e => { if (e.target === modal) modal.close(); });
   }
 })();
