@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.30.2",
+  "d": "2026-08-15",
+  "de": [
+   "ISKRAY-VORSCHLAGSLISTE IM PHOTON-LOOK REPARIERT: die Vorschlaege unter dem Suchfeld der Einzel-Item-Suche wurden nach der ersten Zeile abgeschnitten. Der Photon-Look kappte sie gleich doppelt: seine Karten schneiden alles ab, was ueber den Kartenrand ragt, und weil der Weichzeichner jede Karte zu einer eigenen Ebene macht, malte die naechste Karte zusaetzlich darueber. Die Suchkarte laesst ihre Liste jetzt heraus und liegt dabei ueber ihren Nachbarn. In den anderen Looks trat das nie auf. Beides am echten Server nachgestellt und nach dem Fix gegengeprueft."
+  ],
+  "en": [
+   "ISKRAY SUGGESTION LIST FIXED IN THE PHOTON LOOK: the suggestions under the single-item search field were cut off after the first row. The Photon look clipped them twice over: its cards cut everything reaching past the card edge, and since the blur turns every card into its own layer, the next card also painted on top. The search card now lets its list out and sits above its neighbours while doing so. The other looks were never affected. Both reproduced on the real server and verified after the fix."
+  ]
+ },
+ {
   "v": "2.30.1",
   "d": "2026-08-15",
   "de": [

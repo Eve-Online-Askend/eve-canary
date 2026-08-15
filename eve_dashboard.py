@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.30.1"
+VERSION = "2.30.2"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -11924,6 +11924,13 @@ html[data-skin=photon] .card,html[data-skin=photon] header,html[data-skin=photon
  background:var(--card);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);
  border:1px solid var(--line);box-shadow:0 12px 30px rgba(0,0,0,.45)}
 html[data-skin=photon] .card{position:relative;overflow:hidden}
+/* Ausnahme: die Einzel-Item-Karte im ISKray. Ihre Vorschlagsliste ragt unter
+   die Karte, und der Photon-Look kappte sie doppelt: overflow:hidden schnitt
+   sie an der Kartenkante ab, und weil der Blur (backdrop-filter) jede Karte zu
+   einem eigenen Stapel-Kontext macht, malte die naechste Karte auch noch
+   drueber. Deshalb beides: sichtbar lassen UND die Karte ueber ihre
+   Geschwister heben. Gemeldet von Askend, 15.08.2026. */
+html[data-skin=photon] #mktBox{overflow:visible;z-index:5}
 html[data-skin=photon] .card::before,html[data-skin=photon] .card::after{
  content:"";position:absolute;width:11px;height:11px;pointer-events:none;opacity:.5}
 html[data-skin=photon] .card::before{top:0;left:0;border-top:1px solid #dfe7ea;border-left:1px solid #dfe7ea}
