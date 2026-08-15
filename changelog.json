@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.28.0",
+  "d": "2026-08-15",
+  "de": [
+   "NEUER BEREICH JOB-BOERSE: EVE hat seit Ende 2025 oeffentlich einsehbare Freelance-Auftraege, und manche zahlen fuers Minen einen festen Betrag je Einheit, ZUSAETZLICH zu deinem Erz. Canary holt die Liste (ohne Login), erkennt die Erzsorte, vergleicht den Satz mit dem Marktpreis und rechnet mit deinem eigenen Schnitt aus, was ein Beitritt dir je Mining-Tag braechte. Am Bautag stand dort zum Beispiel Veldspar mit 5 ISK je Einheit Bonus, das sind rund 47 Prozent auf den Marktpreis obendrauf.",
+   "Die Rechnung ist belegt, nicht geraten: alle am Bautag aktiven Toepfe zahlen exakt linear je Einheit, an den echten Zahlen nachgerechnet (groesste Abweichung 0,0025 Prozent). Bei jedem Auftrag steht ausserdem, wie voll der Topf noch ist, und nach einigen Stunden Beobachtung, wie schnell er sich leert und wie lange er noch reicht.",
+   "Ehrlichkeit gehoert dazu: Auftraege ohne eindeutige Erzsorte bekommen KEINE Rechnung, sondern stehen mit dem Grund darunter. Ob ein Auftrag Orte einschraenkt oder Varianten mitzaehlt, steht nur im Spiel, auch das sagt die Karte offen. Eine Schritt-fuer-Schritt-Hilfe erklaert, wie man einen Auftrag im Spiel annimmt, inklusive der 5-Spruenge-Regel fuer die Sichtbarkeit und der Grenze von 3 Auftraegen ohne den Skill Freelancing.",
+   "Deine Foerderzahlen bleiben dabei auf deinem Rechner. Canary holt nur die oeffentliche Auftragsliste, gesendet wird nichts ueber dich."
+  ],
+  "en": [
+   "NEW SECTION JOB BOARD: since late 2025 EVE has publicly listed freelance jobs, and some pay a fixed amount per unit for mining, ON TOP of the ore you keep. Canary fetches the list (no login), recognises the ore type, compares the rate with the market price and uses your own average to work out what joining would earn you per mining day. On build day, for example, Veldspar paid a 5 ISK per unit bonus, roughly 47 percent on top of the market price.",
+   "The maths is proven, not guessed: every pool active on build day pays out exactly linearly per unit, checked against the real numbers (largest deviation 0.0025 percent). Each job also shows how full its pool still is, and after a few hours of watching, how fast it drains and how long it will last.",
+   "Honesty included: jobs without a clearly recognisable ore type get NO calculation, they are listed with the reason instead. Whether a job restricts locations or counts ore variants is only stated in the game, and the card says so openly. A step-by-step help explains how to accept a job in game, including the 5-jump visibility rule and the limit of 3 jobs without the Freelancing skill.",
+   "Your mining numbers stay on your machine. Canary only fetches the public job list, nothing about you is sent."
+  ]
+ },
+ {
   "v": "2.27.0",
   "d": "2026-08-15",
   "de": [

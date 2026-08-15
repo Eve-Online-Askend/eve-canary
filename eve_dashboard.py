@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.27.0"
+VERSION = "2.28.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -82,6 +82,7 @@ ERROR_HELP = {
     "CN-NET-01": "Marktpreise nicht abrufbar",
     "CN-NET-02": "EVE-Serverstatus nicht abrufbar",
     "CN-NET-03": "System-Gefahrenlage nicht abrufbar",
+    "CN-NET-04": "Freelance-Jobs nicht abrufbar",
     "CN-ESI-01": "ESI-Abfrage fehlgeschlagen",
     "CN-INTEL-01": "Bedrohungs-Abfrage fehlgeschlagen",
     "CN-CLIP-01": "Zwischenablage nicht lesbar",
@@ -1797,6 +1798,14 @@ try:
         print(f"{_weg} Einsatz/Einsaetze mit unmoeglicher Dauer entfernt")
 except sqlite3.OperationalError:
     pass
+# v2.28: Topf-Verlauf der Freelance-Jobs. Jede Abfrage legt den Reststand je
+# Job ab, daraus entsteht die Leerungs-Prognose ("reicht noch ~N Tage"). Ohne
+# Verlauf kann die Job-Boerse nie sagen, wie schnell ein Topf leer wird, und
+# genau das entscheidet, ob sich das Beitreten noch lohnt.
+DB.execute("CREATE TABLE IF NOT EXISTS job_topf(job_id TEXT, ts REAL, "
+           "rest REAL, stand REAL)")
+DB.execute("CREATE INDEX IF NOT EXISTS ix_job_topf ON job_topf(job_id, ts)")
+DB.commit()
 # v1.54: Zeitachse/Verlauf. Schlanke Ereignis-Tabelle fuer Episoden, die sonst
 # nirgends zeitgestempelt liegen: Mining-Trips und Bedrohungen. Kampf kommt aus
 # missions, ISK aus journal (beide schon zeitgestempelt) und werden bei der
@@ -4789,6 +4798,164 @@ class SystemDanger(threading.Thread):
             time.sleep(120)   # Namen schnell aufloesen; Kills bleiben stuendlich
 
 
+# Die Freelance-Job-Endpunkte sind juenger als der Rest von ESI und werden nur
+# mit Kompatibilitaetsdatum ausgeliefert. Der Wert ist bewusst festgenagelt:
+# CCP darf die Antwortform hinter einem NEUEREN Datum aendern, hinter diesem
+# hier bleibt sie stabil.
+JOBS_COMPAT = "2026-08-04"
+JOBS_TAKT = 900          # 15 min. Die Toepfe bewegen sich im Minutentakt,
+                         # oefter fragen braechte nur CCP-Last, keine Einsicht.
+GRADE_RE = re.compile(r"\b(?:grade\s+(ii|iii|iv|v|vi|x)|(ii|iii|iv|v|vi|x)[-\s]grade)\b")
+
+
+def erz_aus_jobtext(name, beschreibung=""):
+    """Welche Erzsorte meint dieser Job? Gibt (erzname, grund) zurueck, genau
+    eines von beiden ist gesetzt.
+
+    Bewusst vorsichtig, Fehlerkennung ist schlimmer als keine:
+    - Gesucht wird zuerst NUR im Jobnamen. Die Beschreibung ist Werbetext und
+      darf nur einspringen, wenn der Name gar kein Erz nennt, und auch dann
+      nur bei genau EINEM Treffer.
+    - "Compressed" im Namen heisst Lieferauftrag fuer Komprimiertes, das ist
+      ein anderes Spiel als Abbau und bleibt ohne Rechnung.
+    - Schreibweisen wie "Veldspar Grade II" (der Spieler) gegen
+      "Veldspar II-Grade" (die Datenbank) gleicht GRADE_RE ab.
+    - Mehrere verschiedene Grunderze im Text -> unklar. Ob ein Basiserz-Job
+      auch die Varianten zaehlt, weiss nur das Spiel, gerechnet wird deshalb
+      immer mit exakt der genannten Sorte."""
+    def suche(text):
+        t = " " + (text or "").lower() + " "
+        basen = set()
+        for erzname in ORE_TYPES:
+            if "-grade" in erzname.lower():
+                continue   # Varianten findet der Grade-Abgleich unten
+            if re.search(r"(?<![a-z])" + re.escape(erzname.lower()) + r"(?![a-z])", t):
+                basen.add(erzname)
+        return basen
+    text = name or ""
+    if "compressed" in text.lower():
+        return None, "Lieferauftrag fuer komprimiertes Erz"
+    basen = suche(text)
+    if not basen:
+        basen = suche(beschreibung)
+        text = beschreibung or ""
+    if not basen:
+        return None, "kein Erzname im Auftrag gefunden"
+    if len(basen) > 1:
+        return None, "mehrere Erzsorten genannt (%s)" % ", ".join(sorted(basen))
+    basis = basen.pop()
+    m = GRADE_RE.search(text.lower())
+    if m:
+        stufe = (m.group(1) or m.group(2)).upper()
+        variante = "%s %s-Grade" % (basis, stufe)
+        # ACHTUNG: ORE_TYPES ist die ErzTabelle, deren `in` auf das Basiserz
+        # zurueckfaellt. Eine erfundene Stufe saehe damit wie vorhanden aus,
+        # deshalb hier gegen die EXAKTEN Schluessel pruefen.
+        if variante in set(ORE_TYPES.keys()):
+            return variante, None
+        return None, "unbekannte Stufe %s fuer %s" % (stufe, basis)
+    return basis, None
+
+
+class JobBoerse(threading.Thread):
+    """Freiberufliche Auftraege (Freelance Jobs) von der OEFFENTLICHEN
+    EVE-Schnittstelle, kein Login noetig. Canary sendet dabei nichts ueber den
+    Nutzer, es holt nur die Liste, die jeder abrufen kann.
+
+    Warum das in ein Mining-Dashboard gehoert, in Zahlen vom 15.08.2026: der
+    Job "Get started mining Veldspar" zahlte 5 ISK je Einheit als Bonus, bei
+    einem Marktpreis von 8,48. Wer sowieso Veldspar abbaut, laesst ohne
+    Beitritt gut die Haelfte des moeglichen Ertrags liegen. Und die Toepfe
+    zahlen exakt linear je Einheit, an allen 8 damals aktiven Jobs
+    nachgerechnet (groesste Abweichung 0,0025 Prozent)."""
+    daemon = True
+
+    def __init__(self):
+        super().__init__()
+        self.jobs = []        # rohe Jobliste der letzten Abfrage
+        self.details = {}     # job_id -> details (career, expires, creator)
+        self.preise = {}      # type_id -> (buy, sell) fuer die erkannten Erze
+        self.fetched = 0.0
+        self.fehler = None
+
+    def _hol(self, pfad):
+        req = urllib.request.Request(
+            "https://esi.evetech.net" + pfad,
+            headers={"User-Agent": ESI_UA, "Accept": "application/json",
+                     "X-Compatibility-Date": JOBS_COMPAT})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read())
+
+    def tick(self):
+        if time.time() - self.fetched < JOBS_TAKT:
+            return
+        alle, cursor = [], None
+        for _ in range(30):   # Sicherheitsdeckel, heute ist es EINE Seite
+            pfad = "/freelance-jobs"
+            if cursor:
+                pfad += "?after=" + urllib.parse.quote(cursor)
+            d = self._hol(pfad)
+            teil = d.get("freelance_jobs") or []
+            if not teil:
+                break
+            alle.extend(teil)
+            cursor = (d.get("cursor") or {}).get("after")
+            if not cursor:
+                break
+        # Die Cursor-Seiten koennen sich ueberlappen (an echten Daten gesehen:
+        # ein Job kam doppelt). Nach ID eindeutig machen, Reihenfolge bleibt.
+        gesehen = set()
+        alle = [j for j in alle
+                if j.get("id") and not (j["id"] in gesehen or gesehen.add(j["id"]))]
+        # Details (Beruf, Ablauf, Ersteller) aendern sich nicht, einmal je Job
+        # holen reicht. Ein Fehlschlag laesst den Job trotzdem in der Liste.
+        for j in alle:
+            jid = j.get("id")
+            if jid and jid not in self.details:
+                try:
+                    self.details[jid] = self._hol("/freelance-jobs/" + jid).get("details") or {}
+                except Exception:
+                    self.details[jid] = {}
+        # Topf-Verlauf ablegen und Altes wegputzen, daraus entsteht die
+        # Leerungs-Prognose in query_jobs.
+        jetzt = time.time()
+        with DB_LOCK:
+            for j in alle:
+                r, p = j.get("reward") or {}, j.get("progress") or {}
+                if j.get("id") and r.get("remaining") is not None:
+                    DB.execute("INSERT INTO job_topf VALUES(?,?,?,?)",
+                               (j["id"], jetzt, float(r.get("remaining") or 0),
+                                float(p.get("current") or 0)))
+            DB.execute("DELETE FROM job_topf WHERE ts < ?", (jetzt - 30 * 86400,))
+            DB.commit()
+        # Marktpreise der erkannten Erze nachziehen, damit "+59% auf den
+        # Marktpreis" nicht an einem fehlenden Preis scheitert.
+        ids = set()
+        for j in alle:
+            erz, _ = erz_aus_jobtext(j.get("name") or "",
+                                     (self.details.get(j.get("id")) or {}).get("description") or "")
+            if erz:
+                tid = ORE_TYPES.get(erz, {}).get("typeID")
+                if tid:
+                    ids.add(int(tid))
+        if ids:
+            try:
+                self.preise.update(hub_prices(CONFIG["region"], ids))
+            except Exception:
+                pass   # dann steht am Prozentvergleich eben "Preis fehlt"
+        self.jobs, self.fetched, self.fehler = alle, jetzt, None
+
+    def run(self):
+        time.sleep(12)
+        while True:
+            try:
+                self.tick()
+            except Exception as e:
+                self.fehler = str(e)[:200]
+                log_error("CN-NET-04", "JobBoerse.tick", e)
+            time.sleep(60)
+
+
 # ---------------------------------------------------------------- ESI (offizielles EVE-SSO, PKCE)
 SSO_AUTH = "https://login.eveonline.com/v2/oauth/authorize"
 SSO_TOKEN = "https://login.eveonline.com/v2/oauth/token"
@@ -7155,6 +7322,7 @@ clipwatch = ClipWatch()
 serverstatus = ServerStatus()
 danger = SystemDanger()
 packintel = PackIntel()
+jobboerse = JobBoerse()
 
 
 # ---------------------------------------------------------------- Abfragen
@@ -10539,6 +10707,115 @@ def abyss_export_tsv():
     return "\n".join(zeilen)
 
 
+def query_jobs():
+    """Die Job-Boerse: Freelance-Jobs mit Erz-Bezug, umgerechnet auf das
+    eigene Spiel. Drei Gruppen, wie mit dem User festgelegt:
+    - Jobs mit EINDEUTIGER Erzsorte bekommen die volle Rechnung (Bonus je
+      Einheit, Vergleich zum Markt, dein Schnitt, Topf-Prognose).
+    - Industrie-Jobs ohne eindeutige Sorte werden schlicht gelistet, mit dem
+      Grund, warum keine Rechnung dransteht.
+    - Alles andere wird nur gezaehlt."""
+    # Dein Schnitt: Einheiten je Erzsorte an aktiven Mining-Tagen der letzten
+    # 30 Tage. Aktiv heisst: an dem Tag kam ueberhaupt Erz herein.
+    with DB_LOCK:
+        rate_rows = DB.execute(
+            "SELECT key, SUM(value) FROM daily WHERE kind='ore' "
+            "AND day >= date('now','-30 day') GROUP BY key").fetchall()
+        aktive_tage = DB.execute(
+            "SELECT COUNT(DISTINCT day) FROM daily WHERE kind='ore' "
+            "AND day >= date('now','-30 day')").fetchone()[0] or 0
+        topf_rows = DB.execute(
+            "SELECT job_id, MIN(ts), MAX(ts) FROM job_topf "
+            "WHERE ts > ? GROUP BY job_id",
+            (time.time() - 72 * 3600,)).fetchall()
+    schnitt = {k: (v or 0) / aktive_tage for k, v in rate_rows} if aktive_tage else {}
+
+    # Leerungs-Prognose: erster gegen letzter Topf-Stand der letzten 72 h.
+    # Unter 4 h Beobachtung waere die Hochrechnung Kaffeesatz, dann lieber
+    # "wird noch beobachtet" anzeigen.
+    leerung = {}
+    with DB_LOCK:
+        for jid, t0, t1 in topf_rows:
+            if t1 - t0 < 4 * 3600:
+                continue
+            r0 = DB.execute("SELECT rest FROM job_topf WHERE job_id=? AND ts=?",
+                            (jid, t0)).fetchone()
+            r1 = DB.execute("SELECT rest FROM job_topf WHERE job_id=? AND ts=?",
+                            (jid, t1)).fetchone()
+            if r0 and r1 and r0[0] > r1[0]:
+                leerung[jid] = (r0[0] - r1[0]) / (t1 - t0) * 86400
+
+    # Live-Rate je Erz: was die laufenden Sessions in dieser Sitzung gefoerdert
+    # haben, auf die Stunde gerechnet. Nur wenn in den letzten 30 min wirklich
+    # Erz kam, sonst stuende nach dem Feierabend noch stundenlang eine
+    # "gerade"-Zeile da. Kopie der Werte, der Ingest-Thread schreibt parallel.
+    live = {}
+    jetzt = time.time()
+    for s in list(ingest.sessions.values()):
+        if not s.last_ore_ts or jetzt - s.last_ore_ts > 1800:
+            continue
+        stunden = max(jetzt - s.start, 600) / 3600.0
+        for erz, einheiten in dict(s.mining).items():
+            live[erz] = live.get(erz, 0) + einheiten / stunden
+
+    region = CONFIG["region"]
+    volle, schlichte, sonstige = [], [], 0
+    for j in jobboerse.jobs:
+        if j.get("state") != "Active":
+            continue
+        det = jobboerse.details.get(j.get("id")) or {}
+        erz, grund = erz_aus_jobtext(j.get("name") or "", det.get("description") or "")
+        r, p = j.get("reward") or {}, j.get("progress") or {}
+        basis = {
+            "jobname": (j.get("name") or "")[:90],
+            "beruf": det.get("career") or "?",
+            "ersteller": ((det.get("creator") or {}).get("corporation") or {}).get("name") or "?",
+            "endet": (det.get("expires") or "")[:10],
+            "topf_rest": round(r.get("remaining") or 0),
+            "topf_init": round(r.get("initial") or 0),
+        }
+        if not erz:
+            # Der Topf entscheidet, ob eine Zeile ueberhaupt jemanden angeht:
+            # Industrie-Jobs ohne Geld sind Corp-Werbung, die zaehlen wir nur.
+            if basis["beruf"] == "Industrialist" and basis["topf_rest"] > 0:
+                basis["grund"] = grund
+                schlichte.append(basis)
+            else:
+                sonstige += 1
+            continue
+        if not r.get("initial") or not p.get("desired"):
+            basis["grund"] = "Auftrag ohne ISK-Topf"
+            schlichte.append(basis)
+            continue
+        satz = (r.get("initial") or 0) / (p.get("desired") or 1)
+        tid = ORE_TYPES.get(erz, {}).get("typeID")
+        markt = None
+        pr = jobboerse.preise.get(int(tid)) if tid else None
+        if pr:
+            markt = round(float(pr[0]), 2)   # Buy = was der Verkauf bringt
+        volle.append(dict(basis, **{
+            "erz": erz,
+            "satz": round(satz, 2),
+            "markt": markt,
+            "ziel": round(p.get("desired") or 0),
+            "stand": round(p.get("current") or 0),
+            "leerung_tag": round(leerung[j["id"]]) if j.get("id") in leerung else None,
+            "reicht_tage": (round((r.get("remaining") or 0) / leerung[j["id"]], 1)
+                            if j.get("id") in leerung and leerung[j["id"]] > 0 else None),
+            "schnitt_einheiten": round(schnitt.get(erz, 0)),
+            "schnitt_isk": round(schnitt.get(erz, 0) * satz),
+            "live_einheiten_h": round(live.get(erz, 0)),
+            "live_isk_h": round(live.get(erz, 0) * satz),
+        }))
+    volle.sort(key=lambda x: -x["schnitt_isk"])
+    schlichte.sort(key=lambda x: -x["topf_rest"])
+    return {"stand": int(jobboerse.fetched), "takt_min": JOBS_TAKT // 60,
+            "aktive_tage": aktive_tage, "region": region,
+            "fehler": jobboerse.fehler,
+            "jobs": volle, "unklar": schlichte, "sonstige": sonstige,
+            "summe_tag": sum(x["schnitt_isk"] for x in volle)}
+
+
 # ---------------------------------------------------------------- HTTP
 def _host_ok(headers):
     """Schuetzt vor DNS-Rebinding: nur localhost-Hosts duerfen zugreifen.
@@ -10680,6 +10957,8 @@ class Handler(BaseHTTPRequestHandler):
                 data["vault"]["advisor"] = query_ore_advisor(CONFIG["region"])
             elif view == "planeten":
                 data["planeten"] = query_planeten()
+            elif view == "jobs":
+                data["jobs"] = query_jobs()
             elif view == "wallet":
                 # Zeitraum aus der URL: 7, 30 oder 0 fuer "alles". Alles andere
                 # faellt auf 30 zurueck, damit ein Tippfehler nichts sprengt.
@@ -12443,6 +12722,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="wallet">🧾 Wallet Buddy</span>
  <span data-v="beute">📦 Beute</span>
  <span data-v="rechner">💰 ISKray</span>
+ <span data-v="jobs">💼 Jobs</span>
 </nav>
 <div id="viewinfo"></div>
 <div id="updBanner" hidden></div>
@@ -12641,7 +12921,7 @@ function lsGet(key,fallback){try{const v=localStorage.getItem(key);return v==nul
 // Muss ALLE Bereiche aus dem nav enthalten, sonst landet ein direkt
 // aufgerufener Pfad oder die Zurueck-Taste stumm auf "live". Genau das ist
 // dem Wallet-Tab passiert, er fehlte hier seit seiner Einfuehrung.
-const VIEWS=['live','month','total','analyse','intel','missionen','timeline','profil','planeten','vault','wallet','beute','rechner'];
+const VIEWS=['live','month','total','analyse','intel','missionen','timeline','profil','planeten','vault','wallet','beute','rechner','jobs'];
 // Filament-Stufen in der Reihenfolge T1 bis T6 und die fuenf Wetterlagen. Die
 // Namen sind die englischen aus dem Spiel, denn genau die schreibt Canary in
 // den Namen des Laufs und liest sie dort auch wieder heraus.
@@ -12732,7 +13012,9 @@ const VIEW_INFO={
  rechner:{d:'Ein Preisrechner. Frachtraum im Spiel markieren, kopieren, hier einfügen, und du siehst sofort, was es an welchem Handelsplatz wert ist.',
   q:'Daten: Marktpreise von Fuzzwork für die großen Handelsplätze. Der Text, den du einfügst, bleibt auf deinem Rechner.'},
  beute:{d:'Zeigt dir, was ein Lauf eingebracht hat. Du fügst deinen Frachtraum zweimal ein, einmal vor und einmal nach der Mission oder dem Abyss, und Canary rechnet aus, was dazugekommen und was verbraucht worden ist. Das Ergebnis lässt sich mit einem Klick kopieren und passt in das Loot-Feld einer Mission.',
-  q:'Daten: nur der Text, den du selbst einfügst, verglichen auf diesem Rechner. Erst wenn du auf Wert berechnen klickst, werden Marktpreise geholt, dabei gehen nur die Item-Namen raus.'}};
+  q:'Daten: nur der Text, den du selbst einfügst, verglichen auf diesem Rechner. Erst wenn du auf Wert berechnen klickst, werden Marktpreise geholt, dabei gehen nur die Item-Namen raus.'},
+ jobs:{d:'Die Job-Börse. Spieler-Corps schreiben Aufträge für alle aus, und manche zahlen fürs Minen einen festen Betrag je Einheit, zusätzlich zu deinem Erz. Canary zeigt die Aufträge mit Erz-Bezug, vergleicht den Satz mit dem Marktpreis und rechnet aus deinem eigenen Schnitt aus, was ein Beitritt dir am Tag brächte.',
+  q:'Daten: die öffentliche Auftragsliste von EVE, ohne Login. Marktpreise wie überall von ESI und Fuzzwork. Deine Förderzahlen bleiben auf diesem Rechner, für die Rechnung wird nichts über dich gesendet.'}};
 function renderViewInfo(){
  const box=$('#viewinfo');if(!box)return;
  const inf=VIEW_INFO[view],offen=lsGet('viewinfo',true),schl=view+'|'+offen;
@@ -16062,6 +16344,63 @@ function renderMissions(d){
                              :(en2?'Server not reachable':'Server nicht erreichbar');
  });
 }
+function renderJobs(j){
+ // Keine Eingabefelder in dieser Ansicht, deshalb kein Tipp-Schutz noetig.
+ const en=lang==='en';
+ if(!j||!j.stand){
+  $('#grid').innerHTML=`<div class="card" style="grid-column:1/-1"><div class="sect">💼 ${en?'Job board':'Job-Börse'}</div>
+   <div class="sub">${j&&j.fehler
+     ?(en?'The job list could not be fetched: ':'Die Auftragsliste ließ sich nicht holen: ')+esc(j.fehler)
+     :(en?'Fetching the job list, this takes a moment after startup.':'Hole die Auftragsliste, das dauert nach dem Start einen Moment.')}</div></div>`;
+  return;
+ }
+ const stand=new Date(j.stand*1000).toLocaleTimeString().slice(0,5);
+ const zeile=x=>{
+  const pct=x.markt?Math.round(100*x.satz/x.markt):null;
+  const topfPct=x.topf_init?Math.max(0,Math.min(100,Math.round(100*x.topf_rest/x.topf_init))):0;
+  const topfTxt=x.leerung_tag
+    ?(en?`pool ${topfPct}% full, drains ~${fmtM(x.leerung_tag)}/day, lasts ~${x.reicht_tage} days`
+        :`Topf ${topfPct}% voll, leert sich ~${fmtM(x.leerung_tag)}/Tag, reicht ~${x.reicht_tage} Tage`)
+    :(en?`pool ${topfPct}% full, drain still being watched`
+        :`Topf ${topfPct}% voll, Leerung wird noch beobachtet`);
+  return `<div style="border-top:1px solid var(--line);padding:10px 0;display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.1fr);gap:8px;align-items:center">
+   <div><b>${esc(x.erz)}</b>
+    <div class="sub" style="font-size:11px">"${esc(x.jobname)}" · ${esc(x.ersteller)}${x.endet?' · '+(en?'until':'bis')+' '+esc(x.endet):''}</div></div>
+   <div><div>${x.satz.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} ${en?'ISK per unit':'ISK je Einheit'}</div>
+    <div class="sub" style="font-size:11px;color:var(--grn,#3ddc84)">${x.markt?`+${pct}% ${en?'on the market price':'auf den Marktpreis'} (${x.markt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})})`:(en?'market price missing':'Marktpreis fehlt noch')}</div></div>
+   <div style="text-align:right">
+    <div class="isk"><b>${x.schnitt_isk?'+'+fmtM(x.schnitt_isk)+' '+(en?'ISK per mining day':'ISK je Mining-Tag'):(en?'you have not mined this ore in 30 days':'diese Sorte hast du in 30 Tagen nicht gefördert')}</b></div>
+    ${x.live_isk_h?`<div class="sub" style="font-size:11px;color:var(--cyan)">${en?'right now':'gerade am Werk'}: +${fmtM(x.live_isk_h)} ISK/h</div>`:''}
+    <div class="sub" style="font-size:11px">${topfTxt}</div>
+    <div style="background:var(--line);border-radius:3px;height:4px;margin-top:4px"><div style="background:var(--cyan);width:${topfPct}%;height:4px;border-radius:3px"></div></div>
+   </div></div>`;
+ };
+ const unklarZeile=x=>`<div style="border-top:1px solid var(--line);padding:8px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline">
+   <span>"${esc(x.jobname)}"</span><span class="sub" style="font-size:11px">${esc(x.ersteller)}${x.endet?' · '+(en?'until':'bis')+' '+esc(x.endet):''}</span>
+   <span style="margin-left:auto" class="isk">${fmtM(x.topf_rest)} ISK ${en?'left in the pool':'im Topf'}</span>
+   <span class="sub" style="font-size:11px;flex-basis:100%">${en?'no calculation, reason':'keine Rechnung, Grund'}: ${esc(x.grund||'?')}</span></div>`;
+ $('#grid').innerHTML=`
+ <div class="card" style="grid-column:1/-1">
+  <div class="sect" style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><span>💼 ${en?'Job board':'Job-Börse'}</span>
+   <span class="sub" style="font-size:11px;margin-left:auto">${en?'as of':'Stand'} ${stand}, ${en?'refreshed every':'neu geholt alle'} ${j.takt_min} min</span></div>
+  ${j.jobs.length?`
+   ${j.summe_tag?`<div style="color:var(--gold);font-size:13px;margin-bottom:6px">${en?'All together at your average':'Zusammen bei deinem Schnitt'}: <b>+${fmtM(j.summe_tag)} ${en?'ISK per mining day':'ISK je Mining-Tag'}</b> <span class="sub" style="font-size:11px">(${en?'average of your last':'Schnitt aus deinen letzten'} ${j.aktive_tage} ${en?'mining days':'Mining-Tagen'})</span></div>`:''}
+   ${j.jobs.map(zeile).join('')}`
+   :`<div class="sub">${en?'No ore-related jobs on the public list right now.':'Gerade steht kein Auftrag mit Erz-Bezug in der öffentlichen Liste.'}</div>`}
+  ${j.unklar.length?`<div class="sub" style="margin-top:10px"><b>${en?'Industry jobs without a clear ore type':'Industrie-Aufträge ohne eindeutige Erzsorte'}</b></div>${j.unklar.map(unklarZeile).join('')}`:''}
+  ${j.sonstige?`<div class="sub" style="border-top:1px solid var(--line);margin-top:10px;padding-top:8px;font-size:11px">${j.sonstige} ${en?'further jobs without ore or ISK pool are not shown.':'weitere Aufträge ohne Erz-Bezug oder ohne ISK-Topf werden nicht gezeigt.'}</div>`:''}
+ </div>
+ <div class="card" style="grid-column:1/-1">
+  <div class="sect">${en?'How to take a job in EVE':'So nimmst du einen Auftrag in EVE an'}</div>
+  <div class="sub" style="line-height:1.7">
+   1. ${en?'In the game open the Neocom menu and go to the AIR opportunities window (Opportunities), tab Freelance Jobs.':'Im Spiel das Neocom-Menü öffnen und zum AIR-Fenster Unternehmungen (Opportunities) gehen, Reiter Freiberufliche Aufträge (Freelance Jobs).'}<br>
+   2. ${en?'You only see jobs whose corporation has an office within 5 jumps of you. A job listed here can therefore be invisible where you are, Canary cannot check office locations.':'Du siehst nur Aufträge, deren Corp ein Büro in höchstens 5 Sprüngen Entfernung hat. Ein Auftrag von hier kann bei dir deshalb unsichtbar sein, die Bürostandorte kann Canary nicht prüfen.'}<br>
+   3. ${en?'Open the job and accept it. Without the Freelancing skill you can hold 3 jobs at a time.':'Auftrag öffnen und annehmen. Ohne den Skill Freelancing kannst du 3 Aufträge gleichzeitig halten.'}<br>
+   4. ${en?'Read the job window closely: pure mining jobs count your mining and you keep the ore, delivery jobs want the goods handed in. What exactly counts is only stated there.':'Das Auftragsfenster genau lesen: reine Mining-Aufträge zählen deinen Abbau und du behältst das Erz, Lieferaufträge verlangen die Abgabe der Ware. Was genau zählt, steht nur dort.'}<br>
+   5. ${en?'Collect the ISK in the Rewards tab of the same window.':'Die ISK holst du im selben Fenster im Reiter Belohnungen (Rewards) ab.'}
+  </div>
+ </div>`;
+}
 function renderRechner(){
  if(document.getElementById('calcBox'))return;
  $('#grid').innerHTML=`<div class="card mkt" id="mktBox" style="grid-column:1/-1">
@@ -16967,6 +17306,10 @@ const EN = {
  'Data: only the text you paste yourself, compared on this machine. Market prices are fetched only when you click get the value, and only the item names leave your computer.',
 'Daten: Marktpreise von Fuzzwork für die großen Handelsplätze. Der Text, den du einfügst, bleibt auf deinem Rechner.':
  'Data: market prices from Fuzzwork for the major trade hubs. The text you paste stays on your machine.',
+'Die Job-Börse. Spieler-Corps schreiben Aufträge für alle aus, und manche zahlen fürs Minen einen festen Betrag je Einheit, zusätzlich zu deinem Erz. Canary zeigt die Aufträge mit Erz-Bezug, vergleicht den Satz mit dem Marktpreis und rechnet aus deinem eigenen Schnitt aus, was ein Beitritt dir am Tag brächte.':
+ 'The job board. Player corporations post jobs for everyone, and some pay a fixed amount per unit for mining, on top of the ore you keep. Canary shows the ore-related jobs, compares the rate with the market price and uses your own average to work out what joining would earn you per day.',
+'Daten: die öffentliche Auftragsliste von EVE, ohne Login. Marktpreise wie überall von ESI und Fuzzwork. Deine Förderzahlen bleiben auf diesem Rechner, für die Rechnung wird nichts über dich gesendet.':
+ 'Data: the public EVE job list, no login. Market prices from ESI and Fuzzwork as everywhere. Your mining numbers stay on this machine, nothing about you is sent for the calculation.',
 'Anonym mitzählen lassen':'Let this install be counted anonymously',
 'Erz-Erträge für die Homepage-Statistik freigeben':'Share ore yields for the homepage statistics',
 'Standardmäßig aus. Ist es an, holt Canary einmal im Monat eine weitere leere Datei, deren Name die Größenklasse deiner Fördermenge des Vormonats trägt (zum Beispiel „ab 3 Mio m³"). Auch hier wird nichts gesendet: keine genaue Zahl, keine Kennung, keine Namen, keine Charaktere, keine Orte. Aus der Summe aller Klassen entsteht auf der Homepage eine Gesamtmenge, die bewusst als Untergrenze ausgewiesen wird. Deine eigenen Zahlen bleiben auf deinem Rechner, verraten wird allein die Größenordnung.':
@@ -17231,6 +17574,7 @@ async function tick(){
    else if(view==='profil')renderProfiles(d.profiles);
    else if(view==='wallet')renderWallet(d.wallet);
    else if(view==='rechner')renderRechner();
+   else if(view==='jobs')renderJobs(d.jobs);
    else if(view==='beute')renderBeute();
    else renderTotal(d.total);
   }
@@ -17331,7 +17675,8 @@ if __name__ == "__main__":
     for _name, _t in (("Ingest", ingest), ("ChatWatch", chatwatch),
                       ("Prices", prices), ("Esi", esi), ("ThreatIntel", threat),
                       ("ClipWatch", clipwatch), ("ServerStatus", serverstatus),
-                      ("SystemDanger", danger), ("PackIntel", packintel)):
+                      ("SystemDanger", danger), ("PackIntel", packintel),
+                      ("JobBoerse", jobboerse)):
         _t.start()
         THREAD_WACHE[_name] = _t
     # ClipWatch beendet sich absichtlich sofort, wenn die Zwischenablage nicht
