@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.30.2"
+VERSION = "2.31.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1618,6 +1618,7 @@ def load_config():
     cfg = {"port": PORT_DEFAULT, "region": "10000002", "log_dir": None,
            "mode": "all", "install_ts": time.time(),
            "goal": None, "watchlist": [], "idle_warn": 240, "heavy_water": {},
+           "eigenbeschuss_warnen": False,
            # Karenzzeit fuer die Modul-Warnung, in Sekunden. 0 = sofort.
            "tool_warn_delay": 0,
            # Wie empfindlich soll die Meldung "Laser aus, neues Ziel erfassen"
@@ -3744,6 +3745,27 @@ def mission_hinweis(cname, md):
 
 
 # ---------------------------------------------------------------- Ingest
+_EIGENE_CHARS = {"ts": 0.0, "namen": set()}
+
+
+def eigene_charaktere():
+    """Alle Charakternamen, zu denen auf diesem Rechner Logdateien liegen.
+    Das SIND die eigenen Charaktere des Nutzers, ganz ohne Pflegeliste: wer
+    hier eine Logdatei schreibt, spielt auf diesem Rechner. Gebraucht fuer die
+    Eigenbeschuss-Erkennung beim Multiboxing (Wunsch von Impa). Fuenf Minuten
+    gecacht, die Liste aendert sich praktisch nie."""
+    if time.time() - _EIGENE_CHARS["ts"] > 300:
+        try:
+            with DB_LOCK:
+                rows = DB.execute("SELECT DISTINCT char_name FROM files "
+                                  "WHERE char_name IS NOT NULL").fetchall()
+            _EIGENE_CHARS["namen"] = {r[0] for r in rows if r[0]}
+            _EIGENE_CHARS["ts"] = time.time()
+        except Exception:
+            pass   # dann bleibt der alte Stand, besser als gar keiner
+    return _EIGENE_CHARS["namen"]
+
+
 class Ingest(threading.Thread):
     daemon = True
 
@@ -4289,6 +4311,15 @@ class Ingest(threading.Thread):
         if ev["kind"] == "cargo":
             alerts.push("cargo", cname, f"{cname}: Frachtraum voll, Mining gestoppt!")
         elif ev["kind"] == "dmg_in" and ev.get("player"):
+            # Eigenbeschuss beim Multiboxing (Flaechenschaden im AoE-Ratting
+            # trifft den eigenen Zweitcharakter): kein Alarm, keine Sprach-
+            # warnung, keine zKill-Abfrage ueber die eigenen Leute. Welche
+            # Charaktere "eigene" sind, weiss Canary von allein, es sind die
+            # mit Logdateien auf diesem Rechner. Abschaltbar in den Optionen.
+            # Gewuenscht von Impa.
+            if (not CONFIG.get("eigenbeschuss_warnen")
+                    and ev["key"] in eigene_charaktere()):
+                return
             alerts.push("pvp", cname, f"SPIELER-ANGRIFF: {ev['key']} schießt auf {cname}!")
             # Täterprofil sofort nachladen — Ergebnis kommt als eigener Intel-Alarm
             threat.request([ev["key"]], prio=True, alert="yellow")
@@ -9471,6 +9502,7 @@ def state_info():
             "clip_watch": bool(CONFIG.get("clip_watch")),
             "count_me": bool(CONFIG.get("count_me", True)),
             "auto_update": bool(CONFIG.get("auto_update", False)),
+            "eigenbeschuss_warnen": bool(CONFIG.get("eigenbeschuss_warnen", False)),
             "share_ore": bool(CONFIG.get("share_ore", False)),
             "autostart": AUTOSTART_OK and autostart_path().exists(),
             # Was diese Plattform kann — die Oberflaeche blendet den Rest aus,
@@ -11363,6 +11395,10 @@ class Handler(BaseHTTPRequestHandler):
         elif action == "laser_off_mode":
             if body.get("modus") in ("immer", "rate", "leer", "aus"):
                 CONFIG["laser_off_mode"] = body["modus"]
+        elif action == "eigenbeschuss":
+            # Beschuss durch eigene Charaktere melden ja/nein (Vorgabe: nein).
+            CONFIG["eigenbeschuss_warnen"] = bool(body.get("on"))
+            save_config()
         elif action == "char_reihenfolge":
             # Eigene Reihenfolge der Charakter-Karten (Wunsch von Eron
             # Solette: Multiboxer haben ueber Eve-O-Preview eine feste
@@ -13040,6 +13076,8 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
    <span class="hint" style="margin:0">Sekunden Karenz, bevor eine Modul-Warnung erscheint (0 = sofort)</span>
    <button class="btn" id="saveToolDelay">Speichern</button>
   </div>
+  <label style="margin-top:8px"><input type="checkbox" id="eigenWarn"> Beschuss durch eigene Charaktere melden</label>
+  <div class="hint">Standardmäßig aus: trifft einer deiner eigenen Charaktere einen anderen, etwa beim Ratten mit Flächenschaden, gibt es keinen Spieler-Angriff-Alarm und keine Sprachwarnung. Welche Charaktere deine sind, weiß Canary von allein, es sind die mit Logdateien auf diesem Rechner. Einschalten nur, wenn du auch Eigenbeschuss gemeldet haben willst. Gewünscht von Impa.</div>
   <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
    <select id="laserOffMode" class="feld">
     <option value="immer">immer, bei jeder Abschaltung</option>
@@ -13227,6 +13265,7 @@ if(savedSkin)document.documentElement.dataset.skin=savedSkin;
 $('#autostart').onchange=async()=>{const r=await post({action:'autostart',on:$('#autostart').checked});if(r.state)state=r.state;syncOpts();};
 $('#countMe').onchange=()=>post({action:'count_me',on:$('#countMe').checked});
 $('#autoUpdate').onchange=()=>post({action:'auto_update',on:$('#autoUpdate').checked});
+$('#eigenWarn').onchange=()=>post({action:'eigenbeschuss',on:$('#eigenWarn').checked});
 $('#shareOre').onchange=()=>post({action:'share_ore',on:$('#shareOre').checked});
 $('#saveLogDir').onclick=async()=>{
  const st=$('#logDirStat');st.textContent='Prüfe …';st.style.color='';
@@ -13493,6 +13532,7 @@ function syncOpts(){
  $('#autostartRow').hidden=state.autostart_ok===false;
  $('#countMe').checked=state.count_me!==false;
  $('#autoUpdate').checked=state.auto_update===true;
+ $('#eigenWarn').checked=state.eigenbeschuss_warnen===true;
  $('#shareOre').checked=state.share_ore===true;
  // Log-Ordner nur befüllen, solange niemand darin tippt
  if(document.activeElement!==$('#logDir'))$('#logDir').value=state.log_dir||'';
@@ -17672,6 +17712,9 @@ const EN = {
 'Daten: die öffentliche Auftragsliste von EVE, ohne Login. Marktpreise wie überall von ESI und Fuzzwork. Deine Förderzahlen bleiben auf diesem Rechner, für die Rechnung wird nichts über dich gesendet.':
  'Data: the public EVE job list, no login. Market prices from ESI and Fuzzwork as everywhere. Your mining numbers stay on this machine, nothing about you is sent for the calculation.',
 'Anonym mitzählen lassen':'Let this install be counted anonymously',
+'Beschuss durch eigene Charaktere melden':'Report fire from your own characters',
+'Standardmäßig aus: trifft einer deiner eigenen Charaktere einen anderen, etwa beim Ratten mit Flächenschaden, gibt es keinen Spieler-Angriff-Alarm und keine Sprachwarnung. Welche Charaktere deine sind, weiß Canary von allein, es sind die mit Logdateien auf diesem Rechner. Einschalten nur, wenn du auch Eigenbeschuss gemeldet haben willst. Gewünscht von Impa.':
+ 'Off by default: when one of your own characters hits another, for example while ratting with area damage, there is no player-attack alarm and no voice warning. Canary knows which characters are yours by itself, they are the ones with log files on this machine. Enable only if you want friendly fire reported too. Requested by Impa.',
 'Erz-Erträge für die Homepage-Statistik freigeben':'Share ore yields for the homepage statistics',
 'Standardmäßig aus. Ist es an, holt Canary einmal im Monat eine weitere leere Datei, deren Name die Größenklasse deiner Fördermenge des Vormonats trägt (zum Beispiel „ab 3 Mio m³"). Auch hier wird nichts gesendet: keine genaue Zahl, keine Kennung, keine Namen, keine Charaktere, keine Orte. Aus der Summe aller Klassen entsteht auf der Homepage eine Gesamtmenge, die bewusst als Untergrenze ausgewiesen wird. Deine eigenen Zahlen bleiben auf deinem Rechner, verraten wird allein die Größenordnung.':
  'Off by default. When on, Canary fetches one more empty file once a month whose name carries the size band of what you mined last month (for example "from 3M m³ up"). Nothing is sent here either: no exact figure, no identifier, no names, no characters, no locations. Adding up all the bands produces a total on the homepage that is deliberately published as a lower bound. Your own numbers stay on your machine, only the order of magnitude is revealed.',

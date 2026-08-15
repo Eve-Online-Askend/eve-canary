@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.31.0",
+  "d": "2026-08-15",
+  "de": [
+   "KEIN ALARM MEHR BEI EIGENBESCHUSS, gewuenscht von Impa: wer mit mehreren eigenen Charakteren rattet und Flaechenschaden benutzt, trifft dabei den eigenen Zweitcharakter, und Canary rief bei jedem Treffer SPIELER-ANGRIFF samt Sprachwarnung. Jetzt bleibt es still, wenn der Schuetze einer deiner eigenen Charaktere ist.",
+   "DIE GEWUENSCHTE NAMENSLISTE BRAUCHT ES DABEI GAR NICHT: eigene Charaktere sind die mit Logdateien auf diesem Rechner, und die kennt Canary von allein. Nichts zu pflegen, neue Zweitcharaktere sind automatisch dabei. Wer Eigenbeschuss trotzdem gemeldet haben will, schaltet es in den Optionen unter den Warnungen wieder ein.",
+   "Geprueft mit dem echten Alarm-Code: eigener Schuetze still, fremder Schuetze meldet, Schalter an meldet auch eigene, NPC-Treffer bleiben wie immer aussen vor."
+  ],
+  "en": [
+   "NO MORE ALARM ON FRIENDLY FIRE, requested by Impa: if you rat with several of your own characters and use area damage, you hit your own second character, and Canary shouted PLAYER ATTACK with a voice warning on every hit. It now stays quiet when the shooter is one of your own characters.",
+   "THE REQUESTED NAME LIST IS NOT EVEN NEEDED: your own characters are the ones with log files on this machine, and Canary knows those by itself. Nothing to maintain, new alts are included automatically. If you do want friendly fire reported, switch it back on in the options under the warnings.",
+   "Verified with the real alarm code: own shooter silent, foreign shooter alerts, switch on reports own ones too, NPC hits stay excluded as always."
+  ]
+ },
+ {
   "v": "2.30.2",
   "d": "2026-08-15",
   "de": [
