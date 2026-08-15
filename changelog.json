@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.28.2",
+  "d": "2026-08-15",
+  "de": [
+   "JOB-BOERSE ZEIGT JETZT DEN ORT, soweit es ihn ehrlich gibt: nennt der Auftragstext selbst ein System (\"Osmeden - Pyerite Contract\"), steht es an der Zeile, mit Entfernung in Spruengen von deinem aktuellen System. Gemessen an 426 echten Auftraegen nennt etwa jeder siebte sein System, der Rest traegt \"Ort im Text nicht genannt\".",
+   "WARUM ES KEINEN NAEHE-FILTER GIBT, obwohl er naheliegt: welche Auftraege du annehmen kannst, entscheiden die Bueros der Ersteller-Corp (im Spiel sichtbar bis 5 Spruenge), und Buerostandorte sind nicht oeffentlich abfragbar. Auch die Heimatstation der Corp taugt nicht als Ersatz, gemessen: von 351 Corps hatte KEINE ihre Heimat in der Naehe, obwohl zwei ihrer Auftraege dort annehmbar waren. Ein Filter darauf wuerde raten und genau die falschen verstecken. Der Kasten erklaert das jetzt direkt in der Karte.",
+   "Der Massstab dafuer war ein echter Abgleich mit dem Spielfenster eines Nutzers: zwei dort sichtbare Auftraege, beide 4 Spruenge entfernt, keiner davon nennt im Text ein System. Ehrlich bleibt ehrlich: was die Schnittstelle nicht hergibt, behauptet Canary nicht."
+  ],
+  "en": [
+   "THE JOB BOARD NOW SHOWS THE LOCATION where it honestly exists: if the job text itself names a system (\"Osmeden - Pyerite Contract\"), it appears on the row, with the distance in jumps from your current system. Measured across 426 real jobs, about one in seven names its system, the rest read \"no location named in the text\".",
+   "WHY THERE IS NO NEARBY FILTER, tempting as it is: which jobs you can accept is decided by the creator corporation's offices (visible in game within 5 jumps), and office locations are not publicly queryable. The corporation's home station is no substitute either, measured: of 351 corporations NOT ONE had its home nearby although two of their jobs were acceptable there. A filter built on that would guess and hide exactly the wrong ones. The card now explains this directly.",
+   "The yardstick was a real comparison with a player's in-game window: two jobs visible there, both 4 jumps away, neither naming a system in its text. Honest stays honest: what the interface does not provide, Canary does not claim."
+  ]
+ },
+ {
   "v": "2.28.1",
   "d": "2026-08-15",
   "de": [

@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.28.1"
+VERSION = "2.28.2"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -4870,6 +4870,82 @@ def erz_aus_jobtext(name, beschreibung=""):
     return basis, None
 
 
+_ORT_IDX = None
+
+
+def _ort_index():
+    """Systemnamen-Index fuer die Ort-Erkennung im Auftragstext, einmalig
+    gebaut. Einwort-Namen (ab 4 Zeichen) werden gegen die Woerter des Textes
+    gehalten, Mehrwort-Namen ("Old Man Star") als Teilstring gesucht."""
+    global _ORT_IDX
+    if _ORT_IDX is None:
+        m = load_json("eve_map.json", None) or {}
+        systeme = m.get("systems") or {}
+        name2id, nachbarn, einzel, mehrwort, schoen = {}, {}, set(), [], {}
+        for k, v in systeme.items():
+            if not (isinstance(v, list) and len(v) > 5):
+                continue
+            name2id[v[0].lower()] = int(k)
+            nachbarn[int(k)] = v[5]
+            schoen[v[0].lower()] = v[0]
+            nl = v[0].lower()
+            if len(nl) >= 4:
+                (mehrwort.append(nl) if " " in nl else einzel.add(nl))
+        _ORT_IDX = (name2id, nachbarn, einzel, mehrwort, schoen)
+    return _ORT_IDX
+
+
+def ort_aus_jobtext(name, beschreibung=""):
+    """Welches System nennt der Auftrag SELBST? Gemessen am 15.08.2026 an 426
+    echten Auftraegen: 65 nennen genau ein System (Name vor Beschreibung),
+    16 mehrere, der grosse Rest keins. Mehr gibt die Schnittstelle nicht her:
+    den echten Annahmeort (Bueros der Corp, im Spiel bis 5 Spruenge sichtbar)
+    kennt nur der Client. Deshalb ist das hier ausdruecklich "Ort laut
+    Auftragstext" und kein Filter: bei mehreren genannten Systemen wird
+    nichts behauptet."""
+    name2id, _, einzel, mehrwort, schoen = _ort_index()
+    for text in (name or "", beschreibung or ""):
+        if not text:
+            continue
+        tl = text.lower()
+        treffer = {w for w in re.findall(r"[a-z0-9-]{4,}", tl) if w in einzel}
+        for mw in mehrwort:
+            if mw in tl:
+                treffer.add(mw)
+        if len(treffer) == 1:
+            return schoen[treffer.pop()]
+        if treffer:
+            return None
+    return None
+
+
+_SPRUNG_CACHE = {}
+
+
+def spruenge_von(start_name):
+    """Sprungentfernungen von einem System zu allen anderen, gecacht je
+    Startsystem (der Standort wechselt selten, die Karte nie)."""
+    if not start_name:
+        return {}
+    if start_name in _SPRUNG_CACHE:
+        return _SPRUNG_CACHE[start_name]
+    name2id, nachbarn, _, _, _ = _ort_index()
+    start = name2id.get(start_name.lower())
+    if not start:
+        return {}
+    dist = {start: 0}
+    warte = deque([start])
+    while warte:
+        cur = warte.popleft()
+        for nb in nachbarn.get(cur, ()):
+            if nb not in dist:
+                dist[nb] = dist[cur] + 1
+                warte.append(nb)
+    _SPRUNG_CACHE.clear()   # nur den aktuellen Standort vorhalten
+    _SPRUNG_CACHE[start_name] = dist
+    return dist
+
+
 class JobBoerse(threading.Thread):
     """Freiberufliche Auftraege (Freelance Jobs) von der OEFFENTLICHEN
     EVE-Schnittstelle, kein Login noetig. Canary sendet dabei nichts ueber den
@@ -4888,6 +4964,7 @@ class JobBoerse(threading.Thread):
         self.jobs = []        # rohe Jobliste der letzten Abfrage
         self.details = {}     # job_id -> details (career, expires, creator)
         self.erze = {}        # job_id -> (erzname|None, grund|None), einmal gerechnet
+        self.orte = {}        # job_id -> Systemname laut Auftragstext, oder None
         self.preise = {}      # type_id -> (buy, sell) fuer die erkannten Erze
         self.fetched = 0.0
         self.fehler = None
@@ -4967,6 +5044,10 @@ class JobBoerse(threading.Thread):
                 self.erze[jid] = erz_aus_jobtext(
                     j.get("name") or "",
                     (self.details.get(jid) or {}).get("description") or "")
+            if jid not in self.orte:
+                self.orte[jid] = ort_aus_jobtext(
+                    j.get("name") or "",
+                    (self.details.get(jid) or {}).get("description") or "")
         # Details sind eine Einzelabfrage JE JOB. Bei 310 Jobs nicht alle auf
         # einmal: je Durchlauf hoechstens 60, Erz-Jobs zuerst (die brauchen
         # Ablaufdatum und Ersteller fuer die Karte), dann die mit Topf (deren
@@ -4997,8 +5078,11 @@ class JobBoerse(threading.Thread):
                 continue   # naechster Takt versucht es erneut
             geholt += 1
             self.details[jid] = det
-            # Beschreibung kann die Erz-Zuordnung nachliefern (Rueckfallweg).
             self.erze[jid] = erz_aus_jobtext(
+                je_id[jid].get("name") or "", det.get("description") or "")
+            # Fuer den ORT darf die Beschreibung mitspielen (dort steht er
+            # meistens), fuer das ERZ bewusst nicht mehr.
+            self.orte[jid] = ort_aus_jobtext(
                 je_id[jid].get("name") or "", det.get("description") or "")
             with DB_LOCK:
                 DB.execute("INSERT OR REPLACE INTO job_detail VALUES(?,?,?)",
@@ -10857,6 +10941,18 @@ def query_jobs():
             live[erz] = live.get(erz, 0) + einheiten / stunden
 
     region = CONFIG["region"]
+    # Standort fuer die Entfernungsangabe: das aktuelle System des zuletzt
+    # aktiven Charakters, sonst irgendein bekanntes. Ohne Standort bleibt die
+    # Entfernung einfach weg.
+    standort = None
+    for s in list(ingest.sessions.values()):
+        standort = s.system or chatwatch.systems.get(s.char_id) or standort
+    if not standort:
+        for sysn in list(chatwatch.systems.values()):
+            standort = sysn or standort
+    entf = spruenge_von(standort)
+    name2id_ort = _ort_index()[0]
+
     volle, schlichte, sonstige = [], [], 0
     for j in jobboerse.jobs:
         if j.get("state") != "Active":
@@ -10874,6 +10970,10 @@ def query_jobs():
             "topf_rest": round(r.get("remaining") or 0),
             "topf_init": round(r.get("initial") or 0),
         }
+        ort = jobboerse.orte.get(j.get("id"))
+        basis["ort"] = ort
+        basis["spruenge"] = (entf.get(name2id_ort.get((ort or "").lower()))
+                             if ort else None)
         if not erz:
             # Der Topf entscheidet, ob eine Zeile ueberhaupt jemanden angeht:
             # Industrie-Jobs ohne Geld sind Corp-Werbung, die zaehlen wir nur.
@@ -10938,6 +11038,7 @@ def query_jobs():
     schlichte.sort(key=lambda x: -x["topf_rest"])
     return {"stand": int(jobboerse.fetched), "takt_min": JOBS_TAKT // 60,
             "aktive_tage": aktive_tage, "region": region,
+            "standort": standort,
             "fehler": jobboerse.fehler,
             "gesamt": len(jobboerse.jobs),
             "details_offen": jobboerse.details_offen,
@@ -16492,6 +16593,9 @@ function renderJobs(j){
   return;
  }
  const stand=new Date(j.stand*1000).toLocaleTimeString().slice(0,5);
+ const ortTxt=x=>x.ort
+   ?` · ${en?'location per job text':'Ort laut Auftragstext'}: <b>${esc(x.ort)}</b>${x.spruenge!=null?` (${x.spruenge} ${en?'jumps':'Sprünge'})`:''}`
+   :` · ${en?'no location named in the text':'Ort im Text nicht genannt'}`;
  const zeile=x=>{
   const pct=x.markt?Math.round(100*x.satz/x.markt):null;
   const topfPct=x.topf_init?Math.max(0,Math.min(100,Math.round(100*x.topf_rest/x.topf_init))):0;
@@ -16502,7 +16606,7 @@ function renderJobs(j){
         :`Topf ${topfPct}% voll, Leerung wird noch beobachtet`);
   return `<div style="border-top:1px solid var(--line);padding:10px 0;display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.1fr);gap:8px;align-items:center">
    <div><b>${esc(x.erz)}</b>${x.anzahl>1?` <span class="sub" style="font-size:11px">${x.anzahl} ${en?'jobs, together':'Aufträge, zusammen'} ${fmtM(x.topf_gesamt)} ISK</span>`:''}
-    <div class="sub" style="font-size:11px">${en?'best job':'bester Auftrag'}: "${esc(x.jobname)}" · ${esc(x.ersteller)}${x.endet?' · '+(en?'until':'bis')+' '+esc(x.endet):''}</div></div>
+    <div class="sub" style="font-size:11px">${en?'best job':'bester Auftrag'}: "${esc(x.jobname)}" · ${esc(x.ersteller)}${x.endet?' · '+(en?'until':'bis')+' '+esc(x.endet):''}${ortTxt(x)}</div></div>
    <div><div>${x.satz.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} ${en?'ISK per unit':'ISK je Einheit'}</div>
     <div class="sub" style="font-size:11px;color:var(--grn,#3ddc84)">${x.markt?`+${pct}% ${en?'on the market price':'auf den Marktpreis'} (${x.markt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})})`:(en?'market price missing':'Marktpreis fehlt noch')}</div></div>
    <div style="text-align:right">
@@ -16516,7 +16620,7 @@ function renderJobs(j){
   const pct=x.markt?Math.round(100*x.satz/x.markt):null;
   return `<div style="border-top:1px solid var(--line);padding:6px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline">
    <b>${esc(x.erz)}</b>
-   <span class="sub" style="font-size:11px">${x.anzahl} ${en?'job(s)':'Auftrag/Aufträge'} · ${en?'best rate':'bester Satz'} ${x.satz.toLocaleString(undefined,{maximumFractionDigits:2})} ${en?'ISK per unit':'ISK je Einheit'}${pct?` (+${pct}%)`:''}</span>
+   <span class="sub" style="font-size:11px">${x.anzahl} ${en?'job(s)':'Auftrag/Aufträge'} · ${en?'best rate':'bester Satz'} ${x.satz.toLocaleString(undefined,{maximumFractionDigits:2})} ${en?'ISK per unit':'ISK je Einheit'}${pct?` (+${pct}%)`:''}${x.ort?` · ${esc(x.ort)}${x.spruenge!=null?' ('+x.spruenge+' '+(en?'jumps':'Spr.')+')':''}`:''}</span>
    <span style="margin-left:auto" class="isk">${fmtM(x.topf_gesamt)} ISK ${en?'in pools':'in Töpfen'}</span></div>`;
  };
  const warnZeile=x=>`<div style="border-top:1px solid var(--line);padding:6px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline">
@@ -16524,7 +16628,7 @@ function renderJobs(j){
    <span class="sub" style="font-size:11px">${x.satz.toLocaleString(undefined,{maximumFractionDigits:0})} ${en?'ISK per unit at a market price of':'ISK je Einheit bei Marktpreis'} ${x.markt.toLocaleString(undefined,{maximumFractionDigits:2})}</span>
    <span style="margin-left:auto" class="isk">${fmtM(x.topf_rest)} ISK</span></div>`;
  const unklarZeile=x=>`<div style="border-top:1px solid var(--line);padding:8px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline">
-   <span>"${esc(x.jobname)}"</span><span class="sub" style="font-size:11px">${esc(x.ersteller)}${x.endet?' · '+(en?'until':'bis')+' '+esc(x.endet):''}</span>
+   <span>"${esc(x.jobname)}"</span><span class="sub" style="font-size:11px">${esc(x.ersteller)}${x.endet?' · '+(en?'until':'bis')+' '+esc(x.endet):''}${ortTxt(x)}</span>
    <span style="margin-left:auto" class="isk">${fmtM(x.topf_rest)} ISK ${en?'left in the pool':'im Topf'}</span>
    <span class="sub" style="font-size:11px;flex-basis:100%">${en?'no calculation, reason':'keine Rechnung, Grund'}: ${esc(x.grund||'?')}</span></div>`;
  $('#grid').innerHTML=`
@@ -16532,6 +16636,9 @@ function renderJobs(j){
   <div class="sect" style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><span>💼 ${en?'Job board':'Job-Börse'}</span>
    <span class="sub" style="font-size:11px">${j.gesamt} ${en?'jobs on the public list':'Aufträge auf der öffentlichen Liste'}</span>
    <span class="sub" style="font-size:11px;margin-left:auto">${en?'as of':'Stand'} ${stand}, ${en?'refreshed every':'neu geholt alle'} ${j.takt_min} min</span></div>
+  <div class="sub" style="font-size:11px;margin-bottom:6px">${en
+    ?`Locations: shown only when the job text itself names a system${j.standort?', distances from '+esc(j.standort):''}. Which jobs you can actually accept is decided by the game alone: the in-game window lists only jobs broadcast from corporation offices within 5 jumps, and office locations are not public. Measured on this list: about 1 job in 7 names its system.`
+    :`Orte: nur wenn der Auftragstext selbst ein System nennt${j.standort?', Entfernungen ab '+esc(j.standort):''}. Welche Aufträge du wirklich annehmen kannst, entscheidet allein das Spiel: das Fenster dort zeigt nur Aufträge aus Corp-Büros in höchstens 5 Sprüngen, und Bürostandorte sind nicht öffentlich. An dieser Liste gemessen: etwa jeder siebte Auftrag nennt sein System.`}</div>
   ${j.details_offen?`<div class="sub" style="font-size:11px;margin-bottom:6px">${en?'Details for':'Details zu'} ${j.details_offen} ${en?'jobs are still being fetched, the lists below fill up over the next refreshes.':'Aufträgen werden noch geholt, die Listen unten füllen sich mit den nächsten Abfragen.'}</div>`:''}
   ${j.abgeschnitten?`<div class="sub" style="font-size:11px;margin-bottom:6px;color:var(--gold)">${en?'The public list is longer than Canary fetches (safety cap reached). What you see is incomplete.':'Die öffentliche Liste ist länger als Canary holt (Sicherheitsdeckel erreicht). Was hier steht, ist unvollständig.'}</div>`:''}
   ${j.meine.length?`
