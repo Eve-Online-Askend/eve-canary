@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.28.2"
+VERSION = "2.29.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -11014,27 +11014,34 @@ def query_jobs():
     # Mio je Einheit, das Zehntausendfache) sind bekannte Fallen oder tragen
     # Sonderbedingungen, die nur das Auftragsfenster im Spiel nennt. Sie
     # fliegen nicht raus, sie stehen in einer eigenen Warnliste.
+    # EINE Liste je Erzsorte, zum Aufklappen (Wunsch des Users, die flachen
+    # Abschnitte waren zu unuebersichtlich). Jede Gruppe traegt ALLE ihre
+    # Auftraege im Detail. Unplausible Saetze (ueber dem 20-fachen Marktpreis,
+    # bekanntes Fallen-Muster) fliegen nicht mehr in eine eigene Liste,
+    # sondern stehen markiert in der Detail-Ansicht ihrer Sorte und zaehlen
+    # nie als bester Satz.
     leere = 0
     gruppen = {}
-    warnung = []
     for x in volle:
         if x["topf_rest"] <= 0:
             leere += 1          # leerer Topf: da ist nichts mehr zu holen
             continue
-        if x["markt"] and x["satz"] > 20 * x["markt"]:
-            warnung.append(x)
-            continue
+        x["warn"] = bool(x["markt"] and x["satz"] > 20 * x["markt"])
         gruppen.setdefault(x["erz"], []).append(x)
     meine, andere = [], []
     for erz, js in gruppen.items():
-        best = max(js, key=lambda x: x["satz"])
+        js.sort(key=lambda x: (x["warn"], -x["satz"]))   # Warnungen ans Ende
+        plaus = [x for x in js if not x["warn"]]
+        best = plaus[0] if plaus else js[0]
         zeile = dict(best)
+        zeile["nur_warn"] = not plaus
         zeile["anzahl"] = len(js)
         zeile["topf_gesamt"] = round(sum(x["topf_rest"] for x in js))
+        zeile["jobs"] = js
         (meine if zeile["schnitt_einheiten"] > 0 else andere).append(zeile)
     meine.sort(key=lambda x: -x["schnitt_isk"])
-    andere.sort(key=lambda x: -x["topf_gesamt"])
-    warnung.sort(key=lambda x: -(x["satz"] / x["markt"] if x["markt"] else 0))
+    # Die uebrigen Sorten alphabetisch: der User will nach Erz suchen koennen.
+    andere.sort(key=lambda x: x["erz"])
     schlichte.sort(key=lambda x: -x["topf_rest"])
     return {"stand": int(jobboerse.fetched), "takt_min": JOBS_TAKT // 60,
             "aktive_tage": aktive_tage, "region": region,
@@ -11043,15 +11050,14 @@ def query_jobs():
             "gesamt": len(jobboerse.jobs),
             "details_offen": jobboerse.details_offen,
             "abgeschnitten": jobboerse.abgeschnitten,
-            "meine": meine,
-            "andere": andere[:12], "andere_mehr": max(0, len(andere) - 12),
-            "warnung": warnung[:8], "warnung_mehr": max(0, len(warnung) - 8),
+            "meine": meine, "andere": andere,
             "leere": leere,
             "unklar": schlichte[:15], "unklar_mehr": max(0, len(schlichte) - 15),
             "sonstige": sonstige,
             # Mehr als drei Auftraege gleichzeitig gibt das Spiel ohne den
             # Skill Freelancing nicht her, deshalb ist DAS die ehrliche Summe.
-            "top3": sum(x["schnitt_isk"] for x in meine[:3])}
+            "top3": sum(x["schnitt_isk"] for x in meine[:3]
+                        if not x.get("nur_warn"))}
 
 
 # ---------------------------------------------------------------- HTTP
@@ -16582,8 +16588,16 @@ function renderMissions(d){
                              :(en2?'Server not reachable':'Server nicht erreichbar');
  });
 }
+// Aufklapp-Zustand der Job-Boerse ueberlebt den 2-Sekunden-Neuaufbau und den
+// Neustart: ohne das schnappte jede geoeffnete Erzsorte beim naechsten Tick zu.
+let jobsAuf=new Set(JSON.parse(localStorage.getItem('jobsauf')||'[]'));
+let lastJobs=null;
+function jobsToggle(k){
+ if(jobsAuf.has(k))jobsAuf.delete(k);else jobsAuf.add(k);
+ localStorage.setItem('jobsauf',JSON.stringify([...jobsAuf]));
+ if(lastJobs)renderJobs(lastJobs);
+}
 function renderJobs(j){
- // Keine Eingabefelder in dieser Ansicht, deshalb kein Tipp-Schutz noetig.
  const en=lang==='en';
  if(!j||!j.stand){
   $('#grid').innerHTML=`<div class="card" style="grid-column:1/-1"><div class="sect">💼 ${en?'Job board':'Job-Börse'}</div>
@@ -16593,63 +16607,60 @@ function renderJobs(j){
   return;
  }
  const stand=new Date(j.stand*1000).toLocaleTimeString().slice(0,5);
- const ortTxt=x=>x.ort
-   ?` · ${en?'location per job text':'Ort laut Auftragstext'}: <b>${esc(x.ort)}</b>${x.spruenge!=null?` (${x.spruenge} ${en?'jumps':'Sprünge'})`:''}`
-   :` · ${en?'no location named in the text':'Ort im Text nicht genannt'}`;
- const zeile=x=>{
+ const nf=v=>v.toLocaleString(undefined,{maximumFractionDigits:2});
+ const ortKurz=x=>x.ort
+   ?`${esc(x.ort)}${x.spruenge!=null?' ('+x.spruenge+' '+(en?'jumps':'Sprünge')+')':''}`
+   :(en?'no location in the text':'Ort im Text nicht genannt');
+ const detail=x=>{
   const pct=x.markt?Math.round(100*x.satz/x.markt):null;
   const topfPct=x.topf_init?Math.max(0,Math.min(100,Math.round(100*x.topf_rest/x.topf_init))):0;
-  const topfTxt=x.leerung_tag
-    ?(en?`pool ${topfPct}% full, drains ~${fmtM(x.leerung_tag)}/day, lasts ~${x.reicht_tage} days`
-        :`Topf ${topfPct}% voll, leert sich ~${fmtM(x.leerung_tag)}/Tag, reicht ~${x.reicht_tage} Tage`)
-    :(en?`pool ${topfPct}% full, drain still being watched`
-        :`Topf ${topfPct}% voll, Leerung wird noch beobachtet`);
-  return `<div style="border-top:1px solid var(--line);padding:10px 0;display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.1fr);gap:8px;align-items:center">
-   <div><b>${esc(x.erz)}</b>${x.anzahl>1?` <span class="sub" style="font-size:11px">${x.anzahl} ${en?'jobs, together':'Aufträge, zusammen'} ${fmtM(x.topf_gesamt)} ISK</span>`:''}
-    <div class="sub" style="font-size:11px">${en?'best job':'bester Auftrag'}: "${esc(x.jobname)}" · ${esc(x.ersteller)}${x.endet?' · '+(en?'until':'bis')+' '+esc(x.endet):''}${ortTxt(x)}</div></div>
-   <div><div>${x.satz.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})} ${en?'ISK per unit':'ISK je Einheit'}</div>
-    <div class="sub" style="font-size:11px;color:var(--grn,#3ddc84)">${x.markt?`+${pct}% ${en?'on the market price':'auf den Marktpreis'} (${x.markt.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})})`:(en?'market price missing':'Marktpreis fehlt noch')}</div></div>
-   <div style="text-align:right">
-    <div class="isk"><b>${x.schnitt_isk?'+'+fmtM(x.schnitt_isk)+' '+(en?'ISK per mining day':'ISK je Mining-Tag'):(en?'you have not mined this ore in 30 days':'diese Sorte hast du in 30 Tagen nicht gefördert')}</b></div>
-    ${x.live_isk_h?`<div class="sub" style="font-size:11px;color:var(--cyan)">${en?'right now':'gerade am Werk'}: +${fmtM(x.live_isk_h)} ISK/h</div>`:''}
-    <div class="sub" style="font-size:11px">${topfTxt}</div>
-    <div style="background:var(--line);border-radius:3px;height:4px;margin-top:4px"><div style="background:var(--cyan);width:${topfPct}%;height:4px;border-radius:3px"></div></div>
-   </div></div>`;
+  return `<div class="sub" style="font-size:12px;padding:5px 0 5px 22px;border-top:1px dashed var(--line);display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline">
+   ${x.warn?`<span style="color:var(--gold)">⚠ ${en?'rate above 20 times market, often a trap or special terms':'Satz über dem 20-fachen Marktpreis, oft Falle oder Sonderbedingungen'}</span>`:''}
+   <span><b>${nf(x.satz)}</b> ${en?'ISK per unit':'ISK je Einheit'}${(pct&&!x.warn)?` <span style="color:var(--grn,#3ddc84)">(+${pct}%)</span>`:''}</span>
+   <span>${en?'pool':'Topf'} <b class="isk">${fmtM(x.topf_rest)}</b> (${topfPct}%)${x.reicht_tage!=null?`, ${en?'lasts ~':'reicht ~'}${x.reicht_tage} ${en?'days':'Tage'}`:''}</span>
+   <span>📍 ${ortKurz(x)}</span>
+   <span style="margin-left:auto">"${esc(x.jobname)}" · ${esc(x.ersteller)}${x.endet?' · '+(en?'until':'bis')+' '+esc(x.endet):''}</span>
+  </div>`;
  };
- const kompakt=x=>{
-  const pct=x.markt?Math.round(100*x.satz/x.markt):null;
-  return `<div style="border-top:1px solid var(--line);padding:6px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline">
+ const kopf=(x,rechts)=>{
+  const offen=jobsAuf.has(x.erz);
+  const pct=(x.markt&&!x.nur_warn)?Math.round(100*x.satz/x.markt):null;
+  return `<div class="jobkopf" data-erz="${esc(x.erz)}" style="cursor:pointer;border-top:1px solid var(--line);padding:9px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline">
+   <span style="width:14px;display:inline-block;color:var(--dim)">${offen?'▾':'▸'}</span>
    <b>${esc(x.erz)}</b>
-   <span class="sub" style="font-size:11px">${x.anzahl} ${en?'job(s)':'Auftrag/Aufträge'} · ${en?'best rate':'bester Satz'} ${x.satz.toLocaleString(undefined,{maximumFractionDigits:2})} ${en?'ISK per unit':'ISK je Einheit'}${pct?` (+${pct}%)`:''}${x.ort?` · ${esc(x.ort)}${x.spruenge!=null?' ('+x.spruenge+' '+(en?'jumps':'Spr.')+')':''}`:''}</span>
-   <span style="margin-left:auto" class="isk">${fmtM(x.topf_gesamt)} ISK ${en?'in pools':'in Töpfen'}</span></div>`;
+   <span class="sub" style="font-size:11px">${x.anzahl} ${en?'job(s)':'Auftrag/Aufträge'} · ${en?'best rate':'bester Satz'} ${nf(x.satz)} ${en?'ISK per unit':'ISK je Einheit'}${pct?` <span style="color:var(--grn,#3ddc84)">(+${pct}%)</span>`:''}${x.nur_warn?' <span style="color:var(--gold)">⚠</span>':''}${x.live_isk_h?` · <span style="color:var(--cyan)">${en?'right now':'gerade'}: +${fmtM(x.live_isk_h)} ISK/h</span>`:''}</span>
+   <span style="margin-left:auto">${rechts}</span>
+  </div>${offen?x.jobs.map(detail).join(''):''}`;
  };
- const warnZeile=x=>`<div style="border-top:1px solid var(--line);padding:6px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline">
-   <b>${esc(x.erz)}</b><span class="sub" style="font-size:11px">"${esc(x.jobname)}"</span>
-   <span class="sub" style="font-size:11px">${x.satz.toLocaleString(undefined,{maximumFractionDigits:0})} ${en?'ISK per unit at a market price of':'ISK je Einheit bei Marktpreis'} ${x.markt.toLocaleString(undefined,{maximumFractionDigits:2})}</span>
-   <span style="margin-left:auto" class="isk">${fmtM(x.topf_rest)} ISK</span></div>`;
- const unklarZeile=x=>`<div style="border-top:1px solid var(--line);padding:8px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:baseline">
-   <span>"${esc(x.jobname)}"</span><span class="sub" style="font-size:11px">${esc(x.ersteller)}${x.endet?' · '+(en?'until':'bis')+' '+esc(x.endet):''}${ortTxt(x)}</span>
-   <span style="margin-left:auto" class="isk">${fmtM(x.topf_rest)} ISK ${en?'left in the pool':'im Topf'}</span>
-   <span class="sub" style="font-size:11px;flex-basis:100%">${en?'no calculation, reason':'keine Rechnung, Grund'}: ${esc(x.grund||'?')}</span></div>`;
+ const unklarZeile=x=>`<div class="sub" style="font-size:12px;padding:5px 0 5px 22px;border-top:1px dashed var(--line);display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline">
+   <span>"${esc(x.jobname)}"</span>
+   <span>${esc(x.ersteller)}${x.endet?' · '+(en?'until':'bis')+' '+esc(x.endet):''}</span>
+   <span>📍 ${ortKurz(x)}</span>
+   <span class="isk">${fmtM(x.topf_rest)} ISK</span>
+   <span style="margin-left:auto">${esc(x.grund||'?')}</span>
+  </div>`;
+ const unklarOffen=jobsAuf.has('#unklar');
  $('#grid').innerHTML=`
  <div class="card" style="grid-column:1/-1">
   <div class="sect" style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><span>💼 ${en?'Job board':'Job-Börse'}</span>
-   <span class="sub" style="font-size:11px">${j.gesamt} ${en?'jobs on the public list':'Aufträge auf der öffentlichen Liste'}</span>
+   <span class="sub" style="font-size:11px">${j.gesamt} ${en?'jobs on the public list':'Aufträge auf der öffentlichen Liste'} · ${en?'click an ore to see its jobs':'Erzsorte anklicken zeigt die einzelnen Aufträge'}</span>
    <span class="sub" style="font-size:11px;margin-left:auto">${en?'as of':'Stand'} ${stand}, ${en?'refreshed every':'neu geholt alle'} ${j.takt_min} min</span></div>
   <div class="sub" style="font-size:11px;margin-bottom:6px">${en
-    ?`Locations: shown only when the job text itself names a system${j.standort?', distances from '+esc(j.standort):''}. Which jobs you can actually accept is decided by the game alone: the in-game window lists only jobs broadcast from corporation offices within 5 jumps, and office locations are not public. Measured on this list: about 1 job in 7 names its system.`
-    :`Orte: nur wenn der Auftragstext selbst ein System nennt${j.standort?', Entfernungen ab '+esc(j.standort):''}. Welche Aufträge du wirklich annehmen kannst, entscheidet allein das Spiel: das Fenster dort zeigt nur Aufträge aus Corp-Büros in höchstens 5 Sprüngen, und Bürostandorte sind nicht öffentlich. An dieser Liste gemessen: etwa jeder siebte Auftrag nennt sein System.`}</div>
-  ${j.details_offen?`<div class="sub" style="font-size:11px;margin-bottom:6px">${en?'Details for':'Details zu'} ${j.details_offen} ${en?'jobs are still being fetched, the lists below fill up over the next refreshes.':'Aufträgen werden noch geholt, die Listen unten füllen sich mit den nächsten Abfragen.'}</div>`:''}
-  ${j.abgeschnitten?`<div class="sub" style="font-size:11px;margin-bottom:6px;color:var(--gold)">${en?'The public list is longer than Canary fetches (safety cap reached). What you see is incomplete.':'Die öffentliche Liste ist länger als Canary holt (Sicherheitsdeckel erreicht). Was hier steht, ist unvollständig.'}</div>`:''}
-  ${j.meine.length?`
-   <div class="sub" style="margin-bottom:2px"><b>${en?'For the ore you mine':'Für dein Erz'}</b></div>
-   ${j.top3?`<div style="color:var(--gold);font-size:13px;margin-bottom:6px">${en?'Your best 3 jobs together':'Deine besten 3 Aufträge zusammen'}: <b>+${fmtM(j.top3)} ${en?'ISK per mining day':'ISK je Mining-Tag'}</b> <span class="sub" style="font-size:11px">(${en?'more than 3 at once needs the Freelancing skill · average of your last':'mehr als 3 gleichzeitig braucht den Skill Freelancing · Schnitt aus deinen letzten'} ${j.aktive_tage} ${en?'mining days':'Mining-Tagen'})</span></div>`:''}
-   ${j.meine.map(zeile).join('')}`
+    ?`Locations only when the job text itself names a system${j.standort?', distances from '+esc(j.standort):''}. Which jobs you can actually accept is decided by the game alone: its window lists only jobs broadcast from corporation offices within 5 jumps, and office locations are not public.`
+    :`Orte nur, wenn der Auftragstext selbst ein System nennt${j.standort?', Entfernungen ab '+esc(j.standort):''}. Welche Aufträge du wirklich annehmen kannst, entscheidet allein das Spiel: sein Fenster zeigt nur Aufträge aus Corp-Büros in höchstens 5 Sprüngen, und Bürostandorte sind nicht öffentlich.`}</div>
+  ${j.details_offen?`<div class="sub" style="font-size:11px;margin-bottom:6px">${en?'Details for':'Details zu'} ${j.details_offen} ${en?'jobs are still being fetched, rows complete over the next refreshes.':'Aufträgen werden noch geholt, die Zeilen vervollständigen sich mit den nächsten Abfragen.'}</div>`:''}
+  ${j.abgeschnitten?`<div class="sub" style="font-size:11px;margin-bottom:6px;color:var(--gold)">${en?'The public list is longer than Canary fetches (safety cap reached).':'Die öffentliche Liste ist länger als Canary holt (Sicherheitsdeckel erreicht).'}</div>`:''}
+  <div class="sub" style="margin-top:4px"><b>${en?'For the ore you mine':'Für dein Erz'}</b></div>
+  ${j.top3?`<div style="color:var(--gold);font-size:13px;margin-bottom:4px">${en?'Your best 3 jobs together':'Deine besten 3 Aufträge zusammen'}: <b>+${fmtM(j.top3)} ${en?'ISK per mining day':'ISK je Mining-Tag'}</b> <span class="sub" style="font-size:11px">(${en?'more than 3 at once needs the Freelancing skill · average of your last':'mehr als 3 gleichzeitig braucht den Skill Freelancing · Schnitt aus deinen letzten'} ${j.aktive_tage} ${en?'mining days':'Mining-Tagen'})</span></div>`:''}
+  ${j.meine.length?j.meine.map(x=>kopf(x,`<b class="isk">+${fmtM(x.schnitt_isk)} ${en?'ISK per mining day':'ISK je Mining-Tag'}</b>`)).join('')
    :`<div class="sub">${en?'No job for an ore you mined in the last 30 days.':'Kein Auftrag für ein Erz, das du in den letzten 30 Tagen gefördert hast.'}</div>`}
-  ${j.andere.length?`<div class="sub" style="margin-top:12px"><b>${en?'Ore you do not mine':'Erze, die du nicht förderst'}</b> <span style="font-size:11px">(${en?'largest pools first':'größte Töpfe zuerst'})</span></div>${j.andere.map(kompakt).join('')}${j.andere_mehr?`<div class="sub" style="font-size:11px;padding-top:4px">+ ${j.andere_mehr} ${en?'more ore types with smaller pools':'weitere Erzsorten mit kleineren Töpfen'}</div>`:''}`:''}
-  ${j.warnung.length?`<div class="sub" style="margin-top:12px"><b style="color:var(--gold)">⚠ ${en?'Rates far above market price':'Sätze weit über dem Marktpreis'}</b> <span style="font-size:11px">${en?'often traps or special conditions, the job window in game decides':'oft Fallen oder Sonderbedingungen, das Auftragsfenster im Spiel entscheidet'}</span></div>${j.warnung.map(warnZeile).join('')}${j.warnung_mehr?`<div class="sub" style="font-size:11px;padding-top:4px">+ ${j.warnung_mehr} ${en?'more':'weitere'}</div>`:''}`:''}
-  ${j.unklar.length?`<div class="sub" style="margin-top:10px"><b>${en?'Industry jobs without a clear ore type':'Industrie-Aufträge ohne eindeutige Erzsorte'}</b> <span style="font-size:11px">(${en?'largest pools first':'größte Töpfe zuerst'})</span></div>${j.unklar.map(unklarZeile).join('')}${j.unklar_mehr?`<div class="sub" style="font-size:11px;padding-top:6px">+ ${j.unklar_mehr} ${en?'more industry jobs with smaller pools':'weitere Industrie-Aufträge mit kleineren Töpfen'}</div>`:''}`:''}
-  ${(j.sonstige||j.leere)?`<div class="sub" style="border-top:1px solid var(--line);margin-top:10px;padding-top:8px;font-size:11px">${j.sonstige?j.sonstige+' '+(en?'jobs without ore relation are not shown.':'Aufträge ohne Erz-Bezug werden nicht gezeigt.'):''} ${j.leere?j.leere+' '+(en?'ore jobs have an empty pool, there is nothing left to earn.':'Erz-Aufträge haben einen leeren Topf, da ist nichts mehr zu holen.'):''}</div>`:''}
+  ${j.andere.length?`<div class="sub" style="margin-top:14px"><b>${en?'Other ore types':'Weitere Erzsorten'}</b> <span style="font-size:11px">(${en?'A to Z':'A bis Z'})</span></div>${j.andere.map(x=>kopf(x,`<span class="isk">${fmtM(x.topf_gesamt)} ISK ${en?'in pools':'in Töpfen'}</span>`)).join('')}`:''}
+  ${j.unklar.length?`<div class="jobkopf" data-erz="#unklar" style="cursor:pointer;border-top:1px solid var(--line);margin-top:14px;padding:9px 0;display:flex;gap:8px;align-items:baseline">
+    <span style="width:14px;display:inline-block;color:var(--dim)">${unklarOffen?'▾':'▸'}</span>
+    <b>${en?'Jobs without a clear ore type':'Aufträge ohne eindeutige Erzsorte'}</b>
+    <span class="sub" style="font-size:11px">${j.unklar.length}${j.unklar_mehr?'+'+j.unklar_mehr:''} ${en?'industry jobs, largest pools first':'Industrie-Aufträge, größte Töpfe zuerst'}</span>
+   </div>${unklarOffen?j.unklar.map(unklarZeile).join('')+(j.unklar_mehr?`<div class="sub" style="font-size:11px;padding:4px 0 0 22px">+ ${j.unklar_mehr} ${en?'more with smaller pools':'weitere mit kleineren Töpfen'}</div>`:''):''}`:''}
+  ${(j.sonstige||j.leere)?`<div class="sub" style="border-top:1px solid var(--line);margin-top:10px;padding-top:8px;font-size:11px">${j.sonstige?j.sonstige+' '+(en?'jobs without ore relation are not shown.':'Aufträge ohne Erz-Bezug werden nicht gezeigt.'):''} ${j.leere?j.leere+' '+(en?'ore jobs have an empty pool.':'Erz-Aufträge haben einen leeren Topf.'):''}</div>`:''}
  </div>
  <div class="card" style="grid-column:1/-1">
   <div class="sect">${en?'How to take a job in EVE':'So nimmst du einen Auftrag in EVE an'}</div>
@@ -16661,6 +16672,7 @@ function renderJobs(j){
    5. ${en?'Collect the ISK in the Rewards tab of the same window.':'Die ISK holst du im selben Fenster im Reiter Belohnungen (Rewards) ab.'}
   </div>
  </div>`;
+ document.querySelectorAll('.jobkopf').forEach(k=>k.onclick=()=>jobsToggle(k.dataset.erz));
 }
 function renderRechner(){
  if(document.getElementById('calcBox'))return;
@@ -17835,7 +17847,7 @@ async function tick(){
    else if(view==='profil')renderProfiles(d.profiles);
    else if(view==='wallet')renderWallet(d.wallet);
    else if(view==='rechner')renderRechner();
-   else if(view==='jobs')renderJobs(d.jobs);
+   else if(view==='jobs'){lastJobs=d.jobs;renderJobs(d.jobs);}
    else if(view==='beute')renderBeute();
    else renderTotal(d.total);
   }

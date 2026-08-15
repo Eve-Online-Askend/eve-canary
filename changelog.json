@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.29.0",
+  "d": "2026-08-15",
+  "de": [
+   "JOB-BOERSE AUFGERAEUMT, nach direktem Nutzer-Feedback (zu unuebersichtlich): jetzt EINE Liste je Erzsorte zum AUFKLAPPEN. Die Kopfzeile zeigt Anzahl, besten Satz und Topf-Summe, ein Klick oeffnet alle Auftraege der Sorte einzeln, mit Satz, Topf-Fuellstand, Ort laut Auftragstext samt Sprungentfernung, Ersteller-Corp und Ablaufdatum. Der Aufklapp-Zustand uebersteht die 2-Sekunden-Aktualisierung und den Neustart.",
+   "Deine eigenen Erzsorten stehen oben (sortiert nach dem, was sie dir braechten), die uebrigen alphabetisch darunter. Auftraege mit Saetzen ueber dem 20-fachen Marktpreis stehen nicht mehr in einer eigenen Warnliste, sondern markiert am Ende ihrer Sorte, wo man sie beim Vergleichen sieht.",
+   "Auftraege ohne eindeutige Erzsorte sind jetzt ebenfalls zum Aufklappen statt immer sichtbar. So bleibt die Seite kurz, ohne etwas zu verstecken."
+  ],
+  "en": [
+   "JOB BOARD DECLUTTERED after direct user feedback (too messy): now ONE row per ore type, EXPANDABLE. The header shows count, best rate and pool total, one click opens every job of that ore individually, with rate, pool fill, location per job text including jump distance, creator corporation and expiry date. The expanded state survives the 2 second refresh and restarts.",
+   "Your own ore types sit on top (sorted by what they would earn you), the rest follows alphabetically. Jobs with rates above twenty times market are no longer a separate warning list, they sit flagged at the end of their ore type, right where you compare.",
+   "Jobs without a clear ore type are now expandable too instead of always visible. The page stays short without hiding anything."
+  ]
+ },
+ {
   "v": "2.28.2",
   "d": "2026-08-15",
   "de": [
