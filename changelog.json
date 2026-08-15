@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.34.1",
+  "d": "2026-08-15",
+  "de": [
+   "KILL-ZAEHLER FUNKTIONIERT JETZT BEI JEDEM, nicht nur mit eingeschalteter Blutspur. Der Zaehler aus 2.33/2.34 hing am Killmail-Feed, und der lief nur, wenn die Blutspur aktiv war, bei allen anderen blieb er still. Aufgefallen beim ersten Live-Einsatz auf einem Stream. Jetzt gilt: laeuft mindestens ein Charakter, holt Canary den Feed auch ohne Blutspur, wertet dann aber AUSSCHLIESSLICH die eigenen Abschuesse und Verluste aus. Kein Rudel-Clustering, keine Karte, nichts wird gespeichert oder gesendet, nur empfangen. Ohne aktive Charaktere bleibt die Installation still wie bisher.",
+   "Zur Einordnung fuer Streamer: der Zaehler beginnt ab dem Start der neuen Version zu zaehlen, rueckwirkend liefert der Feed nichts nach."
+  ],
+  "en": [
+   "THE KILL COUNTER NOW WORKS FOR EVERYONE, not only with Blood Trail enabled. The counter from 2.33/2.34 relied on the killmail feed, which only ran with Blood Trail active, staying silent for everyone else. Spotted during its first live use on a stream. Now: while at least one character is playing, Canary polls the feed even without Blood Trail, but then evaluates ONLY your own kills and losses. No pack clustering, no map, nothing stored or sent, receive only. With no active characters the install stays quiet as before.",
+   "For streamers: the counter starts counting from the moment the new version runs, the feed does not backfill."
+  ]
+ },
+ {
   "v": "2.34.0",
   "d": "2026-08-15",
   "de": [

@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.34.0"
+VERSION = "2.34.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -7521,7 +7521,27 @@ class PackIntel(threading.Thread):
             try:
                 if not self.enabled():
                     self.mode = "aus"
-                    time.sleep(20)
+                    # NUR-EIGENE-KILLS-Betrieb (15.08.2026, Entscheidung von
+                    # Askend): der Kill-Zaehler im OBS-Overlay haengt am
+                    # Killmail-Feed, und der lief bisher NUR mit Blutspur.
+                    # Bei jedem Nutzer ohne Blutspur blieb der Zaehler damit
+                    # fuer immer leer, genau so beim ersten Streamer-Test
+                    # aufgefallen. Jetzt: laeuft mindestens eine Session,
+                    # wird der Feed gepollt, aber AUSSCHLIESSLICH fuer
+                    # _eigener_kill. Kein Clustering, keine Karte, keine
+                    # Datenbank-Kills, kein zKill-Rueckfall. Ohne aktive
+                    # Charaktere bleibt die Installation still.
+                    if ingest.sessions:
+                        try:
+                            data = self._get(KMSTREAM + self._queue(), timeout=70)
+                            for km in (data if isinstance(data, list) else []):
+                                kid = km.get("killmail_id")
+                                if kid and kid not in self._seen:
+                                    self._eigener_kill(km, kid)
+                        except Exception:
+                            time.sleep(30)
+                    else:
+                        time.sleep(20)
                     continue
                 if not self.sysrow or any(v[1] is None for v in self.sysrow.values()):
                     self.mode = "laden"
