@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.24.0",
+  "d": "2026-08-15",
+  "de": [
+   "DIE INSTALLIERTE VERSION STEHT JETZT IMMER IN DER KOPFZEILE, direkt unter dem Namen, mit einem Wort dazu, ob sie aktuell ist. Gefragt hat danach Vile Gangster: bisher stand sie nur im Optionen-Dialog, und die Frage „bin ich auf dem aktuellen Stand“ war eine Klickstrecke weit weg.",
+   "Drei Zustaende, und der dritte ist der eigentliche Punkt: „aktuell“ in Gruen mit dem Alter der letzten Pruefung, „Update auf v...“ in Gold und anklickbar, oder „noch nicht geprueft“. Bisher liess sich „keine neue Version gefunden“ nicht von „konnte nicht nachsehen“ unterscheiden. Die Kopfzeile haette also „aktuell“ behauptet, obwohl seit Stunden niemand nachgesehen hat.",
+   "Canary sieht wie bisher alle 15 Minuten nach. Neu ist nur, dass der Zeitpunkt der letzten ERFOLGREICHEN Abfrage mitgefuehrt und angezeigt wird."
+  ],
+  "en": [
+   "THE INSTALLED VERSION IS NOW ALWAYS IN THE HEADER, right under the name, with a word on whether it is current. Vile Gangster asked for it: until now it only lived in the options dialog, and the question “am I up to date” was several clicks away.",
+   "Three states, and the third one is the actual point: “up to date” in green with the age of the last check, “update to v...” in gold and clickable, or “not checked yet”. Until now “no newer version found” could not be told apart from “could not look”. The header would have claimed “up to date” even though nobody had looked for hours.",
+   "Canary still checks every 15 minutes. What is new is that the time of the last SUCCESSFUL check is kept and shown."
+  ]
+ },
+ {
   "v": "2.23.0",
   "d": "2026-08-14",
   "de": [

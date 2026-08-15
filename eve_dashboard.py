@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.23.0"
+VERSION = "2.24.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -2318,7 +2318,11 @@ def set_autostart(on):
                      "Terminal=false\nX-GNOME-Autostart-enabled=true\n", encoding="utf-8")
 
 
-UPDATE_INFO = {"ts": 0, "available": False, "latest": None}
+# "geprueft" ist der Zeitpunkt der letzten ERFOLGREICHEN Abfrage. Ohne ihn
+# waere "keine neue Version" nicht von "konnte nicht nachsehen" zu
+# unterscheiden, und die Anzeige in der Kopfzeile wuerde "aktuell" behaupten,
+# obwohl seit Stunden niemand nachgesehen hat. Gewuenscht von Vile Gangster.
+UPDATE_INFO = {"ts": 0, "available": False, "latest": None, "geprueft": 0}
 
 
 def refresh_update_info():
@@ -2332,6 +2336,7 @@ def refresh_update_info():
     if chk.get("ok"):
         UPDATE_INFO["available"] = bool(chk.get("available"))
         UPDATE_INFO["latest"] = chk.get("latest")
+        UPDATE_INFO["geprueft"] = time.time()
 
 
 # Letzter Versuch eines selbsttaetigen Updates. Schuetzt davor, nach einem
@@ -9042,7 +9047,8 @@ def state_info():
             "errors": [{"code": e["code"], "n": e["n"], "ts": int(e["ts"]),
                         "help": ERROR_HELP.get(e["code"], "")} for e in list(ERRORS)[-10:]],
             "update": {"available": UPDATE_INFO["available"],
-                       "latest": UPDATE_INFO["latest"]},
+                       "latest": UPDATE_INFO["latest"],
+                       "geprueft": int(UPDATE_INFO["geprueft"] or 0)},
             "version": VERSION,
             # Handgesetzte Stoppuhr. Dashboard und Overlay lesen denselben
             # Wert, damit im Stream nicht zwei verschiedene Zeiten stehen.
@@ -11288,6 +11294,18 @@ html[data-fs="3"] body{zoom:1.3}
 header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
 h1{font-size:14px;font-weight:600;letter-spacing:2px;color:var(--dim)}
 h1 b{color:var(--cyan)}
+/* Titel und Versionsangabe stehen untereinander, alles andere bleibt in der
+   Reihe daneben. Vorher stand die installierte Version nur im Optionen-Dialog,
+   und die Frage "bin ich auf dem aktuellen Stand" war eine Klickstrecke weit
+   weg. Gewuenscht von Vile Gangster. */
+.titelblock{display:flex;flex-direction:column;gap:1px}
+.verchip{font-size:10px;letter-spacing:.6px;color:var(--dim);white-space:nowrap;
+ display:inline-flex;align-items:center;gap:5px;cursor:default}
+.verchip b{font-weight:700;letter-spacing:.4px}
+.verchip .zustand{font-weight:600}
+.verchip .aktuell{color:var(--green)}
+.verchip .neu{color:var(--gold);cursor:pointer;text-decoration:underline}
+.verchip .unklar{color:var(--dim)}
 .byline{font-size:10px;color:var(--dim);letter-spacing:1.6px;font-weight:400;text-transform:uppercase;opacity:.8}
 /* ---------- Boot-Screen beim Erst-Einlesen */
 #boot{position:fixed;inset:0;z-index:2000;background:var(--bg);display:flex;
@@ -12222,7 +12240,8 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  </div>
 </div>
 <header>
- <h1><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAFJklEQVR42u1We0xTZxSvwfmcm24uJoKD8bpFxa5Mngpth21vmdlA3RJdtiy6uMzFseHcPz5QE4dm6BS0IM/qQB5qgWKhKmLpXCh94CQBy6MI9HVvyxtB58bOvnsRRFnCY+hfnOSX795z7/1+v3POd24OgzFjMzYJE6kal+E64ltcTxaItLZrCAqRDgFd49XIpyei+cqGZdNPXNG0VKQnkxBxkUhr3cyX6xc9/w7lw7XWTaJqskioI5Ijbje/NS3kuMYSjlfblUK1af1Ev4moMoegjChxrYX//8h1tk+EevKyUFm/8Nkncxim/JDPuku4Z7tKuAc65LydjmLeR7ZCbmB9bvg8+tvyuoX4H456kcbiPSVyocYSKkR15eWqZo/2381Yt9B2Ofh8e0Ew9MjXw8AN3hCuD629Cm4tIQtn4VXmKCR+79Qiv2VYJNCTKqGq6fXRfuPFYF9SGlznkAYAkcuGWjEGdxIxaMxkge1SAPSWhEFfSSh0SP0fGjPWCKaceoGOPIIy8OFoX3Om73Zr1poBs4QJpjQvqI53hbJYZxp5P7j+Jt2HyW/GLv+nSexBP7cnRajtcdFukybnybTzhXqiHNv+NHu6UyuXtqZ6PzKleUMb2tycxYL7v7LBKGFBbYI77NnK3r1REBZ1I3YFefuoCxAJLBiM/hT+PrLr4cP4mLiWuJgFk6i9NUqgJaJH+5qSsRhTOiJP9wJDEgb91zgj6CoMgIZkrLUmkakzZ3hB2xkm9O7+AHq+iIQ/v9wCg7u3waP9X0nL9+ycNbH068nTfJXRZ/j+u0hPRksqdo+KXHP8begsCqGJB4ZFXOeguq+HbiSEzFoN5DehYI7kgC2SCxa0mqJ4fc1bNsTf3bF56cQyoCPkAUdTnIbv68Q+oXT0SEBThi9NTEPBGbnuLw0FRy4LzJneYEpggm1HEHRt43R2fbzhUEPk+29Orv20ttJnDt857AIlwIxgEHtBZ2HwEDmNMOiS+oNVgoElE50NVILKn1bAzYPLQbHPeduYvStNOZMSoDm5anFbGjZgfiKg+ZwHKI+4gCnbD/quhgCZvYqOeghecOeEK5RTnXHQ2Sj+2t1pTHk1VsUEBBDFXIli7iynuQxHQcjp9jw2ipBJR2fO8IbKuBU0iR61Id0RyEfBcMad9lNQ7HfZ9fy+78Ycm4WCG18AX236Xlhev7hdxtnb/6TW/SjV3YWBYM/xBcNZDyg/5EyjAmXjHiJuTvEE5WEX2lcW60Jkx7wzf8y+ykZMoCfEEzoHjiLO54h8kCYvDYOewiDolQ3V/gH609mvIDGXA0fWNslKqEt0h5pf3EB93O3YfwamtUbzq8ybxiUnC0Lx3uKQxx2X3gMCtZU5HYP2fDadhZH+Vzxd++Tr0Fnwpd+l/oDo0CY+v6f/4SQkwHaLW6iZN66Ahgw/L0OSD8uQtJJFrY2pq1l2GZdlL3qKzuIw6bCIjnw/dAYwWogl0wfup2Bj6ixQmzYjAQembUApO7XulW455xKVFavEh85ST1EQ9MiCoCUFMz5Drmx4Q6CzKcMVNQsY02l3JNzZ7VcC8yhyukx5bLokjny/v7J+9J1DvbNR1TgH1xPFAnXb2hcyI/5+gjW7NZVJi7CdX0ULeFDKeVwlDn4toqJxiUhHFONVlogXOqhWnmQ5tab65FIiqFmgp4R7Fb9tdBXpbSpRlSnwpUzLlafYlIicLjSoOGS8rfxb9Z78stpXX+rIXvEz28lycW1azYXwBYwZm7FJ2L/GN0lccEwtAwAAAABJRU5ErkJggg==" alt="" width="22" height="22" style="vertical-align:-4px;margin-right:3px"> EVE <b>CANARY</b> <span class="byline">by Askend</span></h1>
+ <div class="titelblock"><h1><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAFJklEQVR42u1We0xTZxSvwfmcm24uJoKD8bpFxa5Mngpth21vmdlA3RJdtiy6uMzFseHcPz5QE4dm6BS0IM/qQB5qgWKhKmLpXCh94CQBy6MI9HVvyxtB58bOvnsRRFnCY+hfnOSX795z7/1+v3POd24OgzFjMzYJE6kal+E64ltcTxaItLZrCAqRDgFd49XIpyei+cqGZdNPXNG0VKQnkxBxkUhr3cyX6xc9/w7lw7XWTaJqskioI5Ijbje/NS3kuMYSjlfblUK1af1Ev4moMoegjChxrYX//8h1tk+EevKyUFm/8Nkncxim/JDPuku4Z7tKuAc65LydjmLeR7ZCbmB9bvg8+tvyuoX4H456kcbiPSVyocYSKkR15eWqZo/2381Yt9B2Ofh8e0Ew9MjXw8AN3hCuD629Cm4tIQtn4VXmKCR+79Qiv2VYJNCTKqGq6fXRfuPFYF9SGlznkAYAkcuGWjEGdxIxaMxkge1SAPSWhEFfSSh0SP0fGjPWCKaceoGOPIIy8OFoX3Om73Zr1poBs4QJpjQvqI53hbJYZxp5P7j+Jt2HyW/GLv+nSexBP7cnRajtcdFukybnybTzhXqiHNv+NHu6UyuXtqZ6PzKleUMb2tycxYL7v7LBKGFBbYI77NnK3r1REBZ1I3YFefuoCxAJLBiM/hT+PrLr4cP4mLiWuJgFk6i9NUqgJaJH+5qSsRhTOiJP9wJDEgb91zgj6CoMgIZkrLUmkakzZ3hB2xkm9O7+AHq+iIQ/v9wCg7u3waP9X0nL9+ycNbH068nTfJXRZ/j+u0hPRksqdo+KXHP8begsCqGJB4ZFXOeguq+HbiSEzFoN5DehYI7kgC2SCxa0mqJ4fc1bNsTf3bF56cQyoCPkAUdTnIbv68Q+oXT0SEBThi9NTEPBGbnuLw0FRy4LzJneYEpggm1HEHRt43R2fbzhUEPk+29Orv20ttJnDt857AIlwIxgEHtBZ2HwEDmNMOiS+oNVgoElE50NVILKn1bAzYPLQbHPeduYvStNOZMSoDm5anFbGjZgfiKg+ZwHKI+4gCnbD/quhgCZvYqOeghecOeEK5RTnXHQ2Sj+2t1pTHk1VsUEBBDFXIli7iynuQxHQcjp9jw2ipBJR2fO8IbKuBU0iR61Id0RyEfBcMad9lNQ7HfZ9fy+78Ycm4WCG18AX236Xlhev7hdxtnb/6TW/SjV3YWBYM/xBcNZDyg/5EyjAmXjHiJuTvEE5WEX2lcW60Jkx7wzf8y+ykZMoCfEEzoHjiLO54h8kCYvDYOewiDolQ3V/gH609mvIDGXA0fWNslKqEt0h5pf3EB93O3YfwamtUbzq8ybxiUnC0Lx3uKQxx2X3gMCtZU5HYP2fDadhZH+Vzxd++Tr0Fnwpd+l/oDo0CY+v6f/4SQkwHaLW6iZN66Ahgw/L0OSD8uQtJJFrY2pq1l2GZdlL3qKzuIw6bCIjnw/dAYwWogl0wfup2Bj6ixQmzYjAQembUApO7XulW455xKVFavEh85ST1EQ9MiCoCUFMz5Drmx4Q6CzKcMVNQsY02l3JNzZ7VcC8yhyukx5bLokjny/v7J+9J1DvbNR1TgH1xPFAnXb2hcyI/5+gjW7NZVJi7CdX0ULeFDKeVwlDn4toqJxiUhHFONVlogXOqhWnmQ5tab65FIiqFmgp4R7Fb9tdBXpbSpRlSnwpUzLlafYlIicLjSoOGS8rfxb9Z78stpXX+rIXvEz28lycW1azYXwBYwZm7FJ2L/GN0lccEwtAwAAAABJRU5ErkJggg==" alt="" width="22" height="22" style="vertical-align:-4px;margin-right:3px"> EVE <b>CANARY</b> <span class="byline">by Askend</span></h1>
+  <span class="verchip" id="verChip" title="Installierte Version. Canary sieht alle 15 Minuten nach, ob es eine neuere gibt."></span></div>
  <span class="pill modesel" data-mode="mining" title="Mining-Ansicht">⛏ Mining</span><span class="pill modesel" data-mode="combat" title="PvP- und Missions-Ansicht">⚔ PvP &amp; Missionen</span>
  <span class="pill rolef on" data-role="" title="Alle Charaktere">Alle</span>
  <span class="pill rolef" data-role="mining" title="Nur Mining-Charaktere">⛏</span>
@@ -13013,6 +13032,37 @@ function updateBadge(){
  const b=$('#updBadge');
  if(u.available&&u.latest){b.hidden=false;b.textContent='⬆ Update v'+u.latest;}
  else b.hidden=true;
+ versionChip(u);
+}
+// Installierte Version, immer sichtbar, mit einem Wort dazu, ob sie aktuell ist.
+// Drei Zustaende, und der dritte ist der wichtige: "keine neue gefunden" und
+// "konnte nicht nachsehen" duerfen nicht gleich aussehen, sonst behauptet die
+// Kopfzeile "aktuell", obwohl seit Stunden niemand nachgesehen hat.
+function versionChip(u){
+ const c=$('#verChip'); if(!c||!state)return;
+ const en=(lang==='en');
+ const v='v'+(state.version||'?');
+ let h='<b>'+esc(v)+'</b>';
+ if(u.available&&u.latest){
+  h+='<span class="zustand neu" id="verUpd">'
+   +(en?'update to v':'Update auf v')+esc(u.latest)+'</span>';
+ }else if(u.geprueft){
+  h+='<span class="zustand aktuell">'+(en?'up to date':'aktuell')+'</span>'
+   +'<span class="unklar">'+(en?'checked ':'geprüft ')+verAlter(u.geprueft,en)+'</span>';
+ }else{
+  h+='<span class="zustand unklar">'
+   +(en?'not checked yet':'noch nicht geprüft')+'</span>';
+ }
+ c.innerHTML=h;
+ const link=$('#verUpd');
+ if(link)link.onclick=runUpdate;
+ if(lang!=='de')tr(c);
+}
+function verAlter(ts,en){
+ const s=Math.max(0,Math.floor(Date.now()/1000-ts));
+ if(s<90)return en?'just now':'gerade eben';
+ if(s<5400)return (en?'':'vor ')+Math.round(s/60)+(en?' min ago':' min');
+ return (en?'':'vor ')+Math.round(s/3600)+(en?' h ago':' Std');
 }
 // Deutliche Update-Meldung als Banner. Text gleich in der aktiven Sprache bauen,
 // damit die dynamische Versionsnummer nicht in tr() haengen bleibt.
@@ -16461,6 +16511,8 @@ const EN = {
 'Legt Name und Gegnerliste als fertigen Text in die Zwischenablage. Canary lädt nichts von selbst hoch, du fügst den Block bewusst in eine Meldung ein.':
  'Puts the name and the enemy list into your clipboard as ready made text. Canary uploads nothing by itself, you paste the block into a report deliberately.',
 'PvP- und Missions-Ansicht':'PvP and mission view','Mining-Ansicht':'Mining view','Als Bild teilen':'Share as an image',
+'Installierte Version. Canary sieht alle 15 Minuten nach, ob es eine neuere gibt.':
+ 'The installed version. Canary checks every 15 minutes whether a newer one exists.',
 'OBS-Einrichtung':'OBS setup','z.B. Tritanium':'e.g. Tritanium',
 'EVE-Server (Tranquility)':'EVE server (Tranquility)',
 'Overlay fuer OBS einrichten: Aussehen waehlen, Adresse kopieren, in OBS als Browser-Quelle einfuegen. Mit Anleitung.':
