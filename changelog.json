@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.26.0",
+  "d": "2026-08-15",
+  "de": [
+   "GETEILTE GEGNER-VORLAGEN BRAUCHEN JETZT DEUTLICH MEHR UEBEREINSTIMMUNG: 80 Prozent statt 65. Der Grund ist gemessen, nicht geschaetzt. Eine Vorlage aus einem Guristas-Einsatz gegen 11.035 echte Kampf-Abschnitte aus 10.182 fremden Logdateien gehalten: bei 65 Prozent haette sie 19 mal falsch angeschlagen, bei 75 Prozent noch 4 mal, bei 80 Prozent kein einziges Mal. Der hoechste Wert eines fremden Abschnitts lag bei 79 Prozent, waehrend die vorhandene Vorlage ihren echten Lauf mit 86 Prozent trifft. Zwischen 79 und 86 liegt Platz, und genau dort steht die neue Schwelle.",
+   "Die EIGENEN Benennungen bleiben bei 65 Prozent. Sie stammen aus dem eigenen Spiel und werden nur auf die eigenen Laeufe angewendet, dort darf man sich selbst vertrauen. Streng wird es erst da, wo eine Vorlage auf fremde Laeufe losgelassen wird.",
+   "ZWEI NEUE VORLAGEN, die durch diese Pruefung gekommen sind: Attack of the Drones (gemeldet von Nirahse) und The Assault in der Guristas-Fassung. Beide schlagen in 11.035 beziehungsweise 3.180 echten Kampf-Abschnitten KEIN EINZIGES MAL falsch an und erkennen ihre eigene Zusammenstellung mit 88 Prozent wieder. Fuer beide gab es keinen anderen Weg: Attack of the Drones hat ueberhaupt keinen benannten Gegner, und die einzelnen Drohnennamen stehen zu Zehntausenden in jeder Anomalie.",
+   "Nebenbei bestaetigt und damit erledigt: der Satz „You notice one of the enemy ships sending out a distress signal“ taugt NICHT als Signatur. Er steht in eigenen Logs in drei verschiedenen Missionen, darunter nachweislich The Damsel in Distress und The Assault. Es ist ein Verstaerkungs-Ruf, kein Missionskennzeichen."
+  ],
+  "en": [
+   "SHARED ENEMY TEMPLATES NOW NEED A MUCH CLOSER MATCH: 80 percent instead of 65. The reason is measured, not guessed. A template from a Guristas run held against 11,035 real combat sections from 10,182 foreign log files: at 65 percent it would have fired wrongly 19 times, at 75 percent still 4 times, at 80 percent not once. The highest value of a foreign section was 79 percent, while the existing template matches its genuine run at 86 percent. Between 79 and 86 there is room, and that is where the new threshold sits.",
+   "YOUR OWN namings stay at 65 percent. They come from your own game and are only applied to your own runs, so you may trust yourself there. Strictness begins where a template is let loose on other people's runs.",
+   "TWO NEW TEMPLATES that passed this check: Attack of the Drones (reported by Nirahse) and The Assault in its Guristas variant. Neither fires wrongly even once across 11,035 and 3,180 real combat sections, and both recognise their own line-up again at 88 percent. There was no other route for either: Attack of the Drones has no named enemy at all, and the individual drone names appear tens of thousands of times in every anomaly.",
+   "Confirmed on the side and thereby settled: the line “You notice one of the enemy ships sending out a distress signal” does NOT work as a signature. It appears in three different missions in real logs, among them demonstrably The Damsel in Distress and The Assault. It is a reinforcement call, not a mission marker."
+  ]
+ },
+ {
   "v": "2.25.0",
   "d": "2026-08-15",
   "de": [

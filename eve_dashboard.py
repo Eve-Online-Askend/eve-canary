@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.25.0"
+VERSION = "2.26.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -313,6 +313,21 @@ MISSION_FP = [{"name": (v.get("m") or "").strip(),
 # Listen mit drei Namen schon bei einem Zufallstreffer gleichziehen.
 FP_MIN_AEHNLICH = 0.65
 FP_MIN_GEMEINSAM = 4
+# GETEILTE Vorlagen brauchen mehr. Sie werden auf fremde Laeufe angewendet, und
+# eine Fehlerkennung dort ist schlimmer als keine Erkennung: es steht dann ein
+# Missionsname ueber einem Lauf, der keiner war.
+#
+# Gemessen an echten Logs, nicht geschaetzt. Die Vorlage eines Guristas-Einsatzes
+# gegen 11.035 Kampf-Abschnitte aus 10.182 fremden Logdateien gehalten:
+#     bei 65%: 19 Fehltreffer      bei 75%: 4      bei 80%: 0
+# Der hoechste Wert eines fremden Abschnitts lag bei 79%. Auf der anderen Seite:
+# die vorhandene geteilte Vorlage "Enemies Abound (1 of 5)" trifft den eigenen
+# Lauf derselben Mission mit 86%. Zwischen 79 und 86 liegt Platz, und genau dort
+# steht diese Schwelle.
+#
+# Der eigene Bestand bleibt bei 65%: die eigenen Benennungen sind das eigene
+# Spiel, dort darf man sich selbst vertrauen.
+FP_MIN_GETEILT = 0.80
 # Ab welchem Vielfachen der Normallieferung gilt Erz als Bonus, und bis wohin.
 #
 # Erst hiess die Regel "exaktes ganzes Vielfaches". Das war an einem einzigen
@@ -485,7 +500,8 @@ def fingerprint_mission(enemies):
     best = None
     # Reihenfolge zaehlt: die eigenen zuerst, damit sie bei gleicher Genauigkeit
     # stehen bleiben (verglichen wird auf groesser, nicht groesser-gleich).
-    for quelle, bestand in (("eigen", MARKEN), ("geteilt", MISSION_FP)):
+    for quelle, bestand, mindest in (("eigen", MARKEN, FP_MIN_AEHNLICH),
+                                     ("geteilt", MISSION_FP, FP_MIN_GETEILT)):
         for m in bestand:
             gemeinsam = hier & m["set"]
             if len(gemeinsam) < FP_MIN_GEMEINSAM:
@@ -494,7 +510,9 @@ def fingerprint_mission(enemies):
             if not alle:
                 continue
             j = len(gemeinsam) / len(alle)
-            if j < FP_MIN_AEHNLICH:
+            # Geteilte Vorlagen muessen deutlicher passen als die eigenen,
+            # siehe FP_MIN_GETEILT.
+            if j < mindest:
                 continue
             conf = min(88, int(round(j * 100)))
             if best is None or conf > best["conf"]:

@@ -1,22 +1,63 @@
 {
-  "_hinweis": "Geteilte Gegner-Fingerabdrücke. Missionen haben feste Gegner-Zusammenstellungen, deshalb erkennt eine einmal gemeldete Zusammenstellung die Mission bei allen anderen wieder. Das ist der vierte Erkennungsweg neben Gegnernamen, NPC-Funk und Frachtgegenständen, und der einzige, der auch bei völlig gewöhnlichen Gegnern ohne Funk greift.",
-  "_herkunft": "Aus Meldungen der Spielerinnen und Spieler. Canary lädt nichts von selbst hoch. Wer beiträgt, drückt im Missionen-Tab auf 'Für alle beitragen' und fügt den Block bewusst in eine Meldung ein.",
-  "_mehrere": "Unter einem Missionsnamen dürfen mehrere Vorlagen stehen. Dieselbe Mission wird von verschiedenen Auftraggebern angeboten und hat dann andere Ratten. Eine Variante darf die andere nicht verdrängen.",
-  "_kern": "g ist bewusst der KERN, also die Gegner, die in jedem gemeldeten Lauf vorkamen, nicht die Vereinigung aller Meldungen. Canary schreibt nur mit, worauf tatsächlich geschossen wurde, deshalb liefert jeder Lauf ein paar zufällige Extras. Die Vereinigung würde diese Ausreißer festschreiben und Fehltreffer erzeugen. n sagt, aus wie vielen Läufen der Kern gebildet wurde.",
-  "_schwellen": "Verglichen wird mit Jaccard-Ähnlichkeit. Es braucht mindestens 4 gemeinsame Gegnertypen UND 65 Prozent Ähnlichkeit, siehe FP_MIN_GEMEINSAM und FP_MIN_AEHNLICH in eve_dashboard.py. Die Genauigkeit ist auf 88 gedeckelt, damit ein eindeutiger Gegnername oder Funk immer vorgeht.",
-  "_aufnahme": "Nur mit Beleg. Vor der Aufnahme prüfen, ob die Vorlage einen bereits erkannten Lauf umbenennen würde. Eine Fehlerkennung ist schlimmer als keine Erkennung.",
-
-  "vorlagen": [
-    {
-      "m": "Enemies Abound (1 of 5)",
-      "g": ["federation covinus",
-            "federation navy dominix",
-            "federation navy gamma i support frigate",
-            "federation navy megathron",
-            "federation navy orion",
-            "federation navy thorax"],
-      "n": 2,
-      "q": "Askend, Aramachi, 07.08.2026 und 13.08.2026, Kern aus beiden Läufen"
-    }
-  ]
+ "_hinweis": "Geteilte Gegner-Fingerabdrücke. Missionen haben feste Gegner-Zusammenstellungen, deshalb erkennt eine einmal gemeldete Zusammenstellung die Mission bei allen anderen wieder. Das ist der vierte Erkennungsweg neben Gegnernamen, NPC-Funk und Frachtgegenständen, und der einzige, der auch bei völlig gewöhnlichen Gegnern ohne Funk greift.",
+ "_herkunft": "Aus Meldungen der Spielerinnen und Spieler. Canary lädt nichts von selbst hoch. Wer beiträgt, drückt im Missionen-Tab auf 'Für alle beitragen' und fügt den Block bewusst in eine Meldung ein.",
+ "_mehrere": "Unter einem Missionsnamen dürfen mehrere Vorlagen stehen. Dieselbe Mission wird von verschiedenen Auftraggebern angeboten und hat dann andere Ratten. Eine Variante darf die andere nicht verdrängen.",
+ "_kern": "g ist bewusst der KERN, also die Gegner, die in jedem gemeldeten Lauf vorkamen, nicht die Vereinigung aller Meldungen. Canary schreibt nur mit, worauf tatsächlich geschossen wurde, deshalb liefert jeder Lauf ein paar zufällige Extras. Die Vereinigung würde diese Ausreißer festschreiben und Fehltreffer erzeugen. n sagt, aus wie vielen Läufen der Kern gebildet wurde.",
+ "_schwellen": "Verglichen wird mit Jaccard-Ähnlichkeit. Es braucht mindestens 4 gemeinsame Gegnertypen UND 65 Prozent Ähnlichkeit, siehe FP_MIN_GEMEINSAM und FP_MIN_AEHNLICH in eve_dashboard.py. Die Genauigkeit ist auf 88 gedeckelt, damit ein eindeutiger Gegnername oder Funk immer vorgeht.",
+ "_aufnahme": "Nur mit Beleg. Vor der Aufnahme prüfen, ob die Vorlage einen bereits erkannten Lauf umbenennen würde. Eine Fehlerkennung ist schlimmer als keine Erkennung.",
+ "vorlagen": [
+  {
+   "m": "Enemies Abound (1 of 5)",
+   "g": [
+    "federation covinus",
+    "federation navy dominix",
+    "federation navy gamma i support frigate",
+    "federation navy megathron",
+    "federation navy orion",
+    "federation navy thorax"
+   ],
+   "n": 2,
+   "q": "Askend, Aramachi, 07.08.2026 und 13.08.2026, Kern aus beiden Läufen"
+  },
+  {
+   "m": "Attack of the Drones",
+   "g": [
+    "alvus ruler",
+    "atomizer alvum",
+    "bomber alvum",
+    "defeater alvatis",
+    "dismantler alvior",
+    "nuker alvum",
+    "predator alvior",
+    "strain decimator alvi",
+    "strain splinter alvi",
+    "supreme alvus parasite"
+   ]
+  },
+  {
+   "m": "The Assault",
+   "g": [
+    "dire pithi infiltrator",
+    "dire pithi plunderer",
+    "dire pithi wrecker",
+    "dire pithum abolisher",
+    "dire pithum eraser",
+    "dire pithum inferno",
+    "dire pithum mortifier",
+    "dire pithum murderer",
+    "pith conquistador",
+    "pith destroyer",
+    "pith dismantler",
+    "pith extinguisher",
+    "pith obliterator",
+    "pithatis assassin",
+    "pithatis assaulter",
+    "pithatis enforcer",
+    "pithatis executor",
+    "pithatis revolter",
+    "pithior renegade",
+    "pithum mortifier"
+   ]
+  }
+ ]
 }
