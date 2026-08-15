@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.33.0"
+VERSION = "2.34.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -6579,12 +6579,17 @@ class PackIntel(threading.Thread):
         self.near_alerted = {}         # (pack_id, system) -> ts (Gold-Hinweis)
         self.info_alerted = set()      # pack_id: Region-Hinweis schon gegeben
         self._seen = set()             # kill_ids (Dedupe, Session)
-        # Abschuesse der EIGENEN Charaktere, char_id -> [(ts, kill_id), ...].
+        # Abschuesse der EIGENEN Charaktere, char_id -> [(ts, kill_id, isk)].
         # Der Feed liefert ALLE Kills von New Eden, gefiltert wird erst fuer
         # die Blutspur-Blase. Eigene Kills werden deshalb VOR dem Filter
         # abgegriffen, sonst zaehlte ein Roam ausserhalb der Blase nicht.
-        # Je Charakter auf 50 begrenzt, das deckt jede Session ab.
+        # Der ISK-Wert ist zKillboards totalValue, an 39.542 echten Feed-Kills
+        # gemessen traegt ihn jeder einzelne. Je Charakter auf 50 begrenzt.
         self.eigene_kills = {}
+        # Dasselbe fuer eigene VERLUSTE (victim ist ein eigener Charakter).
+        # Hier zaehlen auch NPC-Tode mit: gestorben ist gestorben, die ISK
+        # sind weg, egal ob Rate oder Spieler geschossen haben.
+        self.eigene_verluste = {}
         self._pid = 0
         self._fails = 0
         self._last200 = time.time()
@@ -6706,28 +6711,46 @@ class PackIntel(threading.Thread):
         (Median ~2 min). Die eigenen char_ids kennt Canary aus den Namen der
         Logdateien, es braucht keinen Login und keine Liste."""
         zkb = km.get("zkb") or {}
+        try:
+            kt = datetime.fromisoformat(
+                (km.get("killmail_time") or "").replace("Z", "+00:00")).timestamp()
+        except Exception:
+            kt = time.time()
+        wert = float(zkb.get("totalValue") or 0)
+
+        def merken(sammlung, cid):
+            liste = sammlung.setdefault(cid, [])
+            if any(k[1] == kid for k in liste):
+                return   # Dedupe je Charakter, Listen sind klein
+            liste.append((kt, kid, wert))
+            del liste[:-50]
+
+        # Verlust: der eigene Charakter ist das Opfer. NPC-Tode zaehlen mit.
+        opfer = (km.get("victim") or {}).get("character_id")
+        eigene = list(ingest.sessions.keys())
+        if opfer:
+            for cid in eigene:
+                try:
+                    if int(cid) == opfer:
+                        merken(self.eigene_verluste, cid)
+                except (TypeError, ValueError):
+                    continue
+        # Abschuss: der eigene Charakter steht als Angreifer drauf. Reine
+        # NPC-Kills haben keine Spieler-Angreifer, der npc-Haken spart nur
+        # die Schleife.
         if zkb.get("npc"):
             return
         atk_ids = {a.get("character_id") for a in km.get("attackers") or []}
         atk_ids.discard(None)
         if not atk_ids:
             return
-        try:
-            kt = datetime.fromisoformat(
-                (km.get("killmail_time") or "").replace("Z", "+00:00")).timestamp()
-        except Exception:
-            kt = time.time()
-        for cid in list(ingest.sessions.keys()):
+        for cid in eigene:
             try:
                 if int(cid) not in atk_ids:
                     continue
             except (TypeError, ValueError):
                 continue
-            liste = self.eigene_kills.setdefault(cid, [])
-            if any(k[1] == kid for k in liste):
-                continue   # Dedupe je Charakter, Listen sind klein
-            liste.append((kt, kid))
-            del liste[:-50]
+            merken(self.eigene_kills, cid)
 
     def _ingest(self, km, src, persist=True):
         kid = km.get("killmail_id")
@@ -7896,9 +7919,12 @@ function rechts(c) {
     else if (raus > 0) unten.push('Schaden raus');
     if (rein > 0) unten.push(fmtC(rein) + ' Schaden rein');
     // Abschuss-Zaehler: NPC-Kills sofort (Bounty-Zeilen), Spieler-Kills aus
-    // dem Killmail-Feed mit ein paar Minuten Verzug.
+    // dem Killmail-Feed mit ein paar Minuten Verzug. Die ISK-Werte sind
+    // zKillboards Preisrechnung je Killmail, dieselbe Quelle.
     const kk = (c.kills || 0) + (c.pvp_kills || 0);
     if (kk > 0) unten.push(kk + (kk === 1 ? ' Kill' : ' Kills'));
+    if (c.kill_isk > 0) unten.push(fmtM(c.kill_isk) + ' zerstört');
+    if (c.verlust_isk > 0) unten.push(fmtM(c.verlust_isk) + ' verloren');
     // Bis v1.95 gab es hier nie eine Stundenrate: sie wurde ausschliesslich
     // aus dem Erz gerechnet. Ein Missionsflieger sah also immer nichts.
     if (iskH(c)) unten.push(fmtM(iskH(c)) + '/h');
@@ -8599,8 +8625,15 @@ def snapshot_live():
             # Spieler-Abschuesse dieser Sitzung, aus dem Killmail-Feed (ein
             # paar Minuten verzoegert, EVE loggt Kills nicht). NPC-Kills
             # stehen getrennt in "kills", die kommen sofort aus den Bounties.
-            "pvp_kills": sum(1 for kt, _ in packintel.eigene_kills.get(s.char_id, [])
-                             if kt >= (s.first_ts or s.start)),
+            # Die ISK-Werte sind zKillboards totalValue je Killmail.
+            "pvp_kills": sum(1 for k in packintel.eigene_kills.get(s.char_id, [])
+                             if k[0] >= (s.first_ts or s.start)),
+            "kill_isk": round(sum(k[2] for k in packintel.eigene_kills.get(s.char_id, [])
+                                  if k[0] >= (s.first_ts or s.start))),
+            "verluste": sum(1 for k in packintel.eigene_verluste.get(s.char_id, [])
+                            if k[0] >= (s.first_ts or s.start)),
+            "verlust_isk": round(sum(k[2] for k in packintel.eigene_verluste.get(s.char_id, [])
+                                     if k[0] >= (s.first_ts or s.start))),
             "total_isk": round(ore_isk + s.bounty),
             # Missionsbelohnungen dieser Sitzung, aus dem Wallet-Journal. Ohne
             # sie waere jede ISK/h fuer einen Missionsflieger nur die Bounty.
@@ -14655,6 +14688,10 @@ function miningCardHtml(c){
     ${c.wallet!=null?`<div class="stat"><div class="l">Wallet (ESI)</div><div class="v grn">${fmtM(c.wallet)}</div></div>`:''}
     <div class="stat"><div class="l">Schaden raus/rein</div><div class="v"><span class="out">${fmtM(c.dmg_out)}</span> / <span class="in">${fmtM(c.dmg_in)}</span></div></div>
     <div class="stat"><div class="l">DPS raus/rein</div><div class="v"><span class="out">${c.dps_out}</span> / <span class="in">${c.dps_in}</span></div></div>
+    ${(c.pvp_kills||c.verluste)?`<div class="stat"><div class="l" title="${lang==='en'
+       ?'From the killmail feed (zKillboard values), lags a few minutes. EVE does not log player kills locally.'
+       :'Aus dem Killmail-Feed (zKillboard-Werte), ein paar Minuten verzögert. EVE loggt Spieler-Abschüsse nicht lokal.'}">PvP ${lang==='en'?'kills/losses':'Kills/Verluste'}</div>
+      <div class="v"><span class="out">${c.pvp_kills||0}${c.kill_isk?' · '+fmtM(c.kill_isk):''}</span> / <span class="in">${c.verluste||0}${c.verlust_isk?' · '+fmtM(c.verlust_isk):''}</span></div></div>`:''}
    </div>
    ${c.spark.length>1?(()=>{const sp=c.spark,n=sp.length,peak=Math.max(...sp),avg=Math.round(sp.reduce((a,b)=>a+b,0)/n);
      return `<div class="spark" title="${lang==='en'?'Ore mined per minute, one bar per minute':'Gefördertes Erz pro Minute, ein Balken je Minute'}">${sp.map((v,i)=>`<div title="${lang==='en'?'min':'Min'} -${n-1-i}: ${fmt(v)} m³" style="height:${Math.max(3,100*v/maxS)}%"></div>`).join('')}</div>

@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.34.0",
+  "d": "2026-08-15",
+  "de": [
+   "ZERSTOERTE UND VERLORENE ISK, live je Charakter: neben dem Kill-Zaehler steht jetzt, wie viel ISK die Abschuesse der Sitzung wert waren, und wenn ein eigenes Schiff faellt, was der Verlust gekostet hat. Im OBS-Overlay als \"X zerstoert\" und \"Y verloren\", in der PvP-Ansicht als eigene Kachel Kills/Verluste mit beiden Summen.",
+   "Die Werte sind zKillboards Preisrechnung je Killmail, geliefert vom selben Feed, den die Blutspur einliest. An 39.542 echten Feed-Kills gemessen traegt jeder einzelne einen Wert. Ehrlichkeit wie beim Kill-Zaehler: EVE loggt Abschuesse nicht lokal, der Feed hinkt ein paar Minuten hinterher. Eigene Tode zaehlen auch dann als Verlust, wenn NPCs geschossen haben, gestorben ist gestorben."
+  ],
+  "en": [
+   "ISK DESTROYED AND LOST, live per character: next to the kill counter you now see how much ISK the session's kills were worth, and when one of your ships goes down, what the loss cost. In the OBS overlay as \"X destroyed\" and \"Y lost\", in the PvP view as its own tile kills/losses with both sums.",
+   "The values are zKillboard's price calculation per killmail, delivered by the same feed Blood Trail already ingests. Measured across 39,542 real feed kills, every single one carries a value. Same honesty as the kill counter: EVE does not log kills locally, the feed lags a few minutes. Your own deaths count as a loss even when NPCs fired, dead is dead."
+  ]
+ },
+ {
   "v": "2.33.0",
   "d": "2026-08-15",
   "de": [
