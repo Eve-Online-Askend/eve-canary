@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.32.0",
+  "d": "2026-08-15",
+  "de": [
+   "DIE KOPFLEISTE IST NEU GEORDNET. Sie war auf 28 Knoepfe in einer Zeile angewachsen, die Haelfte davon galt nur fuer den Live-Tab. Jetzt gilt: oben steht nur noch Globales, sauber gruppiert. Die LIVE-STEUERUNG (Ansicht, Rollenfilter, Offline, Charakter-Filter, Einklappen, Reihenfolge, Kartenbreite, Belt auswerten) liegt als eigene Leiste direkt ueber den Karten, beschriftet nach Gruppen, und verschwindet mit dem Tab.",
+   "WERKZEUGE GEBUENDELT: Overlay, OBS Overlay, Stoppuhr und EVE-Einstellungen stecken jetzt in einem Aufklapp-Menue oben rechts. Der HANDELSPLATZ ist ein Auswahlfeld statt fuenf Dauerpillen. Die SPRACHE liegt als Flaggen ganz rechts aussen, gewuenscht von Vile Gangster, als gezeichnete Flaggen statt Emojis, weil Windows-Browser Flaggen-Emojis nicht darstellen.",
+   "GEMESSEN, nicht gefuehlt: die Kopfzeile war vorher 71 Pixel hoch (zwei Zeilen, selbst auf breiten Bildschirmen), jetzt sind es 37 Pixel, eine Zeile, auch bei 1200 Pixel Fensterbreite. Im Planeten-Tab gibt es weiterhin Alle einklappen, jetzt direkt in der Charakter-Karte.",
+   "Beim ersten Start nach dem Update erklaert ein Hinweis die neue Anordnung, mit einem Knopf Nicht mehr anzeigen."
+  ],
+  "en": [
+   "THE HEADER BAR HAS BEEN REORGANISED. It had grown to 28 buttons in one row, half of them only relevant to the live tab. Now the top holds only global things, cleanly grouped. The LIVE CONTROLS (view, role filters, offline, character filter, collapse, order, card width, belt check) sit in their own labelled bar right above the cards and disappear with the tab.",
+   "TOOLS BUNDLED: overlay, OBS overlay, stopwatch and EVE settings now live in a dropdown menu at the top right. The TRADE HUB is a select field instead of five permanent pills. The LANGUAGE sits as flags at the far right, requested by Vile Gangster, drawn as flags rather than emojis because Windows browsers do not render flag emojis.",
+   "MEASURED, not felt: the header was 71 pixels tall before (two rows even on wide screens), now it is 37 pixels, one row, even at 1200 pixels window width. The planets tab keeps its collapse all, now directly in the character card.",
+   "On first start after the update a notice explains the new layout, with a do-not-show-again button."
+  ]
+ },
+ {
   "v": "2.31.0",
   "d": "2026-08-15",
   "de": [

@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.31.0"
+VERSION = "2.32.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -12088,6 +12088,25 @@ padding:4px 11px;border-radius:20px;cursor:pointer;user-select:none}
 .pill.on{background:var(--cyan);color:var(--bg);border-color:var(--cyan)}
 .sortpf{cursor:pointer;color:var(--cyan);padding:0 4px;user-select:none;font-size:13px}
 .sortpf:hover{color:var(--txt)}
+/* Kopfleisten-Neuordnung (15.08.2026): Gruppen mit Trennstrichen, Werkzeuge
+   als Aufklapp-Menue, Live-Steuerung in eigener Leiste ueber den Karten. */
+header{position:relative;z-index:40}
+.hsep{width:1px;align-self:stretch;background:var(--line)}
+.hgap{flex:1}
+.hwrap{position:relative}
+#toolsMenu{position:absolute;right:0;top:calc(100% + 6px);display:flex;flex-direction:column;gap:6px;
+ background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px;z-index:50;
+ box-shadow:0 8px 20px rgba(0,0,0,.4);min-width:200px;white-space:nowrap}
+#toolsMenu[hidden]{display:none}
+.flagge{display:inline-flex;align-items:center;padding:4px 6px}
+.flagge svg{display:block;border-radius:2px}
+#livebar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:12px;
+ padding:8px 12px;background:var(--card);border:1px solid var(--line);border-radius:10px}
+#livebar[hidden]{display:none}
+#livebar .lbl{font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim);margin:0 2px}
+#kopfHinweis{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid var(--gold);
+ border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:12px}
+#kopfHinweis[hidden]{display:none}
 .pill.rolef{padding:4px 9px}
 .rolesel{appearance:none;-webkit-appearance:none;background:var(--inset);border:1px solid var(--line);
  color:var(--dim);font-size:10px;padding:2px 6px;border-radius:20px;cursor:pointer;flex:none}
@@ -12994,28 +13013,23 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 <header>
  <div class="titelblock"><h1><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAFJklEQVR42u1We0xTZxSvwfmcm24uJoKD8bpFxa5Mngpth21vmdlA3RJdtiy6uMzFseHcPz5QE4dm6BS0IM/qQB5qgWKhKmLpXCh94CQBy6MI9HVvyxtB58bOvnsRRFnCY+hfnOSX795z7/1+v3POd24OgzFjMzYJE6kal+E64ltcTxaItLZrCAqRDgFd49XIpyei+cqGZdNPXNG0VKQnkxBxkUhr3cyX6xc9/w7lw7XWTaJqskioI5Ijbje/NS3kuMYSjlfblUK1af1Ev4moMoegjChxrYX//8h1tk+EevKyUFm/8Nkncxim/JDPuku4Z7tKuAc65LydjmLeR7ZCbmB9bvg8+tvyuoX4H456kcbiPSVyocYSKkR15eWqZo/2381Yt9B2Ofh8e0Ew9MjXw8AN3hCuD629Cm4tIQtn4VXmKCR+79Qiv2VYJNCTKqGq6fXRfuPFYF9SGlznkAYAkcuGWjEGdxIxaMxkge1SAPSWhEFfSSh0SP0fGjPWCKaceoGOPIIy8OFoX3Om73Zr1poBs4QJpjQvqI53hbJYZxp5P7j+Jt2HyW/GLv+nSexBP7cnRajtcdFukybnybTzhXqiHNv+NHu6UyuXtqZ6PzKleUMb2tycxYL7v7LBKGFBbYI77NnK3r1REBZ1I3YFefuoCxAJLBiM/hT+PrLr4cP4mLiWuJgFk6i9NUqgJaJH+5qSsRhTOiJP9wJDEgb91zgj6CoMgIZkrLUmkakzZ3hB2xkm9O7+AHq+iIQ/v9wCg7u3waP9X0nL9+ycNbH068nTfJXRZ/j+u0hPRksqdo+KXHP8begsCqGJB4ZFXOeguq+HbiSEzFoN5DehYI7kgC2SCxa0mqJ4fc1bNsTf3bF56cQyoCPkAUdTnIbv68Q+oXT0SEBThi9NTEPBGbnuLw0FRy4LzJneYEpggm1HEHRt43R2fbzhUEPk+29Orv20ttJnDt857AIlwIxgEHtBZ2HwEDmNMOiS+oNVgoElE50NVILKn1bAzYPLQbHPeduYvStNOZMSoDm5anFbGjZgfiKg+ZwHKI+4gCnbD/quhgCZvYqOeghecOeEK5RTnXHQ2Sj+2t1pTHk1VsUEBBDFXIli7iynuQxHQcjp9jw2ipBJR2fO8IbKuBU0iR61Id0RyEfBcMad9lNQ7HfZ9fy+78Ycm4WCG18AX236Xlhev7hdxtnb/6TW/SjV3YWBYM/xBcNZDyg/5EyjAmXjHiJuTvEE5WEX2lcW60Jkx7wzf8y+ykZMoCfEEzoHjiLO54h8kCYvDYOewiDolQ3V/gH609mvIDGXA0fWNslKqEt0h5pf3EB93O3YfwamtUbzq8ybxiUnC0Lx3uKQxx2X3gMCtZU5HYP2fDadhZH+Vzxd++Tr0Fnwpd+l/oDo0CY+v6f/4SQkwHaLW6iZN66Ahgw/L0OSD8uQtJJFrY2pq1l2GZdlL3qKzuIw6bCIjnw/dAYwWogl0wfup2Bj6ixQmzYjAQembUApO7XulW455xKVFavEh85ST1EQ9MiCoCUFMz5Drmx4Q6CzKcMVNQsY02l3JNzZ7VcC8yhyukx5bLokjny/v7J+9J1DvbNR1TgH1xPFAnXb2hcyI/5+gjW7NZVJi7CdX0ULeFDKeVwlDn4toqJxiUhHFONVlogXOqhWnmQ5tab65FIiqFmgp4R7Fb9tdBXpbSpRlSnwpUzLlafYlIicLjSoOGS8rfxb9Z78stpXX+rIXvEz28lycW1azYXwBYwZm7FJ2L/GN0lccEwtAwAAAABJRU5ErkJggg==" alt="" width="22" height="22" style="vertical-align:-4px;margin-right:3px"> EVE <b>CANARY</b> <span class="byline">by Askend</span></h1>
   <span class="verchip" id="verChip" title="Installierte Version. Canary sieht alle 15 Minuten nach, ob es eine neuere gibt."></span></div>
- <span class="pill modesel" data-mode="mining" title="Mining-Ansicht">⛏ Mining</span><span class="pill modesel" data-mode="combat" title="PvP- und Missions-Ansicht">⚔ PvP &amp; Missionen</span>
- <span class="pill rolef on" data-role="" title="Alle Charaktere">Alle</span>
- <span class="pill rolef" data-role="mining" title="Nur Mining-Charaktere">⛏</span>
- <span class="pill rolef" data-role="mission" title="Nur Mission-Runner">🎯</span>
- <span class="pill rolef" data-role="pvp" title="Nur PvP-Charaktere">⚔</span>
- <span class="pill" id="showOffline" title="Standardmäßig zeigt Live nur eingeloggte Charaktere. Hier einschalten, um auch Offline-Charaktere zu sehen.">💤 Offline zeigen</span>
- <select class="pill" id="charFilter" title="Charakter-Filter"><option value="">Alle Charaktere</option></select>
- <span class="pill" id="collapseAll">Alle einklappen</span>
- <span class="pill" id="sortChars" title="Reihenfolge der Charakter-Karten festlegen, mit den Pfeilen an den Karten. Wird in Canary gespeichert und gilt in jedem Browser und im Overlay.">↕ Reihenfolge</span>
- <span class="pill" id="cardScale" title="Breite der Charakter-Karten. Schmaler heißt mehr Karten nebeneinander.">▭ Karten</span>
- <span class="pill" id="beltBtn" title="Ergebnisse der Bergbauvermessung einfügen und sehen, wie viel Volumen und ISK im Belt liegen">🪨 Belt auswerten</span>
- <span class="pill langsel" data-l="de" title="Deutsch">DE</span><span class="pill langsel" data-l="en" title="English">EN</span>
- <div class="pills" id="regions"></div>
+ <select class="pill" id="regionSel" title="Handelsplatz: bestimmt die Marktpreise überall in Canary"></select>
  <span class="pill srv" id="srvStatus" hidden title="EVE-Server (Tranquility)"></span>
  <span class="pill upd" id="updBadge" hidden title="Neue Version verfügbar, Klick installiert sie"></span>
- <span class="pill" id="ovToggle" title="Always-on-top Mini-Overlay (Chrome, Edge, Firefox)">◱ Overlay</span>
- <span class="pill" id="obsBtn" title="Overlay fuer OBS einrichten: Aussehen waehlen, Adresse kopieren, in OBS als Browser-Quelle einfuegen. Mit Anleitung.">🎥 OBS Overlay</span>
- <span class="pill" id="uhrBtn" title="Stoppuhr fuer eine Aktivitaet: starten, pausieren, am Ende als Trip speichern. Zaehlt mit, wieviel in der Zeit gefoerdert wurde.">⏱ Stoppuhr</span>
- <span class="pill" id="setBtn" title="EVE-Einstellungen sichern, wiederherstellen und das UI eines Charakters auf andere uebertragen. Alpha.">💾 EVE-Einstellungen</span>
+ <span class="hgap"></span>
+ <span class="hwrap"><span class="pill" id="toolsBtn" title="Overlay, OBS Overlay, Stoppuhr und EVE-Einstellungen">🧰 Werkzeuge ▾</span>
+  <div id="toolsMenu" hidden>
+   <span class="pill" id="ovToggle" title="Always-on-top Mini-Overlay (Chrome, Edge, Firefox)">◱ Overlay</span>
+   <span class="pill" id="obsBtn" title="Overlay fuer OBS einrichten: Aussehen waehlen, Adresse kopieren, in OBS als Browser-Quelle einfuegen. Mit Anleitung.">🎥 OBS Overlay</span>
+   <span class="pill" id="uhrBtn" title="Stoppuhr fuer eine Aktivitaet: starten, pausieren, am Ende als Trip speichern. Zaehlt mit, wieviel in der Zeit gefoerdert wurde.">⏱ Stoppuhr</span>
+   <span class="pill" id="setBtn" title="EVE-Einstellungen sichern, wiederherstellen und das UI eines Charakters auf andere uebertragen. Alpha.">💾 EVE-Einstellungen</span>
+  </div></span>
+ <span class="hsep"></span>
  <span class="pill" id="fontsize" title="Schriftgröße (3 Stufen)">A</span>
  <span class="pill" id="theme" title="Dark/Light">◐</span>
  <span class="pill" id="gear">⚙ Optionen</span>
+ <span class="hsep"></span>
+ <span class="pill langsel flagge" data-l="de" title="Deutsch"><svg viewBox="0 0 5 3" width="20" height="12" aria-hidden="true"><rect width="5" height="3" fill="#000"/><rect y="1" width="5" height="2" fill="#D00"/><rect y="2" width="5" height="1" fill="#FFCE00"/></svg></span><span class="pill langsel flagge" data-l="en" title="English"><svg viewBox="0 0 60 30" width="20" height="12" aria-hidden="true"><rect width="60" height="30" fill="#012169"/><path d="M0 0L60 30M60 0L0 30" stroke="#fff" stroke-width="6"/><path d="M0 0L60 30M60 0L0 30" stroke="#C8102E" stroke-width="2.5"/><rect x="25" width="10" height="30" fill="#fff"/><rect y="10" width="60" height="10" fill="#fff"/><rect x="27" width="6" height="30" fill="#C8102E"/><rect y="12" width="60" height="6" fill="#C8102E"/></svg></span>
 </header>
 <div id="loadbar" hidden><div></div></div>
 <div id="loadtxt" hidden></div>
@@ -13036,6 +13050,26 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="jobs">💼 Jobs</span>
 </nav>
 <div id="viewinfo"></div>
+<div id="kopfHinweis" hidden>💡 <b>Neue Anordnung:</b> <span>Die Live-Steuerung steht jetzt direkt über den Karten, die Werkzeuge (Overlay, OBS, Stoppuhr, EVE-Einstellungen) stecken im Menü 🧰 oben rechts, der Handelsplatz ist ein Auswahlfeld, und die Sprache liegt als Flaggen ganz rechts außen.</span>
+ <span class="pill" id="hinweisZu" style="margin-left:auto">Nicht mehr anzeigen</span></div>
+<div id="livebar" hidden>
+ <span class="lbl">Ansicht</span>
+ <span class="pill modesel" data-mode="mining" title="Mining-Ansicht">⛏ Mining</span><span class="pill modesel" data-mode="combat" title="PvP- und Missions-Ansicht">⚔ PvP &amp; Missionen</span>
+ <span class="hsep"></span>
+ <span class="lbl">Rollen</span>
+ <span class="pill rolef on" data-role="" title="Alle Charaktere">Alle</span>
+ <span class="pill rolef" data-role="mining" title="Nur Mining-Charaktere">⛏</span>
+ <span class="pill rolef" data-role="mission" title="Nur Mission-Runner">🎯</span>
+ <span class="pill rolef" data-role="pvp" title="Nur PvP-Charaktere">⚔</span>
+ <span class="pill" id="showOffline" title="Standardmäßig zeigt Live nur eingeloggte Charaktere. Hier einschalten, um auch Offline-Charaktere zu sehen.">💤 Offline zeigen</span>
+ <select class="pill" id="charFilter" title="Charakter-Filter"><option value="">Alle Charaktere</option></select>
+ <span class="hsep"></span>
+ <span class="lbl">Karten</span>
+ <span class="pill" id="collapseAll">Alle einklappen</span>
+ <span class="pill" id="sortChars" title="Reihenfolge der Charakter-Karten festlegen, mit den Pfeilen an den Karten. Wird in Canary gespeichert und gilt in jedem Browser und im Overlay.">↕ Reihenfolge</span>
+ <span class="pill" id="cardScale" title="Breite der Charakter-Karten. Schmaler heißt mehr Karten nebeneinander.">▭ Karten</span>
+ <span class="pill" id="beltBtn" style="margin-left:auto" title="Ergebnisse der Bergbauvermessung einfügen und sehen, wie viel Volumen und ISK im Belt liegen">🪨 Belt auswerten</span>
+</div>
 <div id="updBanner" hidden></div>
 <div id="alerts"></div>
 <div id="hero"></div>
@@ -13899,10 +13933,14 @@ function serverBadge(){
 }
 $('#updBadge').onclick=runUpdate;
 function regionPills(){
- $('#regions').innerHTML=Object.entries(state.regions).map(([id,n])=>
-  `<span class="pill ${id===state.region?'on':''}" data-r="${id}">${n}</span>`).join('');
- document.querySelectorAll('#regions .pill').forEach(p=>p.onclick=async()=>{
-  await post({action:'region',region:p.dataset.r});tick();});
+ // Handelsplatz als Auswahlfeld statt fuenf Dauerpillen. Nur neu bauen, wenn
+ // sich wirklich etwas geaendert hat: ein offenes Auswahlfeld wuerde der
+ // 2-Sekunden-Takt sonst zuschnappen lassen (die <select>-Falle).
+ const sel=$('#regionSel'); if(!sel||!state.regions)return;
+ const soll=Object.entries(state.regions).map(([id,n])=>`<option value="${id}">${n}</option>`).join('');
+ if(sel.dataset.k!==soll+String(state.region)){
+  sel.innerHTML=soll; sel.value=state.region; sel.dataset.k=soll+String(state.region);
+ }
 }
 
 let collapsed=new Set(lsGet('collapsed',[]));
@@ -14102,6 +14140,21 @@ $('#cardScale').onclick=()=>{
  localStorage.setItem('kartenbreite',JSON.stringify(kartenBreite));
  kartenAnwenden();cardScaleLabel();
 };
+$('#toolsBtn').onclick=e=>{e.stopPropagation();const m=$('#toolsMenu');if(m)m.hidden=!m.hidden;};
+$('#toolsMenu').addEventListener('click',()=>{$('#toolsMenu').hidden=true;});
+document.addEventListener('click',e=>{
+ if(!(e.target.closest&&e.target.closest('.hwrap'))){const m=$('#toolsMenu');if(m&&!m.hidden)m.hidden=true;}
+});
+$('#regionSel').onchange=async()=>{await post({action:'region',region:$('#regionSel').value});tick();};
+// Einmal-Hinweis auf die neue Anordnung, gewuenscht von Askend. Wer ihn
+// wegklickt, sieht ihn nie wieder (localStorage).
+if(!localStorage.getItem('kopfHinweisWeg'))$('#kopfHinweis').hidden=false;
+$('#hinweisZu').onclick=()=>{localStorage.setItem('kopfHinweisWeg','1');$('#kopfHinweis').hidden=true;};
+// "Alle einklappen" im Planeten-Tab: die Live-Leiste ist dort versteckt,
+// der kleine Knopf in der Karte ruft denselben Handler.
+document.addEventListener('click',e=>{
+ if(e.target&&e.target.id==='collapseAllPi'){e.stopPropagation();$('#collapseAll').onclick();}
+});
 $('#collapseAll').onclick=()=>{
  const pi=view==='planeten';
  const names=(pi?(lastPlaneten&&lastPlaneten.chars||[]):(lastChars||[])).map(c=>c.name);
@@ -16171,7 +16224,7 @@ function renderPlaneten(pl){
  // Nach Charakter (einklappbar, respektiert den Char-Filter)
  const f=localStorage.getItem('charFilter')||'';
  const list=f?pl.chars.filter(c=>c.name===f):pl.chars;
- html+=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">${en?'By character':'Nach Charakter'}</span></div>`;
+ html+=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">${en?'By character':'Nach Charakter'}</span><span class="pill" id="collapseAllPi" style="margin-left:auto;cursor:pointer">${en?'Collapse all':'Alle einklappen'}</span></div>`;
  list.forEach(c=>{const isc=collapsed.has(c.name);
   html+=`<div class="picol"><div class="chead pihead" data-pi="${esc(c.name)}" style="cursor:pointer">
     <span class="char">${isc?'▸':'▾'} ${esc(c.name)} <span class="sub">· ${c.cols.length} ${c.cols.length===1?(en?'colony':'Kolonie'):(en?'colonies':'Kolonien')}</span></span>${esiBadge(c.name)}${c.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(c.isk)} ISK</span>`:''}</div>`;
@@ -17286,6 +17339,12 @@ function renderSetup(){
 const EN = {
 // Kopfleiste & Navigation
 'Alle':'All','Alle Charaktere':'All characters','Alle einklappen':'Collapse all',
+'🧰 Werkzeuge ▾':'🧰 Tools ▾','Ansicht':'View','Rollen':'Roles','Karten':'Cards',
+'Overlay, OBS Overlay, Stoppuhr und EVE-Einstellungen':'Overlay, OBS overlay, stopwatch and EVE settings',
+'Handelsplatz: bestimmt die Marktpreise überall in Canary':'Trade hub: sets the market prices everywhere in Canary',
+'Neue Anordnung:':'New layout:','Nicht mehr anzeigen':'Do not show again',
+'Die Live-Steuerung steht jetzt direkt über den Karten, die Werkzeuge (Overlay, OBS, Stoppuhr, EVE-Einstellungen) stecken im Menü 🧰 oben rechts, der Handelsplatz ist ein Auswahlfeld, und die Sprache liegt als Flaggen ganz rechts außen.':
+ 'The live controls now sit right above the cards, the tools (overlay, OBS, stopwatch, EVE settings) live in the 🧰 menu at the top right, the trade hub is a dropdown, and the language sits as flags at the far right.',
 '↕ Reihenfolge':'↕ Order','▭ Karten':'▭ Cards',
 'nach vorn':'move forward','nach hinten':'move back',
 'Reihenfolge der Charakter-Karten festlegen, mit den Pfeilen an den Karten. Wird in Canary gespeichert und gilt in jedem Browser und im Overlay.':
@@ -17964,8 +18023,7 @@ async function tick(){
   if(!$('#setup').hidden){$('#setup').hidden=true;$('#setup').dataset.built='';}
   if(view!=='live'&&view!=='month'&&view!=='total'&&view!=='analyse')$('#empty').hidden=true;
   // Der Mining/PvP-Umschalter gehört nur zur Live-Ansicht
-  document.querySelectorAll('.modesel').forEach(b=>b.hidden=view!=='live');
-  ['sortChars','cardScale'].forEach(id=>{const e=$('#'+id);if(e)e.hidden=view!=='live';});
+  {const lb=$('#livebar');if(lb)lb.hidden=view!=='live';}
   // Beides hier statt beim Seitenaufbau: dort waere `lang` noch nicht
   // deklariert (TDZ) und der Fehler risse das ganze Seiten-Skript mit.
   kartenAnwenden();cardScaleLabel();
