@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.35.0"
+VERSION = "2.35.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -7674,6 +7674,9 @@ body.quer .z{flex-direction:column;align-items:flex-start;gap:2px;min-width:150p
 .ok{background:#4fd47f}.warn{background:#e8c645}
 .bad{background:#e8564f;animation:p .9s infinite}
 @keyframes p{50%{opacity:.25}}
+.esih{font-size:9px;font-weight:700;vertical-align:2px;margin-left:2px}
+.esih.ja{color:#4fd47f;opacity:.85}
+.esih.nein{color:#e8564f;opacity:.75}
 .nm{font-weight:700;font-size:13px;line-height:1.2;
  text-shadow:0 1px 3px rgba(0,0,0,.9)}
 .sub{font-size:9.5px;color:#b6c2d2;line-height:1.35;text-shadow:0 1px 3px rgba(0,0,0,.9)}
@@ -7848,7 +7851,8 @@ const ZEIG = {
   ship:   an('ship', true),
   status: an('status', true),
   sum:    an('sum', true),
-  warn:   an('warn', true),\n  iskh:   an('iskh', true)
+  warn:   an('warn', true),\n  iskh:   an('iskh', true),
+  esi:    an('esi', true)
 };
 const MAX = parseInt(P.get('max') || '0', 10) || 99;
 // Zwei Ansichten: je Charakter (wie bisher) oder je Taetigkeit.
@@ -7990,6 +7994,7 @@ if (!location.search) {
     ['max', 'Chars hoechstens', 'zahl', [0, 0, 20, 1]],
     ['status', 'Status PvE/PvP/Mining', 'ja', 1],
     ['ship', 'Schiff', 'ja', 1],
+    ['esi', 'ESI-Haken je Charakter', 'ja', 1],
     ['iskh', 'ISK pro Stunde', 'ja', 1],
     ['sum', 'Flottensumme', 'ja', 1],
     ['warn', 'Warnungen', 'ja', 1],
@@ -8060,7 +8065,7 @@ function downtime() {
 // unter fuenf Minuten bleibt sie absichtlich aus. Und genau beim Einrichten
 // will man sehen, wo die Zahl landet.
 const DEMO = [
-  { name: 'Darius Ward', active: true, system: 'J152827', ship: 'Hulk',
+  { name: 'Darius Ward', active: true, system: 'J152827', ship: 'Hulk', esi_linked: true,
     m3: 297699, m3h: 294159, ore_isk: 159300000, total_isk: 159300000,
     session_min: 62, dmg_out: 0 },
   { name: 'Jessedaika Law', active: true, system: 'J152827', ship: 'Hulk',
@@ -8074,7 +8079,7 @@ const DEMO = [
     tool_warns: [{ tool: 'Strip Miner II' }] },
   // Missionsflieger MIT Belohnung aus dem Journal, damit in der Vorschau das
   // Kuerzel +ESI auftaucht und man es beim Einrichten schon erklaert bekommt.
-  { name: 'Askend', active: true, system: 'Gisleres', ship: 'Megathron',
+  { name: 'Askend', active: true, system: 'Gisleres', ship: 'Megathron', esi_linked: true,
     m3: 0, m3h: 0, ore_isk: 0, total_isk: 42800000, reward_session: 21500000,
     session_min: 95, dmg_out: 184000, dmg_in: 41000,
     mission: { name: 'Recon 2 of 3 (Mercenaries)', conf: 92 }, dps_in: 0 },
@@ -8221,7 +8226,9 @@ function zeichne(d) {
     if (ZEIG.sys && c.system) unten.push(esc(c.system));
     if (ZEIG.ship && c.ship) unten.push(esc(c.ship));
     return '<div class="z"><span class="pkt ' + cls + '"></span><span>'
-      + '<div class="nm">' + esc(c.name) + '</div>'
+      + '<div class="nm">' + esc(c.name)
+      + (ZEIG.esi ? ' <span class="esih ' + (c.esi_linked ? 'ja' : 'nein') + '">'
+          + (c.esi_linked ? '\u2713' : '\u2717') + '</span>' : '') + '</div>'
       + (unten.length ? '<div class="sub">' + unten.join(' &middot; ') + '</div>' : '')
       + (ZEIG.warn && txt ? '<div class="st ' + (cls === 'bad' ? 'bad' : '') + '">' + txt + '</div>' : '')
       + '</span>' + rechts(c) + '</div>';

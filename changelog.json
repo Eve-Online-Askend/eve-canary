@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.35.1",
+  "d": "2026-08-15",
+  "de": [
+   "OBS-OVERLAY: EIN DEZENTER ESI-HAKEN JE CHARAKTER, gewuenscht von Askend. Hinter jedem Namen steht jetzt klein ein gruener Haken, wenn der Charakter per EVE-Login verbunden ist, und ein rotes Kreuz, wenn nicht. So sieht man im Stream sofort, wessen Belohnungen und Wallet-Zahlen mitlaufen. In der OBS-Einrichtung abschaltbar."
+  ],
+  "en": [
+   "OBS OVERLAY: A SUBTLE ESI CHECK PER CHARACTER, requested by Askend. Behind every name there is now a small green check when the character is connected via EVE login, and a red cross when not. So the stream shows at a glance whose rewards and wallet numbers are included. Can be switched off in the OBS setup."
+  ]
+ },
+ {
   "v": "2.35.0",
   "d": "2026-08-15",
   "de": [
