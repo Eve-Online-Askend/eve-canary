@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.35.0",
+  "d": "2026-08-15",
+  "de": [
+   "VOLL-AUDIT DES OBS-OVERLAYS, fuenf Befunde, alle behoben. Der wichtigste: VERLORENE ISK WAREN NACH DEM TOD UNSICHTBAR. Die Kill- und Verlust-Zeilen hingen am Kampf-Zweig, und wer gerade gestorben war, hatte in der frischen Wanne noch keine Schadenszahlen, der Zweig griff nicht, und ausgerechnet der Verlust fehlte im Bild. Jetzt stehen Kills, zerstoerte und verlorene ISK unabhaengig davon da, auch bei einem Miner mit Beikill.",
+   "AUSSERDEM: der Modus \"je Taetigkeit\" zeigt im PVP-Kasten jetzt ebenfalls Kills, zerstoerte und verlorene ISK. \"UNTER BESCHUSS\" ist beim Missionsfliegen nur noch GELB statt dauerrot, jede Ratte schiesst nun mal, und ein Dauer-Alarm ist keiner; bei Minern und im PvP bleibt es rot, dort ist eingehender Schaden ein echter Notfall. Die Einstellung \"Chars hoechstens 1\" ging beim Adressbau verloren und zeigte alle, behoben. Und ein Werkzeugname in der Warnzeile wird jetzt sauber maskiert.",
+   "Gepruefte und fuer gut befundene Punkte, der Vollstaendigkeit halber: alle 23 vom Overlay genutzten Datenfelder werden geliefert, Namen und Missionsbezeichnungen sind maskiert, der Standort bleibt aus Datenschutzgruenden standardmaessig aus, die Downtime-Rechnung stimmt, und die Selbst-Neuladung nach Updates greift."
+  ],
+  "en": [
+   "FULL AUDIT OF THE OBS OVERLAY, five findings, all fixed. The most important: LOST ISK WAS INVISIBLE AFTER DYING. The kill and loss lines hung off the combat branch, and someone freshly podded had no damage numbers in the new hull yet, so the branch never fired and the loss of all things was missing. Kills, ISK destroyed and ISK lost now show independently, including for a miner with a side kill.",
+   "ALSO: the \"per activity\" mode now shows kills, ISK destroyed and lost in the PVP box too. \"UNDER FIRE\" is only YELLOW while running missions instead of permanently red, rats simply shoot, and a constant alarm is none; for miners and in PvP it stays red, incoming damage is a real emergency there. The \"max 1 character\" setting was lost when building the address and showed everyone, fixed. And a tool name in the warning line is now properly escaped.",
+   "Checked and found fine, for completeness: all 23 data fields the overlay uses are delivered, names and mission titles are escaped, the location stays off by default for privacy, the downtime maths is right, and the self-reload after updates works."
+  ]
+ },
+ {
   "v": "2.34.2",
   "d": "2026-08-15",
   "de": [

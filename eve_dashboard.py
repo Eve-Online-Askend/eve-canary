@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.34.2"
+VERSION = "2.35.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -7938,17 +7938,20 @@ function rechts(c) {
     if (isk > 0 && raus > 0) unten.push(fmtC(raus) + ' Schaden raus');
     else if (raus > 0) unten.push('Schaden raus');
     if (rein > 0) unten.push(fmtC(rein) + ' Schaden rein');
-    // Abschuss-Zaehler: NPC-Kills sofort (Bounty-Zeilen), Spieler-Kills aus
-    // dem Killmail-Feed mit ein paar Minuten Verzug. Die ISK-Werte sind
-    // zKillboards Preisrechnung je Killmail, dieselbe Quelle.
-    const kk = (c.kills || 0) + (c.pvp_kills || 0);
-    if (kk > 0) unten.push(kk + (kk === 1 ? ' Kill' : ' Kills'));
-    if (c.kill_isk > 0) unten.push(fmtM(c.kill_isk) + ' zerstört');
-    if (c.verlust_isk > 0) unten.push(fmtM(c.verlust_isk) + ' verloren');
     // Bis v1.95 gab es hier nie eine Stundenrate: sie wurde ausschliesslich
     // aus dem Erz gerechnet. Ein Missionsflieger sah also immer nichts.
     if (iskH(c)) unten.push(fmtM(iskH(c)) + '/h');
   }
+  // Abschuss-Zaehler und ISK-Bilanz stehen AUSSERHALB des Kampf-Zweigs.
+  // Beim Audit gefunden: wer gerade gestorben war, hatte in der neuen Wanne
+  // noch keine Schadenszahlen, der Kampf-Zweig griff nicht, und ausgerechnet
+  // der Verlust blieb unsichtbar. Ein Miner mit Beikill ebenso.
+  // NPC-Kills sofort (Bounty-Zeilen), Spieler-Kills aus dem Killmail-Feed
+  // mit ein paar Minuten Verzug, ISK-Werte sind zKillboards Preisrechnung.
+  const kk = (c.kills || 0) + (c.pvp_kills || 0);
+  if (kk > 0) unten.push(kk + (kk === 1 ? ' Kill' : ' Kills'));
+  if (c.kill_isk > 0) unten.push(fmtM(c.kill_isk) + ' zerstört');
+  if (c.verlust_isk > 0) unten.push(fmtM(c.verlust_isk) + ' verloren');
   let gross = '';
   if (isk > 0) gross = fmtM(isk);
   else if (kampf && raus > 0) gross = fmtC(raus);
@@ -7959,10 +7962,16 @@ function rechts(c) {
 }
 
 function zustand(c) {
-  if (c.dps_in > 0) return ['bad', 'UNTER BESCHUSS'];
+  if (c.dps_in > 0) {
+    // Fuer Miner und PvP ist eingehender Schaden ein Notfall, ROT. Beim
+    // Missionsfliegen ist er Alltag, jede Ratte schiesst: dauerrot wuerde
+    // den Alarm entwerten, deshalb dort nur GELB. Beim Audit entschieden.
+    const r = rolle(c);
+    return [(r && r[0] === 'pve') ? 'warn' : 'bad', 'UNTER BESCHUSS'];
+  }
   if (c.cargo_full) return ['bad', 'FRACHTRAUM VOLL'];
   const tw = c.tool_warns || [];
-  if (tw.length) return ['warn', String(tw[0].tool).toUpperCase() + ' AUS'];
+  if (tw.length) return ['warn', esc(String(tw[0].tool).toUpperCase()) + ' AUS'];
   if (c.drones_idle) return ['warn', 'DROHNEN OHNE ERZ'];
   return ['ok', ''];
 }
@@ -8004,7 +8013,13 @@ if (!location.search) {
       const k = el.dataset.k;
       if (el.type === 'checkbox') { const vor = F.find((f) => f[0] === k)[3];
         if (el.checked !== !!vor) q.push(k + '=' + (el.checked ? 1 : 0)); }
-      else if (el.value && el.value !== '0' && el.value !== '1') q.push(k + '=' + el.value);
+      else if (el.type === 'number') {
+        // Gegen die VORGABE des Feldes vergleichen, nicht pauschal '0' und
+        // '1' verwerfen: der alte Filter warf "Chars hoechstens 1" weg, und
+        // die Adresse zeigte dann alle. Beim Audit gefunden.
+        const vor = String(F.find((f) => f[0] === k)[3][0]);
+        if (el.value !== '' && el.value !== vor) q.push(k + '=' + el.value);
+      }
       else if (el.tagName === 'SELECT' && el.value) q.push(k + '=' + el.value);
     }
     document.getElementById('url').value = location.origin + '/obs'
@@ -8076,7 +8091,7 @@ const DEMO = [
 function nachArt(chars) {
   const arten = {mining: {}, pve: {}, pvp: {}};
   for (const k of Object.keys(arten))
-    arten[k] = {n: 0, isk: 0, rate: 0, m3: 0, m3h: 0, schaden: 0};
+    arten[k] = {n: 0, isk: 0, rate: 0, m3: 0, m3h: 0, schaden: 0, kills: 0, zerstoert: 0, verloren: 0};
   for (const c of chars) {
     const r = rolle(c);
     if (!r) continue;
@@ -8087,6 +8102,9 @@ function nachArt(chars) {
     a.m3h += c.m3h || 0;
     a.rate += iskH(c) || 0;
     a.schaden += c.dmg_out || 0;
+    a.kills += (c.kills || 0) + (c.pvp_kills || 0);
+    a.zerstoert += c.kill_isk || 0;
+    a.verloren += c.verlust_isk || 0;
   }
   return arten;
 }
@@ -8103,6 +8121,9 @@ function kaesten(chars) {
     const unten = [d.n + (d.n === 1 ? ' Pilot' : ' Piloten')];
     if (k === 'mining' && d.m3h) unten.push(fmt(d.m3h) + ' m³/h');
     if (k !== 'mining' && d.schaden) unten.push(fmtC(d.schaden) + ' Schaden');
+    if (d.kills) unten.push(d.kills + (d.kills === 1 ? ' Kill' : ' Kills'));
+    if (d.zerstoert) unten.push(fmtM(d.zerstoert) + ' zerstört');
+    if (d.verloren) unten.push(fmtM(d.verloren) + ' verloren');
     teile.push('<div class="tk k-' + k + '"><span>'
       + '<div class="kopf">' + namen[k] + '</div>'
       + '<div class="unter">' + unten.join(' &middot; ') + '</div></span>'
