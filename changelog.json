@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.35.2",
+  "d": "2026-08-15",
+  "de": [
+   "NEUE GETEILTE GEGNER-VORLAGE: Ritualist Raids (Blood Raiders, Stufe 4), gemeldet von Nirahse. Der naheliegende Weg ueber die Blood Raider Cathedral als Signatur wurde geprueft und BEWUSST VERWORFEN: dieselbe Struktur steht auch in der Anomalie Blood Raider Cathedral Base, an vier echten Anomalie-Laeufen gemessen haette die Signatur alle vier falsch als Mission beschriftet. Stattdessen die volle 17-Gegner-Vorlage: gegen 213 fremde Kampf-Abschnitte gehalten schlaegt sie kein einziges Mal falsch an, der hoechste fremde Wert liegt bei 32 Prozent und damit weit unter der 80-Prozent-Schwelle."
+  ],
+  "en": [
+   "NEW SHARED ENEMY TEMPLATE: Ritualist Raids (Blood Raiders, level 4), reported by Nirahse. The obvious route via the Blood Raider Cathedral as a signature was checked and DELIBERATELY REJECTED: the same structure also stands in the Blood Raider Cathedral Base anomaly, and measured against four real anomaly runs the signature would have mislabeled all four as the mission. Instead the full 17-enemy template: held against 213 foreign combat sections it never fires wrongly, the highest foreign value is 32 percent, far below the 80 percent threshold."
+  ]
+ },
+ {
   "v": "2.35.1",
   "d": "2026-08-15",
   "de": [

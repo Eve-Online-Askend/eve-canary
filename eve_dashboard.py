@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.35.1"
+VERSION = "2.35.2"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
