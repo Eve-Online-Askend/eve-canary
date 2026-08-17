@@ -156,6 +156,22 @@
   "links": []
  },
  {
+  "name": "Savox76",
+  "role": {
+   "de": "Ideen",
+   "en": "Ideas",
+   "fr": "Idées",
+   "ru": "Идеи"
+  },
+  "note": {
+   "de": "Wollte nach Missionsende wissen, welche Gegner eigentlich drin waren. Daraus wurde die Gegnerliste mit Kampfabschnitten beim Benennen.",
+   "en": "Wanted to know after a mission which enemies were actually in it. That became the enemy list with combat sections when naming.",
+   "fr": "Voulait savoir après une mission quels ennemis s'y trouvaient. C'est devenu la liste des ennemis avec sections de combat.",
+   "ru": "Хотел знать после миссии, какие враги в ней были. Так появился список врагов с боевыми секциями."
+  },
+  "links": []
+ },
+ {
   "name": "Dune2Man",
   "role": {
    "de": "Ideen",
