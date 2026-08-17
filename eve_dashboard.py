@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.35.2"
+VERSION = "2.36.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1619,6 +1619,7 @@ def load_config():
            "mode": "all", "install_ts": time.time(),
            "goal": None, "watchlist": [], "idle_warn": 240, "heavy_water": {},
            "eigenbeschuss_warnen": False,
+           "char_versteckt": [],
            # Karenzzeit fuer die Modul-Warnung, in Sekunden. 0 = sofort.
            "tool_warn_delay": 0,
            # Wie empfindlich soll die Meldung "Laser aus, neues Ziel erfassen"
@@ -3037,6 +3038,11 @@ class Alerts:
         "corporations/98679090" oder "alliances/1354830081". Nur Pfad, keine
         volle Adresse: die baut das Frontend und prueft sie vorher gegen ein
         festes Muster, damit ueber diesen Weg keine fremde URL ins Bild kommt."""
+        # Versteckte Charaktere alarmieren nicht: wer ein Alt aus der
+        # Anzeige nimmt, will es auch nicht per Banner oder Sprachausgabe
+        # im Stream verraten bekommen. Entscheidung vom 15.08.2026.
+        if char and char in (CONFIG.get("char_versteckt") or []):
+            return
         with self.lock:
             self.items.append({"id": self.next_id, "ts": time.time(),
                                "kind": kind, "char": char, "text": text,
@@ -8739,6 +8745,13 @@ def snapshot_live():
             "spark_in": [b[1]["in"] for b in list(s.dmg_min)[-60:]],
             "spark": [round(sum(mix.values())) for _, mix in list(s.rate_min)[-60:]],
         })
+    # Versteckte Charaktere raus, BEVOR sortiert wird: sie fehlen damit in
+    # den Live-Karten, im OBS-Overlay, im Mini-Overlay und in jeder Summe,
+    # die das Frontend aus dieser Liste rechnet. Ihre Daten laufen im
+    # Hintergrund normal weiter (daily, Missionen, Verlauf).
+    versteckt = set(CONFIG.get("char_versteckt") or [])
+    if versteckt:
+        chars = [c for c in chars if c["name"] not in versteckt]
     # Eigene Reihenfolge zuerst (Wunsch von Eron Solette: Multiboxer haben
     # durch Eve-O-Preview eine feste Fenster-Anordnung im Kopf, die Karten
     # sollen ihr folgen koennen). Unbekannte Namen haengen alphabetisch hinten
@@ -9653,6 +9666,7 @@ def state_info():
             "count_me": bool(CONFIG.get("count_me", True)),
             "auto_update": bool(CONFIG.get("auto_update", False)),
             "eigenbeschuss_warnen": bool(CONFIG.get("eigenbeschuss_warnen", False)),
+            "char_versteckt": list(CONFIG.get("char_versteckt") or []),
             "share_ore": bool(CONFIG.get("share_ore", False)),
             "autostart": AUTOSTART_OK and autostart_path().exists(),
             # Was diese Plattform kann — die Oberflaeche blendet den Rest aus,
@@ -11549,6 +11563,19 @@ class Handler(BaseHTTPRequestHandler):
             # Beschuss durch eigene Charaktere melden ja/nein (Vorgabe: nein).
             CONFIG["eigenbeschuss_warnen"] = bool(body.get("on"))
             save_config()
+        elif action == "char_verstecken":
+            # Einen Charakter aus allen Live-Ansichten nehmen (Karten, OBS,
+            # Mini-Overlay, Summen) oder zurueckholen. Community-Anfrage vom
+            # 15.08.2026. Seine DATEN laufen normal weiter, Historie und
+            # Statistik bleiben vollstaendig, nur Anzeige und Alarme schweigen.
+            name = str(body.get("name") or "").strip()[:64]
+            if name:
+                liste = [n for n in (CONFIG.get("char_versteckt") or [])
+                         if n != name]
+                if body.get("an"):
+                    liste.append(name)
+                CONFIG["char_versteckt"] = liste[:50]
+                save_config()
         elif action == "char_reihenfolge":
             # Eigene Reihenfolge der Charakter-Karten (Wunsch von Eron
             # Solette: Multiboxer haben ueber Eve-O-Preview eine feste
@@ -12238,6 +12265,8 @@ padding:4px 11px;border-radius:20px;cursor:pointer;user-select:none}
 .pill.on{background:var(--cyan);color:var(--bg);border-color:var(--cyan)}
 .sortpf{cursor:pointer;color:var(--cyan);padding:0 4px;user-select:none;font-size:13px}
 .sortpf:hover{color:var(--txt)}
+.hidepf{cursor:pointer;padding:0 4px;user-select:none;font-size:12px;opacity:.7}
+.hidepf:hover{opacity:1}
 /* Kopfleisten-Neuordnung (15.08.2026): Gruppen mit Trennstrichen, Werkzeuge
    als Aufklapp-Menue, Live-Steuerung in eigener Leiste ueber den Karten. */
 header{position:relative;z-index:40}
@@ -13260,6 +13289,11 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
    <span class="hint" style="margin:0">Sekunden Karenz, bevor eine Modul-Warnung erscheint (0 = sofort)</span>
    <button class="btn" id="saveToolDelay">Speichern</button>
   </div>
+  <div id="verstecktWrap" hidden style="margin-top:8px">
+   <b style="font-size:13px">Versteckte Charaktere</b>
+   <div class="hint">Diese Charaktere erscheinen in keiner Live-Ansicht und lösen keine Alarme aus. Ihre Daten laufen im Hintergrund normal weiter. Verstecken geht über den Knopf Reihenfolge in der Live-Ansicht, dort hat jede Karte ein 🙈.</div>
+   <div id="verstecktListe" class="btnrow"></div>
+  </div>
   <label style="margin-top:8px"><input type="checkbox" id="eigenWarn"> Beschuss durch eigene Charaktere melden</label>
   <div class="hint">Standardmäßig aus: trifft einer deiner eigenen Charaktere einen anderen, etwa beim Ratten mit Flächenschaden, gibt es keinen Spieler-Angriff-Alarm und keine Sprachwarnung. Welche Charaktere deine sind, weiß Canary von allein, es sind die mit Logdateien auf diesem Rechner. Einschalten nur, wenn du auch Eigenbeschuss gemeldet haben willst. Gewünscht von Impa.</div>
   <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
@@ -13717,6 +13751,17 @@ function syncOpts(){
  $('#countMe').checked=state.count_me!==false;
  $('#autoUpdate').checked=state.auto_update===true;
  $('#eigenWarn').checked=state.eigenbeschuss_warnen===true;
+ {const vs=state.char_versteckt||[], wrap=$('#verstecktWrap');
+  if(wrap){wrap.hidden=!vs.length;
+   $('#verstecktListe').innerHTML=vs.map(n=>`<button class="btn geist zeigChar" data-char="${esc(n)}">${esc(n)} · ${lang==='en'?'show again':'wieder anzeigen'}</button>`).join('');
+   document.querySelectorAll('.zeigChar').forEach(b=>b.onclick=async()=>{
+    await post({action:'char_verstecken',name:b.dataset.char,an:false});
+    // Sofort aus der Liste nehmen: der frische Zustand kommt erst mit dem
+    // naechsten Tick, und bis dahin soll der Knopf nicht doppelt klickbar sein.
+    b.remove();
+    if(!document.querySelector('.zeigChar'))$('#verstecktWrap').hidden=true;
+    tick();
+   });}}
  $('#shareOre').checked=state.share_ore===true;
  // Log-Ordner nur befüllen, solange niemand darin tippt
  if(document.activeElement!==$('#logDir'))$('#logDir').value=state.log_dir||'';
@@ -14126,7 +14171,11 @@ function cardScaleLabel(){
 }
 function sortPf(c){
  if(!charSortMode)return '';
- return `<span class="sortpf" data-char="${esc(c.name)}" data-d="-1" title="nach vorn">◀</span><span class="sortpf" data-char="${esc(c.name)}" data-d="1" title="nach hinten">▶</span> `;
+ return `<span class="sortpf" data-char="${esc(c.name)}" data-d="-1" title="nach vorn">◀</span><span class="sortpf" data-char="${esc(c.name)}" data-d="1" title="nach hinten">▶</span><span class="hidepf" data-char="${esc(c.name)}" title="Diesen Charakter aus allen Live-Ansichten nehmen (Karten, OBS, Overlay, Summen). Seine Daten laufen normal weiter, Historie und Statistik bleiben vollständig. Zurückholen jederzeit unter Optionen.">🙈</span> `;
+}
+async function charVerstecken(name){
+ try{await post({action:'char_verstecken',name,an:true});}catch(e){return;}
+ tick();
 }
 async function charVerschieben(name,d){
  const namen=(lastChars||[]).map(c=>c.name);
@@ -14142,6 +14191,8 @@ async function charVerschieben(name,d){
 document.addEventListener('click',e=>{
  const t=e.target.closest&&e.target.closest('.sortpf');
  if(t){e.stopPropagation();charVerschieben(t.dataset.char,parseInt(t.dataset.d));}
+ const h=e.target.closest&&e.target.closest('.hidepf');
+ if(h){e.stopPropagation();charVerstecken(h.dataset.char);}
 },true);
 // ---- Lokale Missions-Simulation (nur Frontend, keine Logs/DB, nie hochgeladen) ----
 // Sichtbar nur mit lokalem sim_mode-Flag. Ein Demo-Char durchlaeuft komplette
@@ -17926,6 +17977,11 @@ const EN = {
  'Data: the public EVE job list, no login. Market prices from ESI and Fuzzwork as everywhere. Your mining numbers stay on this machine, nothing about you is sent for the calculation.',
 'Anonym mitzählen lassen':'Let this install be counted anonymously',
 'Beschuss durch eigene Charaktere melden':'Report fire from your own characters',
+'Versteckte Charaktere':'Hidden characters',
+'Diese Charaktere erscheinen in keiner Live-Ansicht und lösen keine Alarme aus. Ihre Daten laufen im Hintergrund normal weiter. Verstecken geht über den Knopf Reihenfolge in der Live-Ansicht, dort hat jede Karte ein 🙈.':
+ 'These characters appear in no live view and trigger no alarms. Their data keeps flowing normally in the background. Hiding works via the Order button in the live view, every card gets a 🙈 there.',
+'Diesen Charakter aus allen Live-Ansichten nehmen (Karten, OBS, Overlay, Summen). Seine Daten laufen normal weiter, Historie und Statistik bleiben vollständig. Zurückholen jederzeit unter Optionen.':
+ 'Take this character out of all live views (cards, OBS, overlay, sums). Its data keeps flowing, history and statistics stay complete. Bring it back any time under options.',
 'Standardmäßig aus: trifft einer deiner eigenen Charaktere einen anderen, etwa beim Ratten mit Flächenschaden, gibt es keinen Spieler-Angriff-Alarm und keine Sprachwarnung. Welche Charaktere deine sind, weiß Canary von allein, es sind die mit Logdateien auf diesem Rechner. Einschalten nur, wenn du auch Eigenbeschuss gemeldet haben willst. Gewünscht von Impa.':
  'Off by default: when one of your own characters hits another, for example while ratting with area damage, there is no player-attack alarm and no voice warning. Canary knows which characters are yours by itself, they are the ones with log files on this machine. Enable only if you want friendly fire reported too. Requested by Impa.',
 'Erz-Erträge für die Homepage-Statistik freigeben':'Share ore yields for the homepage statistics',

@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.36.0",
+  "d": "2026-08-15",
+  "de": [
+   "CHARAKTERE LASSEN SICH VERSTECKEN, auf Community-Anfrage: wer ein Scout- oder Markt-Alt nicht in der Anzeige haben will, nimmt es jetzt komplett aus allen Live-Ansichten. Der Weg: in der Live-Ansicht auf Reihenfolge klicken, dann traegt jede Karte ein Augen-Symbol. Ein versteckter Charakter verschwindet aus den Live-Karten, dem OBS-Overlay, dem Mini-Overlay und allen Flottensummen, und er loest auch keine Alarme und Sprachwarnungen mehr aus, sonst wuerde er sich im Stream doch verraten.",
+   "WICHTIG DABEI: seine Daten laufen im Hintergrund normal weiter. Historie, 30 Tage, Gesamt und Missionen bleiben vollstaendig, nur die Live-Anzeige schweigt. Und ZURUECKHOLEN geht jederzeit: unter Optionen steht jede versteckte Karte mit einem Knopf wieder anzeigen. Die Einstellung liegt in Canary selbst und gilt damit in jedem Browser und im Overlay."
+  ],
+  "en": [
+   "CHARACTERS CAN BE HIDDEN, by community request: if you do not want a scout or market alt on display, you can now take it out of all live views. The way: click Order in the live view, then every card carries an eye symbol. A hidden character disappears from the live cards, the OBS overlay, the mini overlay and all fleet sums, and it no longer triggers alarms or voice warnings either, otherwise it would give itself away on stream after all.",
+   "IMPORTANT: its data keeps flowing normally in the background. History, 30 days, totals and missions stay complete, only the live display goes quiet. And BRINGING IT BACK works any time: under options every hidden character sits with a show-again button. The setting lives in Canary itself and therefore applies in every browser and in the overlay."
+  ]
+ },
+ {
   "v": "2.35.2",
   "d": "2026-08-15",
   "de": [
