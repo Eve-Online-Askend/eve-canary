@@ -1279,8 +1279,20 @@ applyLang(start);
 // Version und Downloadzahl live von GitHub. Schlaegt das fehl, bleibt die Seite nutzbar.
 (async () => {
   const repo = 'Eve-Online-Askend/eve-canary';
+  // Erst RELATIV laden (die Dateien liegen neben dieser Seite auf GitHub
+  // Pages), raw.githubusercontent nur als Rueckfall. Grund, live gesehen am
+  // 15.08.2026: raw hat ein eigenes IP-Limit, und an einem Tag mit vielen
+  // Releases antwortete es mit 429, der Versions-Chip zeigte nur einen
+  // Strich. Pages kennt kein solches Limit, thanks.json machte es laengst so.
+  const holJson = async (name) => {
+    try {
+      const r = await fetch(`./${name}?_=${Date.now()}`, { cache: 'no-store' });
+      if (r.ok) return await r.json();
+    } catch (e) {}
+    return await (await fetch(`https://raw.githubusercontent.com/${repo}/main/${name}?_=${Date.now()}`)).json();
+  };
   try {
-    const v = await (await fetch(`https://raw.githubusercontent.com/${repo}/main/version.json`)).json();
+    const v = await holJson('version.json');
     document.getElementById('ver').textContent = v.version;
   } catch (e) { document.getElementById('ver').textContent = '–'; }
   try {
@@ -1288,7 +1300,7 @@ applyLang(start);
     // Stunde und IP, hinter einem geteilten Anschluss waere die Seite damit
     // schnell tot. Die Zahlen rechnet release.py beim Veroeffentlichen aus und
     // legt sie als stats.json ab, hier ist es ein einziger Abruf ohne Limit.
-    ST = await (await fetch(`https://raw.githubusercontent.com/${repo}/main/stats.json?_=${Date.now()}`)).json();
+    ST = await holJson('stats.json');
     if (ST.downloads && ST.downloads.total > 0) {
       document.getElementById('dl').textContent = ST.downloads.total.toLocaleString(curLang);
       document.getElementById('dlBadge').hidden = false;
@@ -1299,7 +1311,7 @@ applyLang(start);
   try {
     // Cache-Buster: verhindert, dass ein kurz zwischengespeicherter 404 (direkt
     // nach dem Deploy) die Anzeige blockiert; die Datei ist winzig.
-    CL = await (await fetch(`https://raw.githubusercontent.com/${repo}/main/changelog.json?_=${Date.now()}`)).json();
+    CL = await holJson('changelog.json');
     renderChangelog();
   } catch (e) {
     document.getElementById('changelog').innerHTML =
