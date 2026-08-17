@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.37.0"
+VERSION = "2.38.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -12247,7 +12247,10 @@ html[data-skin=photon] ::-webkit-scrollbar-track{background:transparent}
 body{background:var(--bg);color:var(--txt);padding:18px}
 html[data-fs="2"] body{zoom:1.15}
 html[data-fs="3"] body{zoom:1.3}
-header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+/* Ein Rhythmus fuer alle Hauptbloecke der Seite: 12px. Vorher hatte jeder
+   Block seinen gewachsenen Wert (10/12/14 gemischt), das gab die gemeldeten
+   unregelmaessigen Abstaende in der Live-Ansicht. */
+header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
 h1{font-size:14px;font-weight:600;letter-spacing:2px;color:var(--dim)}
 h1 b{color:var(--cyan)}
 /* Titel und Versionsangabe stehen untereinander, alles andere bleibt in der
@@ -12320,7 +12323,7 @@ header{position:relative;z-index:40}
 #livebar[hidden]{display:none}
 #livebar .lbl{font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim);margin:0 2px}
 #kopfHinweis{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid var(--gold);
- border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:12px}
+ border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:12px}
 #kopfHinweis[hidden]{display:none}
 .pill.rolef{padding:4px 9px}
 .rolesel{appearance:none;-webkit-appearance:none;background:var(--inset);border:1px solid var(--line);
@@ -12332,6 +12335,10 @@ html[data-skin=photon] .rolesel{border-radius:1px}
    sie sich seitlich schieben. */
 #loadbar{height:2px;background:var(--inset);overflow:hidden;margin-bottom:-2px;position:relative;z-index:2}
 #loadtxt{font-size:12.5px;color:var(--cyan);padding:6px 2px 0;display:flex;gap:7px;align-items:center}
+/* display:flex auf der ID schlaegt das hidden-Attribut, dadurch stand die
+   leere Ladezeile samt Pulspunkt DAUERHAFT unter der Kopfleiste (gemeldet
+   aus dem Discord, 17.08.2026). Versteckt heisst versteckt: */
+#loadtxt[hidden]{display:none}
 #loadtxt:before{content:'';width:9px;height:9px;border-radius:50%;background:var(--cyan);
  animation:lbp 900ms ease-in-out infinite}
 #loadtxt.lang{color:var(--gold)}
@@ -12340,7 +12347,7 @@ html[data-skin=photon] .rolesel{border-radius:1px}
 #loadbar>div{height:100%;width:35%;background:var(--cyan);border-radius:2px;
  animation:lb 900ms ease-in-out infinite}
 @keyframes lb{0%{margin-left:-35%}100%{margin-left:100%}}
-nav{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:14px;
+nav{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:12px;
  overflow-x:auto;scrollbar-width:thin}
 nav::-webkit-scrollbar{height:4px}
 nav::-webkit-scrollbar-thumb{background:var(--line);border-radius:2px}
@@ -12368,6 +12375,12 @@ html[data-skin=photon] .vinfo{border-radius:1px}
 nav span{color:var(--dim);font-size:12px;padding:7px 16px;cursor:pointer;user-select:none}
 nav span.on{color:var(--cyan);border-bottom:2px solid var(--cyan)}
 #alerts{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+/* Leer ist der Kasten 0px hoch, aber als Flexbox kollabiert er nicht: sein
+   Abstand blieb stehen UND er verhinderte, dass die Abstaende seiner
+   Nachbarn miteinander verschmelzen. Beides zusammen verdoppelte die Luecke
+   vor dem naechsten Block (22px statt 12 bzw. 48 statt 24 im Cockpit).
+   Leer fliegt er deshalb ganz aus dem Fluss: */
+#alerts:empty{display:none}
 .alert{border-radius:8px;padding:8px 12px;font-size:12px;border:1px solid var(--line);background:var(--card)}
 .alert.pvp{border-color:var(--red);color:var(--red);font-weight:600}
 .alert.watch{border-color:var(--gold);color:var(--gold)}
@@ -12389,7 +12402,7 @@ padding:7px 10px;font-size:12px;line-height:1.5;margin:2px 0 8px}
 .warnbadge.drone{color:var(--red)}
 .pill.upd{border-color:var(--gold);color:var(--gold);animation:updpulse 2.4s ease-in-out infinite}
 @keyframes updpulse{0%,100%{box-shadow:0 0 0 rgba(232,198,69,0)}50%{box-shadow:0 0 9px rgba(232,198,69,.45)}}
-#updBanner{display:none;margin:10px 0;padding:12px 16px;border:1px solid var(--gold);border-radius:8px;
+#updBanner{display:none;margin:0 0 12px;padding:12px 16px;border:1px solid var(--gold);border-radius:8px;
 background:rgba(232,198,69,.10);align-items:center;gap:14px;flex-wrap:wrap}
 #updBanner:not([hidden]){display:flex}
 #updBanner .ub-txt{flex:1;min-width:220px;font-size:14px;color:var(--txt)}
@@ -12420,7 +12433,11 @@ tr.lvl-yellow td{background:rgba(228,179,76,.07)}
 #intelTbl a{color:inherit}
 #grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:14px;align-items:start}
 @media (max-width:900px){#grid{grid-template-columns:1fr}}
-#hero:not(:empty){margin-bottom:14px}
+#hero:not(:empty){margin-bottom:12px}
+/* Der Infokasten selbst hat keinen eigenen Abstand, sein innerer Kasten
+   brachte 10px mit. Der Eltern-Abstand kollabiert mit dem inneren zum
+   Maximum, damit gilt auch hier der 12er-Rhythmus: */
+#viewinfo:not(:empty){margin-bottom:12px}
 .card.mfp{background:linear-gradient(135deg,var(--card),var(--inset));border-color:var(--line)}
 .mfphead{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .mfptitle{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
@@ -12642,7 +12659,12 @@ html[data-skin=cockpit] body>#alerts,
 html[data-skin=cockpit] body>#hero,
 html[data-skin=cockpit] body>#setup,
 html[data-skin=cockpit] body>#updBanner,
+html[data-skin=cockpit] body>#kopfHinweis,
+html[data-skin=cockpit] body>#livebar,
 html[data-skin=cockpit] body>#grid{margin:0 0 var(--s3)}
+/* kopfHinweis und livebar kamen mit dem Kopfleisten-Umbau (v2.32/v2.33) und
+   fehlten in dieser Liste, deshalb tanzten genau sie aus dem 24er-Rhythmus
+   (gemeldet aus dem Discord, 17.08.2026). */
 html[data-skin=cockpit] body>#loadtxt{margin-bottom:var(--s1)}
 /* margin-top ausdruecklich auf null: sonst addiert sich der eigene obere
    Abstand des naechsten Blocks dazu und aus 8 werden 10. */

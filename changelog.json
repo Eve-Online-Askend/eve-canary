@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.38.0",
+  "d": "2026-08-17",
+  "de": [
+   "OPTIK-RUNDE NACH MELDUNG VON NIRAHSE (Firefox, Klassisch und Cockpit): drei Befunde, alle behoben. Der auffaelligste: unter der Kopfleiste stand DAUERHAFT ein kleiner pulsierender Punkt. Das war die leere Ladeanzeige, deren display-Regel das Verstecken-Attribut aushebelte, sie war also seit dem Kopfleisten-Umbau in jedem Skin immer sichtbar. Versteckt heisst jetzt wieder versteckt, der Punkt erscheint nur noch waehrend echter Ladevorgaenge.",
+   "DAZU DIE UNREGELMAESSIGEN ABSTAENDE in der Live-Ansicht, nachgemessen statt geschaetzt: im klassischen Design hatten die Hauptbloecke gewachsene Werte von 10, 12, 14 und einmal 22 Pixeln, jetzt gilt ueberall derselbe 12er-Abstand (Photon profitiert automatisch mit). Im Cockpit fehlten der Hinweis zur neuen Anordnung und die Live-Steuerleiste in der Rhythmus-Liste des Skins, und ein unsichtbarer leerer Alarm-Kasten verdoppelte eine Luecke auf 48 Pixel. Jetzt haelt auch dort jeder Block dieselben 24 Pixel. Nachgemessen in allen drei Skins: eine einzige Lueckengroesse je Skin."
+  ],
+  "en": [
+   "VISUAL FIXES AFTER NIRAHSE'S REPORT (Firefox, Classic and Cockpit): three findings, all fixed. The most striking: below the header a small pulsing dot was PERMANENTLY visible. That was the empty loading indicator, whose display rule overrode the hidden attribute, so it had been showing in every skin since the header rework. Hidden means hidden again, the dot only appears during real loading now.",
+   "PLUS THE IRREGULAR SPACING in the live view, measured instead of guessed: in the classic design the main blocks had grown values of 10, 12, 14 and once 22 pixels, now the same 12 pixel gap applies everywhere (Photon benefits automatically). In Cockpit the new-layout notice and the live control bar were missing from the skin's rhythm list, and an invisible empty alert box doubled one gap to 48 pixels. Now every block there keeps the same 24 pixels. Measured in all three skins: a single gap size per skin."
+  ]
+ },
+ {
   "v": "2.37.0",
   "d": "2026-08-17",
   "de": [
