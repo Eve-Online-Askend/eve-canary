@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.39.0",
+  "d": "2026-08-17",
+  "de": [
+   "GEGNERLISTE BEIM BENENNEN EINER MISSION, gewuenscht von Savox76: wer einer unbenannten Mission nachtraeglich ihren Namen gibt, sieht jetzt direkt in der Benennen-Box, welche Gegner in dem Lauf steckten. Bisher stand dort nur der erste Name, und nach Missionsende wusste niemand mehr, was eigentlich drin war.",
+   "DAZU KAMPFABSCHNITTE STATT GERATENER TASCHEN: Canary merkt sich jetzt je Gegner den Zeitpunkt des ersten Kontakts und gliedert die Liste in Abschnitte. Wichtig dabei: EVE schreibt fuer eine ERFOLGREICHE Tor-Aktivierung keine einzige Logzeile (an ueber 10.000 gespendeten Logdateien geprueft, nur Fehlerfaelle tauchen auf). Ein Abschnitt ist deshalb ehrlich definiert als Pause von ueber 90 Sekunden ohne eigenen Schaden vor einem neuen Gegner, meist ein Tor- oder Warp-Wechsel. Die Luecken zwischen Erstkontakten selbst taugen nicht als Grenze, innerhalb einer Tasche liegen auch mal Minuten zwischen neuen Zielen. Aeltere Eintraege zeigen die Liste ohne Gliederung; wo die Logdateien noch auf der Platte liegen, fuellt der einmalige Neueinlese-Lauf die Zeiten nach. Dauerhafte Pruefung: pruefungen/gegner_abschnitte.py, zehn Faelle."
+  ],
+  "en": [
+   "ENEMY LIST WHEN NAMING A MISSION, requested by Savox76: whoever gives an unnamed mission its name afterwards now sees right in the naming box which enemies were in that run. Until now only the first name was shown, and after finishing a mission nobody remembered what was actually in it.",
+   "PLUS COMBAT SECTIONS INSTEAD OF GUESSED POCKETS: Canary now remembers the time of first contact per enemy and structures the list into sections. Important: EVE writes not a single log line for a SUCCESSFUL gate activation (checked against more than 10,000 donated log files, only error cases appear). A section is therefore honestly defined as a pause of more than 90 seconds without own damage before a new enemy, usually a gate or warp change. The gaps between first contacts themselves are no boundary, within one pocket minutes can pass between new targets. Older entries show the list without structure; where the log files still sit on disk, the one-time re-read fills in the times. Permanent check: pruefungen/gegner_abschnitte.py, ten cases."
+  ]
+ },
+ {
   "v": "2.38.0",
   "d": "2026-08-17",
   "de": [

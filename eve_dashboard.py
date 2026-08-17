@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.38.0"
+VERSION = "2.39.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1779,6 +1779,15 @@ try:  # v1.95: selbst vergebener Missionsname. Grundlage des Gegner-Fingerabdruc
     DB.commit()
 except sqlite3.OperationalError:
     pass
+try:  # v2.39: Erstkontakt-Zeit je Gegner + Kampfabschnitte (Savox76). Eine
+      # ERFOLGREICHE Tor-Aktivierung schreibt keine Logzeile (an den blacy-
+      # und Nirahse-Bestaenden geprueft, nur Fehlerfaelle wie "too far away"
+      # tauchen auf), deshalb ehrliche Abschnitte aus Schadenspausen statt
+      # behaupteter Taschen. JSON: {"erst": {Gegner: ts}, "schnitte": [ts]}.
+    DB.execute("ALTER TABLE missions ADD COLUMN gegner_erst TEXT")
+    DB.commit()
+except sqlite3.OperationalError:
+    pass
 try:  # v1.71: Fernunterstuetzung je Einsatz. Ohne diese Spalten ist die
       # Leistung eines Logi-Piloten nach dem Andocken fuer immer weg.
     DB.execute("ALTER TABLE missions ADD COLUMN logi_out REAL")
@@ -1969,7 +1978,7 @@ def zu_merken(char_id, ts):
 #      die englischen Fassungen zaehlten. Dazu die englische Drohnen-Meldung
 #      "need to deposit their current loads", die es sechs Versionen lang nur
 #      in einer Fassung gab, die im Log gar nicht vorkommt.
-PARSE_VER = "12"
+PARSE_VER = "13"
 
 
 def _paare_summieren(*listen):
@@ -2002,7 +2011,7 @@ def mission_verbinden(mid):
     with DB_LOCK:
         spalten = ("mid,char_id,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,"
                    "bounty,hits,miss_out,miss_in,weapons,enemies,loot_isk,"
-                   "loot_text,dialog,ewar,logi_out,logi_in,label")
+                   "loot_text,dialog,ewar,logi_out,logi_in,label,gegner_erst")
         row = DB.execute("SELECT %s FROM missions WHERE mid=?" % spalten,
                          (mid,)).fetchone()
         if not row:
@@ -2048,18 +2057,22 @@ def mission_verbinden(mid):
                                         (spaet["dialog"] or "").strip()) if x))[:2000] or None,
         # Ein selbst vergebener Name gewinnt, egal an welchem Teil er hing.
         "label": (frueh["label"] or "").strip() or (spaet["label"] or "").strip() or None,
+        # Erstkontakte: je Gegner der fruehere Zeitpunkt, Schnitte vereint.
+        "gegner_erst": _gegner_erst_verbinden(frueh.get("gegner_erst"),
+                                              spaet.get("gegner_erst")),
     }
     with DB_LOCK:
         DB.execute(
             "UPDATE missions SET end_ts=?,system=?,dmg_out=?,dmg_in=?,kills=?,"
             "bounty=?,hits=?,miss_out=?,miss_in=?,weapons=?,enemies=?,ewar=?,"
-            "logi_out=?,logi_in=?,loot_isk=?,loot_text=?,dialog=?,label=? "
-            "WHERE mid=?",
+            "logi_out=?,logi_in=?,loot_isk=?,loot_text=?,dialog=?,label=?,"
+            "gegner_erst=? WHERE mid=?",
             (neu["end_ts"], neu["system"], neu["dmg_out"], neu["dmg_in"],
              neu["kills"], neu["bounty"], neu["hits"], neu["miss_out"],
              neu["miss_in"], json.dumps(neu["weapons"]), json.dumps(neu["enemies"]),
              json.dumps(neu["ewar"]), neu["logi_out"], neu["logi_in"],
              neu["loot_isk"], neu["loot_text"], neu["dialog"], neu["label"],
+             json.dumps(neu["gegner_erst"], ensure_ascii=False),
              frueh["mid"]))
         DB.execute("DELETE FROM missions WHERE mid=?", (spaet["mid"],))
         DB.commit()
@@ -2240,6 +2253,19 @@ def _spannt_abyss(m):
     return None
 
 
+def _gegner_erst_verbinden(a, b):
+    """Erstkontakt-Daten zweier Missionsteile vereinen: je Gegner der
+    fruehere Zeitpunkt, die Abschnittsgrenzen beider Teile zusammen."""
+    aj = json.loads(a or "{}")
+    bj = json.loads(b or "{}")
+    erst = dict(bj.get("erst") or {})
+    for k, v in (aj.get("erst") or {}).items():
+        erst[k] = min(v, erst[k]) if k in erst else v
+    schnitte = sorted(set((aj.get("schnitte") or [])
+                          + (bj.get("schnitte") or [])))[:40]
+    return {"erst": erst, "schnitte": schnitte}
+
+
 def save_mission(m):
     """Abgeschlossene Mission speichern (mid=char:start). Bei erneutem Einlesen
     werden die Kampf- und Ort-Felder aktualisiert, der vom Nutzer eingefügte
@@ -2291,21 +2317,23 @@ def _save_mission_sql(mid, m):
     DB.execute("""INSERT INTO missions
         (mid,char_id,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
          hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,ewar,
-         logi_out,logi_in)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         logi_out,logi_in,gegner_erst)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(mid) DO UPDATE SET
          char=excluded.char, end_ts=excluded.end_ts, system=excluded.system,
          dmg_out=excluded.dmg_out, dmg_in=excluded.dmg_in, kills=excluded.kills,
          bounty=excluded.bounty, hits=excluded.hits, miss_out=excluded.miss_out,
          miss_in=excluded.miss_in, weapons=excluded.weapons, enemies=excluded.enemies,
          dialog=COALESCE(excluded.dialog, missions.dialog), ewar=excluded.ewar,
-         logi_out=excluded.logi_out, logi_in=excluded.logi_in""",
+         logi_out=excluded.logi_out, logi_in=excluded.logi_in,
+         gegner_erst=excluded.gegner_erst""",
         (mid, m["char_id"], m["char"], m["start_ts"], m["end_ts"], m["system"],
          m["dmg_out"], m["dmg_in"], m["kills"], m["bounty"], m["hits"],
          m["miss_out"], m["miss_in"], json.dumps(m["weapons"], ensure_ascii=False),
          json.dumps(m["enemies"], ensure_ascii=False), None, None, m.get("dialog"),
          json.dumps(m.get("ewar") or [], ensure_ascii=False),
-         m.get("logi_out") or 0, m.get("logi_in") or 0))
+         m.get("logi_out") or 0, m.get("logi_in") or 0,
+         json.dumps(m.get("gegner_erst") or {}, ensure_ascii=False)))
 
 
 def do_backup():
@@ -3124,6 +3152,13 @@ class CharSession:
         self.pvp_out = self.pvp_in = 0
         self.kills = 0  # NPC-Abschuesse (eine Bounty-Zeile = ein Kill)
         self.targets = {}
+        # Erstkontakt je Gegner und Abschnittsgrenzen (Schadenspause >90 s
+        # vor einem neuen Erstkontakt, meist Tor/Warp). Fuer die Gegnerliste
+        # in der Benennen-Box: nach Missionsende weiss niemand mehr, was
+        # drin war (Savox76).
+        self.gegner_erst = {}
+        self.schnitte = []
+        self.letzter_out_ts = None
         self.attackers = {}
         self.win_out = deque()
         self.win_in = deque()
@@ -3225,6 +3260,18 @@ class CharSession:
             self.dock_ts = None
             if self.mission_system is None:   # Ort des ersten Kampfes = Missionsort
                 self.mission_system = self.system
+            if ev["key"] not in self.gegner_erst:
+                # Neuer Erstkontakt nach >90 s ohne eigenen Schaden: das ist
+                # eine Kampfpause (Warp/Anflug), also eine Abschnittsgrenze.
+                # Die Luecken zwischen Erstkontakten selbst taugen NICHT als
+                # Grenze: innerhalb einer Tasche liegen auch mal Minuten
+                # zwischen neuen Zielen, waehrend durchgehend geschossen wird.
+                if (self.letzter_out_ts is not None
+                        and ev["ts"] - self.letzter_out_ts > 90
+                        and len(self.schnitte) < 40):
+                    self.schnitte.append(ev["ts"])
+                self.gegner_erst[ev["key"]] = ev["ts"]
+            self.letzter_out_ts = ev["ts"]
             self.targets[ev["key"]] = self.targets.get(ev["key"], 0) + ev["value"]
             w = ev.get("weapon", "Schiff/Direkt")
             self.weapons[w] = self.weapons.get(w, 0) + ev["value"]
@@ -3304,6 +3351,9 @@ class CharSession:
                 self.fleet_compress = {}
                 self.weapons = {}
                 self.targets = {}
+                self.gegner_erst = {}
+                self.schnitte = []
+                self.letzter_out_ts = None
                 self.attackers = {}
                 self.bounty = 0
                 self.kills = 0
@@ -3685,6 +3735,10 @@ class CharSession:
         self.miss_in = m.get("miss_in") or 0
         self.weapons = dict(m.get("weapons") or [])
         self.targets = dict(m.get("enemies") or [])
+        ge = m.get("gegner_erst") or {}
+        self.gegner_erst = dict(ge.get("erst") or {})
+        self.schnitte = list(ge.get("schnitte") or [])
+        self.letzter_out_ts = None
         self.mission_system = m.get("system") or self.mission_system
         self.first_ts = m.get("start_ts") or self.first_ts
         self.dock_ts = None
@@ -3701,6 +3755,9 @@ class CharSession:
         datiert."""
         self.weapons = {}
         self.targets = {}
+        self.gegner_erst = {}
+        self.schnitte = []
+        self.letzter_out_ts = None
         self.attackers = {}
         self.bounty = 0
         self.kills = 0
@@ -3723,6 +3780,8 @@ class CharSession:
         if not (self.bounty or self.kills or self.dmg_out
                 or self.logi_out or self.logi_in):
             return None
+        gegner = sorted(self.targets.items(), key=lambda x: -x[1])[:30]
+        namen = {g[0] for g in gegner}
         return {"char_id": self.char_id, "char": self.name,
                 "start_ts": self.first_ts or end_ts, "end_ts": end_ts,
                 "system": self.mission_system or self.system or "?",
@@ -3733,7 +3792,13 @@ class CharSession:
                 # Bis 30 Gegner speichern (statt 8): in L4s dominieren Strukturen
                 # den Schaden, die fraktionsverratenden Rat-Schiffe stehen weiter
                 # unten. Fuer die Fraktions-Erkennung in der Historie noetig.
-                "enemies": sorted(self.targets.items(), key=lambda x: -x[1])[:30],
+                "enemies": gegner,
+                # Nur Erstkontakte der GESPEICHERTEN Gegner, sonst schleppt die
+                # Spalte Namen mit, die nirgendwo sonst auftauchen.
+                "gegner_erst": {"erst": {k: round(v) for k, v
+                                         in self.gegner_erst.items()
+                                         if k in namen},
+                                "schnitte": [round(x) for x in self.schnitte]},
                 "ewar": sorted(self.ewar.items(), key=lambda x: -x[1]),
                 "logi_out": sum(self.logi_out.values()),
                 "logi_in": sum(self.logi_in.values())}
@@ -9745,7 +9810,7 @@ def query_mission_history(limit=40):
         rows = DB.execute(
             """SELECT mid,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
                       hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,
-                      char_id,ewar,logi_out,logi_in,label
+                      char_id,ewar,logi_out,logi_in,label,gegner_erst
                FROM missions ORDER BY start_ts DESC LIMIT ?""", (limit * 5,)).fetchall()
     # (mid, char, start, end) je Missionszeile fuer die Zuordnung unten.
     cand = [(x[0], x[1], x[2] or 0, x[3] or 0) for x in rows]
@@ -9813,7 +9878,8 @@ def query_mission_history(limit=40):
         if len(out) >= limit:
             break
         (mid, char, st, et, sysn, do, di, kills, bounty, hits, mo, mi,
-         wj, ej, loot, loot_text, dialog, char_id, ewj, lo, li, label) = r
+         wj, ej, loot, loot_text, dialog, char_id, ewj, lo, li, label,
+         gej) = r
         shots = (hits or 0) + (mo or 0)
         enemies = json.loads(ej or "[]")
         # Fehlt der gespeicherte Funk (aeltere Mission, oder Reingest lief vor dem
@@ -9871,6 +9937,7 @@ def query_mission_history(limit=40):
             "logi_out": round(lo or 0), "logi_in": round(li or 0),
             "reward": vreward, "bonus": vbonus,
             "weapons": json.loads(wj or "[]"), "enemies": enemies,
+            "gegner_erst": json.loads(gej or "{}"),
             "loot_isk": round(loot) if loot else None, "loot_text": loot_text or "",
             "label": (label or "").strip(),
             # Fuer die beiden Auswahlfelder im Abyss: ist das ueberhaupt ein
@@ -11727,15 +11794,17 @@ class Handler(BaseHTTPRequestHandler):
             with DB_LOCK:
                 row = DB.execute(
                     "SELECT char_id,char,start_ts,system,dmg_out,dmg_in,kills,bounty,"
-                    "hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text "
-                    "FROM missions WHERE mid=?", (mid,)).fetchone()
+                    "hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,"
+                    "gegner_erst FROM missions WHERE mid=?", (mid,)).fetchone()
             if not row:
                 self._send(json.dumps({"ok": False, "error": "Eintrag nicht gefunden"}))
                 return
             m = {"char_id": row[0], "char": row[1], "start_ts": row[2], "system": row[3],
                  "dmg_out": row[4], "dmg_in": row[5], "kills": row[6], "bounty": row[7],
                  "hits": row[8], "miss_out": row[9], "miss_in": row[10],
-                 "weapons": json.loads(row[11] or "[]"), "enemies": json.loads(row[12] or "[]")}
+                 "weapons": json.loads(row[11] or "[]"),
+                 "enemies": json.loads(row[12] or "[]"),
+                 "gegner_erst": json.loads(row[15] or "{}")}
             with ingest.lock:
                 s = ingest.sessions.get(str(row[0]))
                 if s:
@@ -14808,6 +14877,37 @@ function hwUsedTitle(hw){
  return (lang==='en'?`Used since last refill: ${v} (${src})`
                     :`Verbraucht seit dem letzten Nachfüllen: ${v} (${src})`);
 }
+// Gegnerliste fuer die Benennen-Box, nach Kampfabschnitten gegliedert
+// (Savox76: nach Missionsende weiss man nicht mehr, was drin war). Tore
+// loggt EVE nicht, die Abschnitte kommen aus Schadenspausen ueber 90 s.
+// Alte Eintraege ohne Zeitdaten zeigen die Liste flach.
+function gegnerAbschnitte(x){
+ if(!x.enemies||!x.enemies.length)return '';
+ const ge=x.gegner_erst||{}, erst=ge.erst||{},
+       schnitte=(ge.schnitte||[]).slice().sort((a,b)=>a-b);
+ const mit=[],ohne=[];
+ for(const g of x.enemies)(erst[g[0]]!=null?mit:ohne).push(g[0]);
+ mit.sort((a,b)=>erst[a]-erst[b]);
+ let html='<div class="sub" style="margin-top:6px"><b>Gegner dieses Laufs</b>';
+ if(!mit.length)return html+': '+esc(ohne.join(', '))+'</div>';
+ const gruppen=[];
+ for(const n of mit){
+  const t=erst[n];
+  let k=0; for(const sc of schnitte){ if(t>=sc)k++; else break; }
+  (gruppen[k]=gruppen[k]||{ab:null,namen:[]}).namen.push(n);
+  if(gruppen[k].ab==null||t<gruppen[k].ab)gruppen[k].ab=t;
+ }
+ const teile=gruppen.filter(Boolean);
+ if(teile.length>1)html+=' · '+teile.length+' Kampfabschnitte <span style="cursor:help" title="Abschnitt = Pause von über 90 Sekunden ohne eigenen Schaden vor einem neuen Gegner, meist ein Tor- oder Warp-Wechsel. EVE loggt Beschleunigungstore nicht, deshalb Abschnitte statt Taschen.">ⓘ</span>';
+ html+='</div>';
+ teile.forEach((t2,i)=>{
+  html+='<div class="sub" style="margin-top:2px">'
+    +(teile.length>1?('<b>Abschnitt '+(i+1)+'</b> · ab '+new Date(t2.ab*1000).toLocaleTimeString().slice(0,5)+': '):'')
+    +esc(t2.namen.join(', '))+'</div>';
+ });
+ if(ohne.length)html+='<div class="sub" style="margin-top:2px"><b>ohne Zeitangabe</b>: '+esc(ohne.join(', '))+'</div>';
+ return html;
+}
 // Untere Zeile der Heavy-Water-Kachel. "Basis HH:MM" ist der Stand der
 // ESI-Zahl (Last-Modified): die Restmenge ist immer Basis minus gerechnetem
 // Verbrauch, nie eine Live-Messung, und muss deshalb ihr Alter zeigen. Bei
@@ -16754,6 +16854,7 @@ function renderMissions(d){
         title="${lang==='en'?'A rogue drone battleship is named per tier, so this one is certain. It is only there in about one run out of five.':'Ein Rogue-Drone-Schlachtschiff heißt je Stufe anders, das ist also sicher. Dabei ist es nur in etwa jedem fünften Durchgang.'}"
         >${lang==='en'?'apply':'übernehmen'}</button></div>`:''}`
      :`<input class="mnamein" data-mid="${esc(x.mid)}" style="width:100%;margin-top:4px" placeholder="Missionsname aus deinem Journal, z. B. Enemies Abound (1 of 5)" value="${esc(x.label||'')}">`}
+     ${gegnerAbschnitte(x)}
      <div class="btnrow" style="margin-top:4px"><button class="btn mnamego" data-mid="${esc(x.mid)}">Merken</button>
       <button class="btn geist mnameteil" data-mid="${esc(x.mid)}" title="Legt Name und Gegnerliste als fertigen Text in die Zwischenablage. Canary lädt nichts von selbst hoch, du fügst den Block bewusst in eine Meldung ein.">Für alle beitragen</button>
       <span class="mnamestat sub" data-mid="${esc(x.mid)}"></span></div>
@@ -17661,6 +17762,10 @@ const EN = {
 'Lieferungen mit vervielfachtem Ertrag. Canary erkennt sie daran, dass die Menge ein exaktes Vielfaches deiner Normallieferung ist. Gezeigt wird nur der Teil, der über die Normalmenge hinausging.':
  'Deliveries with multiplied yield. Canary spots them because the amount is an exact multiple of your normal delivery. Only the part beyond the normal amount is shown.',
 'per ⛽ setzen':'set via ⛽',
+'Gegner dieses Laufs':'Enemies of this run',
+'ohne Zeitangabe':'no time recorded',
+'Abschnitt = Pause von über 90 Sekunden ohne eigenen Schaden vor einem neuen Gegner, meist ein Tor- oder Warp-Wechsel. EVE loggt Beschleunigungstore nicht, deshalb Abschnitte statt Taschen.':
+ 'Section = a pause of more than 90 seconds without own damage before a new enemy, usually a gate or warp change. EVE does not log acceleration gates, hence sections instead of pockets.',
 'noch keine Kompression, Verbrauch pausiert':'no compression yet, consumption paused',
 'Keine Kompression im Zeitraum.':'No compression in this period.',
 'Nach Charakter (gesamt)':'By character (total)',
@@ -18136,6 +18241,9 @@ const EN_PATTERNS = [
  // Heavy-Water-Reichweite: "reicht bis ~22:47 Uhr" -> "lasts until ~22:47"
  [/reicht bis ~(.+?) Uhr/, 'lasts until ~$1'],
  [/ · Basis ([0-9:]+)/, ' · base $1'],
+ [/([0-9]+) Kampfabschnitte/, '$1 combat sections'],
+ [/^Abschnitt ([0-9]+)$/, 'Section $1'],
+ [/ · ab ([0-9:]+): /, ' · from $1: '],
  [/nachgefüllt [(]Kern läuft weiter[)], frische ESI-Basis ~([0-9:]+)/, 'refilled (core keeps running), fresh ESI base ~$1'],
  [/nachgefüllt [(]Kern läuft weiter[)], frische ESI-Basis in Kürze/, 'refilled (core keeps running), fresh ESI base soon'],
  // Schatzkammer: Erz im Erzladeraum/Fleet-Hangar des Mining-Schiffs
