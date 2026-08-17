@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.37.0",
+  "d": "2026-08-17",
+  "de": [
+   "HEAVY-WATER-ANZEIGE: NACHFUELLEN WIRD JETZT ERKANNT, gemeldet von Nirahse. Der Fall: im Spiel lagen 8.200 Einheiten im Tank, Canary zeigte 1.020 und warnte vor leerem Tank. Die Ursache: die ESI-Basis der Anzeige ist bis zu eine Stunde alt, und wer zwischendurch nachfuellt (gern genau WEGEN der Warnung), sah bis zur naechsten Basis eine falsche Restzahl. Der Verbrauchssatz selbst stimmt exakt, 500 Heavy Water je 150-Sekunden-Zyklus des T2-Kerns, gegen die Moduldaten nachgeprueft.",
+   "Der Fix ist ein BEWEIS STATT EINER SCHAETZUNG: zieht der Kern laenger als einen vollen Zyklus weiter Kompressionen durch, NACHDEM der Tank rechnerisch leer sein muesste, dann war der Tank beweisbar nicht leer, also wurde nachgefuellt. Die Kachel sagt dann ehrlich nachgefuellt und nennt die Uhrzeit der naechsten frischen ESI-Basis, statt eine erfundene Zahl zu zeigen, und die Fast-leer-Warnung schweigt solange. Ausserdem traegt die Kachel jetzt IMMER den Zeitstempel ihrer ESI-Basis, denn die Restzahl ist eine Rechnung auf dieser Basis, keine Live-Messung. Dauerhafte Pruefung: pruefungen/hw_nachfuellen.py, zehn Faelle."
+  ],
+  "en": [
+   "HEAVY WATER DISPLAY: REFILLING IS NOW DETECTED, reported by Nirahse. The case: in game the tank held 8,200 units, Canary showed 1,020 and warned about an empty tank. The cause: the ESI base of the display is up to one hour old, and whoever refills in between (often precisely BECAUSE of the warning) saw a wrong remainder until the next base. The consumption rate itself is exactly right, 500 heavy water per 150-second cycle of the T2 core, verified against the module data.",
+   "The fix is PROOF INSTEAD OF A GUESS: if the core keeps running compressions for longer than a full cycle AFTER the tank should be empty by the math, then the tank provably was not empty, so it was refilled. The tile then honestly says refilled and names the time of the next fresh ESI base instead of showing an invented number, and the almost-empty warning stays quiet until then. In addition the tile now ALWAYS carries the timestamp of its ESI base, because the remainder is a calculation on that base, not a live measurement. Permanent check: pruefungen/hw_nachfuellen.py, ten cases."
+  ]
+ },
+ {
   "v": "2.36.0",
   "d": "2026-08-15",
   "de": [

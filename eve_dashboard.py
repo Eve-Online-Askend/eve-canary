@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.36.0"
+VERSION = "2.37.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -3841,7 +3841,29 @@ class Ingest(threading.Thread):
                     e["units"] = max(0.0, e.get("units", 0.0) - active * rate)
                     e["ts"] = now
                     changed = True
+                # Selbstwiderlegung (Nirahse, 17.08.2026): der Kern zieht seine
+                # 500 Heavy Water am ZYKLUSSTART. Laeuft die Kompression noch
+                # mehr als 300 s (ein 150-s-Zyklus plus Glaettungs-Toleranz),
+                # NACHDEM der Tank rechnerisch leer war, muss ein neuer Zyklus
+                # gestartet sein -> der Tank war nicht leer, es wurde
+                # nachgefuellt. Die ESI-Basis (bis zu 1 h alt) weiss das nur
+                # noch nicht. Dann keine Restzahl behaupten und nicht warnen.
+                if e.get("units", 0.0) > 0.0:
+                    if "leer_ts" in e or "nachgefuellt" in e:
+                        e.pop("leer_ts", None)
+                        e.pop("nachgefuellt", None)
+                        changed = True
+                else:
+                    if "leer_ts" not in e:
+                        e["leer_ts"] = now
+                        changed = True
+                    letzte = s.core_timeline[-1][0] if s.core_timeline else 0
+                    if (not e.get("nachgefuellt")
+                            and letzte > e["leer_ts"] + 300):
+                        e["nachgefuellt"] = True
+                        changed = True
                 if ((s.core_on() or e.get("burn_on")) and not e.get("warned")
+                        and not e.get("nachgefuellt")
                         and e.get("units", 0.0) < rate * 1800):
                     e["warned"] = True
                     changed = True
@@ -8610,13 +8632,27 @@ def snapshot_live():
                 used = float(hw_cfg.get("used") or 0.0) + max(0.0, float(e_units) - rem)
             else:
                 used = max(0.0, float(hw_cfg.get("fill") or 0) - rem)
+            _ec = (CONFIG.get("esi") or {}).get("chars", {}).get(s.name) or {}
             hw = {"units": round(rem), "core": hw_cfg.get("core", "t1"), "on": on,
                   "fill": round(hw_cfg.get("fill") or 0), "esi": bool(hw_cfg.get("esi")),
                   "min_left": round(rem / rate / 60), "used": round(used),
                   "src": "log" if s.core_on() else ("esi" if burned else None),
                   "quiet": (round(time.time() - s.core_timeline[-1][0])
                             if s.core_timeline else None),
-                  "eta": round(time.time() + rem / rate) if on else None}
+                  "eta": round(time.time() + rem / rate) if on else None,
+                  # Nachgefuellt-Beweis aus hw_tick: Restmenge ist bis zur
+                  # naechsten ESI-Basis unbekannt, das Frontend zeigt dann
+                  # keine falsche Zahl. "asof" = Alter der ESI-Basis
+                  # (Last-Modified), "next" = wann die frische Basis kommt.
+                  # Hausregel: jede ESI-Zahl braucht einen sichtbaren
+                  # Zeitstempel, gerade diese hier wirkt sonst live.
+                  "refill": bool(hw_cfg.get("nachgefuellt")),
+                  "asof": (round(float(hw_cfg["esi_ts"]))
+                           if hw_cfg.get("esi") and hw_cfg.get("esi_ts")
+                           else None),
+                  "next": (round(float(_ec["assets_next"]))
+                           if hw_cfg.get("esi") and _ec.get("assets_next")
+                           else None)}
         esi_char = (CONFIG.get("esi") or {}).get("chars", {}).get(s.name)
         # Aktiv/Online: ESI-Online-Status falls vorhanden (Scope granted), sonst
         # Log-Aktivität (letztes Ereignis < ACTIVE_WINDOW). Fallback deckt alle Chars ab.
@@ -14744,11 +14780,27 @@ function hwQuiet(hw){
 // per ESI GEMESSENEN Rueckgaenge, also kein Schaetzwert; ohne Login bleibt nur
 // die Differenz zum selbst gesetzten Anfangsbestand.
 function hwUsedTitle(hw){
- if(!hw||!hw.used)return '';
+ if(!hw||!hw.used||hw.refill)return '';
  const v=fmt(hw.used), src=hw.esi?(lang==='en'?'measured via ESI':'per ESI gemessen')
                                :(lang==='en'?'vs. the amount you entered':'gegenüber dem gesetzten Bestand');
  return (lang==='en'?`Used since last refill: ${v} (${src})`
                     :`Verbraucht seit dem letzten Nachfüllen: ${v} (${src})`);
+}
+// Untere Zeile der Heavy-Water-Kachel. "Basis HH:MM" ist der Stand der
+// ESI-Zahl (Last-Modified): die Restmenge ist immer Basis minus gerechnetem
+// Verbrauch, nie eine Live-Messung, und muss deshalb ihr Alter zeigen. Bei
+// erkanntem Nachfuellen (Kern laeuft weiter, obwohl der Tank rechnerisch
+// leer waere) wird keine falsche Restzahl behauptet, sondern auf die
+// naechste ESI-Basis verwiesen.
+function hwLine(hw){
+ if(!hw)return 'per ⛽ setzen';
+ const basis=hw.asof?' · Basis '+new Date(hw.asof*1000).toLocaleTimeString().slice(0,5):'';
+ if(hw.refill){
+  const nx=hw.next?'~'+new Date(hw.next*1000).toLocaleTimeString().slice(0,5):'in Kürze';
+  return 'nachgefüllt (Kern läuft weiter), frische ESI-Basis '+nx+basis;
+ }
+ if(hw.on&&hw.eta)return 'reicht bis ~'+new Date(hw.eta*1000).toLocaleTimeString().slice(0,5)+' Uhr'+(hw.src==='esi'?(lang==='en'?' (ESI usage)':' (ESI-Verbrauch)'):'')+basis;
+ return hwQuiet(hw)+basis;
 }
 // Mining-Karte eines Charakters (Erz, m³, Heavy Water, Lager, Gefahr).
 function miningCardHtml(c){
@@ -14767,7 +14819,7 @@ function miningCardHtml(c){
      <option value="mission"${c.role==='mission'?' selected':''}>🎯 Missionen</option>
      <option value="pvp"${c.role==='pvp'?' selected':''}>⚔ PvP</option>
     </select>
-    <span class="mini">${c.cargo_full?'<span class="warnbadge drone">⚠ Frachtraum voll!</span> · ':''}${(c.tool_warns||[]).map(w=>'<span class="warnbadge'+(w.drone?' drone':'')+'">⚠ '+esc(w.tool)+(w.count>1?' ×'+w.count:'')+'</span> · ').join('')}${(c.lasers_off||[]).map(w=>'<span class="warnbadge">⛔ '+esc(w.tool)+' aus</span> · ').join('')}${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'<span class="warnbadge drone">⛽ HW ~'+c.heavy_water.min_left+' min</span> · ':''}${c.drones_idle?'<span class="warnbadge">🤖 Drohnen ohne Erz</span> · ':''}${c.laser_stalled?'<span class="warnbadge">⛏ Laser ohne Erz</span> · ':''}${c.rate_low?'<span class="warnbadge">⚠ Rate '+c.rate_low+'%</span> · ':''}${mineIdle(c,state)?'<span class="warnbadge">⚠ Kein Erz seit '+Math.round(c.mine_idle/60)+' min</span> · ':''}${fmtM(c.total_isk)} ISK · ${fmt(c.m3h)} m³/h${c.dps_in>0?' · <span class=\"in\">⚠ '+c.dps_in+' DPS rein</span>':''}</span>
+    <span class="mini">${c.cargo_full?'<span class="warnbadge drone">⚠ Frachtraum voll!</span> · ':''}${(c.tool_warns||[]).map(w=>'<span class="warnbadge'+(w.drone?' drone':'')+'">⚠ '+esc(w.tool)+(w.count>1?' ×'+w.count:'')+'</span> · ').join('')}${(c.lasers_off||[]).map(w=>'<span class="warnbadge">⛔ '+esc(w.tool)+' aus</span> · ').join('')}${c.heavy_water&&c.heavy_water.on&&!c.heavy_water.refill&&c.heavy_water.min_left<30?'<span class="warnbadge drone">⛽ HW ~'+c.heavy_water.min_left+' min</span> · ':''}${c.drones_idle?'<span class="warnbadge">🤖 Drohnen ohne Erz</span> · ':''}${c.laser_stalled?'<span class="warnbadge">⛏ Laser ohne Erz</span> · ':''}${c.rate_low?'<span class="warnbadge">⚠ Rate '+c.rate_low+'%</span> · ':''}${mineIdle(c,state)?'<span class="warnbadge">⚠ Kein Erz seit '+Math.round(c.mine_idle/60)+' min</span> · ':''}${fmtM(c.total_isk)} ISK · ${fmt(c.m3h)} m³/h${c.dps_in>0?' · <span class=\"in\">⚠ '+c.dps_in+' DPS rein</span>':''}</span>
    </div>
    <div class="cbody">
    ${c.cargo_full?`<div class="cardwarn drone">⚠ Frachtraum voll! Erz verladen oder komprimieren.</div>`:''}
@@ -14794,7 +14846,7 @@ function miningCardHtml(c){
        ?'<span style="color:var(--dim);font-size:12px;font-weight:400">keine Preisdaten</span>'
        :'~'+fmtM(c.hold_isk)+(c.hold_prices==='partial'?' <span style="color:var(--dim)" title="Für einzelne Erztypen fehlen Preisdaten">±</span>':'')
     }</div></div>
-    ${c.heavy_water||!c.esi_linked?`<div class="stat"><div class="l">Heavy Water${c.heavy_water?' · '+c.heavy_water.core.toUpperCase():''}${c.heavy_water&&c.heavy_water.esi?' · ESI':''} ${c.heavy_water&&c.heavy_water.esi?'':`<span class="hwset" data-char="${esc(c.name)}" data-core="${c.heavy_water?c.heavy_water.core:''}" data-fill="${c.heavy_water&&c.heavy_water.fill?c.heavy_water.fill:''}" title="Bestand im Laderaum setzen">⛽</span>`}</div><div class="v ${c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30?'in':''}" title="${esc(hwUsedTitle(c.heavy_water))}">${c.heavy_water?fmt(c.heavy_water.units):'—'}</div><div class="l">${c.heavy_water?(c.heavy_water.on&&c.heavy_water.eta?'reicht bis ~'+new Date(c.heavy_water.eta*1000).toLocaleTimeString().slice(0,5)+' Uhr'+(c.heavy_water.src==='esi'?(lang==='en'?' (ESI usage)':' (ESI-Verbrauch)'):''):hwQuiet(c.heavy_water)):'per ⛽ setzen'}</div></div>`:''}
+    ${c.heavy_water||!c.esi_linked?`<div class="stat"><div class="l">Heavy Water${c.heavy_water?' · '+c.heavy_water.core.toUpperCase():''}${c.heavy_water&&c.heavy_water.esi?' · ESI':''} ${c.heavy_water&&c.heavy_water.esi?'':`<span class="hwset" data-char="${esc(c.name)}" data-core="${c.heavy_water?c.heavy_water.core:''}" data-fill="${c.heavy_water&&c.heavy_water.fill?c.heavy_water.fill:''}" title="Bestand im Laderaum setzen">⛽</span>`}</div><div class="v ${c.heavy_water&&c.heavy_water.on&&!c.heavy_water.refill&&c.heavy_water.min_left<30?'in':''}" title="${esc(hwUsedTitle(c.heavy_water))}">${c.heavy_water?(c.heavy_water.refill?'?':fmt(c.heavy_water.units)):'—'}</div><div class="l">${hwLine(c.heavy_water)}</div></div>`:''}
     <div class="stat"><div class="l">Bounties</div><div class="v grn">${fmtM(c.bounty)}</div></div>
     ${c.wallet!=null?`<div class="stat"><div class="l">Wallet (ESI)</div><div class="v grn">${fmtM(c.wallet)}</div></div>`:''}
     <div class="stat"><div class="l">Schaden raus/rein</div><div class="v"><span class="out">${fmtM(c.dmg_out)}</span> / <span class="in">${fmtM(c.dmg_in)}</span></div></div>
@@ -15337,7 +15389,7 @@ function ovStatus(c,st){
  if(lo.length)return['warn',esc(lo[0].tool.toUpperCase())+' AUS'];
  if(c.drones_idle)return['warn','DROHNEN OHNE ERZ'];
  if(c.laser_stalled)return['warn','LASER OHNE ERZ'];
- if(c.heavy_water&&c.heavy_water.on&&c.heavy_water.min_left<30)return['warn','HEAVY WATER ~'+c.heavy_water.min_left+' MIN'];
+ if(c.heavy_water&&c.heavy_water.on&&!c.heavy_water.refill&&c.heavy_water.min_left<30)return['warn','HEAVY WATER ~'+c.heavy_water.min_left+' MIN'];
  if(c.rate_low)return['warn','ABBAURATE '+c.rate_low+'%'];
  if(mineIdle(c,st))return['warn','KEIN ERZ SEIT '+Math.round(c.mine_idle/60)+' MIN'];
  return['ok',''];
@@ -18061,6 +18113,9 @@ const EN_PATTERNS = [
  [/Seit ([0-9]+) min kein Erz/, 'No ore for $1 min'],
  // Heavy-Water-Reichweite: "reicht bis ~22:47 Uhr" -> "lasts until ~22:47"
  [/reicht bis ~(.+?) Uhr/, 'lasts until ~$1'],
+ [/ · Basis ([0-9:]+)/, ' · base $1'],
+ [/nachgefüllt [(]Kern läuft weiter[)], frische ESI-Basis ~([0-9:]+)/, 'refilled (core keeps running), fresh ESI base ~$1'],
+ [/nachgefüllt [(]Kern läuft weiter[)], frische ESI-Basis in Kürze/, 'refilled (core keeps running), fresh ESI base soon'],
  // Schatzkammer: Erz im Erzladeraum/Fleet-Hangar des Mining-Schiffs
  [/· im Schiff/, '· on ship'],
  [/DPS ([0-9]+) raus [/] ([0-9]+) rein/, 'DPS $1 out / $2 in'],
