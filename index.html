@@ -14,6 +14,13 @@
 --line:rgba(130,150,158,.16);--txt:#c9d1d4;--dim:#7d888e;--cyan:#5fc1d4;
 --red:#c8443d;--green:#7db35c;--gold:#d9a33c;--white:#eef1f2}
 *{box-sizing:border-box}
+/* Community-Zitat: das Original bleibt woertlich stehen (deshalb nicht
+   uebersetzt), die Quellenzeile traegt in den anderen Sprachen die
+   Uebersetzung mit. */
+.quote{margin:14px 0 0;padding:14px 18px;border-left:3px solid var(--gold);
+ background:var(--card);border-radius:0 10px 10px 0}
+.quote blockquote{margin:0;font-size:17px;line-height:1.5;color:var(--white);font-style:italic}
+.quote figcaption{margin-top:8px}
 body{margin:0;background:var(--bg);color:var(--txt);
 font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
 background-image:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(95,193,212,.10),transparent 60%)}
@@ -363,6 +370,18 @@ header.eng .missionCta{margin-left:auto}
 <p class="tiny" data-i18n="thanks.cta">Helped out and not listed? <a href="https://github.com/Eve-Online-Askend/eve-canary/issues">Get in touch</a> and you go on the list.</p>
 </section>
 
+<section>
+<h2 data-i18n="h.quotes">What the community says</h2>
+<figure class="quote">
+ <blockquote>„EVE ohne Canary ist wie rausgehen ohne Unterhose. geht technisch, fühlt sich aber komplett falsch an.“</blockquote>
+ <figcaption class="tiny" data-i18n="q1.src">From BamKi's Twitch chat on Mining Wednesday, August 2026. In English: "EVE without Canary is like leaving the house without underwear. Technically possible, but it feels completely wrong."</figcaption>
+</figure>
+<figure class="quote">
+ <blockquote>„Ihr seid ja der Wahnsinn … was habt ihr denn da erschaffen 💜“</blockquote>
+ <figcaption class="tiny" data-i18n="q2.src">Same chat, one minute later, from another viewer. In English: "You are unbelievable … what on earth have you created."</figcaption>
+</figure>
+</section>
+
 <h2 data-i18n="h.compare">How Canary compares</h2>
 <p data-i18n="compare.intro">Other tools each cover a single piece. Canary is the only one that fuses live mining, gank-pack warnings, your whole compression fleet and mission tactics in one window, and it does it fully locally, with no cloud and no account. Your data stays yours.</p>
 <div class="cmp-wrap">
@@ -517,6 +536,9 @@ const LANGS = {
     _title: 'EVE Canary: Mining- und Missions-Dashboard für EVE Online',
     _desc: 'EVE Canary liest deine EVE-Online-Logs und zeigt Mining, ISK, Missionen und Sicherheitsalarme live im Browser. Läuft komplett lokal, ohne Anmeldung.',
     tag: 'Bergleute nahmen einen Kanarienvogel mit unter Tage. Fiel er von der Stange, war es Zeit zu gehen. Canary tut dasselbe für dich: es liest deine EVE-Logs und schlägt Alarm, während das Gank-Rudel noch Sprünge entfernt ist. Dazu Mining, ISK und Missionen live im Browser. Alles auf deinem Rechner, ohne Anmeldung, ohne Konto.',
+    'h.quotes': 'Was die Community sagt',
+    'q1.src': 'Aus BamKis Twitch-Chat beim Mining-Mittwoch, August 2026.',
+    'q2.src': 'Gleicher Chat, eine Minute später, von einem anderen Zuschauer.',
     'b.version': 'Version', 'b.os': 'Windows, Linux &amp; macOS', 'b.free': 'Kostenlos',
     'b.eula': 'EULA-konform', 'b.dl': 'Downloads',
     'h.install': 'Installation',
@@ -612,6 +634,9 @@ const LANGS = {
     _title: 'EVE Canary : tableau de bord minage et missions pour EVE Online',
     _desc: 'EVE Canary lit vos journaux EVE Online et affiche minage, ISK, missions et alertes de sécurité en direct dans votre navigateur. Fonctionne entièrement en local, sans compte.',
     tag: 'Les mineurs descendaient avec un canari. Quand il tombait de son perchoir, il était temps de partir. Canary fait pareil pour toi : il lit tes journaux EVE et donne l\'alerte pendant que la meute est encore à plusieurs sauts. Plus le minage, les ISK et les missions en direct dans ton navigateur. Tout sur ta machine, sans compte.',
+    'h.quotes': 'Ce que dit la communauté',
+    'q1.src': 'Du chat Twitch de BamKi, mercredi minage, août 2026. En français : « EVE sans Canary, c\'est comme sortir sans sous-vêtements. Techniquement possible, mais ça fait complètement faux. »',
+    'q2.src': 'Même chat, une minute plus tard, un autre spectateur. En français : « Vous êtes incroyables … qu\'est-ce que vous avez créé là. »',
     'b.version': 'Version', 'b.os': 'Windows, Linux et macOS', 'b.free': 'Gratuit',
     'b.eula': 'Conforme au CLUF', 'b.dl': 'Téléchargements',
     'h.install': 'Installation',
@@ -707,6 +732,9 @@ const LANGS = {
     _title: 'EVE Canary: панель добычи и миссий для EVE Online',
     _desc: 'EVE Canary читает ваши логи EVE Online и показывает добычу, ISK, миссии и предупреждения об опасности прямо в браузере. Работает полностью на вашем компьютере, без учётной записи.',
     tag: 'Шахтёры брали с собой канарейку. Упала с жёрдочки, значит пора уходить. Canary делает то же самое для вас: читает ваши логи EVE и поднимает тревогу, пока стая ещё в нескольких прыжках. Плюс добыча, ISK и миссии вживую в браузере. Всё на вашем компьютере, без входа и аккаунта.',
+    'h.quotes': 'Что говорит сообщество',
+    'q1.src': 'Из Twitch-чата BamKi, шахтёрская среда, август 2026. По-русски: «EVE без Canary это как выйти из дома без белья. Технически можно, но ощущается совершенно неправильно.»',
+    'q2.src': 'Тот же чат, минутой позже, другой зритель. По-русски: «Вы просто невероятные … что же вы такое создали.»',
     'b.version': 'Версия', 'b.os': 'Windows, Linux и macOS', 'b.free': 'Бесплатно',
     'b.eula': 'Не нарушает EULA', 'b.dl': 'Загрузок',
     'h.install': 'Установка',
