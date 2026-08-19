@@ -204,6 +204,22 @@
   "links": []
  },
  {
+  "name": "Ramone",
+  "role": {
+   "de": "Ideen",
+   "en": "Ideas",
+   "fr": "Idées",
+   "ru": "Идеи"
+  },
+  "note": {
+   "de": "Fragte unterwegs nach seinen verbrauchten Mining-Kristallen. Daraus wurde die Monatsübersicht, und nebenbei flog ein alter Zählfehler auf.",
+   "en": "Asked on the go about his used-up mining crystals. That became the monthly overview, and an old counting bug surfaced along the way.",
+   "fr": "A demandé en déplacement où voir ses cristaux de minage consommés. C'est devenu l'aperçu mensuel, et un vieux bug de comptage est apparu au passage.",
+   "ru": "Спросил в дороге о своих израсходованных кристаллах. Так появился месячный обзор, а заодно нашлась старая ошибка подсчёта."
+  },
+  "links": []
+ },
+ {
   "name": "Dune2Man",
   "role": {
    "de": "Ideen",
