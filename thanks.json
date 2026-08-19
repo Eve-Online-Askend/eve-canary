@@ -172,6 +172,22 @@
   "links": []
  },
  {
+  "name": "Flexodus",
+  "role": {
+   "de": "Ideen",
+   "en": "Ideas",
+   "fr": "Idées",
+   "ru": "Идеи"
+  },
+  "note": {
+   "de": "Fragte, wo man die Mining-Fleet-Power-Ränge sehen kann. Seitdem öffnet der Rang-Chip die ganze Leiter.",
+   "en": "Asked where to see the Mining Fleet Power ranks. Since then the rank chip opens the whole ladder.",
+   "fr": "A demandé où voir les rangs Mining Fleet Power. Depuis, la puce de rang ouvre toute l'échelle.",
+   "ru": "Спросил, где посмотреть ранги Mining Fleet Power. С тех пор чип ранга открывает всю лестницу."
+  },
+  "links": []
+ },
+ {
   "name": "Dune2Man",
   "role": {
    "de": "Ideen",
