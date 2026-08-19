@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.41.0",
+  "d": "2026-08-19",
+  "de": [
+   "FUENF NEUE ZWISCHENRAENGE in der Mining Fleet Power, damit auch Piloten ohne Account-Horde regelmaessig aufsteigen: Erz-Kundschafter (ab 150 m³/min), Vorarbeiter (ab 600), Grubenmeister (ab 1.700), Industrie-Kapitaen (ab 4.000) und Erz-Tycoon (ab 10.000). Ein Solo-Charakter durchlaeuft auf dem Weg vom Venture zum geboosteten Exhumer jetzt sieben Raenge statt vier.",
+   "WICHTIG: NIEMAND STEIGT AB. Die sechs bisherigen Raenge behalten exakt ihre Schwellen, die neuen Stufen liegen dazwischen. Die ganze Leiter samt eigener Position zeigt weiterhin der Klick auf den Rang-Chip."
+  ],
+  "en": [
+   "FIVE NEW INTERMEDIATE RANKS in the Mining Fleet Power, so pilots without a horde of accounts advance regularly too: Ore Scout (from 150 m³/min), Foreman (from 600), Mine Master (from 1,700), Industry Captain (from 4,000) and Ore Tycoon (from 10,000). A solo character now passes seven ranks instead of four on the way from a Venture to a boosted exhumer.",
+   "IMPORTANT: NOBODY GETS DEMOTED. The six existing ranks keep their exact thresholds, the new steps sit in between. The whole ladder including your own position still opens with a click on the rank chip."
+  ]
+ },
+ {
   "v": "2.40.0",
   "d": "2026-08-19",
   "de": [

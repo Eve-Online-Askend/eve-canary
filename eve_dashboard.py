@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.40.0"
+VERSION = "2.41.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -14669,12 +14669,21 @@ function siteHtml(s){
 }
 // Die Rang-Leiter als EINE Quelle: mfpTier und der Raenge-Dialog lesen
 // beide hieraus, sonst laufen Anzeige und Erklaerung auseinander.
+// Zwischenraenge seit v2.41.0 (Askend, 19.08.2026): die alten sechs behalten
+// EXAKT ihre Schwellen (niemand steigt ab), dazwischen fuenf neue Stufen,
+// damit auch Spieler ohne Account-Horde regelmaessig aufsteigen. Schritte
+// etwa Faktor 1,6 bis 2, ein Solo-Char durchlaeuft so sieben Raenge.
 const MFP_RAENGE=[
  [15000,'Rorqual-Overlord','gold'],
+ [10000,'Erz-Tycoon','gold'],
  [6000,'Erz-Baron','gold'],
+ [4000,'Industrie-Kapitän','cyan'],
  [2500,'Industrie-Flotte','cyan'],
+ [1700,'Grubenmeister','cyan'],
  [1000,'Flotten-Operator','cyan'],
+ [600,'Vorarbeiter','green'],
  [300,'Gürtel-Miner','green'],
+ [150,'Erz-Kundschafter','dim'],
  [0,'Prospektor','dim']];
 function mfpTier(m){
  for(const [ab,n,c] of MFP_RAENGE)if(m>=ab)return {n,c};
@@ -14848,9 +14857,12 @@ function shareMfp(btn){
    setTimeout(()=>{try{btn.textContent=o;}catch(e){}},2500);}
  },'image/png');
 }
-function tierEn(n){const m={'Rorqual-Overlord':'Rorqual Overlord','Erz-Baron':'Ore Baron',
- 'Industrie-Flotte':'Industrial Fleet','Flotten-Operator':'Fleet Operator',
- 'Gürtel-Miner':'Belt Miner','Prospektor':'Prospector'};return m[n]||n;}
+function tierEn(n){const m={'Rorqual-Overlord':'Rorqual Overlord','Erz-Tycoon':'Ore Tycoon',
+ 'Erz-Baron':'Ore Baron','Industrie-Kapitän':'Industry Captain',
+ 'Industrie-Flotte':'Industrial Fleet','Grubenmeister':'Mine Master',
+ 'Flotten-Operator':'Fleet Operator','Vorarbeiter':'Foreman',
+ 'Gürtel-Miner':'Belt Miner','Erz-Kundschafter':'Ore Scout',
+ 'Prospektor':'Prospector'};return m[n]||n;}
 // "Aktuelle Flotte": nur wenn ein Command Ship (Orca/Porpoise/Rorqual) am Steuer
 // sitzt. Zeigt Flottengroesse (getrackte aktive Mining-Chars), Mining Power und die
 // ueber die Flotte komprimierte Menge. Ohne Booster keine Kachel (dann reicht MFP).
@@ -18118,6 +18130,8 @@ const EN = {
 'ℹ️ Für diese Mission liegen keine Bounty-Daten im Log vor, daher werden Kills und Bounty hier nicht gezählt. In EVE die Bounty-Meldungen im Combat-Log aktivieren, dann zählt Canary sie live mit. Die echte Bounty-ISK kommt bei EVE-Login aus dem Wallet.':'ℹ️ No bounty data in the log for this session, so kills and bounty are not counted here. Enable the bounty messages in the EVE combat log and Canary will count them live. The actual bounty ISK comes from the wallet when you use the EVE login.',
 'Rorqual-Overlord':'Rorqual Overlord','Erz-Baron':'Ore Baron','Industrie-Flotte':'Industrial Fleet',
 'Flotten-Operator':'Fleet Operator','Gürtel-Miner':'Belt Miner','Prospektor':'Prospector',
+'Erz-Tycoon':'Ore Tycoon','Industrie-Kapitän':'Industry Captain','Grubenmeister':'Mine Master',
+'Vorarbeiter':'Foreman','Erz-Kundschafter':'Ore Scout',
 '✅ ESI-verifiziert:':'✅ ESI-verified:','📤 Teilen':'📤 Share',
 '🤖 Drohnen ohne Erz':'🤖 Drones without ore',
 'Komprimiert (Session)':'Compressed (session)','Rolle …':'Role …','Mining':'Mining',
