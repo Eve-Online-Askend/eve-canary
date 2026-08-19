@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.42.0",
+  "d": "2026-08-19",
+  "de": [
+   "EIGENES SALVAGE-FELD JE MISSION, gewuenscht von MelvinMafia: neben dem Loot-Feld gibt es jetzt ein zweites, getrenntes Feld fuer die Bergung (gleicher Weg: im Spiel markieren, kopieren, einfuegen, bewerten). So bleibt sichtbar, was Pluenderung war und was Bergung, und die Tagestabelle im Missionen-Tab bekommt eine eigene Salvage-Spalte, die in der Summe mitzaehlt.",
+   "DAZU DIE NEUE LOOT- & SALVAGE-AUSWERTUNG, ebenfalls von MelvinMafia angeregt: Kacheln fuer heute, 7 und 30 Tage mit Gesamtwert und Schnitt je Mission, darunter die Top-Gegenstaende nach Jita-Wert, je Gegenstand mit Art (Loot oder Salvage) und der Herkunft: aus welcher Mission kam am meisten davon. Die Herkunfts-Spalte zeigt beim Ueberfahren die volle Liste. Alles rein lokal aus den selbst eingetragenen Texten, und die Karte sagt ehrlich dazu, wie viele Missionen ueberhaupt Eintraege haben. EVE loggt weder Pluendern noch Bergung, ohne Eintragen bleibt die Karte leer.",
+   "Dauerhafte Pruefung: pruefungen/loot_salvage.py, dreizehn Faelle, inklusive Verbinden zweier Eintraege mit Loot und Salvage."
+  ],
+  "en": [
+   "A SEPARATE SALVAGE FIELD PER MISSION, requested by MelvinMafia: next to the loot field there is now a second, separate field for salvage (same way: select in game, copy, paste, value). This keeps looting and salvaging apart, and the day table in the missions tab gets its own salvage column that counts into the total.",
+   "PLUS THE NEW LOOT & SALVAGE ANALYSIS, also suggested by MelvinMafia: tiles for today, 7 and 30 days with total value and average per mission, below that the top items by Jita value, each with its type (loot or salvage) and its origin: which mission most of it came from. Hover the origin column for the full list. All purely local from the texts you entered yourself, and the card honestly states how many missions have entries at all. EVE logs neither looting nor salvaging, without entering the card stays empty.",
+   "Permanent check: pruefungen/loot_salvage.py, thirteen cases, including merging two entries with loot and salvage."
+  ]
+ },
+ {
   "v": "2.41.0",
   "d": "2026-08-19",
   "de": [

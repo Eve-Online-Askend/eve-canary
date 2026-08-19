@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.41.0"
+VERSION = "2.42.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1788,6 +1788,14 @@ try:  # v2.39: Erstkontakt-Zeit je Gegner + Kampfabschnitte (Savox76). Eine
     DB.commit()
 except sqlite3.OperationalError:
     pass
+try:  # v2.42: Salvage getrennt vom Loot (MelvinMafia). Eigene Spalten statt
+      # Vermischung: Salvage ist Marktware und darf NIE in die Missions-
+      # Erkennung laufen (loot_namen liest weiterhin nur loot_text).
+    DB.execute("ALTER TABLE missions ADD COLUMN salvage_text TEXT")
+    DB.execute("ALTER TABLE missions ADD COLUMN salvage_isk REAL")
+    DB.commit()
+except sqlite3.OperationalError:
+    pass
 try:  # v1.71: Fernunterstuetzung je Einsatz. Ohne diese Spalten ist die
       # Leistung eines Logi-Piloten nach dem Andocken fuer immer weg.
     DB.execute("ALTER TABLE missions ADD COLUMN logi_out REAL")
@@ -2011,7 +2019,8 @@ def mission_verbinden(mid):
     with DB_LOCK:
         spalten = ("mid,char_id,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,"
                    "bounty,hits,miss_out,miss_in,weapons,enemies,loot_isk,"
-                   "loot_text,dialog,ewar,logi_out,logi_in,label,gegner_erst")
+                   "loot_text,dialog,ewar,logi_out,logi_in,label,gegner_erst,"
+                   "salvage_isk,salvage_text")
         row = DB.execute("SELECT %s FROM missions WHERE mid=?" % spalten,
                          (mid,)).fetchone()
         if not row:
@@ -2053,6 +2062,10 @@ def mission_verbinden(mid):
         # Loot beider Teile behalten, nichts stillschweigend wegwerfen.
         "loot_isk": (frueh["loot_isk"] or 0) + (spaet["loot_isk"] or 0) or None,
         "loot_text": ("\n".join(x for x in (lu, lo) if x)) or None,
+        "salvage_isk": (frueh["salvage_isk"] or 0) + (spaet["salvage_isk"] or 0) or None,
+        "salvage_text": ("\n".join(
+            x for x in ((frueh["salvage_text"] or "").strip(),
+                        (spaet["salvage_text"] or "").strip()) if x)) or None,
         "dialog": (" ".join(x for x in ((frueh["dialog"] or "").strip(),
                                         (spaet["dialog"] or "").strip()) if x))[:2000] or None,
         # Ein selbst vergebener Name gewinnt, egal an welchem Teil er hing.
@@ -2066,13 +2079,14 @@ def mission_verbinden(mid):
             "UPDATE missions SET end_ts=?,system=?,dmg_out=?,dmg_in=?,kills=?,"
             "bounty=?,hits=?,miss_out=?,miss_in=?,weapons=?,enemies=?,ewar=?,"
             "logi_out=?,logi_in=?,loot_isk=?,loot_text=?,dialog=?,label=?,"
-            "gegner_erst=? WHERE mid=?",
+            "gegner_erst=?,salvage_isk=?,salvage_text=? WHERE mid=?",
             (neu["end_ts"], neu["system"], neu["dmg_out"], neu["dmg_in"],
              neu["kills"], neu["bounty"], neu["hits"], neu["miss_out"],
              neu["miss_in"], json.dumps(neu["weapons"]), json.dumps(neu["enemies"]),
              json.dumps(neu["ewar"]), neu["logi_out"], neu["logi_in"],
              neu["loot_isk"], neu["loot_text"], neu["dialog"], neu["label"],
              json.dumps(neu["gegner_erst"], ensure_ascii=False),
+             neu["salvage_isk"], neu["salvage_text"],
              frueh["mid"]))
         DB.execute("DELETE FROM missions WHERE mid=?", (spaet["mid"],))
         DB.commit()
@@ -9810,7 +9824,8 @@ def query_mission_history(limit=40):
         rows = DB.execute(
             """SELECT mid,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
                       hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,
-                      char_id,ewar,logi_out,logi_in,label,gegner_erst
+                      char_id,ewar,logi_out,logi_in,label,gegner_erst,
+                      salvage_isk,salvage_text
                FROM missions ORDER BY start_ts DESC LIMIT ?""", (limit * 5,)).fetchall()
     # (mid, char, start, end) je Missionszeile fuer die Zuordnung unten.
     cand = [(x[0], x[1], x[2] or 0, x[3] or 0) for x in rows]
@@ -9879,7 +9894,7 @@ def query_mission_history(limit=40):
             break
         (mid, char, st, et, sysn, do, di, kills, bounty, hits, mo, mi,
          wj, ej, loot, loot_text, dialog, char_id, ewj, lo, li, label,
-         gej) = r
+         gej, salv_isk, salv_text) = r
         shots = (hits or 0) + (mo or 0)
         enemies = json.loads(ej or "[]")
         # Fehlt der gespeicherte Funk (aeltere Mission, oder Reingest lief vor dem
@@ -9939,6 +9954,8 @@ def query_mission_history(limit=40):
             "weapons": json.loads(wj or "[]"), "enemies": enemies,
             "gegner_erst": json.loads(gej or "{}"),
             "loot_isk": round(loot) if loot else None, "loot_text": loot_text or "",
+            "salvage_isk": round(salv_isk) if salv_isk else None,
+            "salvage_text": salv_text or "",
             "label": (label or "").strip(),
             # Fuer die beiden Auswahlfelder im Abyss: ist das ueberhaupt ein
             # Durchgang, und verraet ein Gegner die Stufe? Letzteres ist exakt,
@@ -10181,6 +10198,92 @@ def uhr_json():
             "sek": round(uhr_laufzeit())}
 
 
+def query_loot_auswertung():
+    """Loot-Bilanz und Herkunft je Gegenstand (MelvinMafia, 19.08.2026):
+    was habe ich gelootet und gesalvaged, was war es wert, was war der
+    Schnitt je Mission, und aus welcher Mission kam ein Gegenstand am
+    meisten?
+
+    Alles aus den VON HAND eingetragenen Texten: EVE loggt weder Pluendern
+    noch Bergung (siehe query_loot_tage), deshalb steht die Abdeckung
+    (X von Y Missionen) ehrlich mit im Ergebnis. Loot und Salvage bleiben
+    getrennt ausgewiesen. Preise Jita ueber den cache-first-Weg: beim
+    allerersten Aufruf fehlen einzelne Preise noch und kommen mit dem
+    naechsten Takt von allein."""
+    with DB_LOCK:
+        rows = DB.execute(
+            "SELECT mid, start_ts, system, label, loot_isk, loot_text, "
+            "salvage_isk, salvage_text FROM missions "
+            "WHERE (loot_text IS NOT NULL AND loot_text!='') "
+            "OR (salvage_text IS NOT NULL AND salvage_text!='')").fetchall()
+        gesamt = DB.execute("SELECT COUNT(*) FROM missions").fetchone()[0]
+    now = time.time()
+    heute = time.strftime("%Y-%m-%d", time.gmtime(now))
+    zr = {k: {"n": 0, "loot": 0, "salv": 0} for k in ("heute", "d7", "d30")}
+    items = {}
+
+    def zeilen_zaehlen(text, art, wo):
+        for raw in (text or "").splitlines():
+            cols = raw.strip().split("\t")
+            name = cols[0].strip() if cols else ""
+            if not name or len(cols) < 2:
+                continue
+            # Menge positionstreu wie in calc_loot: erstes Zahlenfeld NACH
+            # dem Namen, nie die erste Zahl der Zeile (Meta-Level-Falle).
+            n = 0
+            for part in cols[1:]:
+                m = NUM_RE.search(STRIP_RE.sub("", part))
+                if m and num(m.group(1)) > 0:
+                    n = num(m.group(1))
+                    break
+            if not n:
+                continue
+            e = items.setdefault((name, art), {"menge": 0, "wo": {}})
+            e["menge"] += n
+            e["wo"][wo] = e["wo"].get(wo, 0) + n
+
+    for mid, st, system, label, loot_isk, loot_text, salv_isk, salv_text in rows:
+        st = st or 0
+        # Herkunfts-Anzeige: eigener oder erkannter Name, sonst Ort und Tag.
+        wo = (label or "").strip() or "%s · %s" % (
+            system or "?", time.strftime("%d.%m.", time.gmtime(st)))
+        treffer = []
+        if time.strftime("%Y-%m-%d", time.gmtime(st)) == heute:
+            treffer.append("heute")
+        if st >= now - 7 * 86400:
+            treffer.append("d7")
+        if st >= now - 30 * 86400:
+            treffer.append("d30")
+        for k in treffer:
+            zr[k]["n"] += 1
+            zr[k]["loot"] += loot_isk or 0
+            zr[k]["salv"] += salv_isk or 0
+        zeilen_zaehlen(loot_text, "loot", wo)
+        zeilen_zaehlen(salv_text, "salvage", wo)
+
+    ids = resolve_item_ids(sorted({n for n, _ in items})) if items else {}
+    try:
+        pm = hub_prices_bg("10000002", set(ids.values())) if ids else {}
+    except Exception:
+        pm = {}
+    liste = []
+    for (name, art), e in items.items():
+        tid = ids.get(name)
+        preis = (pm.get(tid) or (0, 0))[0] if tid else 0
+        herkunft = sorted(e["wo"].items(), key=lambda x: -x[1])[:5]
+        liste.append({"name": name, "art": art, "menge": e["menge"],
+                      "isk": round(e["menge"] * preis) if preis else None,
+                      "wo": herkunft})
+    liste.sort(key=lambda x: (-(x["isk"] or 0), -x["menge"]))
+    for k in zr.values():
+        k["isk"] = round(k["loot"] + k["salv"])
+        k["schnitt"] = round(k["isk"] / k["n"]) if k["n"] else 0
+        k["loot"] = round(k["loot"])
+        k["salv"] = round(k["salv"])
+    return {"zeitraeume": zr, "gegenstaende": liste[:40],
+            "mit_loot": len(rows), "gesamt": gesamt}
+
+
 def query_loot_tage(tage=30):
     """Tagessummen je Charakter: Runs, Bounty, Loot, Agenten-Belohnungen.
 
@@ -10201,7 +10304,7 @@ def query_loot_tage(tage=30):
     cut = time.time() - tage * 86400
     with DB_LOCK:
         mrows = DB.execute(
-            "SELECT char, start_ts, bounty, loot_isk FROM missions "
+            "SELECT char, start_ts, bounty, loot_isk, salvage_isk FROM missions "
             "WHERE start_ts>=?", (cut,)).fetchall()
         jrows = DB.execute(
             "SELECT char, ts, ref_type, amount FROM journal "
@@ -10215,15 +10318,16 @@ def query_loot_tage(tage=30):
     def eintrag(char, ts):
         k = (tag(ts), char or "?")
         return per.setdefault(k, {"tag": k[0], "char": k[1], "runs": 0,
-                                  "bounty": 0.0, "loot": 0.0, "reward": 0.0,
-                                  "bonus": 0.0, "mit_loot": 0})
+                                  "bounty": 0.0, "loot": 0.0, "salv": 0.0,
+                                  "reward": 0.0, "bonus": 0.0, "mit_loot": 0})
 
-    for char, st, bounty, loot in mrows:
+    for char, st, bounty, loot, salv in mrows:
         e = eintrag(char, st)
         e["runs"] += 1
         e["bounty"] += bounty or 0
-        if loot:
-            e["loot"] += loot
+        e["loot"] += loot or 0
+        e["salv"] += salv or 0
+        if loot or salv:
             e["mit_loot"] += 1
     for char, ts, ref, amt in jrows:
         # Belohnung und Zeitbonus getrennt, so wie es die alte Karte auch tat.
@@ -10232,8 +10336,9 @@ def query_loot_tage(tage=30):
 
     out = []
     for e in per.values():
-        e["total"] = round(e["bounty"] + e["loot"] + e["reward"] + e["bonus"])
-        for k in ("bounty", "loot", "reward", "bonus"):
+        e["total"] = round(e["bounty"] + e["loot"] + e["salv"]
+                           + e["reward"] + e["bonus"])
+        for k in ("bounty", "loot", "salv", "reward", "bonus"):
             e[k] = round(e[k])
         out.append(e)
     # Neueste zuerst, innerhalb eines Tages der ertragreichste Charakter oben.
@@ -11499,6 +11604,7 @@ class Handler(BaseHTTPRequestHandler):
                 data["mission_log"], data["mission_offen"] = query_mission_history()
                 data["abyss_n"] = abyss_anzahl()
                 data["loot_tage"] = query_loot_tage()
+                data["loot_auswertung"] = query_loot_auswertung()
                 data["chars"] = snapshot_live()
             elif view == "vault":
                 data["vault"] = query_vault()
@@ -12015,6 +12121,20 @@ class Handler(BaseHTTPRequestHandler):
             isk = res["hubs"].get("10000002", {}).get("buy", 0) if res.get("ok") else 0
             with DB_LOCK:
                 DB.execute("UPDATE missions SET loot_isk=?, loot_text=? WHERE mid=?",
+                           (isk, text, mid))
+                DB.commit()
+            self._send(json.dumps({"ok": True, "isk": isk, "unknown": res.get("unknown", [])}))
+            return
+        elif action == "mission_salvage":
+            # Dasselbe fuer den Salvage, getrennt gespeichert (MelvinMafia,
+            # 19.08.2026): so bleibt sichtbar, was Pluenderung war und was
+            # Bergung, und die Auswertung kann beides einzeln ausweisen.
+            mid = str(body.get("mid") or "")
+            text = body.get("text") or ""
+            res = calc_loot(text)
+            isk = res["hubs"].get("10000002", {}).get("buy", 0) if res.get("ok") else 0
+            with DB_LOCK:
+                DB.execute("UPDATE missions SET salvage_isk=?, salvage_text=? WHERE mid=?",
                            (isk, text, mid))
                 DB.commit()
             self._send(json.dumps({"ok": True, "isk": isk, "unknown": res.get("unknown", [])}))
@@ -16780,16 +16900,21 @@ function renderMissions(d){
  const tippt=document.activeElement&&document.activeElement.classList;
  // Die Auswahlfelder gehoeren mit in den Schutz: ein aufgeklapptes select
  // schnappt beim Neubau zu, und dann waehlt man ins Leere.
- if(tippt&&(tippt.contains('mlootin')||tippt.contains('mnamein')
+ if(tippt&&(tippt.contains('mlootin')||tippt.contains('msalvin')||tippt.contains('mnamein')
             ||tippt.contains('abysstier')||tippt.contains('abysswetter')))return;
  const lootOffen={};
  document.querySelectorAll('.mlootedit').forEach(b=>{
   if(b.hidden)return;
   const ta=b.querySelector('.mlootin');
+  const sa=b.querySelector('.msalvin');
   lootOffen[b.dataset.mid]={
    text:ta?ta.value:'',
    start:ta?ta.selectionStart:0, end:ta?ta.selectionEnd:0,
    fokus:document.activeElement===ta,
+   stext:sa?sa.value:'',
+   sstart:sa?sa.selectionStart:0, send:sa?sa.selectionEnd:0,
+   sfokus:document.activeElement===sa,
+   sstatus:(([...document.querySelectorAll('.msalvstat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||'',
    status:(([...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||''};
  });
  const nameOffen={};
@@ -16931,6 +17056,8 @@ function renderMissions(d){
     <div class="mlootedit" data-mid="${esc(x.mid)}" hidden>
      <textarea class="mlootin" data-mid="${esc(x.mid)}" rows="2" style="width:100%;margin-top:4px" placeholder="Frachtraum-Loot dieser Mission hier einfügen (im Spiel Strg+A, Strg+C)">${esc(x.loot_text)}</textarea>
      <div class="btnrow" style="margin-top:4px"><button class="btn mlootgo" data-mid="${esc(x.mid)}">Loot bewerten</button> <span class="mlootstat sub" data-mid="${esc(x.mid)}"></span></div>
+     <textarea class="msalvin" data-mid="${esc(x.mid)}" rows="2" style="width:100%;margin-top:8px" placeholder="Salvage dieser Mission hier einfügen, getrennt vom Loot (gleicher Weg: markieren, kopieren)">${esc(x.salvage_text)}</textarea>
+     <div class="btnrow" style="margin-top:4px"><button class="btn msalvgo" data-mid="${esc(x.mid)}">Salvage bewerten</button> <span class="msalvstat sub" data-mid="${esc(x.mid)}"></span></div>
     </div>
    </div>`).join(''):'<div class="sub">Noch keine abgeschlossenen Missionen erfasst. Eine Mission gilt als abgeschlossen, sobald du fürs nächste Mal wieder abdockst.</div>'}
   ${blaettern('runs',seiteRuns,(d.mission_log||[]).length)}
@@ -16961,19 +17088,43 @@ function renderMissions(d){
     const zeig=alle.slice(seiteTage*PRO_SEITE,(seiteTage+1)*PRO_SEITE);
     return `<div style="overflow-x:auto"><table>
    <thead><tr><th>Tag</th><th>Charakter</th><th class="r">Runs</th><th class="r">Bounty</th>
-    <th class="r">Belohnung</th><th class="r">Zeitbonus</th><th class="r">Loot</th><th class="r">Summe</th></tr></thead>`+
+    <th class="r">Belohnung</th><th class="r">Zeitbonus</th><th class="r">Loot</th><th class="r">Salvage</th><th class="r">Summe</th></tr></thead>`+
    zeig.map(x=>`<tr><td>${esc(x.tag)}</td><td>${esc(x.char)}</td>
     <td class="r">${x.runs}${x.mit_loot<x.runs?`<span title="${x.runs-x.mit_loot}${lang==='en'?' run(s) without loot entered':' Run(s) ohne eingetragenen Loot'}" style="color:var(--gold)"> *</span>`:''}</td>
     <td class="r grn">${x.bounty?fmtM(x.bounty):'&middot;'}</td>
     <td class="r isk">${x.reward?fmtM(x.reward):'&middot;'}</td>
     <td class="r isk">${x.bonus?fmtM(x.bonus):'&middot;'}</td>
     <td class="r isk">${x.loot?fmtM(x.loot):'&middot;'}</td>
+    <td class="r isk">${x.salv?fmtM(x.salv):'&middot;'}</td>
     <td class="r isk"><b>${fmtM(x.total)}</b></td></tr>`).join('')+
    '</table></div>'
    +blaettern('tage',seiteTage,alle.length)
    +(zeig.some(x=>x.mit_loot<x.runs)?'<div class="sub" style="margin-top:6px">* An diesen Tagen gibt es Runs ohne eingetragenen Loot. Die Summe ist dann niedriger als das, was wirklich rumkam.</div>':'');
    })():'<div class="sub">Noch nichts erfasst. Sobald ein Run abgeschlossen ist, steht er hier.</div>'}
  </div>
+ ${(()=>{const la=d.loot_auswertung; if(!la)return '';
+   const en5=lang==='en', zr=la.zeitraeume||{};
+   const kachel=(t,z)=>`<div class="stat"><div class="l">${t}</div><div class="v isk">${z&&z.n?fmtM(z.isk):'·'}</div><div class="l">${z&&z.n?(z.n+(en5?(z.n===1?' mission':' missions'):(z.n===1?' Mission':' Missionen'))+' · Ø '+fmtM(z.schnitt)+(z.salv?(en5?' · salvage ':' · Salvage ')+fmtM(z.salv):'')):(en5?'nothing entered':'nichts eingetragen')}</div></div>`;
+   const inhalt=la.mit_loot
+     ?`<div class="stats" style="grid-template-columns:repeat(3,1fr)">${kachel(en5?'Today':'Heute',zr.heute)}${kachel(en5?'7 days':'7 Tage',zr.d7)}${kachel(en5?'30 days':'30 Tage',zr.d30)}</div>
+      <div style="overflow-x:auto"><table>
+      <tr><th>${en5?'Item':'Gegenstand'}</th><th>${en5?'Type':'Art'}</th><th class="r">${en5?'Units':'Stück'}</th><th class="r">≈ ISK (Jita)</th><th>${en5?'most of it came from':'meiste Beute in'}</th></tr>`
+      +(la.gegenstaende||[]).slice(0,12).map(g=>{
+        const alle=(g.wo||[]).map(w=>w[0]+': '+fmt(w[1])+(en5?' units':' Stk')).join('\\n');
+        return `<tr><td>${esc(g.name)}</td><td>${g.art==='salvage'?(en5?'Salvage':'Salvage'):'Loot'}</td><td class="r">${fmt(g.menge)}</td>
+         <td class="r isk">${g.isk!=null?fmtM(g.isk):'<span style="color:var(--dim)" title="'+(en5?'price not loaded yet, comes with the next refresh':'Preis noch nicht geladen, kommt mit dem nächsten Takt')+'">·</span>'}</td>
+         <td title="${esc(alle)}">${g.wo&&g.wo.length?esc(g.wo[0][0])+' · '+fmt(g.wo[0][1])+(en5?' units':' Stk')+(g.wo.length>1?' <span style="color:var(--dim)">+'+(g.wo.length-1)+'</span>':''):''}</td></tr>`;
+      }).join('')
+      +`</table></div>
+      <div class="sub" style="margin-top:8px">${en5
+        ?`Top 12 by value, hover the source column for the full list per item. <b>${la.mit_loot} of ${la.gesamt}</b> missions have loot or salvage entered: the more you enter (📥 on each mission), the more complete this gets.`
+        :`Top 12 nach Wert, die Herkunfts-Spalte zeigt beim Überfahren die volle Liste je Gegenstand. <b>${la.mit_loot} von ${la.gesamt}</b> Missionen haben eingetragenen Loot oder Salvage: je mehr du einträgst (📥 an jeder Mission), desto vollständiger wird die Auswertung.`}</div>`
+     :`<div class="sub">${en5
+        ?'Nothing entered yet. Paste a cargo copy (Ctrl+A, Ctrl+C in game) via 📥 on a mission, loot and salvage each into their own field, then sums, averages and item origins show up here.'
+        :'Noch nichts eingetragen. Füge über 📥 an einer Mission eine Frachtraum-Kopie ein (im Spiel Strg+A, Strg+C), Loot und Salvage jeweils in ihr eigenes Feld, dann erscheinen hier Summen, Schnitte und die Herkunft je Gegenstand.'}</div>`;
+   return `<div class="card" style="grid-column:1/-1">
+    <div class="sect">${en5?'💰 Loot & salvage analysis':'💰 Loot- & Salvage-Auswertung'}</div>${inhalt}</div>`;
+  })()}
  ${(m.foes&&m.foes.length)?`<div class="card" style="grid-column:1/-1">
   <div class="sect">Gegner (letzte 30 Tage)</div>
   <div style="overflow-x:auto"><table>
@@ -17004,6 +17155,14 @@ function renderMissions(d){
   }
   const st=[...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===mid);
   if(st&&z.status)st.textContent=z.status;
+  const sa=box.querySelector('.msalvin');
+  if(sa){
+   sa.value=z.stext||'';
+   if(z.sfokus)sa.focus();
+   try{sa.setSelectionRange(z.sstart||0,z.send||0);}catch(e){}
+  }
+  const sst=[...document.querySelectorAll('.msalvstat')].find(s=>s.dataset.mid===mid);
+  if(sst&&z.sstatus)sst.textContent=z.sstatus;
  });
  Object.entries(nameOffen).forEach(([mid,z])=>{
   const box=[...document.querySelectorAll('.mnameedit')].find(e=>e.dataset.mid===mid);
@@ -17111,6 +17270,26 @@ function renderMissions(d){
    // Nach dem Bewerten zuklappen. Seit das Feld den 2s-Takt uebersteht, blieb
    // es sonst offen stehen, und wer mehrere Missionen nacheinander eintraegt,
    // hatte am Ende einen Stapel offener Kaesten untereinander.
+   const box=finde('.mlootedit'); if(box)box.hidden=true;
+   setTimeout(tick,600);
+  }else setzStatus(r?(en2?'Error':'Fehler')
+                    :(en2?'Server not reachable':'Server nicht erreichbar'));
+ });
+ // Salvage: exakt derselbe Ablauf wie beim Loot, nur eigenes Feld, eigene
+ // Aktion und eigener Status. Bewusst KEIN Zuklappen-Teilen mit dem Loot:
+ // wer erst Loot, dann Salvage eintraegt, will die Box dazwischen offen.
+ document.querySelectorAll('.msalvgo').forEach(b=>b.onclick=async()=>{
+  const mid=b.dataset.mid;
+  const finde=sel=>[...document.querySelectorAll(sel)].find(e=>e.dataset.mid===mid);
+  const setzStatus=txt=>{const s=finde('.msalvstat'); if(s)s.textContent=txt;};
+  const ta=finde('.msalvin');
+  const text=ta?ta.value:'';
+  setzStatus(lang==='en'?'Checking …':'Prüfe …');
+  let r;try{r=await post({action:'mission_salvage',mid,text});}catch(e){r=null;}
+  const en2=lang==='en';
+  if(r&&r.ok){
+   setzStatus('Salvage: '+fmtM(r.isk)
+    +(r.unknown&&r.unknown.length?(en2?' · not recognised: ':' · nicht erkannt: ')+r.unknown.join(', '):''));
    const box=finde('.mlootedit'); if(box)box.hidden=true;
    setTimeout(tick,600);
   }else setzStatus(r?(en2?'Error':'Fehler')
@@ -17828,6 +18007,9 @@ const EN = {
 'Lieferungen mit vervielfachtem Ertrag. Canary erkennt sie daran, dass die Menge ein exaktes Vielfaches deiner Normallieferung ist. Gezeigt wird nur der Teil, der über die Normalmenge hinausging.':
  'Deliveries with multiplied yield. Canary spots them because the amount is an exact multiple of your normal delivery. Only the part beyond the normal amount is shown.',
 'per ⛽ setzen':'set via ⛽',
+'Salvage bewerten':'Value salvage',
+'Salvage dieser Mission hier einfügen, getrennt vom Loot (gleicher Weg: markieren, kopieren)':
+ 'Paste the salvage of this mission here, separate from the loot (same way: select, copy)',
 '⚡ Mining-Fleet-Power-Ränge':'⚡ Mining Fleet Power ranks',
 'Klick zeigt alle Ränge und ihre Schwellen':'Click shows all ranks and their thresholds',
 'Gegner dieses Laufs':'Enemies of this run',
