@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.43.0",
+  "d": "2026-08-19",
+  "de": [
+   "ZERBROCHENE MINING-KRISTALLE WERDEN JETZT GEZAEHLT, gefragt von Ramone: das Gamelog schreibt beim Zerspringen eine eigene Zeile mit dem exakten Kristalltyp, und genau daraus baut Canary eine Monatsuebersicht in der 30-Tage-Ansicht: Anzahl je Monat, aufgeschluesselt je Typ, bewertet zu Jita-Preisen. Keine Schaetzung, jede Zeile ist ein echter Kristall. Die Uebersicht fuellt sich RUECKWIRKEND aus allen Logdateien, die noch auf der Platte liegen, und die Live-Karte zeigt zersprungene Kristalle des laufenden Trips direkt an. Vorerst greift der englische Client-Text, andere Sprachen werden ueber gesammelte Beispielzeilen nachgeruestet.",
+   "DABEI EIN ALTER ZAEHLFEHLER GEFUNDEN UND BEHOBEN: die Kristall-Zeile beginnt mit dem Werkzeugnamen und zaehlte deshalb seit jeher faelschlich als leergebaggerter Asteroid. Der Asteroiden-Zaehler stimmt ab jetzt, und beim einmaligen Neueinlesen nach dem Update korrigiert sich auch die Historie. Dauerhafte Pruefung: pruefungen/kristalle.py, acht Faelle mit der woertlichen Logzeile aus einem gespendeten Log."
+  ],
+  "en": [
+   "SHATTERED MINING CRYSTALS ARE NOW COUNTED, asked by Ramone: the game log writes its own line when a crystal shatters, exact crystal type included, and Canary builds a monthly overview from it in the 30-days view: count per month, broken down per type, valued at Jita prices. No estimate, every line is a real crystal. The overview fills RETROACTIVELY from every log file still on disk, and the live card shows crystals shattered during the current trip. English client wording for now, other languages get collected and added.",
+   "AN OLD COUNTING BUG WAS FOUND AND FIXED ALONG THE WAY: the crystal line starts with the tool name and therefore always counted wrongly as a depleted asteroid. The asteroid counter is correct from now on, and the one-time re-read after the update corrects the history too. Permanent check: pruefungen/kristalle.py, eight cases with the literal log line from a donated log."
+  ]
+ },
+ {
   "v": "2.42.1",
   "d": "2026-08-19",
   "de": [

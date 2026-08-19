@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.42.1"
+VERSION = "2.43.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1462,6 +1462,20 @@ def parse_line(raw):
                         "value": 1}
             LOG_TEXT_HITS["trade"] += 1
             return {**base, "kind": "hold_reset", "key": "trade", "value": 1}
+        # Zersprungener Mining-Kristall: EINE Zeile je Kristall, mit exaktem
+        # Typ. Beleg aus Nirahses Logs (7 Jahre): "Modulated Strip Miner II
+        # deactivates due to the destruction of the Veldspar Mining Crystal II
+        # it was fitted with." MUSS VOR der MINING_TOOLS-Regel stehen: die
+        # Zeile beginnt mit dem Werkzeugnamen und zaehlte deshalb bis v2.42
+        # faelschlich als leergebaggerter Asteroid (bei Ramones Anfrage
+        # entdeckt). Englischer Client-Text; andere Sprachen werden wie bei
+        # den vier bekannten Sprachsignalen ueber gesammelte Beispielzeilen
+        # nachgeruestet, nicht geraten.
+        mk = re.search(r"deactivates due to the destruction of the (.+?) "
+                       r"it was fitted with", text)
+        if mk:
+            return {**base, "kind": "kristall",
+                    "key": mk.group(1).strip(), "value": 1}
         for tool in MINING_TOOLS:
             # Modulnamen sind nie lokalisiert: "Strip Miner I* schaltet ab, …"
             if text.startswith(tool):
@@ -1796,6 +1810,14 @@ try:  # v2.42: Salvage getrennt vom Loot (MelvinMafia). Eigene Spalten statt
     DB.commit()
 except sqlite3.OperationalError:
     pass
+# v2.43: zerstoerte Mining-Kristalle (Ramone). Der Schluessel dedupliziert
+# beim Neueinlesen: dieselbe Logzeile ergibt denselben Eintrag. Zerspringen
+# zwei gleiche Kristalle in derselben Sekunde, geht einer unter; das ist
+# selten und ehrlicher als Doppelzaehlung beim Re-Ingest.
+DB.execute("""CREATE TABLE IF NOT EXISTS kristalle(
+    char_id TEXT, char TEXT, ts REAL, typ TEXT,
+    PRIMARY KEY(char_id, ts, typ))""")
+DB.commit()
 try:  # v1.71: Fernunterstuetzung je Einsatz. Ohne diese Spalten ist die
       # Leistung eines Logi-Piloten nach dem Andocken fuer immer weg.
     DB.execute("ALTER TABLE missions ADD COLUMN logi_out REAL")
@@ -1986,7 +2008,7 @@ def zu_merken(char_id, ts):
 #      die englischen Fassungen zaehlten. Dazu die englische Drohnen-Meldung
 #      "need to deposit their current loads", die es sechs Versionen lang nur
 #      in einer Fassung gab, die im Log gar nicht vorkommt.
-PARSE_VER = "13"
+PARSE_VER = "14"
 
 
 def _paare_summieren(*listen):
@@ -3173,6 +3195,7 @@ class CharSession:
         self.gegner_erst = {}
         self.schnitte = []
         self.letzter_out_ts = None
+        self.kristalle = {}   # Typ -> Anzahl zersprungen (dieser Trip)
         self.attackers = {}
         self.win_out = deque()
         self.win_in = deque()
@@ -3262,6 +3285,18 @@ class CharSession:
                 self.rate_min.append([minute, {}])
             mix = self.rate_min[-1][1]
             mix[ev["key"]] = mix.get(ev["key"], 0) + ev["value"] * vol
+        elif k == "kristall":
+            # Session-Zaehler fuer die Karte plus dauerhafte Zeile fuer die
+            # Monatsuebersicht. ts kommt AUS DEM LOG, damit das Neueinlesen
+            # alter Dateien die Historie rueckwirkend fuellt.
+            self.kristalle[ev["key"]] = self.kristalle.get(ev["key"], 0) + 1
+            try:
+                with DB_LOCK:
+                    DB.execute("INSERT OR IGNORE INTO kristalle VALUES(?,?,?,?)",
+                               (self.char_id, self.name, ev["ts"], ev["key"]))
+                    DB.commit()
+            except Exception as e:
+                log_error("CN-DB-04", "kristall", e)
         elif k == "jump":
             self.system = ev["key"]      # aktueller Ort aus dem Gamelog
         elif k == "dmg_out":
@@ -3368,6 +3403,7 @@ class CharSession:
                 self.gegner_erst = {}
                 self.schnitte = []
                 self.letzter_out_ts = None
+                self.kristalle = {}
                 self.attackers = {}
                 self.bounty = 0
                 self.kills = 0
@@ -3772,6 +3808,7 @@ class CharSession:
         self.gegner_erst = {}
         self.schnitte = []
         self.letzter_out_ts = None
+        self.kristalle = {}
         self.attackers = {}
         self.bounty = 0
         self.kills = 0
@@ -8748,6 +8785,7 @@ def snapshot_live():
                   or any(n in _shipname for n in DRONE_ONLY_SHIP_NAMES))
         drone_only = (is_cmd or s.core_on())
         chars.append({
+            "kristalle": sorted(s.kristalle.items(), key=lambda x: -x[1]),
             "heavy_water": hw,
             "active": active,
             "role": (CONFIG.get("roles") or {}).get(s.name, ""),
@@ -10198,6 +10236,39 @@ def uhr_json():
             "sek": round(uhr_laufzeit())}
 
 
+def query_kristalle():
+    """Zerstoerte Mining-Kristalle je Monat und Typ, bewertet zu Jita-Kauf
+    (Ramone, 19.08.2026). Quelle ist die exakte Logzeile des Zerspringens,
+    keine Schaetzung. Preise cache-first, fehlende kommen mit dem naechsten
+    Takt."""
+    with DB_LOCK:
+        rows = DB.execute(
+            "SELECT strftime('%Y-%m', ts, 'unixepoch'), typ, COUNT(*) "
+            "FROM kristalle GROUP BY 1, 2").fetchall()
+    if not rows:
+        return {"monate": []}
+    typen = sorted({r[1] for r in rows})
+    ids = resolve_item_ids(typen)
+    try:
+        pm = hub_prices_bg("10000002", set(ids.values())) if ids else {}
+    except Exception:
+        pm = {}
+    monate = {}
+    for mon, typ, n in rows:
+        e = monate.setdefault(mon, {"monat": mon, "n": 0, "isk": 0.0,
+                                    "typen": []})
+        preis = (pm.get(ids.get(typ)) or (0, 0))[0] if ids.get(typ) else 0
+        e["n"] += n
+        e["isk"] += n * preis
+        e["typen"].append({"typ": typ, "n": n,
+                           "isk": round(n * preis) if preis else None})
+    out = sorted(monate.values(), key=lambda x: x["monat"], reverse=True)[:12]
+    for e in out:
+        e["isk"] = round(e["isk"])
+        e["typen"].sort(key=lambda t: -t["n"])
+    return {"monate": out}
+
+
 def query_loot_auswertung():
     """Loot-Bilanz und Herkunft je Gegenstand (MelvinMafia, 19.08.2026):
     was habe ich gelootet und gesalvaged, was war es wert, was war der
@@ -11591,6 +11662,7 @@ class Handler(BaseHTTPRequestHandler):
                 data["summary"] = query_summary()
             elif view == "month":
                 data["days"] = query_month()
+                data["kristalle"] = query_kristalle()
             elif view == "analyse":
                 data["analyse"] = query_analyse()
             elif view == "intel":
@@ -15140,6 +15212,7 @@ function miningCardHtml(c){
      ?`<div class="cardwarn drone">⚠ ${esc(w.tool)}${w.count>1?' ×'+w.count:''} abgeschaltet, Drohnen prüfen!</div>`
      :`<div class="cardwarn">⚠ ${esc(w.tool)}${w.count>1?' ×'+w.count:''} abgeschaltet, Ziel prüfen</div>`).join('')}
    ${(c.lasers_off||[]).map(w=>`<div class="cardwarn">⛔ ${esc(w.tool)} aus seit ${new Date(w.since*1000).toLocaleTimeString().slice(0,5)}. Neues Ziel erfassen! <span class="laserok" data-char="${esc(c.name)}" data-tool="${esc(w.tool)}">✓ erledigt</span></div>`).join('')}
+   ${(c.kristalle&&c.kristalle.length)?`<div class="cardwarn">💎 ${lang==='en'?'Crystal shattered this trip':'Kristall zersprungen diesen Trip'}: ${c.kristalle.map(k=>esc(k[0])+' ×'+k[1]).join(', ')}</div>`:''}
    ${c.drones_idle?`<div class="cardwarn">🤖 Drohnen liefern gerade kein Erz (gestoppt, voll oder auf dem Rückweg).</div>`:''}
    ${c.laser_stalled?`<div class="cardwarn">⛏ Strip Miner liefert gerade kein Erz, während die Drohnen weiterlaufen.</div>`:''}
    ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur noch ${c.rate_low}%. Vermutlich ist ein Modul oder eine Drohne aus.</div>`:''}
@@ -15428,7 +15501,7 @@ function logiBlock(c){
  return h;
 }
 
-function renderMonth(days){
+function renderMonth(days,kristalle){
  $('#empty').hidden=days.length>0;
  if(!days.length){$('#empty').textContent='Noch keine historischen Daten.';$('#grid').innerHTML='';return;}
  const max=Math.max(1,...days.map(d=>d.total));
@@ -15444,7 +15517,23 @@ function renderMonth(days){
    <span><span class="dot" style="background:var(--green)"></span>Bounties</span></div>
    <table>${days.slice().reverse().map(d=>
     `<tr><td>${d.day}</td><td class="r">${fmt(d.m3)} m³</td><td class="r">${fmt(d.depleted)} Asteroiden</td><td class="r out">${fmtM(d.dmg_out)} dmg</td><td class="r isk">${fmtM(d.total)} ISK</td></tr>`).join('')}</table>
-  </div>`;
+  </div>`+kristallCard(kristalle);
+}
+// Zerstoerte Mining-Kristalle je Monat (Ramone). Quelle ist die exakte
+// Logzeile des Zerspringens, rueckwirkend aus allen noch vorhandenen Logs.
+function kristallCard(k){
+ if(!k||!k.monate||!k.monate.length)return '';
+ const en6=lang==='en';
+ return `<div class="card" style="grid-column:1/-1">
+  <div class="sect">${en6?'💎 Shattered mining crystals':'💎 Zerbrochene Mining-Kristalle'}</div>
+  <div style="overflow-x:auto"><table>
+  <tr><th>${en6?'Month':'Monat'}</th><th class="r">${en6?'Crystals':'Kristalle'}</th><th class="r">≈ ISK (Jita)</th><th>${en6?'By type':'Je Typ'}</th></tr>`
+  +k.monate.map(m=>`<tr><td>${esc(m.monat)}</td><td class="r">${m.n}</td><td class="r isk">${m.isk?fmtM(m.isk):'<span style="color:var(--dim)">·</span>'}</td><td>${m.typen.map(t=>esc(t.typ)+' ×'+t.n).join(', ')}</td></tr>`).join('')
+  +`</table></div>
+  <div class="sub" style="margin-top:8px">${en6
+   ?'Counted from the log line a shattering crystal writes, exact type included. Fills retroactively from every log file still on disk. English client wording for now; other client languages get collected and added.'
+   :'Gezählt aus der Logzeile, die ein zerspringender Kristall schreibt, mit exaktem Typ. Füllt sich rückwirkend aus allen Logdateien, die noch auf der Platte liegen. Vorerst englischer Client-Text; andere Client-Sprachen werden gesammelt und nachgerüstet.'}</div>
+ </div>`;
 }
 
 function renderTotal(t){
@@ -18683,7 +18772,7 @@ async function tick(){
   else if(view==='missionen')renderMissions(d);
   else{
    $('#hero').innerHTML='';
-   if(view==='month')renderMonth(d.days);
+   if(view==='month')renderMonth(d.days,d.kristalle);
    else if(view==='analyse')renderAnalyse(d.analyse);
    else if(view==='intel')renderIntel(d.intel_auto,d.blutspur);
    else if(view==='vault')renderVault(d.vault);
