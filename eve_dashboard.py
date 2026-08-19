@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.42.0"
+VERSION = "2.42.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -12491,6 +12491,11 @@ html[data-skin=photon] .optgroup{border-radius:1px}
 .pill{background:var(--card);border:1px solid var(--line);color:var(--dim);font-size:11px;
 padding:4px 11px;border-radius:20px;cursor:pointer;user-select:none}
 .pill.on{background:var(--cyan);color:var(--bg);border-color:var(--cyan)}
+/* Der Belt-Knopf ist ein WERKZEUG, keine Filter-Pille: er ging rechts in der
+   Leiste unter (Askend, 19.08.2026, "ganz schön klein"). Groessere Schrift,
+   Gold-Rahmen und etwas Luft, damit er als eigenstaendiger Knopf lesbar ist. */
+#beltBtn{font-size:13px;padding:6px 14px;border-color:var(--gold);color:var(--gold);font-weight:600}
+#beltBtn:hover{background:var(--gold);color:var(--bg)}
 .sortpf{cursor:pointer;color:var(--cyan);padding:0 4px;user-select:none;font-size:13px}
 .sortpf:hover{color:var(--txt)}
 .hidepf{cursor:pointer;padding:0 4px;user-select:none;font-size:12px;opacity:.7}
