@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.40.0",
+  "d": "2026-08-19",
+  "de": [
+   "DIE MINING-FLEET-POWER-RAENGE SIND JETZT EINSEHBAR, gefragt von Flexodus: ein Klick auf den Rang-Chip (etwa Rorqual-Overlord) oeffnet die ganze Leiter mit allen sechs Raengen und ihren Schwellen, vom Prospektor unter 300 m³/min bis zum Rorqual-Overlord ab 15.000 m³/min. Der eigene Rang ist markiert, und darunter steht, wie viel m³/min bis zum naechsten Rang fehlen. Wer oben angekommen ist, bekommt ein o7.",
+   "Dazu erklaert der Dialog ehrlich, wie gemessen wird: Dauerleistung der ganzen Flotte, je Charakter der Schnitt seiner fuenf besten Minuten der letzten Stunde, dann summiert. Kurze Spitzen zaehlen nicht."
+  ],
+  "en": [
+   "THE MINING FLEET POWER RANKS ARE NOW VISIBLE, asked by Flexodus: a click on the rank chip (say Rorqual Overlord) opens the whole ladder with all six ranks and their thresholds, from Prospector below 300 m³/min to Rorqual Overlord from 15,000 m³/min. Your own rank is highlighted, and below it says how many m³/min are missing to the next rank. Whoever reached the top gets an o7.",
+   "The dialog also explains honestly how it is measured: sustained output of the whole fleet, per character the average of its five best minutes of the last hour, then summed. Short spikes do not count."
+  ]
+ },
+ {
   "v": "2.39.0",
   "d": "2026-08-17",
   "de": [

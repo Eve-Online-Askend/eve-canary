@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.39.0"
+VERSION = "2.40.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -12511,6 +12511,9 @@ tr.lvl-yellow td{background:rgba(228,179,76,.07)}
 .mfphead{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .mfptitle{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
 .mfprank{font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid var(--line)}
+#mfpDlg .mfphier td{background:var(--inset)}
+#mfpDlg .mfphier td:first-child{border-radius:8px 0 0 8px}
+#mfpDlg .mfphier td:last-child{border-radius:0 8px 8px 0}
 .mfpmain{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:8px 0 10px}
 .mfpval{font-size:40px;font-weight:800;line-height:1}
 .mfpunit{font-size:15px;color:var(--dim);font-weight:600}
@@ -13549,6 +13552,13 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  </div>
 </dialog>
 
+<dialog id="mfpDlg">
+ <h2>⚡ Mining-Fleet-Power-Ränge</h2>
+ <div id="mfpDlgInhalt"></div>
+ <div class="btnrow" style="margin-top:10px">
+  <button class="btn" onclick="document.getElementById('mfpDlg').close()">Schließen</button>
+ </div>
+</dialog>
 <dialog id="beltDlg">
  <h2>🪨 Was steckt in diesem Belt?</h2>
  <p class="sub">Im Spiel das Fenster „Ergebnisse der Bergbauvermessung“ öffnen, hineinklicken,
@@ -14657,13 +14667,57 @@ function siteHtml(s){
  if(!s||!s.name)return '';
  return `🌀 ${esc(s.name)}`;
 }
+// Die Rang-Leiter als EINE Quelle: mfpTier und der Raenge-Dialog lesen
+// beide hieraus, sonst laufen Anzeige und Erklaerung auseinander.
+const MFP_RAENGE=[
+ [15000,'Rorqual-Overlord','gold'],
+ [6000,'Erz-Baron','gold'],
+ [2500,'Industrie-Flotte','cyan'],
+ [1000,'Flotten-Operator','cyan'],
+ [300,'Gürtel-Miner','green'],
+ [0,'Prospektor','dim']];
 function mfpTier(m){
- if(m>=15000)return {n:'Rorqual-Overlord',c:'gold'};
- if(m>=6000)return {n:'Erz-Baron',c:'gold'};
- if(m>=2500)return {n:'Industrie-Flotte',c:'cyan'};
- if(m>=1000)return {n:'Flotten-Operator',c:'cyan'};
- if(m>=300)return {n:'Gürtel-Miner',c:'green'};
+ for(const [ab,n,c] of MFP_RAENGE)if(m>=ab)return {n,c};
  return {n:'Prospektor',c:'dim'};
+}
+// Der Raenge-Dialog (Wunsch von Flexodus: wo sieht man, welche Raenge es
+// gibt?). Zeigt die Leiter, markiert den eigenen Rang und nennt, wie viel
+// bis zum naechsten fehlt. Texte inline zweisprachig, die Rangnamen selbst
+// uebersetzt tr() ueber das Woerterbuch.
+function mfpRaenge(){
+ const dlg=$('#mfpDlg'); if(!dlg)return;
+ const en=lang==='en';
+ const v=mfpValues(lastChars||[]);
+ const akt=v.miners.length?v.tier.n:null;
+ const rows=MFP_RAENGE.map(([ab,n,c],i)=>{
+  const bereich=ab>0
+    ?(en?'from ':'ab ')+fmt(ab)+' m³/min'
+    :(en?'below ':'unter ')+fmt(MFP_RAENGE[MFP_RAENGE.length-2][0])+' m³/min';
+  return `<tr${n===akt?' class="mfphier"':''}><td style="padding:4px 6px"><span class="mfprank ${c}">${n}</span></td><td class="r" style="padding:4px 6px">${bereich}</td></tr>`;
+ }).join('');
+ let fuss='';
+ if(akt){
+  const idx=MFP_RAENGE.findIndex(r=>r[1]===akt);
+  const wert=fmt(Math.round(v.m3min));
+  if(idx>0){
+   const [ziel,zn]=[MFP_RAENGE[idx-1][0],MFP_RAENGE[idx-1][1]];
+   const fehlt=fmt(Math.max(0,Math.round(ziel-v.m3min)));
+   fuss=en
+     ?`Your fleet: <b>${wert} m³/min</b> · still ${fehlt} m³/min to <b>${zn}</b>.`
+     :`Deine Flotte: <b>${wert} m³/min</b> · bis <b>${zn}</b> fehlen noch ${fehlt} m³/min.`;
+  }else{
+   fuss=en
+     ?`Your fleet: <b>${wert} m³/min</b> · highest rank reached. o7`
+     :`Deine Flotte: <b>${wert} m³/min</b> · höchster Rang erreicht. o7`;
+  }
+  fuss=`<div class="sub" style="margin-top:8px">${fuss}</div>`;
+ }
+ $('#mfpDlgInhalt').innerHTML=`<table style="width:100%;border-collapse:collapse">${rows}</table>${fuss}
+  <div class="hint" style="margin-top:8px">${en
+   ?'Measured as the sustained output of the whole fleet: per character the average of its five best minutes of the last hour, then summed. Short spikes do not count.'
+   :'Gemessen als Dauerleistung der ganzen Flotte: je Charakter der Schnitt seiner fünf besten Minuten der letzten Stunde, dann summiert. Kurze Spitzen zählen also nicht.'}</div>`;
+ dlg.showModal();
+ if(lang!=='de')tr(dlg);
 }
 // Dauerleistung eines Chars aus der echten Minutenrate (Top-5-Schnitt der letzten
 // 60 min), NICHT aus der hochgerechneten m³/h. So spiegelt die Zahl die reale
@@ -14709,7 +14763,7 @@ function fleetPowerCard(chars){
    <div class="mfphead">
     <span class="mfptitle">⚡ Mining Fleet Power</span>
     <span class="mfphr">
-     <span class="mfprank ${t.c}">${t.n}</span>
+     <span class="mfprank ${t.c}" onclick="mfpRaenge()" style="cursor:pointer" title="Klick zeigt alle Ränge und ihre Schwellen">${t.n}</span>
      <button class="mfpshare" onclick="shareMfp(this)" title="Als Bild teilen">📤 Teilen</button>
     </span>
    </div>
@@ -17762,6 +17816,8 @@ const EN = {
 'Lieferungen mit vervielfachtem Ertrag. Canary erkennt sie daran, dass die Menge ein exaktes Vielfaches deiner Normallieferung ist. Gezeigt wird nur der Teil, der über die Normalmenge hinausging.':
  'Deliveries with multiplied yield. Canary spots them because the amount is an exact multiple of your normal delivery. Only the part beyond the normal amount is shown.',
 'per ⛽ setzen':'set via ⛽',
+'⚡ Mining-Fleet-Power-Ränge':'⚡ Mining Fleet Power ranks',
+'Klick zeigt alle Ränge und ihre Schwellen':'Click shows all ranks and their thresholds',
 'Gegner dieses Laufs':'Enemies of this run',
 'ohne Zeitangabe':'no time recorded',
 'Abschnitt = Pause von über 90 Sekunden ohne eigenen Schaden vor einem neuen Gegner, meist ein Tor- oder Warp-Wechsel. EVE loggt Beschleunigungstore nicht, deshalb Abschnitte statt Taschen.':
