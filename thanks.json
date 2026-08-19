@@ -188,6 +188,22 @@
   "links": []
  },
  {
+  "name": "MelvinMafia",
+  "role": {
+   "de": "Ideen",
+   "en": "Ideas",
+   "fr": "Idées",
+   "ru": "Идеи"
+  },
+  "note": {
+   "de": "Wollte seinen eingetragenen Loot ausgewertet sehen und Salvage getrennt erfassen. Daraus wurden das Salvage-Feld und die Loot- & Salvage-Auswertung.",
+   "en": "Wanted his entered loot analysed and salvage tracked separately. That became the salvage field and the loot & salvage analysis.",
+   "fr": "Voulait analyser son butin saisi et suivre le salvage à part. C'est devenu le champ salvage et l'analyse butin & salvage.",
+   "ru": "Хотел анализ введённой добычи и отдельный учёт сальважа. Так появились поле сальважа и анализ добычи."
+  },
+  "links": []
+ },
+ {
   "name": "Dune2Man",
   "role": {
    "de": "Ideen",
