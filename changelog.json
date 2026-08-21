@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.46.1",
+  "d": "2026-08-21",
+  "de": [
+   "DER BOUNTY-HINWEIS AN MISSIONEN SAGT JETZT DIE WAHRHEIT, aufgefallen durch MelvinMafias Nachfrage: der alte Text schickte auf die Suche nach einer Einstellung im EVE-Client, dabei war meist gar nichts falsch eingestellt. Viele Missionsgegner zahlen schlicht keine Bounty, dann gibt es nichts zu zaehlen. Der Hinweis erklaert das jetzt, statt eine Einstellungs-Odyssee auszuloesen, und verweist auf die echte Belohnung aus dem Wallet per EVE-Login."
+  ],
+  "en": [
+   "THE BOUNTY NOTE ON MISSIONS NOW TELLS THE TRUTH, surfaced by MelvinMafia's question: the old text sent people hunting for an EVE client setting although usually nothing was misconfigured. Many mission enemies simply pay no bounty, so there is nothing to count. The note now explains that instead of triggering a settings odyssey, and points to the actual reward from the wallet via EVE login."
+  ]
+ },
+ {
   "v": "2.46.0",
   "d": "2026-08-21",
   "de": [

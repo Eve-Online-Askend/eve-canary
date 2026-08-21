@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.46.0"
+VERSION = "2.46.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -15733,7 +15733,7 @@ function combatCardHtml(c){
        ?`<div class="stat"><div class="l">Kills</div><div class="v">${c.kills}</div></div>`
        :`<div class="stat"><div class="l">Gegner bekämpft</div><div class="v">${c.enemy_types||0}</div><div class="l" title="EVE protokolliert keine NPC-Tode. Ohne Bounty ist die Zahl der bekämpften Gegnertypen der einzige gesicherte Wert.">Typen · aus Log</div></div>`}
     </div>
-    ${noBountyData?`<div class="cardnote">ℹ️ Für diese Mission liegen keine Bounty-Daten im Log vor, daher werden Kills und Bounty hier nicht gezählt. In EVE die Bounty-Meldungen im Combat-Log aktivieren, dann zählt Canary sie live mit. Die echte Bounty-ISK kommt bei EVE-Login aus dem Wallet.</div>`:''}
+    ${noBountyData?`<div class="cardnote">ℹ️ Für diese Mission stehen keine Bounty-Zahlungen im Log. Das ist bei Missionsgegnern normal, viele zahlen gar keine Bounty, an deinen Einstellungen liegt es nicht. Die echte Belohnung kommt bei EVE-Login aus dem Wallet.</div>`:''}
     ${c.weapons.length?`<div class="sect">Waffen</div><table>`+c.weapons.map(w=>
       `<tr><td>${esc(w[0])}<div class="bar" style="width:${100*w[1]/maxW}%"></div></td><td class="r">${fmt(w[1])} dmg</td></tr>`).join('')+`</table>`:''}
     ${c.top_targets.length?`<div class="sect">${c.kills>0?'Top-Ziele':'Bekämpfte Gegner · '+(c.enemy_types||c.top_targets.length)+' Typen'}</div><table>`+c.top_targets.map(t=>
@@ -18721,7 +18721,7 @@ const EN = {
 'Noch keine Asset-Daten. Verbinde deine Chars per EVE-Login (⚙ Optionen). Nach dem ersten Abgleich (bis zu 1 Stunde) erscheint hier dein Erz-Bestand.':'No asset data yet. Connect your chars via the EVE login (⚙ Options). After the first sync (up to one hour) your ore stock shows up here.',
 '✅ Command Ship erkannt':'✅ Command ship detected',
 '🗜 Noch keiner komprimiert diese Session':'🗜 No one has compressed this session yet',
-'ℹ️ Für diese Mission liegen keine Bounty-Daten im Log vor, daher werden Kills und Bounty hier nicht gezählt. In EVE die Bounty-Meldungen im Combat-Log aktivieren, dann zählt Canary sie live mit. Die echte Bounty-ISK kommt bei EVE-Login aus dem Wallet.':'ℹ️ No bounty data in the log for this session, so kills and bounty are not counted here. Enable the bounty messages in the EVE combat log and Canary will count them live. The actual bounty ISK comes from the wallet when you use the EVE login.',
+'ℹ️ Für diese Mission stehen keine Bounty-Zahlungen im Log. Das ist bei Missionsgegnern normal, viele zahlen gar keine Bounty, an deinen Einstellungen liegt es nicht. Die echte Belohnung kommt bei EVE-Login aus dem Wallet.':'ℹ️ No bounty payouts in the log for this mission. That is normal for mission enemies, many pay no bounty at all, your settings are fine. The actual reward comes from the wallet when you use the EVE login.',
 'Rorqual-Overlord':'Rorqual Overlord','Erz-Baron':'Ore Baron','Industrie-Flotte':'Industrial Fleet',
 'Flotten-Operator':'Fleet Operator','Gürtel-Miner':'Belt Miner','Prospektor':'Prospector',
 'Erz-Tycoon':'Ore Tycoon','Industrie-Kapitän':'Industry Captain','Grubenmeister':'Mine Master',
