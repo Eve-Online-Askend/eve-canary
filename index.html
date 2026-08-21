@@ -1118,13 +1118,63 @@ function dlChartHtml() {
 // usersHtml() wird bewusst NICHT angezeigt: die Zaehlung laeuft weiter und
 // steht in stats.json bzw. unter „python release.py --users", sie soll nur
 // nicht auf der Seite stehen, solange die Zahl noch nichts aussagt.
+// Methodik-Block: WIE sich jede Zahl errechnet, nachpruefbar fuer jeden,
+// ausdruecklich auch fuer CCP (Partnerprogramm verlangt "verified using
+// available metrics"). Ehrliche Grenzen stehen mit drin.
+function methodikHtml() {
+  const T = ({
+    de: {
+      t: 'So errechnen sich diese Zahlen (zum Nachprüfen)',
+      p: [
+        '<b>Aktive Installationen:</b> Canary sendet keinerlei Telemetrie. Stattdessen liegen auf GitHub leere Zähldateien, eine je Monat und eine je Tag (in den Releases stats-JAHR und stats-JAHR-MONAT). Jede laufende Installation lädt die Datei ihres Zeitraums genau einmal ab, technisch identisch mit einem Update-Check. GitHubs öffentlicher Download-Zähler dieser Datei ist damit exakt die Zahl der in dem Zeitraum aktiven Installationen. Keine Kennung, keine Spieldaten, in den Optionen abschaltbar.',
+        '<b>Downloads gesamt:</b> die Summe der öffentlichen GitHub-Download-Zähler der App-Datei über alle Versionen. Zählt Installationen plus Updates.',
+        '<b>Bot-Gegenprobe:</b> die Zähldateien zukünftiger Zeiträume liegen bereits bereit und stehen auf null. Ein Massen-Downloader würde sie mitzählen, ein echter Client fasst nur seinen laufenden Zeitraum an.',
+        '<b>Ehrliche Grenzen:</b> gezählt werden Installationen, nicht Personen. Mehrere eigene Instanzen zählen mehrfach, Installationen ohne Internet fehlen, und die Instanzen des Entwicklers zählen mit.',
+        'Jede dieser Zahlen lässt sich ohne unser Zutun nachzählen: <a href="https://github.com/Eve-Online-Askend/eve-canary/releases" target="_blank" rel="noopener">alle Releases samt Zähldateien auf GitHub</a>.'
+      ]
+    },
+    en: {
+      t: 'How these numbers are calculated (verifiable)',
+      p: [
+        '<b>Active installations:</b> Canary sends no telemetry at all. Instead, empty counter files sit on GitHub, one per month and one per day (in the stats-YEAR and stats-YEAR-MONTH releases). Every running installation fetches the file of its period exactly once, technically identical to an update check. GitHub\'s public download counter of that file therefore is exactly the number of installations active in that period. No identifier, no game data, can be switched off in the options.',
+        '<b>Total downloads:</b> the sum of the public GitHub download counters of the app file across all versions. Counts installations plus updates.',
+        '<b>Bot cross-check:</b> the counter files for future periods already exist and sit at zero. A mass downloader would bump them, a real client only touches its current period.',
+        '<b>Honest limits:</b> installations are counted, not people. Several own instances count several times, offline installations are missing, and the developer\'s own instances count too.',
+        'Every one of these numbers can be recounted without our involvement: <a href="https://github.com/Eve-Online-Askend/eve-canary/releases" target="_blank" rel="noopener">all releases including the counter files on GitHub</a>.'
+      ]
+    },
+    fr: {
+      t: 'Comment ces chiffres sont calculés (vérifiable)',
+      p: [
+        '<b>Installations actives :</b> Canary n\'envoie aucune télémétrie. Des fichiers compteurs vides sont déposés sur GitHub, un par mois et un par jour (releases stats-ANNEE et stats-ANNEE-MOIS). Chaque installation active télécharge le fichier de sa période exactement une fois, techniquement identique à une vérification de mise à jour. Le compteur public de téléchargements GitHub de ce fichier est donc exactement le nombre d\'installations actives sur la période. Aucun identifiant, aucune donnée de jeu, désactivable dans les options.',
+        '<b>Téléchargements au total :</b> la somme des compteurs publics GitHub du fichier de l\'application sur toutes les versions. Compte installations et mises à jour.',
+        '<b>Contre-épreuve anti-bots :</b> les fichiers compteurs des périodes futures existent déjà et restent à zéro. Un téléchargeur de masse les gonflerait, un vrai client ne touche que sa période en cours.',
+        '<b>Limites honnêtes :</b> on compte des installations, pas des personnes. Plusieurs instances propres comptent plusieurs fois, les installations hors ligne manquent, et celles du développeur comptent aussi.',
+        'Chacun de ces chiffres peut être recompté sans nous : <a href="https://github.com/Eve-Online-Askend/eve-canary/releases" target="_blank" rel="noopener">toutes les releases avec les fichiers compteurs sur GitHub</a>.'
+      ]
+    },
+    ru: {
+      t: 'Как считаются эти цифры (проверяемо)',
+      p: [
+        '<b>Активные установки:</b> Canary не отправляет никакой телеметрии. На GitHub лежат пустые файлы-счётчики, по одному на месяц и на день (в релизах stats-ГОД и stats-ГОД-МЕСЯЦ). Каждая работающая установка скачивает файл своего периода ровно один раз, технически это то же самое, что проверка обновлений. Публичный счётчик загрузок GitHub этого файла и есть точное число активных установок за период. Без идентификаторов, без игровых данных, отключается в настройках.',
+        '<b>Всего загрузок:</b> сумма публичных счётчиков GitHub файла приложения по всем версиям. Считает установки плюс обновления.',
+        '<b>Проверка на ботов:</b> файлы-счётчики будущих периодов уже лежат и стоят на нуле. Массовый загрузчик накрутил бы их, настоящий клиент трогает только свой текущий период.',
+        '<b>Честные границы:</b> считаются установки, а не люди. Несколько своих копий считаются несколько раз, офлайн-установки не видны, и копии разработчика тоже считаются.',
+        'Каждую цифру можно пересчитать без нашего участия: <a href="https://github.com/Eve-Online-Askend/eve-canary/releases" target="_blank" rel="noopener">все релизы с файлами-счётчиками на GitHub</a>.'
+      ]
+    }
+  })[curLang];
+  const tt = T || { t: 'How these numbers are calculated (verifiable)', p: [] };
+  return `<details class="tiny" style="margin-top:10px"><summary style="cursor:pointer">${tt.t}</summary>`
+    + tt.p.map(x => `<p class="tiny">${x}</p>`).join('') + `</details>`;
+}
 function statsHtml() {
   const teile = installsHtml() + dlChartHtml();
   if (!teile || !ST || !ST.stand) return teile;
   const wann = new Date(ST.stand).toLocaleString(curLang,
     { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   const L = { de: 'Stand', fr: 'Mis à jour', ru: 'Данные от', en: 'As of' };
-  return teile + `<p class="tiny">${L[curLang] || L.en}: ${wann}</p>`;
+  return teile + methodikHtml() + `<p class="tiny">${L[curLang] || L.en}: ${wann}</p>`;
 }
 function renderDlChart() {
   const html = statsHtml();
