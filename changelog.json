@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.48.0",
+  "d": "2026-08-21",
+  "de": [
+   "ZWEI NEUE WARNSIGNALE, GEFUNDEN IN RAMONES GESPENDETEM JAHRES-BESTAND (5.769 Logdateien, 2 Millionen Zeilen komplett durchgesehen). Erstens der SYSTEMZUSTAND: meldet der Client beim Einflug eine Piraten-Insurgency oder ein EDENCOM-gesichertes System, zeigt die Gefahren-Zeile der Karte jetzt ein Badge, samt Fraktion und Erklaerung. In Insurgency-Systemen gelten gelockerte Verbrechens-Regeln, fuer Miner ein echtes Risiko-Signal, und Canary raet dabei nichts, es zeigt den woertlichen Client-Zustand.",
+   "Zweitens FAHNDUNGS-ALARME: die Warnung des Clients, dass du mit Kampf-Markierung in besiedelten Raum springst, wird jetzt ein Canary-Alarm, ebenso die Ansage der Fraktionspolizei, gleich das Feuer zu eroeffnen. Wichtiges Detail: die Polizei-Ansage nennt auch FREMDE Gejagte im System, Canary alarmiert deshalb nur, wenn dein eigener Charakter gemeint ist. Dauerhafte Pruefung: pruefungen/systemstatus.py, zehn Faelle mit den woertlichen Logzeilen."
+  ],
+  "en": [
+   "TWO NEW WARNING SIGNALS, FOUND IN RAMONE'S DONATED YEAR OF LOGS (5,769 log files, 2 million lines fully reviewed). First the SYSTEM STATE: if the client reports a pirate insurgency or an EDENCOM-secured system on entry, the danger line of the card now shows a badge, including faction and explanation. In insurgency systems crime rules are relaxed, a real risk signal for miners, and Canary guesses nothing, it shows the client's literal statement.",
+   "Second MANHUNT ALERTS: the client's warning that you are jumping into populated space while flagged for combat now becomes a Canary alert, as does the faction police announcing they are about to open fire. Important detail: the police line also names OTHER hunted pilots in the system, so Canary only alerts when your own character is meant. Permanent check: pruefungen/systemstatus.py, ten cases with the literal log lines."
+  ]
+ },
+ {
   "v": "2.47.0",
   "d": "2026-08-21",
   "de": [

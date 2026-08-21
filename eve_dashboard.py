@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.47.0"
+VERSION = "2.48.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1138,6 +1138,18 @@ RESIDUE_RE = re.compile(
     re.I)
 # Erfolgreiches Hacken benennt den Behaelter und damit den Site-Typ.
 HACK_RE = re.compile(r"You successfully access the\s+(.+?)\s*\.?\s*$", re.I)
+# Systemzustand und Fahndung, woertlich aus Ramones Jahres-Bestand belegt
+# (21.08.2026): "(notify) This system is affected by Guristas Pirates
+# Insurgency. System effects may apply.", "(warning) Warning! This star
+# system has been secured by EDENCOM forces...", "(warning) Warning! You are
+# currently flagged for being part of combat actions...", "(notify)
+# <Name>, you are an enemy to our nation. Leave immediately or be fired
+# upon!" (nennt auch FREMDE Gejagte, deshalb traegt das Ereignis den Namen).
+INSURGENCY_RE = re.compile(r"This system is affected by (.+?) Insurgency", re.I)
+EDENCOM_RE = re.compile(r"secured by EDENCOM forces", re.I)
+FLAGGED_RE = re.compile(r"currently flagged for being part of combat actions", re.I)
+FACPOLICE_RE = re.compile(
+    r"^(.{2,40}?), you are an enemy to our nation\. Leave immediately", re.I)
 # Flotten-Boost mit der Zahl der bebonusten Mitglieder. Bis v2.0.x landete das
 # als Rauschen im Papierkorb, und zwar in erheblichem Umfang: an 1,07 Mio
 # Zeilen waren es 67.478 Stueck in 220 Dateien, also 83 Prozent des gesamten
@@ -1173,6 +1185,18 @@ def classify_rest(base, tag, text):
     if m:
         return {**base, "kind": "residue", "key": "Rueckstand",
                 "value": num(m.group(1) or m.group(2))}
+    m = INSURGENCY_RE.search(text)
+    if m:
+        return {**base, "kind": "system_status", "key": "insurgency",
+                "wer": m.group(1).strip(), "value": 1}
+    if EDENCOM_RE.search(text):
+        return {**base, "kind": "system_status", "key": "edencom", "value": 1}
+    if FLAGGED_RE.search(text):
+        return {**base, "kind": "fahndung", "key": "flagged", "value": 1}
+    m = FACPOLICE_RE.match(text)
+    if m:
+        return {**base, "kind": "fahndung", "key": "facpolice",
+                "wer": m.group(1).strip(), "value": 1}
     m = BOOST_RE.search(text)
     if m:
         mod = BOOST_MOD_RE.search(text)
@@ -3178,6 +3202,9 @@ class CharSession:
         # Bestaenden). Ueber diese Nachbarschaft wird er zugeordnet.
         self.verschnitt = {}
         self.letztes_erz = None
+        # Woertlicher Systemzustand des Clients beim Einflug (Insurgency/
+        # EDENCOM). Gilt bis zum naechsten Sprung oder Andocken.
+        self.system_status = None
         self.last_event_ts = None # letztes Log-Ereignis (Aktivitaets-/Online-Heuristik)
         self.idle_alerted = False
         self.low_since = None     # Raten-Waechter (Teilausfall-Erkennung)
@@ -3308,6 +3335,9 @@ class CharSession:
                 self.rate_min.append([minute, {}])
             mix = self.rate_min[-1][1]
             mix[ev["key"]] = mix.get(ev["key"], 0) + ev["value"] * vol
+        elif k == "system_status":
+            self.system_status = {"art": ev["key"], "wer": ev.get("wer"),
+                                  "ts": ev["ts"]}
         elif k == "residue":
             # Zuordnung ueber die Nachbarschaft (Eron Solette, 20.08.2026).
             # ACHTUNG: das ev-Dict wird hier VOR der Historisierung umgetauft,
@@ -3335,6 +3365,7 @@ class CharSession:
                 log_error("CN-DB-04", "kristall", e)
         elif k == "jump":
             self.system = ev["key"]      # aktueller Ort aus dem Gamelog
+            self.system_status = None    # neues System, alter Zustand weg
         elif k == "dmg_out":
             self.dmg_out += ev["value"]
             if ev.get("player"):
@@ -3429,6 +3460,7 @@ class CharSession:
                 # ISK/Erz-Werte laengst abgeladene Ladung an. Historie (DB)
                 # bleibt davon unberuehrt.
                 self.core_break = ev["ts"]   # Abdocken: davor war der Kern aus
+                self.system_status = None
                 self.trips += 1
                 self.mining = {}
                 self.verschnitt = {}
@@ -4408,7 +4440,9 @@ class Ingest(threading.Thread):
                                 baseline_add(day, cid, kind, key, wert)
 
                         for ev in batch:
-                            if ev["kind"] in ("drone_engage", "hold_reset", "travel"):
+                            if ev["kind"] in ("drone_engage", "hold_reset",
+                                              "travel", "system_status",
+                                              "fahndung"):
                                 continue  # reine Live-Signale, nicht historisieren
                             merken(ev["day"], ev["kind"], ev["key"], ev["value"], ev.get("ts"))
                             if ev["kind"] == "dmg_out" and "weapon" in ev:
@@ -4474,6 +4508,21 @@ class Ingest(threading.Thread):
         save_config()
 
     def live_alerts(self, ev, cname):
+        # Fahndung (Ramones Bestand, 21.08.2026): die Kampf-Markierungs-
+        # Warnung gilt immer dem eigenen Piloten. Die Fraktionspolizei-Ansage
+        # nennt dagegen einen NAMEN, auch fremde Gejagte im System, deshalb
+        # nur alarmieren, wenn der eigene Charakter gemeint ist.
+        if ev["kind"] == "fahndung":
+            if ev["key"] == "flagged":
+                alerts.push("fahndung", cname,
+                            f"{cname}: Mit Kampf-Markierung unterwegs, du bist "
+                            "hier fuer andere frei angreifbar!")
+            elif (ev["key"] == "facpolice"
+                  and (ev.get("wer") or "").lower() == (cname or "").lower()):
+                alerts.push("fahndung", cname,
+                            f"{cname}: Fraktionspolizei greift gleich an, "
+                            "System sofort verlassen!")
+            return
         # Entwarnung: Gegensignal im Log macht alte Alarme sofort hinfaellig
         if ev["kind"] == "ore":
             alerts.resolve(("cargo", "idle", "rate"), cname)
@@ -8848,6 +8897,7 @@ def snapshot_live():
         chars.append({
             "kristalle": sorted(s.kristalle.items(), key=lambda x: -x[1]),
             "kristall_ts": round(s.kristall_ts) if s.kristall_ts else None,
+            "system_status": s.system_status,
             "heavy_water": hw,
             "active": active,
             "role": (CONFIG.get("roles") or {}).get(s.name, ""),
@@ -16086,12 +16136,22 @@ function mineIdle(c,st){
 // Lagebild des aktuellen Systems aus offenen Daten (stuendlich). Bewusst als
 // ruhige Info-Zeile, kein Alarm: eine Sekundenwarnung ist damit nicht moeglich.
 function dangerLine(c){
- const d=c.danger; if(!d) return '';
+ const d=c.danger, st=c.system_status;
+ // Woertlicher Systemzustand des Clients (Ramones Fund): Insurgency heisst
+ // gelockerte Verbrechens-Regeln, fuer Miner ein echtes Risiko-Signal.
+ const badge=st?((st.art==='insurgency')
+   ?` <span class="warnbadge drone" title="${lang==='en'
+     ?'The client reported a pirate insurgency on entering this system: crime rules are relaxed here, attackers risk less. Extra caution while mining.'
+     :'Der Client hat beim Einflug eine Piraten-Insurgency gemeldet: hier gelten gelockerte Verbrechens-Regeln, Angreifer riskieren weniger. Beim Minen besonders aufpassen.'}">⚠ ${esc(st.wer||'Piraten')}-Insurgency</span>`
+   :` <span class="warnbadge" title="${lang==='en'
+     ?'The client reported this system as secured by EDENCOM. Risky with negative EDENCOM standings.'
+     :'Der Client meldet dieses System als EDENCOM-gesichert. Mit negativem EDENCOM-Standing riskant.'}">🛡 ${lang==='en'?'EDENCOM secured':'EDENCOM-gesichert'}</span>`):'';
+ if(!d)return badge?`<div class="sub dngline">${badge}</div>`:'';
  const sec=(d.sec!=null)?d.sec.toFixed(1):'?';
  const risk=d.ship_kills>=10?'r':(d.ship_kills>=4?'y':'g');
  const pods=d.pod_kills?', '+d.pod_kills+' Kapseln':'';
  return `<div class="sub dngline"><span class="dngdot ${risk}"></span>Sicherheit ${sec}`
-  +` · Verluste letzte Stunde: ${d.ship_kills} Schiffe${pods} · Verkehr ${fmt(d.jumps)} Sprünge</div>`;
+  +` · Verluste letzte Stunde: ${d.ship_kills} Schiffe${pods} · Verkehr ${fmt(d.jumps)} Sprünge${badge}</div>`;
 }
 function ovStatus(c,st){
  if(c.dps_in>0)return['bad','UNTER BESCHUSS'];
