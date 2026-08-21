@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.44.0"
+VERSION = "2.45.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -2012,7 +2012,7 @@ def zu_merken(char_id, ts):
 #      die englischen Fassungen zaehlten. Dazu die englische Drohnen-Meldung
 #      "need to deposit their current loads", die es sechs Versionen lang nur
 #      in einer Fassung gab, die im Log gar nicht vorkommt.
-PARSE_VER = "14"
+PARSE_VER = "15"
 
 
 def _paare_summieren(*listen):
@@ -3172,6 +3172,12 @@ class CharSession:
         # Nur der letzte Stand, mehr braucht die Anzeige nicht.
         self.boost = None
         self.last_ore_ts = None   # fuer Stillstand-Erkennung
+        # Verschnitt je Erz (dieser Trip) und die letzte Erz-Zeile: der
+        # moderne Rueckstand traegt keinen Erznamen, steht aber immer direkt
+        # unter seiner Erz-Zeile (gemessen: 2.690 von 2.690 Faellen in zwei
+        # Bestaenden). Ueber diese Nachbarschaft wird er zugeordnet.
+        self.verschnitt = {}
+        self.letztes_erz = None
         self.last_event_ts = None # letztes Log-Ereignis (Aktivitaets-/Online-Heuristik)
         self.idle_alerted = False
         self.low_since = None     # Raten-Waechter (Teilausfall-Erkennung)
@@ -3277,6 +3283,11 @@ class CharSession:
                 self.drone_last = ev["ts"]
                 self.drone_alerted = False   # Drohnen liefern wieder
             self.mining[ev["key"]] = self.mining.get(ev["key"], 0) + ev["value"]
+            self.letztes_erz = (ev["ts"], ev["key"])
+            if ev.get("residue"):
+                # Aeltere Clients: der Verschnitt steht in der Ertragszeile mit.
+                self.verschnitt[ev["key"]] = (self.verschnitt.get(ev["key"], 0)
+                                              + ev["residue"])
             # Liefermengen mitzaehlen, fuer die Bonus-Erkennung (bonus_roh).
             mengen = self.ore_amounts.setdefault(ev["key"], {})
             menge = int(ev["value"])
@@ -3297,6 +3308,18 @@ class CharSession:
                 self.rate_min.append([minute, {}])
             mix = self.rate_min[-1][1]
             mix[ev["key"]] = mix.get(ev["key"], 0) + ev["value"] * vol
+        elif k == "residue":
+            # Zuordnung ueber die Nachbarschaft (Eron Solette, 20.08.2026).
+            # ACHTUNG: das ev-Dict wird hier VOR der Historisierung umgetauft,
+            # der Batch-Schreiber legt den Rueckstand dann unter dem ERZNAMEN
+            # in daily ab, und die Quote je Sorte wird rueckwirkend rechenbar.
+            # Zwei Sekunden Toleranz, gemessen war der Abstand immer 0.
+            if (ev.get("key") == "Rueckstand" and self.letztes_erz
+                    and abs(ev["ts"] - self.letztes_erz[0]) <= 2):
+                ev["key"] = self.letztes_erz[1]
+            if ev["key"] != "Rueckstand":
+                self.verschnitt[ev["key"]] = (self.verschnitt.get(ev["key"], 0)
+                                              + ev["value"])
         elif k == "kristall":
             # Session-Zaehler fuer die Karte plus dauerhafte Zeile fuer die
             # Monatsuebersicht. ts kommt AUS DEM LOG, damit das Neueinlesen
@@ -3408,6 +3431,7 @@ class CharSession:
                 self.core_break = ev["ts"]   # Abdocken: davor war der Kern aus
                 self.trips += 1
                 self.mining = {}
+                self.verschnitt = {}
                 self.ore_amounts = {}
                 self.compressed = {}
                 self.fleet_compress = {}
@@ -8690,6 +8714,23 @@ def snapshot_live():
                          "known": ore in ORE_TYPES})
         # Unbekannte Erze nach oben (zum Melden), sonst nach ISK-Wert
         ores.sort(key=lambda o: (0 if not o["known"] else 1, -o["isk"]))
+        # Verschnitt dieses Trips: verlorene Einheiten je Erz, bewertet wie
+        # der Ertrag. Quote = Verlust / (Ertrag + Verlust) in Stueck.
+        v_posten, v_units, v_isk, v_m3 = [], 0.0, 0.0, 0.0
+        for ore, units in sorted(s.verschnitt.items(), key=lambda x: -x[1]):
+            visk, vvol = ore_value(ore, units, pm)
+            v_units += units
+            v_isk += visk
+            v_m3 += vvol
+            v_posten.append({"ore": ore, "units": round(units),
+                             "isk": round(visk), "m3": round(vvol)})
+        _ertrag_units = sum(s.mining.values())
+        verschnitt = ({"posten": v_posten, "units": round(v_units),
+                       "isk": round(v_isk), "m3": round(v_m3),
+                       "quote": round(100.0 * v_units
+                                      / (v_units + _ertrag_units))
+                       if (v_units + _ertrag_units) else 0}
+                      if v_posten else None)
         # Lieferungen mit vervielfachtem Ertrag. Bewertet wie das uebrige Erz,
         # damit die Zahl direkt mit dem Sitzungs-Ertrag vergleichbar ist.
         b_n = b_m3 = b_isk = 0
@@ -8843,6 +8884,7 @@ def snapshot_live():
             "abyss_min": chatwatch.abyss_minuten(s.char_id),
             "danger": danger.for_system(s.system or chatwatch.systems.get(s.char_id)),
             "ores": ores, "m3": round(m3), "ore_isk": round(ore_isk),
+            "verschnitt": verschnitt,
             "bonus": bonus,
             # Flottengroesse aus den Boost-Zeilen. Nur zeigen, solange sie
             # frisch ist: ein Boost von vor einer halben Stunde sagt nichts
@@ -10362,6 +10404,52 @@ def skillplan_analyse(text):
             "geaendert": sortiert != [e["zeile"] for e in eintraege]}
 
 
+def query_verschnitt():
+    """Bergbau-Verluste je Monat und Erz (Eron Solette, 20.08.2026): der
+    Rueckstand liegt seit der Nachbarschafts-Zuordnung unter dem Erznamen in
+    daily. Quote = Verlust / (Ertrag + Verlust) je Erz und Monat. Zeilen
+    unter dem alten Sammel-Schluessel "Rueckstand" (vor der Zuordnung oder
+    ohne greifbare Erz-Zeile) werden als "nicht zuordenbar" mitgezaehlt,
+    ohne Preis und ohne Quote, statt sie zu verschweigen."""
+    pm = prices.get(CONFIG["region"]) or {}
+    with DB_LOCK:
+        rows = DB.execute(
+            "SELECT substr(day,1,7), key, SUM(value) FROM daily "
+            "WHERE kind='residue' GROUP BY 1, 2").fetchall()
+        ertrag = {(m, k): v for m, k, v in DB.execute(
+            "SELECT substr(day,1,7), key, SUM(value) FROM daily "
+            "WHERE kind='ore' GROUP BY 1, 2")}
+    if not rows:
+        return {"monate": []}
+    monate = {}
+    for mon, erz, units in rows:
+        e = monate.setdefault(mon, {"monat": mon, "units": 0.0, "isk": 0.0,
+                                    "ertrag": 0.0, "erze": []})
+        e["units"] += units
+        if erz == "Rueckstand":
+            e["erze"].append({"erz": None, "units": round(units),
+                              "isk": None, "quote": None})
+            continue
+        isk, _vol = ore_value(erz, units, pm)
+        ert = ertrag.get((mon, erz), 0.0)
+        e["isk"] += isk
+        e["ertrag"] += ert
+        e["erze"].append({"erz": erz, "units": round(units),
+                          "isk": round(isk),
+                          "quote": round(100.0 * units / (units + ert))
+                          if (units + ert) else 0})
+    out = sorted(monate.values(), key=lambda x: x["monat"], reverse=True)[:12]
+    for e in out:
+        e["quote"] = (round(100.0 * (e["units"]) / (e["units"] + e["ertrag"]))
+                      if (e["units"] + e["ertrag"]) else 0)
+        e["units"] = round(e["units"])
+        e["isk"] = round(e["isk"])
+        e.pop("ertrag", None)
+        e["erze"].sort(key=lambda x: -x["units"])
+        e["erze"] = e["erze"][:8]
+    return {"monate": out}
+
+
 def query_kristalle():
     """Zerstoerte Mining-Kristalle je Monat und Typ, bewertet zu Jita-Kauf
     (Ramone, 19.08.2026). Quelle ist die exakte Logzeile des Zerspringens,
@@ -11789,6 +11877,7 @@ class Handler(BaseHTTPRequestHandler):
             elif view == "month":
                 data["days"] = query_month()
                 data["kristalle"] = query_kristalle()
+                data["verschnitt"] = query_verschnitt()
             elif view == "analyse":
                 data["analyse"] = query_analyse()
             elif view == "intel":
@@ -15438,6 +15527,7 @@ function miningCardHtml(c){
      :`<tr title="Dieses Erz kennt Canary noch nicht, daher kein Wert. Bitte den Namen im Discord melden."><td>⚠ ${esc(o.ore)}</td>
       <td class="r">${fmt(o.units)} Stk</td><td class="r" style="color:var(--gold)">unbekannt</td></tr>`).join('')+`</table>`
      +(c.ores.some(o=>!o.known)?`<div class="sub" style="color:var(--gold)">⚠ Ein Erz ist Canary unbekannt (oben markiert). Bitte den Namen im Discord melden, dann nehme ich es auf.</div>`:''):''}
+   ${c.verschnitt?`<div class="sub" style="margin-top:2px" title="${esc(c.verschnitt.posten.map(v=>v.ore+': '+fmt(v.units)+' Stk ≈ '+fmtM(v.isk)+' ISK').join(' · '))}">♻ ${lang==='en'?'Residue this trip':'Verschnitt diesen Trip'}: ${fmt(c.verschnitt.units)} Stk · ${fmt(c.verschnitt.m3)} m³ ≈ <span class="in">${fmtM(c.verschnitt.isk)} ISK</span> · ${c.verschnitt.quote}%${lang==='en'?' of yield lost':' der Förderung verloren'}</div>`:''}
    ${c.compressed.length?`<div class="sect">Komprimiert (Session)</div><table>`+c.compressed.map(k=>
      `<tr><td>${esc(k.type)}</td><td class="r">${fmt(k.units)} Stk</td><td class="r">${fmt(k.m3)} m³</td><td class="r isk">${fmtM(k.isk)}</td></tr>`).join('')+`</table>`:''}
    ${c.weapons.length?`<div class="sect">Waffen</div><table>`+c.weapons.map(w=>
@@ -15692,7 +15782,7 @@ function logiBlock(c){
  return h;
 }
 
-function renderMonth(days,kristalle){
+function renderMonth(days,kristalle,verschnitt){
  $('#empty').hidden=days.length>0;
  if(!days.length){$('#empty').textContent='Noch keine historischen Daten.';$('#grid').innerHTML='';return;}
  const max=Math.max(1,...days.map(d=>d.total));
@@ -15708,7 +15798,24 @@ function renderMonth(days,kristalle){
    <span><span class="dot" style="background:var(--green)"></span>Bounties</span></div>
    <table>${days.slice().reverse().map(d=>
     `<tr><td>${d.day}</td><td class="r">${fmt(d.m3)} m³</td><td class="r">${fmt(d.depleted)} Asteroiden</td><td class="r out">${fmtM(d.dmg_out)} dmg</td><td class="r isk">${fmtM(d.total)} ISK</td></tr>`).join('')}</table>
-  </div>`+kristallCard(kristalle);
+  </div>`+verschnittCard(verschnitt)+kristallCard(kristalle);
+}
+// Bergbau-Verluste je Monat und Erz (Eron Solette): der Rueckstand der
+// T2-Kristalle, per Nachbarschafts-Zuordnung exakt je Erz gezaehlt und zu
+// aktuellen Preisen bewertet. Quote = Verlust an der Gesamtfoerderung.
+function verschnittCard(v){
+ if(!v||!v.monate||!v.monate.length)return '';
+ const en8=lang==='en';
+ return `<div class="card" style="grid-column:1/-1">
+  <div class="sect">${en8?'♻ Mining losses (residue)':'♻ Bergbau-Verluste (Verschnitt)'}</div>
+  <div style="overflow-x:auto"><table>
+  <tr><th>${en8?'Month':'Monat'}</th><th class="r">${en8?'Lost units':'Verlorene Stk'}</th><th class="r">≈ ISK</th><th class="r">${en8?'Share':'Quote'}</th><th>${en8?'By ore':'Je Erz'}</th></tr>`
+  +v.monate.map(m=>`<tr><td>${esc(m.monat)}</td><td class="r">${fmt(m.units)}</td><td class="r in">${m.isk?fmtM(m.isk):'·'}</td><td class="r">${m.quote}%</td><td>${m.erze.map(e=>e.erz?esc(e.erz)+' ×'+fmt(e.units)+' ('+e.quote+'%)':(en8?'not attributable':'nicht zuordenbar')+' ×'+fmt(e.units)).join(', ')}</td></tr>`).join('')
+  +`</table></div>
+  <div class="sub" style="margin-top:8px">${en8
+   ?'Residue is the price of high-yield T2 crystals: ore destroyed in the asteroid, not lost cargo. Attributed per ore via the log line adjacency (measured: 100% attributable), valued at current prices. Fills retroactively from log files still on disk.'
+   :'Verschnitt ist der Preis der ertragsstarken T2-Kristalle: im Asteroiden zerstörtes Erz, keine verlorene Ladung. Je Erz zugeordnet über die Zeilen-Nachbarschaft im Log (gemessen: 100% zuordenbar), bewertet zu aktuellen Preisen. Füllt sich rückwirkend aus den Logdateien auf der Platte.'}</div>
+ </div>`;
 }
 // Zerstoerte Mining-Kristalle je Monat (Ramone). Quelle ist die exakte
 // Logzeile des Zerspringens, rueckwirkend aus allen noch vorhandenen Logs.
@@ -18972,7 +19079,7 @@ async function tick(){
   else if(view==='missionen')renderMissions(d);
   else{
    $('#hero').innerHTML='';
-   if(view==='month')renderMonth(d.days,d.kristalle);
+   if(view==='month')renderMonth(d.days,d.kristalle,d.verschnitt);
    else if(view==='analyse')renderAnalyse(d.analyse);
    else if(view==='intel')renderIntel(d.intel_auto,d.blutspur);
    else if(view==='vault')renderVault(d.vault);

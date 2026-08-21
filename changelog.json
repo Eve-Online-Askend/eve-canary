@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.45.0",
+  "d": "2026-08-21",
+  "de": [
+   "BERGBAU-VERLUSTE JE ERZ, gewuenscht von Eron Solette, der es selbst fuer unmoeglich hielt, weil die Rueckstands-Zeile keinen Erznamen traegt. Der Trick: sie steht IMMER direkt unter ihrer Erz-Zeile, mit gleichem Zeitstempel. An 2.690 echten Faellen aus zwei Log-Bestaenden gemessen: 100 Prozent zuordenbar. Damit zeigt die Live-Karte jetzt je Trip eine Verschnitt-Zeile (verlorene Stueck, m³, ISK zu aktuellen Preisen und die Quote an der Foerderung), und die 30-Tage-Ansicht bekommt die Karte Bergbau-Verluste: je Monat und Erz die verlorenen Einheiten, ihr ISK-Wert und die Quote. Fuellt sich rueckwirkend aus den Logdateien auf der Platte.",
+   "Zur Einordnung steht ehrlich dabei: Verschnitt ist der Preis der ertragsstarken T2-Kristalle, im Asteroiden zerstoertes Erz, keine verlorene Ladung. Nicht zuordenbare Alt-Rueckstaende werden ausgewiesen statt verschwiegen. Am gespendeten Flottentag nachgemessen: rund 186 Millionen ISK Verschnitt an einem einzigen Tag bei 20 Prozent Quote. Dauerhafte Pruefung: pruefungen/verschnitt.py, zehn Faelle."
+  ],
+  "en": [
+   "MINING LOSSES PER ORE, requested by Eron Solette, who himself thought it impossible because the residue line carries no ore name. The trick: it ALWAYS sits directly below its ore line, same timestamp. Measured against 2,690 real cases from two log collections: 100 percent attributable. The live card now shows a residue line per trip (lost units, m³, ISK at current prices and the share of your yield), and the 30-days view gets the mining losses card: lost units, their ISK value and the share per month and ore. Fills retroactively from the log files on disk.",
+   "For honesty it says right there: residue is the price of high-yield T2 crystals, ore destroyed inside the asteroid, not lost cargo. Non-attributable legacy residue is listed instead of hidden. Measured on the donated fleet day: around 186 million ISK of residue in a single day at a 20 percent share. Permanent check: pruefungen/verschnitt.py, ten cases."
+  ]
+ },
+ {
   "v": "2.44.0",
   "d": "2026-08-21",
   "de": [
