@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.43.2"
+VERSION = "2.44.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -45,7 +45,7 @@ UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "eve_map.json", "npc_factions.json", "site_sigs.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
                 "mission_fingerprints.json", "market_types.json",
-                "gank_groups.json",
+                "gank_groups.json", "skill_plan.json",
                 "install.ps1", "uninstall.ps1", "install.sh",
                 "README_INSTALL.md"]
 # BEWUSST NICHT dabei: start_dashboard.bat und start_dashboard.sh. Genau die
@@ -295,6 +295,10 @@ MISSION_SIGS = {k.lower(): v for k, v in load_json("mission_sigs.json", {}).item
 # gewöhnliche Ware, daran bliebe ein Teilwort-Vergleich sofort hängen.
 MISSION_ITEMS = {k.lower(): v for k, v in load_json("mission_items.json", {}).items()
                  if not k.startswith("_")}
+# Skill-Stammdaten fuer den Skillplan-Berater (Dune2Man): je Skill Primaer-/
+# Sekundaerattribut, Trainingsrang und Voraussetzungen, aus dem SDE gebaut.
+# alias_de: die wenigen Skills, deren Name im deutschen Client abweicht.
+SKILL_PLAN = load_json("skill_plan.json", {"skills": {}, "alias_de": {}})
 # Selbst vergebene Missionsnamen samt der Gegner-Zusammenstellung, an der sie
 # haengen. Wird aus der Datenbank gefuellt (marken_laden), nicht ausgeliefert.
 # Liste von {"name", "set", "ts"}.
@@ -2792,6 +2796,8 @@ DATEN_PRUEFUNG = {
     "market_types.json": lambda d: isinstance(d, dict) and len(d) > 100,
     "gank_groups.json": lambda d: isinstance(d, dict)
     and bool((d.get("highsec") or {}).get("allianzen")),
+    "skill_plan.json": lambda d: isinstance(d, dict)
+    and len(d.get("skills") or {}) > 300,
 }
 DATEN_STATUS = {"geprueft": False, "repariert": [], "offen": []}
 
@@ -2823,6 +2829,8 @@ def daten_uebernehmen(name):
     elif name == "mission_items.json":
         MISSION_ITEMS = {k.lower(): v for k, v in load_json(name, {}).items()
                          if not k.startswith("_")}
+    elif name == "skill_plan.json":
+        SKILL_PLAN = load_json(name, {"skills": {}, "alias_de": {}})
     elif name == "mission_fingerprints.json":
         MISSION_FP = [{"name": (v.get("m") or "").strip(),
                        "set": {str(g).strip().lower() for g in (v.get("g") or []) if g},
@@ -10244,6 +10252,116 @@ def uhr_json():
             "sek": round(uhr_laufzeit())}
 
 
+ROEMISCH = {"I": 1, "II": 2, "III": 3, "IV": 4, "V": 5}
+
+
+def skillplan_analyse(text):
+    """Skillplan-Berater (Dune2Man, 20.08.2026): eine aus dem Spiel kopierte
+    Skillplan-Liste ("Skillname Stufe" je Zeile, roemisch oder arabisch)
+    zerlegen, die Attribut-Gewichte ueber die echte Skillpunkt-Formel
+    berechnen und den Plan so umsortieren, dass gleiche Attribut-Paare
+    hintereinander liegen, ohne eine Voraussetzung zu verletzen.
+
+    Gewichtet wird mit SKILLPUNKTEN, nicht mit der Skill-Anzahl: ein
+    Rang-1-Skill auf II ist gegen einen Rang-8-Skill auf V bedeutungslos.
+    Trainingsgeschwindigkeit = Primaerattribut + halbes Sekundaerattribut,
+    deshalb zaehlt das Sekundaerattribut mit halbem Gewicht."""
+    skills = SKILL_PLAN.get("skills") or {}
+    alias = SKILL_PLAN.get("alias_de") or {}
+    if not skills:
+        return {"ok": False, "fehler": "skill_plan.json fehlt oder ist leer."}
+    eintraege, unbekannt = [], []
+    for raw in (text or "").splitlines():
+        zeile = STRIP_RE.sub("", raw).strip()
+        if not zeile:
+            continue
+        teile = zeile.rsplit(" ", 1)
+        lvl = 0
+        if len(teile) == 2:
+            t = teile[1].strip().upper()
+            lvl = ROEMISCH.get(t, 0)
+            if not lvl and t.isdigit():
+                lvl = int(t)
+        if not 1 <= lvl <= 5:
+            unbekannt.append(zeile)
+            continue
+        name = teile[0].strip()
+        kanon = name if name in skills else alias.get(name)
+        if not kanon:
+            unbekannt.append(zeile)
+            continue
+        eintraege.append({"zeile": zeile, "name": kanon, "lvl": lvl})
+    if not eintraege:
+        return {"ok": False, "fehler": "Keine Skill-Zeile erkannt. Erwartet "
+                "wird eine Zeile je Skill, etwa: Astrogeology IV"}
+
+    def sp_bis(lvl, rang):
+        # Offizielle Formel: SP fuer Stufe L = 250 * Rang * sqrt(32)^(L-1)
+        return 250.0 * rang * (32.0 ** ((lvl - 1) / 2.0)) if lvl > 0 else 0.0
+
+    attr_sp = {a: 0.0 for a in ("int", "mem", "per", "wil", "cha")}
+    paare = {}
+    gesamt = 0.0
+    for e in eintraege:
+        sk = skills[e["name"]]
+        delta = sp_bis(e["lvl"], sk["r"]) - sp_bis(e["lvl"] - 1, sk["r"])
+        e["sp"] = delta
+        e["paar"] = sk["p"] + "/" + sk["s"]
+        gesamt += delta
+        attr_sp[sk["p"]] += delta
+        attr_sp[sk["s"]] += delta * 0.5
+        p2 = paare.setdefault(e["paar"], {"paar": e["paar"], "sp": 0.0, "n": 0})
+        p2["sp"] += delta
+        p2["n"] += 1
+    summe_attr = sum(attr_sp.values()) or 1.0
+    attribute = sorted(({"a": a, "sp": round(v),
+                         "anteil": round(100.0 * v / summe_attr)}
+                        for a, v in attr_sp.items()),
+                       key=lambda x: -x["sp"])
+    frei = [a for a, v in attr_sp.items() if v == 0]
+    paar_liste = sorted(paare.values(), key=lambda x: -x["sp"])
+    for p2 in paar_liste:
+        p2["anteil"] = round(100.0 * p2["sp"] / (gesamt or 1.0))
+        p2["sp"] = round(p2["sp"])
+
+    # Umsortierung: gleiche Paare hintereinander (nach Gewicht absteigend),
+    # aber niedrigere Stufen desselben Skills und Voraussetzungs-Skills aus
+    # der Liste IMMER zuerst. Findet sich kein freier Kandidat (zirkulaere
+    # oder unvollstaendige Liste), wird der Rest unveraendert angehaengt,
+    # statt etwas Ungueltiges zu bauen.
+    paar_rang = {p2["paar"]: i for i, p2 in enumerate(paar_liste)}
+    offen = list(range(len(eintraege)))
+    ergebnis = []
+    letzter = None
+    while offen:
+        kandidaten = []
+        for idx in offen:
+            e = eintraege[idx]
+            if any(eintraege[j]["name"] == e["name"]
+                   and eintraege[j]["lvl"] < e["lvl"] for j in offen
+                   if j != idx):
+                continue
+            sk = skills[e["name"]]
+            if any(eintraege[j]["name"] == rname and eintraege[j]["lvl"] <= rlvl
+                   for rname, rlvl in sk["req"] for j in offen):
+                continue
+            kandidaten.append(idx)
+        if not kandidaten:
+            ergebnis.extend(offen)
+            break
+        wahl = min(kandidaten, key=lambda idx: (
+            0 if eintraege[idx]["paar"] == letzter else 1,
+            paar_rang[eintraege[idx]["paar"]], idx))
+        ergebnis.append(wahl)
+        letzter = eintraege[wahl]["paar"]
+        offen.remove(wahl)
+    sortiert = [eintraege[i]["zeile"] for i in ergebnis]
+    return {"ok": True, "n": len(eintraege), "sp": round(gesamt),
+            "attribute": attribute, "frei": frei, "paare": paar_liste,
+            "unbekannt": unbekannt[:20], "sortiert": sortiert,
+            "geaendert": sortiert != [e["zeile"] for e in eintraege]}
+
+
 def query_kristalle():
     """Zerstoerte Mining-Kristalle je Monat und Typ, bewertet zu Jita-Kauf
     (Ramone, 19.08.2026). Quelle ist die exakte Logzeile des Zerspringens,
@@ -12205,6 +12323,11 @@ class Handler(BaseHTTPRequestHandler):
                 DB.commit()
             self._send(json.dumps({"ok": True, "isk": isk, "unknown": res.get("unknown", [])}))
             return
+        elif action == "skillplan":
+            # Skillplan-Berater: reine Rechnung, nichts wird gespeichert.
+            self._send(json.dumps(skillplan_analyse(body.get("text") or ""),
+                                  ensure_ascii=False))
+            return
         elif action == "mission_salvage":
             # Dasselbe fuer den Salvage, getrennt gespeichert (MelvinMafia,
             # 19.08.2026): so bleibt sichtbar, was Pluenderung war und was
@@ -13537,6 +13660,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
    <span class="pill" id="obsBtn" title="Overlay fuer OBS einrichten: Aussehen waehlen, Adresse kopieren, in OBS als Browser-Quelle einfuegen. Mit Anleitung.">🎥 OBS Overlay</span>
    <span class="pill" id="uhrBtn" title="Stoppuhr fuer eine Aktivitaet: starten, pausieren, am Ende als Trip speichern. Zaehlt mit, wieviel in der Zeit gefoerdert wurde.">⏱ Stoppuhr</span>
    <span class="pill" id="setBtn" title="EVE-Einstellungen sichern, wiederherstellen und das UI eines Charakters auf andere uebertragen. Alpha.">💾 EVE-Einstellungen</span>
+   <span class="pill" id="skillBtn" title="Skillplan aus dem Spiel einfügen: zeigt, welche Attribute der Plan wirklich braucht, und sortiert ihn auf Wunsch nach Attribut-Paaren um.">🎓 Skillplan</span>
   </div></span>
  <span class="hsep"></span>
  <span class="pill" id="fontsize" title="Schriftgröße (3 Stufen)">A</span>
@@ -13757,6 +13881,17 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  </div>
 </dialog>
 
+<dialog id="skillDlg">
+ <h2>🎓 Skillplan-Berater</h2>
+ <p class="sub">Im Spiel das Skillfenster öffnen, deinen Skillplan über das Menü oben rechts kopieren und hier einfügen. Canary rechnet mit Skillpunkten, nicht bloß Skill-Anzahl: du siehst, welche Attribute dein Plan wirklich braucht, und bekommst ihn auf Wunsch so umsortiert, dass gleiche Attribute hintereinander trainieren, Voraussetzungen bleiben gewahrt.</p>
+ <textarea id="skillIn" rows="8" style="width:100%" placeholder="Skillplan hier einfügen, eine Zeile je Skill, etwa: Astrogeology IV"></textarea>
+ <div class="btnrow" style="margin-top:8px"><button class="btn" id="skillGo">Analysieren</button>
+  <span class="sub" id="skillStat"></span></div>
+ <div id="skillErg"></div>
+ <div class="btnrow" style="margin-top:10px">
+  <button class="btn" onclick="document.getElementById('skillDlg').close()">Schließen</button>
+ </div>
+</dialog>
 <dialog id="mfpDlg">
  <h2>⚡ Mining-Fleet-Power-Ränge</h2>
  <div id="mfpDlgInhalt"></div>
@@ -14872,6 +15007,46 @@ function siteHtml(s){
  if(!s||!s.name)return '';
  return `🌀 ${esc(s.name)}`;
 }
+// Skillplan-Berater (Dune2Man): Attribut-Balken, Clone-Tipp, Umsortierung.
+// Ergebnis-Texte inline zweisprachig, statische Dialog-Texte via Woerterbuch.
+const ATTR_LABEL={int:['Intelligenz','Intelligence'],mem:['Erinnerung','Memory'],
+ per:['Wahrnehmung','Perception'],wil:['Willenskraft','Willpower'],cha:['Charisma','Charisma']};
+function attrName(a,en){const l=ATTR_LABEL[a];return l?l[en?1:0]:a;}
+document.getElementById('skillBtn').onclick=()=>{
+ const m=document.getElementById('toolsMenu'); if(m)m.hidden=true;
+ const d=document.getElementById('skillDlg'); d.showModal();
+ if(lang!=='de')tr(d);
+};
+document.getElementById('skillGo').onclick=async()=>{
+ const en7=lang==='en';
+ const stat=document.getElementById('skillStat');
+ stat.textContent=en7?'Checking …':'Prüfe …';
+ let r;try{r=await post({action:'skillplan',text:document.getElementById('skillIn').value});}catch(e){r=null;}
+ if(!r||!r.ok){stat.textContent=(r&&r.fehler)?r.fehler:(en7?'Server not reachable':'Server nicht erreichbar');return;}
+ stat.textContent=r.n+(en7?' skill levels · ':' Skill-Stufen · ')+fmt(r.sp)+' SP';
+ const max=Math.max(1,...r.attribute.map(a=>a.sp));
+ let h='<div class="sect" style="margin-top:10px">'+(en7?'Training weight per attribute':'Trainingsgewicht je Attribut')+'</div>';
+ h+=r.attribute.map(a=>`<div style="display:flex;align-items:center;gap:8px;margin-top:4px"><span style="width:110px">${attrName(a.a,en7)}</span><div style="flex:1;background:var(--inset);border-radius:6px;height:14px"><div style="height:14px;border-radius:6px;background:var(--cyan);width:${Math.max(2,Math.round(100*a.sp/max))}%"></div></div><span class="sub" style="width:44px;text-align:right">${a.anteil}%</span></div>`).join('');
+ if(r.frei&&r.frei.length)h+=`<div class="cardwarn" style="margin-top:8px">💡 ${en7?'Not needed in this plan':'In diesem Plan nicht gebraucht'}: ${r.frei.map(a=>attrName(a,en7)).join(', ')}. ${en7?'A remap or a new clone can skip these attributes as long as this plan runs.':'Beim Umlernen oder einem neuen Clone kannst du diese Attribute sparen, solange dieser Plan läuft.'}</div>`;
+ h+='<div class="sect" style="margin-top:10px">'+(en7?'Attribute pairs':'Attribut-Paare')+'</div><table>'
+  +r.paare.map(p=>{const[pp,ss]=p.paar.split('/');
+   return `<tr><td>${attrName(pp,en7)} / ${attrName(ss,en7)}</td><td class="r">${p.n} Skill${p.n===1?'':'s'}</td><td class="r">${p.anteil}%</td></tr>`;}).join('')+'</table>';
+ if(r.unbekannt&&r.unbekannt.length)h+=`<div class="sub" style="margin-top:8px">${en7?'Not recognised':'Nicht erkannt'}: ${r.unbekannt.map(esc).join(', ')}</div>`;
+ if(r.sortiert&&r.sortiert.length){
+  h+='<div class="sect" style="margin-top:10px">'+(en7?'Re-sorted plan':'Umsortierter Plan')+(r.geaendert?'':(en7?' (already optimal)':' (war schon optimal)'))+'</div>'
+   +`<textarea id="skillSort" rows="6" style="width:100%">${esc(r.sortiert.join('\\n'))}</textarea>
+   <div class="btnrow" style="margin-top:4px"><button class="btn" id="skillCopy">${en7?'Copy for import':'Für den Import kopieren'}</button>
+    <span class="sub">${en7?'Same attributes back to back, prerequisites kept. Import in game via the skill plan menu.':'Gleiche Attribute hintereinander, Voraussetzungen gewahrt. Im Spiel über das Skillplan-Menü importieren.'}</span></div>`;
+ }
+ document.getElementById('skillErg').innerHTML=h;
+ const cb=document.getElementById('skillCopy');
+ if(cb)cb.onclick=async()=>{
+  const txt=document.getElementById('skillSort').value;
+  try{await navigator.clipboard.writeText(txt);}
+  catch(e){const ta=document.getElementById('skillSort');ta.focus();ta.select();try{document.execCommand('copy');}catch(e2){}}
+  cb.textContent='✓';setTimeout(()=>{cb.textContent=en7?'Copy for import':'Für den Import kopieren';},2000);
+ };
+};
 // Die Rang-Leiter als EINE Quelle: mfpTier und der Raenge-Dialog lesen
 // beide hieraus, sonst laufen Anzeige und Erklaerung auseinander.
 // Zwischenraenge seit v2.41.0 (Askend, 19.08.2026): die alten sechs behalten
@@ -18117,6 +18292,15 @@ const EN = {
 'Lieferungen mit vervielfachtem Ertrag. Canary erkennt sie daran, dass die Menge ein exaktes Vielfaches deiner Normallieferung ist. Gezeigt wird nur der Teil, der über die Normalmenge hinausging.':
  'Deliveries with multiplied yield. Canary spots them because the amount is an exact multiple of your normal delivery. Only the part beyond the normal amount is shown.',
 'per ⛽ setzen':'set via ⛽',
+'🎓 Skillplan-Berater':'🎓 Skill plan advisor',
+'🎓 Skillplan':'🎓 Skill plan',
+'Analysieren':'Analyse',
+'Skillplan aus dem Spiel einfügen: zeigt, welche Attribute der Plan wirklich braucht, und sortiert ihn auf Wunsch nach Attribut-Paaren um.':
+ 'Paste a skill plan from the game: shows which attributes the plan really needs and re-sorts it by attribute pairs on request.',
+'Im Spiel das Skillfenster öffnen, deinen Skillplan über das Menü oben rechts kopieren und hier einfügen. Canary rechnet mit Skillpunkten, nicht bloß Skill-Anzahl: du siehst, welche Attribute dein Plan wirklich braucht, und bekommst ihn auf Wunsch so umsortiert, dass gleiche Attribute hintereinander trainieren, Voraussetzungen bleiben gewahrt.':
+ 'Open the skill window in game, copy your skill plan via its top right menu and paste it here. Canary weighs by skill points, not just skill count: you see which attributes your plan really needs, and you can have it re-sorted so equal attributes train back to back, prerequisites stay intact.',
+'Skillplan hier einfügen, eine Zeile je Skill, etwa: Astrogeology IV':
+ 'Paste your skill plan here, one line per skill, e.g. Astrogeology IV',
 'Salvage bewerten':'Value salvage',
 'Salvage dieser Mission hier einfügen, getrennt vom Loot (gleicher Weg: markieren, kopieren)':
  'Paste the salvage of this mission here, separate from the loot (same way: select, copy)',

@@ -119,7 +119,7 @@ $files = "eve_dashboard.py", "ore_types.json", "ore_refine.json", "eve_map.json"
          "npc_factions.json", "site_sigs.json",
          "mining_tools.json", "mission_sigs.json", "mission_items.json",
          "mission_fingerprints.json", "market_types.json",
-         "gank_groups.json", "README_INSTALL.md", "start_dashboard.bat", "uninstall.ps1"
+         "gank_groups.json", "skill_plan.json", "README_INSTALL.md", "start_dashboard.bat", "uninstall.ps1"
 # Erst vollstaendig in einen Temp-Ordner laden, dann ans Ziel verschieben.
 # Bricht ein Download ab, bleibt keine halbe Installation am Zielort zurueck.
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ("eve-canary-" + [Guid]::NewGuid().ToString("N"))

@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.44.0",
+  "d": "2026-08-21",
+  "de": [
+   "NEUES WERKZEUG SKILLPLAN-BERATER, gewuenscht von Dune2Man: den Skillplan im Spiel kopieren, in Canary einfuegen (Werkzeuge-Menue, Skillplan), und Canary zeigt, welche Attribute der Plan WIRKLICH braucht. Gewichtet wird mit echten Skillpunkten je Rang, nicht bloss der Skill-Anzahl, und ungenutzte Attribute stehen als Clone-Tipp klar dabei: die kannst du beim Umlernen oder einem neuen Clone sparen, solange der Plan laeuft.",
+   "DAZU DIE UMSORTIERUNG: auf Wunsch ordnet Canary den Plan so um, dass Skills mit gleichem Attribut-Paar hintereinander trainieren, und zwar OHNE eine Voraussetzung zu verletzen: benoetigte Skills und niedrigere Stufen desselben Skills bleiben immer vorn. Das Ergebnis kopierst du mit einem Knopf und importierst es im Spiel ueber das Skillplan-Menue. Datengrundlage ist eine neue mitgelieferte Skill-Tabelle aus den offiziellen Spieldaten (511 Skills mit Attributen, Rang und Voraussetzungen), auch die wenigen im deutschen Client abweichenden Skillnamen werden erkannt. Alles rein lokal, kein neuer EVE-Login-Scope. Dauerhafte Pruefung: pruefungen/skillplan.py, elf Faelle."
+  ],
+  "en": [
+   "NEW TOOL SKILL PLAN ADVISOR, requested by Dune2Man: copy your skill plan in game, paste it into Canary (tools menu, skill plan), and Canary shows which attributes the plan REALLY needs. Weighted by real skill points per rank, not just skill count, and unused attributes are stated as a clone tip: you can skip them on a remap or a new clone while this plan runs.",
+   "PLUS THE RE-SORT: on request Canary reorders the plan so skills with the same attribute pair train back to back, WITHOUT breaking a prerequisite: required skills and lower levels of the same skill always stay in front. Copy the result with one button and import it in game via the skill plan menu. The data base is a new bundled skill table from the official game data (511 skills with attributes, rank and prerequisites), the few skill names that differ in the German client are recognised too. All purely local, no new EVE login scope. Permanent check: pruefungen/skillplan.py, eleven cases."
+  ]
+ },
+ {
   "v": "2.43.2",
   "d": "2026-08-21",
   "de": [
