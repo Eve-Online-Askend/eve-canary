@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.45.0"
+VERSION = "2.46.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -8899,6 +8899,10 @@ def snapshot_live():
             "lost_paused": bool(s.traveling) or s.last_ore_ts is None
                            or (time.time() - s.last_ore_ts) > 180,
             "m3h": round(m3 / mins * 60), "bounty": s.bounty, "kills": s.kills,
+            # Erz-ISK je Stunde, gleiche Zeitbasis wie m3h: damit lassen sich
+            # T2-Kristalle (mehr Ertrag, Verschnitt) und ORE Strip Miner
+            # (verlustfrei) je Schiff FAIR vergleichen (Eron, 21.08.2026).
+            "isk_h": round(ore_isk / mins * 60),
             # Spieler-Abschuesse dieser Sitzung, aus dem Killmail-Feed (ein
             # paar Minuten verzoegert, EVE loggt Kills nicht). NPC-Kills
             # stehen getrennt in "kills", die kommen sofort aus den Bounties.
@@ -15222,7 +15226,11 @@ function mfpValues(chars){
  let owner='';
  if(mainName&&act.some(c=>c.name===mainName))owner=mainName;
  else{const b=act.find(c=>c.command_ship);owner=b?b.name:(top?top.name:'');}
- return {miners,m3min,ver,mined,avgBonus,tier:mfpTier(m3min),
+ // ISK/min der Flotte: Dauerleistung je Char mal seiner aktuellen
+ // Wertdichte (Erz-ISK je m³ dieser Session). Bewusst "ungefaehr": die
+ // Dichte haengt am gerade gebaggerten Erzmix (Eron, 21.08.2026).
+ const iskmin=miners.reduce((s2,c)=>s2+sustainedRate(c)*((c.m3>0&&c.ore_isk>0)?(c.ore_isk/c.m3):0),0);
+ return {miners,m3min,ver,mined,avgBonus,tier:mfpTier(m3min),iskmin,
          fullVer:ver.length>0&&ver.length===miners.length,owner};
 }
 function fleetPowerCard(chars){
@@ -15248,6 +15256,7 @@ function fleetPowerCard(chars){
    <div class="mfpmain">
     <span class="mfpval ${t.c}">${fmt(Math.round(v.m3min))}</span>
     <span class="mfpunit">m³/min</span>
+    ${v.iskmin>0?`<span class="mfpunit" style="color:var(--gold)" title="${lang==='en'?'Approximate: sustained rate times the current ore mix value per m³':'Ungefähr: Dauerleistung mal Wertdichte des aktuellen Erzmixes'}">≈ ${fmtM(v.iskmin)} ISK/min</span>`:''}
     <span class="mfpsub">${sub}</span>
    </div>
    <div class="mfpbarwrap"><div class="mfpbar ${t.c}" style="width:${pct}%"></div></div>
@@ -15500,6 +15509,7 @@ function miningCardHtml(c){
     <div class="stat"><div class="l">${c.trips>0?'ISK Trip':'ISK Session'}</div><div class="v isk">${fmtM(c.total_isk)}</div></div>
     <div class="stat"><div class="l">Erz (${fmt(c.m3)} m³)</div><div class="v isk">${fmtM(c.ore_isk)}</div></div>
     <div class="stat"><div class="l">m³/h</div><div class="v out">${fmt(c.m3h)}</div></div>
+    ${c.isk_h>0?`<div class="stat" title="${lang==='en'?'Ore value per hour at current prices, same time base as m³/h. Compare T2 crystals (more yield, residue) against ORE strip miners (no loss) fairly.':'Erz-Wert pro Stunde zu aktuellen Preisen, gleiche Zeitbasis wie m³/h. Damit lassen sich T2-Kristalle (mehr Ertrag, Verschnitt) und ORE Strip Miner (verlustfrei) fair vergleichen.'}"><div class="l">≈ ISK/h (Erz)</div><div class="v isk">${fmtM(c.isk_h)}</div></div>`:''}
     ${(c.bonus&&c.bonus.n>0)?`<div class="stat" title="Lieferungen mit vervielfachtem Ertrag. Canary erkennt sie daran, dass die Menge ein exaktes Vielfaches deiner Normallieferung ist. Gezeigt wird nur der Teil, der über die Normalmenge hinausging.">
      <div class="l">Bonus-Erträge (${c.bonus.n} von ${c.bonus.von} · ${c.bonus.quote}%)</div>
      <div class="v isk">${fmtM(c.bonus.isk)}<span class="sub" style="display:block;font-weight:400">${fmt(c.bonus.m3)} m³ extra</span></div></div>`:''}
@@ -18399,6 +18409,7 @@ const EN = {
 'Lieferungen mit vervielfachtem Ertrag. Canary erkennt sie daran, dass die Menge ein exaktes Vielfaches deiner Normallieferung ist. Gezeigt wird nur der Teil, der über die Normalmenge hinausging.':
  'Deliveries with multiplied yield. Canary spots them because the amount is an exact multiple of your normal delivery. Only the part beyond the normal amount is shown.',
 'per ⛽ setzen':'set via ⛽',
+'≈ ISK/h (Erz)':'≈ ISK/h (ore)',
 '🎓 Skillplan-Berater':'🎓 Skill plan advisor',
 '🎓 Skillplan':'🎓 Skill plan',
 'Analysieren':'Analyse',

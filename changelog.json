@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.46.0",
+  "d": "2026-08-21",
+  "de": [
+   "ISK-RATE NEBEN DER VOLUMENRATE, gewuenscht von Eron Solette fuer den fairen Laser-Vergleich: jede Mining-Karte zeigt jetzt neben m³/h auch ungefaehre ISK/h (Erz-Wert zu aktuellen Preisen, gleiche Zeitbasis), und die Mining Fleet Power traegt neben den m³/min die ungefaehren ISK/min der ganzen Flotte (Dauerleistung mal Wertdichte des aktuellen Erzmixes). Damit laesst sich sauber messen, ob T2-Kristalle mit ihrem Verschnitt oder verlustfreie ORE Strip Miner am Ende mehr ISK bringen."
+  ],
+  "en": [
+   "ISK RATE NEXT TO THE VOLUME RATE, requested by Eron Solette for a fair laser comparison: every mining card now shows approximate ISK/h next to m³/h (ore value at current prices, same time base), and the Mining Fleet Power carries approximate ISK/min of the whole fleet next to its m³/min (sustained rate times the value density of the current ore mix). This makes it measurable whether T2 crystals with their residue or lossless ORE strip miners earn more ISK in the end."
+  ]
+ },
+ {
   "v": "2.45.0",
   "d": "2026-08-21",
   "de": [
