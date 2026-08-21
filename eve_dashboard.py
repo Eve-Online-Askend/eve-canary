@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.46.1"
+VERSION = "2.47.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -8447,17 +8447,22 @@ setInterval(tick, 2000);
 </script></body></html>"""
 
 def ore_value(ore, units, pm):
-    """ISK und Volumen eines Erz-Postens. Bewertet wird zum Preis der
-    komprimierten Variante (Komprimieren ist 1:1 in Stück), denn das ist der
-    Wert, der beim Verkauf wirklich ankommt. Gibt es keine komprimierte
-    Variante oder keinen Preis dafür, gilt der Rohpreis. Volumen immer vom Rohtyp."""
+    """ISK und Volumen eines Erz-Postens. Bewertet wird zum BESSEREN der
+    beiden Buy-Preise (roh oder komprimiert, Komprimieren ist 1:1 in Stueck):
+    das ist der bestmoegliche Sofortverkauf. Frueher galt stur die
+    komprimierte Variante, aber in duennen Maerkten (Mondgestein!) ist deren
+    hoechste Kauforder manchmal eine Lowball-Order: am 21.08.2026 stand
+    Compressed Brimful Bitumens bei 136 ISK Buy, waehrend das ROHE Erz 812
+    brachte, und Ramones Tagesertrag schrumpfte scheinbar von 300M auf 187M,
+    weil die Kacheln rueckwirkend mit aktuellen Preisen bewerten. Volumen
+    immer vom Rohtyp."""
     if not ore or not isinstance(ore, str):
         return 0.0, 0.0
     t = ORE_TYPES.get(ore, {})
     comp = ORE_TYPES.get("Compressed " + ore)
-    price = pm.get(comp["typeID"]) if comp else None
-    if price is None:
-        price = pm.get(t.get("typeID"), 0.0)
+    p_komp = pm.get(comp["typeID"]) if comp else None
+    p_roh = pm.get(t.get("typeID"))
+    price = max(p_komp or 0.0, p_roh or 0.0)
     return units * price, units * t.get("volume", 0.0)
 
 

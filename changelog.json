@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.47.0",
+  "d": "2026-08-21",
+  "de": [
+   "ERZ-BEWERTUNG GEGEN LOWBALL-ORDERS ABGESICHERT, gemeldet von Ramone, dessen Tagesertrag scheinbar von 300M auf 187M schrumpfte. Die Ursache sass im Markt, nicht in der Zaehlung: Canary bewertete Erz stur zum Buy-Preis der KOMPRIMIERTEN Variante, und in duennen Maerkten (Mondgestein!) ist deren hoechste Kauforder manchmal ein Witz. Am Meldetag stand Compressed Brimful Bitumens bei 136 ISK Buy, waehrend das rohe Erz 812 brachte. Jetzt gilt der BESSERE der beiden Buy-Preise, also der bestmoegliche Sofortverkauf. An Ramones echten Mengen gemessen hob das die Tagesbewertung sofort um 52 Millionen ISK.",
+   "Zur Einordnung, die auch die Abweichung zu anderen Tools erklaert: die Heute/Gestern-Kacheln bewerten rueckwirkend mit AKTUELLEN Preisen, ein gestriger Ertrag kann also mit dem Markt schwanken. Und Vergleichstools rechnen teils mit Verkaufsorder- oder Aufbereitungspreisen, Canary bewusst mit dem sofort erzielbaren Kauforder-Erloes. Dauerhafte Pruefung: pruefungen/erz_bewertung.py, sieben Faelle mit den woertlichen Zahlen des Falls."
+  ],
+  "en": [
+   "ORE VALUATION HARDENED AGAINST LOWBALL ORDERS, reported by Ramone, whose daily yield seemingly shrank from 300M to 187M. The cause sat in the market, not the counting: Canary stubbornly valued ore at the buy price of the COMPRESSED variant, and in thin markets (moon ore!) its highest buy order is sometimes a joke. On the report day Compressed Brimful Bitumens sat at 136 ISK buy while the raw ore paid 812. Now the BETTER of the two buy prices applies, the best possible instant sale. Measured on Ramone's real quantities this immediately lifted the day's valuation by 52 million ISK.",
+   "For context, which also explains deviations from other tools: the today/yesterday tiles re-value retroactively with CURRENT prices, so yesterday's yield can move with the market. And comparison tools partly use sell-order or reprocessing prices, Canary deliberately uses the instantly achievable buy-order revenue. Permanent check: pruefungen/erz_bewertung.py, seven cases with the literal numbers of the case."
+  ]
+ },
+ {
   "v": "2.46.1",
   "d": "2026-08-21",
   "de": [
