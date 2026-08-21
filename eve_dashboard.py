@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.43.0"
+VERSION = "2.43.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -15460,7 +15460,11 @@ function combatCardHtml(c){
     ${c.ewar&&c.ewar.length?`<div class="cardwarn drone">⚠ EWAR gegen dich: `+c.ewar.map(e=>(EWAR_LABEL[e[0]]||e[0])+' ×'+e[1]).join(' · ')+`</div>`:''}
     ${c.top_attackers.length?`<div class="sect">Top-Angreifer</div><table>`+c.top_attackers.map(t=>
       `<tr><td>${esc(t[0])}</td><td class="r">${fmt(t[1])}</td></tr>`).join('')+`</table>`:''}
-    ${(c.salvage&&(c.salvage.ok||c.salvage.empty||c.salvage.fail))?`<div class="sect">Salvage</div><div class="l">${c.salvage.ok} Wracks geborgen · ${c.salvage.empty} leer · ${c.salvage.fail} Fehlversuch</div>`:''}
+    ${(c.salvage&&(c.salvage.ok||c.salvage.empty||c.salvage.fail))?`<div class="sect">Salvage</div><div class="l" title="${lang==='en'
+      ?'From the game log. Careful with salvage drones: their failed cycles write the generic failure line, their successes write NO log line at all (verified against donated logs). Drone successes can therefore not be counted.'
+      :'Aus dem Gamelog. Vorsicht bei Bergungs-Drohnen: ihre Fehlzyklen schreiben die normale Fehlversuch-Zeile, ihre ERFOLGE schreiben gar keine Logzeile (an gespendeten Logs belegt). Drohnen-Erfolge sind deshalb nicht zählbar.'}">${c.salvage.ok} Wracks geborgen · ${c.salvage.empty} leer · ${c.salvage.fail} Fehlversuch${(!c.salvage.ok&&!c.salvage.empty&&c.salvage.fail)?(lang==='en'
+      ?' <span style="color:var(--dim)">(salvage drones? successes are never logged)</span>'
+      :' <span style="color:var(--dim)">(Bergungs-Drohnen? Erfolge loggt EVE nicht)</span>'):''}</div>`:''}
     ${logiBlock(c)}
    </div>
   </div>`;

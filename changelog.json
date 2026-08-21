@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.43.1",
+  "d": "2026-08-20",
+  "de": [
+   "SALVAGE-ANZEIGE BEI BERGUNGS-DROHNEN EHRLICH GEMACHT, gemeldet von Flexodus: mit Salvage Drones zeigte die Bergungs-Statistik nur Fehlversuche, obwohl die Drohnen Beute brachten. Die Ursache liegt im Spiel selbst, an gespendeten Logs belegt: die Fehlzyklen der Drohnen schreiben die normale Fehlversuch-Zeile ins Log, ihre ERFOLGE schreiben aber gar keine Zeile. Zaehlen laesst sich nur, was das Log hergibt. Die Anzeige sagt das jetzt dazu: stehen nur Fehlversuche ohne einen einzigen Erfolg da, ergaenzt sie den Hinweis, dass Drohnen-Erfolge von EVE nicht geloggt werden, und der Tooltip erklaert die Datenlage."
+  ],
+  "en": [
+   "SALVAGE DISPLAY MADE HONEST FOR SALVAGE DRONES, reported by Flexodus: with salvage drones the salvage statistic showed only failed attempts although the drones brought loot. The cause is the game itself, verified against donated logs: the drones' failed cycles write the normal failure line into the log, but their SUCCESSES write no line at all. Only what the log provides can be counted. The display now says so: if only failures without a single success are shown, it adds the hint that drone successes are never logged by EVE, and the tooltip explains the data situation."
+  ]
+ },
+ {
   "v": "2.43.0",
   "d": "2026-08-19",
   "de": [
