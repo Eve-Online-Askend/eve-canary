@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.43.2",
+  "d": "2026-08-21",
+  "de": [
+   "DIE KRISTALL-MELDUNG AUF DER LIVE-KARTE KLINGT JETZT AB, gemeldet von Eron Solette: seine Orca-Flotte dockt acht Stunden nicht an, und weil der Zaehler pro Trip laeuft, stand die gelbe Warnung praktisch dauerhaft da. Jetzt ist ein frischer Bruch zehn Minuten lang eine gelbe Warnung, danach wird daraus eine dezente graue Zeile. Zaehler und Uhrzeit des letzten Bruchs bleiben lesbar, der Reset beim Andocken bleibt.",
+   "ZUR RUECKWIRKENDEN MONATSZAEHLUNG die Entwarnung nach gruendlicher Pruefung mit seinen gespendeten Tages-Logs: alle 16 Kristall-Zeilen des Tages landen korrekt in der Zaehlung, je vier pro Charakter. Die niedrige Zahl am Morgen war der ehrliche Stand der damals vorhandenen Logdateien. Wichtig fuer alle: die Historie fuellt sich nur aus Logdateien, die noch im Gamelog-Ordner liegen. Wer seine Logs wegraeumt, nimmt der Rueckwirkung die Quelle."
+  ],
+  "en": [
+   "THE CRYSTAL NOTICE ON THE LIVE CARD NOW FADES, reported by Eron Solette: his Orca fleet does not dock for eight hours, and since the counter runs per trip, the yellow warning stood there practically forever. Now a fresh break is a yellow warning for ten minutes, after that it becomes a quiet grey line. Counter and time of the last break stay readable, the reset on docking stays.",
+   "ON THE RETROACTIVE MONTHLY COUNT the all-clear after thorough checking with his donated day logs: all 16 crystal lines of the day land correctly in the count, four per character. The low number in the morning was the honest state of the log files present at that time. Important for everyone: the history only fills from log files still in the game log folder. Whoever cleans out their logs removes the source of the backfill."
+  ]
+ },
+ {
   "v": "2.43.1",
   "d": "2026-08-20",
   "de": [

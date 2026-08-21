@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.43.1"
+VERSION = "2.43.2"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -3196,6 +3196,10 @@ class CharSession:
         self.schnitte = []
         self.letzter_out_ts = None
         self.kristalle = {}   # Typ -> Anzahl zersprungen (dieser Trip)
+        self.kristall_ts = None   # letzter Bruch: die Karte laesst die
+                                  # Warnung nach 10 min zur Info abklingen
+                                  # (Eron dockt 8 h nicht an, sonst stuende
+                                  # sie den ganzen Tag gelb da)
         self.attackers = {}
         self.win_out = deque()
         self.win_in = deque()
@@ -3290,6 +3294,7 @@ class CharSession:
             # Monatsuebersicht. ts kommt AUS DEM LOG, damit das Neueinlesen
             # alter Dateien die Historie rueckwirkend fuellt.
             self.kristalle[ev["key"]] = self.kristalle.get(ev["key"], 0) + 1
+            self.kristall_ts = ev["ts"]
             try:
                 with DB_LOCK:
                     DB.execute("INSERT OR IGNORE INTO kristalle VALUES(?,?,?,?)",
@@ -3404,6 +3409,7 @@ class CharSession:
                 self.schnitte = []
                 self.letzter_out_ts = None
                 self.kristalle = {}
+                self.kristall_ts = None
                 self.attackers = {}
                 self.bounty = 0
                 self.kills = 0
@@ -3809,6 +3815,7 @@ class CharSession:
         self.schnitte = []
         self.letzter_out_ts = None
         self.kristalle = {}
+        self.kristall_ts = None
         self.attackers = {}
         self.bounty = 0
         self.kills = 0
@@ -8786,6 +8793,7 @@ def snapshot_live():
         drone_only = (is_cmd or s.core_on())
         chars.append({
             "kristalle": sorted(s.kristalle.items(), key=lambda x: -x[1]),
+            "kristall_ts": round(s.kristall_ts) if s.kristall_ts else None,
             "heavy_water": hw,
             "active": active,
             "role": (CONFIG.get("roles") or {}).get(s.name, ""),
@@ -15212,7 +15220,11 @@ function miningCardHtml(c){
      ?`<div class="cardwarn drone">⚠ ${esc(w.tool)}${w.count>1?' ×'+w.count:''} abgeschaltet, Drohnen prüfen!</div>`
      :`<div class="cardwarn">⚠ ${esc(w.tool)}${w.count>1?' ×'+w.count:''} abgeschaltet, Ziel prüfen</div>`).join('')}
    ${(c.lasers_off||[]).map(w=>`<div class="cardwarn">⛔ ${esc(w.tool)} aus seit ${new Date(w.since*1000).toLocaleTimeString().slice(0,5)}. Neues Ziel erfassen! <span class="laserok" data-char="${esc(c.name)}" data-tool="${esc(w.tool)}">✓ erledigt</span></div>`).join('')}
-   ${(c.kristalle&&c.kristalle.length)?`<div class="cardwarn">💎 ${lang==='en'?'Crystal shattered this trip':'Kristall zersprungen diesen Trip'}: ${c.kristalle.map(k=>esc(k[0])+' ×'+k[1]).join(', ')}</div>`:''}
+   ${(c.kristalle&&c.kristalle.length)?(()=>{
+     const frisch=c.kristall_ts&&(Date.now()/1000-c.kristall_ts)<600;
+     const inhalt='💎 '+(lang==='en'?'Crystals shattered this trip':'Kristalle zersprungen diesen Trip')+': '+c.kristalle.map(k=>esc(k[0])+' ×'+k[1]).join(', ')+(c.kristall_ts?' · '+(lang==='en'?'last at ':'zuletzt ')+new Date(c.kristall_ts*1000).toLocaleTimeString().slice(0,5):'');
+     return frisch?`<div class="cardwarn">${inhalt}</div>`:`<div class="sub" style="margin-top:2px">${inhalt}</div>`;
+   })():''}
    ${c.drones_idle?`<div class="cardwarn">🤖 Drohnen liefern gerade kein Erz (gestoppt, voll oder auf dem Rückweg).</div>`:''}
    ${c.laser_stalled?`<div class="cardwarn">⛏ Strip Miner liefert gerade kein Erz, während die Drohnen weiterlaufen.</div>`:''}
    ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur noch ${c.rate_low}%. Vermutlich ist ein Modul oder eine Drohne aus.</div>`:''}
