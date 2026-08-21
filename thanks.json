@@ -228,10 +228,10 @@
    "ru": "Идеи"
   },
   "note": {
-   "de": "Wünschte sich, dass Canary sich selbst aktuell hält. Daraus wurde das Auto-Update.",
-   "en": "Wished Canary would keep itself up to date. That became the auto update.",
-   "fr": "Voulait que Canary se mette à jour tout seul. C'est devenu la mise à jour automatique.",
-   "ru": "Хотел, чтобы Canary обновлялся сам. Так появилось автообновление."
+   "de": "Wünschte sich das Auto-Update und den Skillplan-Berater. Beides gebaut.",
+   "en": "Wished for the auto update and the skill plan advisor. Both built.",
+   "fr": "Voulait la mise à jour automatique et le conseiller de plan de skills. Les deux existent.",
+   "ru": "Хотел автообновление и советник по плану навыков. Оба построены."
   },
   "links": []
  }
