@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.50.0",
+  "d": "2026-08-23",
+  "de": [
+   "JEDE MINING-ZAHL ERKLAERT SICH JETZT SELBST, gewuenscht von Eron Solette nach seiner Zwei-Laser-Messreihe: die Werte stimmten alle, aber welche Zahl was misst, stand nirgends. Jetzt traegt jede Kennzahl einen Mouseover-Text: die Fleet-Power-m³/min (Dauerleistung, Schnitt der 5 besten Minuten der letzten Stunde, faellt nach einem Stopp binnen einer Stunde auf null), die m³/h je Charakter (Schnitt ueber die GESAMTE Sitzung samt Anlauf und Pausen, darum traeger), ISK Session und Erz-Wert (aktuelle Kaufpreise plus Bounties) und die Heute/Gestern/Woche-Kacheln (alle Mengen werden zu AKTUELLEN Preisen bewertet, gestrige ISK schwanken deshalb mit dem Markt, obwohl die m³ feststehen)."
+  ],
+  "en": [
+   "EVERY MINING NUMBER NOW EXPLAINS ITSELF, requested by Eron Solette after his two-laser test series: the values were all correct, but nothing said what each number measures. Every figure now carries a mouseover text: the fleet power m³/min (sustained output, average of the 5 best minutes of the last hour, fades to zero within an hour after a stop), the per-character m³/h (average over the WHOLE session including warm-up and pauses, hence slower to react), ISK session and ore value (current buy prices plus bounties) and the today/yesterday/week tiles (all amounts are valued at CURRENT prices, so yesterday's ISK move with the market even though the m³ are fixed)."
+  ]
+ },
+ {
   "v": "2.49.3",
   "d": "2026-08-23",
   "de": [

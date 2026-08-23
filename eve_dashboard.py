@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.49.3"
+VERSION = "2.50.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -15181,20 +15181,24 @@ function syncCharFilter(chars){
  const all=names.length&&names.every(n=>collapsed.has(n));
  $('#collapseAll').textContent=all?'Alle aufklappen':'Alle einklappen';
 }
-function heroTiles(label,today,yesterday,week,subToday,subWeek){
+function heroTiles(label,today,yesterday,week,subToday,subWeek,tip){
  const delta=yesterday>0?Math.round((today/yesterday-1)*100):null;
  const trend=delta==null?'':' · <span style="color:var(--'+(delta>=0?'green':'red')+')">'+(delta>=0?'▲':'▼')+' '+Math.abs(delta)+'% vs. gestern</span>';
+ const t=tip?` title="${tip}"`:'';
  return `<div class="card" style="grid-column:1/-1">
   <div class="stats" style="grid-template-columns:repeat(3,1fr);margin:0">
-   <div class="stat"><div class="l">${label}</div><div class="v isk" style="font-size:24px">${fmtM(today)}</div><div class="l">${subToday||''}${trend}</div></div>
-   <div class="stat"><div class="l">Gestern</div><div class="v isk" style="font-size:24px">${fmtM(yesterday)}</div></div>
-   <div class="stat"><div class="l">Letzte 7 Tage</div><div class="v isk" style="font-size:24px">${fmtM(week)}</div><div class="l">${subWeek||''}</div></div>
+   <div class="stat"${t}><div class="l">${label}</div><div class="v isk" style="font-size:24px">${fmtM(today)}</div><div class="l">${subToday||''}${trend}</div></div>
+   <div class="stat"${t}><div class="l">Gestern</div><div class="v isk" style="font-size:24px">${fmtM(yesterday)}</div></div>
+   <div class="stat"${t}><div class="l">Letzte 7 Tage</div><div class="v isk" style="font-size:24px">${fmtM(week)}</div><div class="l">${subWeek||''}</div></div>
   </div></div>`;
 }
 function heroBar(s){
  if(!s)return '';
  return heroTiles('⛏ Geminert heute',s.today,s.yesterday,s.week,
-  fmt(s.m3_today)+' m³',fmt(s.m3_week)+' m³ · Ø '+fmtM(s.week/7)+'/Tag');
+  fmt(s.m3_today)+' m³',fmt(s.m3_week)+' m³ · Ø '+fmtM(s.week/7)+'/Tag',
+  lang==='en'
+   ?'Mined amounts from the logs, all valued at CURRENT buy prices. Yesterday and the week are re-valued too, so their ISK moves with the market even though the m³ are fixed.'
+   :'Geförderte Mengen aus den Logs, alle bewertet zu AKTUELLEN Kaufpreisen. Auch Gestern und die Woche werden neu bewertet, ihre ISK schwanken deshalb mit dem Markt, obwohl die m³ feststehen.');
 }
 // Mining Fleet Power: eine Hashrate-artige Zahl fuer die Foerderleistung der
 // ganzen Flotte in m³/min. Stufe 1 (hier) rechnet aus der real geloggten Rate,
@@ -15403,8 +15407,11 @@ function fleetPowerCard(chars){
     </span>
    </div>
    <div class="mfpmain">
-    <span class="mfpval ${t.c}">${fmt(Math.round(v.m3min))}</span>
-    <span class="mfpunit">m³/min</span>
+    ${(()=>{const tip=lang==='en'
+      ?'Sustained fleet output: per character the average of its 5 best mining minutes of the last hour, then summed. Shows what the fleet delivers when everything runs. Reacts quickly to extra lasers and fades to zero within an hour after a stop.'
+      :'Dauerleistung der Flotte: je Charakter der Schnitt seiner 5 besten Förder-Minuten der letzten Stunde, dann summiert. Zeigt, was die Flotte liefert, wenn alles läuft. Reagiert schnell auf zusätzliche Laser und fällt nach einem Stopp binnen einer Stunde auf null.';
+     return `<span class="mfpval ${t.c}" title="${tip}">${fmt(Math.round(v.m3min))}</span>
+    <span class="mfpunit" title="${tip}">m³/min</span>`;})()}
     ${v.iskmin>0?`<span class="mfpunit" style="color:var(--gold)" title="${lang==='en'?'Real session average: mined ore ISK per session minute, summed over the fleet. The m³/min next to it is deliberately the sustained peak (top 5 minutes per character).':'Echter Session-Durchschnitt: geminte Erz-ISK je Sitzungsminute, über die Flotte summiert. Die m³/min daneben ist bewusst die Spitzen-Dauerleistung (Top-5-Minuten je Charakter).'}">≈ ${fmtM(v.iskmin)} ISK/min</span>`:''}
     <span class="mfpsub">${sub}</span>
    </div>
@@ -15655,9 +15662,9 @@ function miningCardHtml(c){
    <div class="sub">${c.trips>0?'Trip '+(c.trips+1)+' · seit Abdocken':'Session'} ${c.session_min} min · ${c.depleted} Asteroiden leergebaggert${c.boost?' · '+c.boost.n+' in der Flotte':''} · Preise: ${state.price_src==='esi'?'ESI · ':''}${state.regions[state.region]}</div>
    ${dangerLine(c)}
    <div class="stats">
-    <div class="stat"><div class="l">${c.trips>0?'ISK Trip':'ISK Session'}</div><div class="v isk">${fmtM(c.total_isk)}</div></div>
-    <div class="stat"><div class="l">Erz (${fmt(c.m3)} m³)</div><div class="v isk">${fmtM(c.ore_isk)}</div></div>
-    <div class="stat"><div class="l">m³/h</div><div class="v out">${fmt(c.m3h)}</div></div>
+    <div class="stat" title="${lang==='en'?'Everything earned this session: ore at current buy prices plus bounties.':'Alles, was diese Sitzung eingebracht hat: Erz zu aktuellen Kaufpreisen plus Bounties.'}"><div class="l">${c.trips>0?'ISK Trip':'ISK Session'}</div><div class="v isk">${fmtM(c.total_isk)}</div></div>
+    <div class="stat" title="${lang==='en'?'Ore mined this session, valued at current buy prices (best of raw or compressed).':'Diese Sitzung gefördertes Erz, bewertet zu aktuellen Kaufpreisen (bester Wert aus roh oder komprimiert).'}"><div class="l">Erz (${fmt(c.m3)} m³)</div><div class="v isk">${fmtM(c.ore_isk)}</div></div>
+    <div class="stat" title="${lang==='en'?'Average over the WHOLE session: mined volume divided by session time. Includes warm-up and pauses, so it reacts more slowly than the Fleet Power number above.':'Schnitt über die GESAMTE Sitzung: gefördertes Volumen geteilt durch die Sitzungszeit. Anlauf und Pausen zählen mit, darum reagiert die Zahl träger als die Fleet-Power-Zahl oben.'}"><div class="l">m³/h</div><div class="v out">${fmt(c.m3h)}</div></div>
     ${c.isk_h>0?`<div class="stat" title="${lang==='en'?'Ore value per hour at current prices, same time base as m³/h. Compare T2 crystals (more yield, residue) against ORE strip miners (no loss) fairly.':'Erz-Wert pro Stunde zu aktuellen Preisen, gleiche Zeitbasis wie m³/h. Damit lassen sich T2-Kristalle (mehr Ertrag, Verschnitt) und ORE Strip Miner (verlustfrei) fair vergleichen.'}"><div class="l">≈ ISK/h (Erz)</div><div class="v isk">${fmtM(c.isk_h)}</div></div>`:''}
     ${(c.bonus&&c.bonus.n>0)?`<div class="stat" title="Lieferungen mit vervielfachtem Ertrag. Canary erkennt sie daran, dass die Menge ein exaktes Vielfaches deiner Normallieferung ist. Gezeigt wird nur der Teil, der über die Normalmenge hinausging.">
      <div class="l">Bonus-Erträge (${c.bonus.n} von ${c.bonus.von} · ${c.bonus.quote}%)</div>
