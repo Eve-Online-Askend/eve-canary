@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.49.0"
+VERSION = "2.49.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -15350,7 +15350,14 @@ function mfpValues(chars){
  // waren 4,5 (22.08.2026). Die m³/min daneben bleibt bewusst die
  // Spitzen-Dauerleistung, der Tooltip erklaert den Unterschied.
  const iskmin=miners.reduce((s2,c)=>s2+((c.ore_isk>0&&c.session_min>0)?(c.ore_isk/Math.max(1,c.session_min)):0),0);
- return {miners,m3min,ver,mined,avgBonus,tier:mfpTier(m3min),iskmin,
+ // Nachlauf sichtbar machen (Eron, 23.08.2026): die m³/min ist der Schnitt
+ // der fuenf besten Minuten der letzten Stunde und faellt nach einem Stopp
+ // bewusst langsam. Damit das niemanden mehr stolpert, sagt die Karte dazu,
+ // wie lange die letzte Erz-Lieferung her ist, sobald sie aelter als 2 min
+ // ist. mine_idle traegt die Sekunden seit der letzten Lieferung je Char.
+ const idleWerte=miners.map(c=>c.mine_idle).filter(x=>x!=null&&x>=0);
+ const stillSeit=idleWerte.length?Math.min(...idleWerte):null;
+ return {miners,m3min,ver,mined,avgBonus,tier:mfpTier(m3min),iskmin,stillSeit,
          fullVer:ver.length>0&&ver.length===miners.length,owner};
 }
 function fleetPowerCard(chars){
@@ -15362,6 +15369,12 @@ function fleetPowerCard(chars){
  if(v.fullVer)sub=n+' '+(n===1?'Schiff':'Schiffe')+' · ✅ ESI-verifiziert';
  else if(v.ver.length)sub=v.ver.length+' von '+n+' ESI-verifiziert · Rest geschätzt';
  else sub=n+' '+(n===1?'Schiff':'Schiffe')+' · geschätzt aus Log';
+ if(v.stillSeit!=null&&v.stillSeit>120){
+  const m2=Math.round(v.stillSeit/60);
+  sub+=(lang==='en'
+    ?` · <span style="color:var(--gold)" title="This number is the sustained peak (best 5 minutes of the last hour) and fades slowly after a stop. Drones keep delivering even with strip miners off.">tailing off, last delivery ${m2} min ago</span>`
+    :` · <span style="color:var(--gold)" title="Diese Zahl ist die Dauerleistung (beste 5 Minuten der letzten Stunde) und fällt nach einem Stopp langsam ab. Drohnen liefern auch bei abgeschalteten Strip Minern weiter.">Nachlauf, letzte Lieferung vor ${m2} min</span>`);
+ }
  const verLine=v.mined>0
    ?`<div class="mfpver">✅ ESI-verifiziert: <b>${fmtC(v.mined)} m³</b> in 30 Tagen gefördert · Ø ${fmtC(v.mined/30)}/Tag${v.avgBonus!=null?' · Skill-Bonus +'+v.avgBonus+'%':''}</div>`
    :'';
