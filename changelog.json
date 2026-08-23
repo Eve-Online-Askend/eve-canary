@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.49.0",
+  "d": "2026-08-22",
+  "de": [
+   "DER RUECKWIRKENDE TEIL DER VERLUST-FEATURES WAR KAPUTT, gemeldet von Eron Solette (alle alten Monate standen auf 'nicht zuordenbar'): die Erz-Zuordnung des Verschnitts und die Kristall-Historie hingen an einem Codepfad, der beim Neueinlesen alter Logdateien gar nicht laeuft. Live stimmte alles, rueckwirkend blieb es leer. Beides sitzt jetzt sessionunabhaengig in der Einlese-Schleife, und der einmalige Neuaufbau nach dem Update fuellt die Historie wirklich: am gespendeten Jahres-Bestand gemessen fielen die unzuordenbaren Rueckstaende von 73 Prozent auf NULL, und 854 historische Kristallbrueche standen erstmals in der Tabelle.",
+   "DAZU ERONS WUNSCH: die 30-Tage-Grafik zeigt jetzt unter der Nulllinie ROTE TAGES-BALKEN fuer reale Verluste, zerbrochene Kristalle (rueckwirkend, zu Jita bewertet) plus eigene Schiffsverluste aus dem Killmail-Feed (ab jetzt gesammelt, der Feed liefert nichts rueckwirkend). Der theoretische Verschnitt bleibt bewusst draussen, der hat seine eigene Karte. Die Tabelle bekam die passende Verlust-Spalte.",
+   "UND DIE MFP-ISK/MIN IST JETZT EHRLICH: sie zeigte die Top-5-Spitzenleistung und war als Ertragszahl zu optimistisch (Erons Beleg: 82M in 31 Minuten sind 2,7M/min, angezeigt waren 4,5). Jetzt rechnet sie den echten Session-Durchschnitt, die m³/min daneben bleibt bewusst die Spitzen-Dauerleistung, der Tooltip erklaert den Unterschied."
+  ],
+  "en": [
+   "THE RETROACTIVE PART OF THE LOSS FEATURES WAS BROKEN, reported by Eron Solette (all old months showed 'not attributable'): the residue-to-ore attribution and the crystal history hung on a code path that never runs when re-reading old log files. Live everything worked, retroactively it stayed empty. Both now sit session-independently in the ingest loop, and the one-time rebuild after the update really fills the history: measured on the donated year of logs, unattributable residue fell from 73 percent to ZERO, and 854 historical crystal breaks appeared in the table for the first time.",
+   "PLUS ERON'S WISH: the 30-days chart now shows RED DAILY BARS below the zero line for real losses, shattered crystals (retroactive, valued at Jita) plus own ship losses from the killmail feed (collected from now on, the feed offers nothing retroactively). The theoretical residue deliberately stays out, it has its own card. The table got the matching loss column.",
+   "AND THE MFP ISK/MIN IS HONEST NOW: it showed the top-5 sustained peak and was too optimistic as a yield number (Eron's proof: 82M in 31 minutes is 2.7M/min, shown was 4.5). It now calculates the real session average, the m³/min next to it deliberately stays the sustained peak, the tooltip explains the difference."
+  ]
+ },
+ {
   "v": "2.48.0",
   "d": "2026-08-21",
   "de": [

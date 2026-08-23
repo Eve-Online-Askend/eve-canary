@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.48.0"
+VERSION = "2.49.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1845,6 +1845,11 @@ except sqlite3.OperationalError:
 DB.execute("""CREATE TABLE IF NOT EXISTS kristalle(
     char_id TEXT, char TEXT, ts REAL, typ TEXT,
     PRIMARY KEY(char_id, ts, typ))""")
+# v2.49: eigene Schiffsverluste aus dem Killmail-Feed, fuer die negativen
+# Tagesbalken (Eron). Der Feed liefert nichts rueckwirkend, gesammelt wird
+# ab jetzt. kid (Killmail-ID) dedupliziert.
+DB.execute("""CREATE TABLE IF NOT EXISTS verluste(
+    kid TEXT PRIMARY KEY, char_id TEXT, ts REAL, isk REAL)""")
 DB.commit()
 try:  # v1.71: Fernunterstuetzung je Einsatz. Ohne diese Spalten ist die
       # Leistung eines Logi-Piloten nach dem Andocken fuer immer weg.
@@ -2036,7 +2041,7 @@ def zu_merken(char_id, ts):
 #      die englischen Fassungen zaehlten. Dazu die englische Drohnen-Meldung
 #      "need to deposit their current loads", die es sechs Versionen lang nur
 #      in einer Fassung gab, die im Log gar nicht vorkommt.
-PARSE_VER = "15"
+PARSE_VER = "16"
 
 
 def _paare_summieren(*listen):
@@ -3351,18 +3356,13 @@ class CharSession:
                 self.verschnitt[ev["key"]] = (self.verschnitt.get(ev["key"], 0)
                                               + ev["value"])
         elif k == "kristall":
-            # Session-Zaehler fuer die Karte plus dauerhafte Zeile fuer die
-            # Monatsuebersicht. ts kommt AUS DEM LOG, damit das Neueinlesen
-            # alter Dateien die Historie rueckwirkend fuellt.
+            # Nur der Session-Zaehler fuer die Karte. Die DAUERHAFTE Zeile
+            # schreibt die Einlese-Schleife (kristall_done): feed laeuft nur
+            # fuer Dateien MIT Session, beim Backfill alter Dateien gibt es
+            # keine, und die Historie blieb leer (an Ramones Korpus entdeckt,
+            # 22.08.2026, gleiche Falle wie die Rueckstand-Zuordnung).
             self.kristalle[ev["key"]] = self.kristalle.get(ev["key"], 0) + 1
             self.kristall_ts = ev["ts"]
-            try:
-                with DB_LOCK:
-                    DB.execute("INSERT OR IGNORE INTO kristalle VALUES(?,?,?,?)",
-                               (self.char_id, self.name, ev["ts"], ev["key"]))
-                    DB.commit()
-            except Exception as e:
-                log_error("CN-DB-04", "kristall", e)
         elif k == "jump":
             self.system = ev["key"]      # aktueller Ort aus dem Gamelog
             self.system_status = None    # neues System, alter Zustand weg
@@ -4296,6 +4296,15 @@ class Ingest(threading.Thread):
             try:
                 catch_up = not self.started_full
                 batch = []
+                # Rueckstand-Zuordnung DATEILOKAL, nicht in feed: beim
+                # Backfill alter Dateien gibt es keine Session (if sess:),
+                # feed lief dort nie, und ALLE historischen Rueckstaende
+                # blieben "nicht zuordenbar" (Eron, 22.08.2026, an Ramones
+                # Korpus reproduziert: 73% unzugeordnet trotz 100% sauberer
+                # Nachbarschaft in den Rohzeilen). Die Zeile steht immer
+                # direkt unter ihrer Erz-Zeile, das gilt je Datei.
+                letzte_erz_zeile = None
+                kristall_done = []   # (cid, cname, ts, typ), sessionUNabhaengig
                 missions_done = []   # beim Undock abgeschlossene Missionen
                 drop_mid = []        # zurueckgenommene Abschluesse (Zwischenstopp)
                 lost_done = []       # beim Undock festgehaltener Stillstand-Verlust (Tag, ISK)
@@ -4323,6 +4332,16 @@ class Ingest(threading.Thread):
                         if ev and ev["kind"] == "noise":
                             continue
                         if ev:
+                            if ev["kind"] == "ore":
+                                letzte_erz_zeile = (ev["ts"], ev["key"])
+                            elif (ev["kind"] == "residue"
+                                  and ev.get("key") == "Rueckstand"
+                                  and letzte_erz_zeile
+                                  and abs(ev["ts"] - letzte_erz_zeile[0]) <= 2):
+                                ev["key"] = letzte_erz_zeile[1]
+                            elif ev["kind"] == "kristall":
+                                kristall_done.append((cid, cname, ev["ts"],
+                                                      ev["key"]))
                             batch.append(ev)
                             if sess:
                                 # Geht der Kampf kurz nach dem Anflug im selben
@@ -4461,6 +4480,10 @@ class Ingest(threading.Thread):
                             DB.execute("DELETE FROM missions WHERE mid=?", (mid_weg,))
                         for md in missions_done:
                             save_mission(md)
+                        if kristall_done:
+                            DB.executemany(
+                                "INSERT OR IGNORE INTO kristalle VALUES(?,?,?,?)",
+                                kristall_done)
                         for lday, li in lost_done:
                             db_add(lday, cid, cname, "lost", "isk", li)
                         for ecid, ename, ets, edet in mine_done:
@@ -6965,6 +6988,16 @@ class PackIntel(threading.Thread):
                 try:
                     if int(cid) == opfer:
                         merken(self.eigene_verluste, cid)
+                        # Dauerhaft fuer die Tages-Verlustbalken (Eron).
+                        try:
+                            with DB_LOCK:
+                                DB.execute(
+                                    "INSERT OR IGNORE INTO verluste "
+                                    "VALUES(?,?,?,?)",
+                                    (str(kid), cid, kt, wert))
+                                DB.commit()
+                        except Exception as e:
+                            log_error("CN-DB-05", "verluste", e)
                 except (TypeError, ValueError):
                     continue
         # Abschuss: der eigene Charakter steht als Angreifer drauf. Reine
@@ -9704,6 +9737,33 @@ def query_month():
         d["total"] = round(d["ore_isk"] + d["bounty"])
         d["chars"] = {k: {"ore_isk": round(v["ore_isk"]), "bounty": round(v["bounty"])}
                       for k, v in d["chars"].items()}
+    # Reale Verluste je Tag (Eron, 22.08.2026): zerbrochene Kristalle zu
+    # Jita bewertet plus Schiffsverluste aus dem Killmail-Feed. BEWUSST ohne
+    # den Verschnitt: der ist eine theoretische Groesse und hat seine eigene
+    # Karte. Preise cache-first, beim allerersten Aufruf fehlen einzelne
+    # Kristallpreise noch und kommen mit dem naechsten Takt.
+    cut = time.time() - 30 * 86400
+    with DB_LOCK:
+        krows = DB.execute(
+            "SELECT strftime('%Y-%m-%d', ts, 'unixepoch'), typ, COUNT(typ) "
+            "FROM kristalle WHERE ts>=? GROUP BY 1, 2", (cut,)).fetchall()
+        srows = DB.execute(
+            "SELECT strftime('%Y-%m-%d', ts, 'unixepoch'), ROUND(SUM(isk)) "
+            "FROM verluste WHERE ts>=? GROUP BY 1", (cut,)).fetchall()
+    ktypen = sorted({r[1] for r in krows})
+    ids = resolve_item_ids(ktypen) if ktypen else {}
+    try:
+        kpm = hub_prices_bg("10000002", set(ids.values())) if ids else {}
+    except Exception:
+        kpm = {}
+    verlust = {}
+    for tag2, typ, n in krows:
+        preis = (kpm.get(ids.get(typ)) or (0, 0))[0] if ids.get(typ) else 0
+        verlust[tag2] = verlust.get(tag2, 0.0) + n * preis
+    for tag2, isk2 in srows:
+        verlust[tag2] = verlust.get(tag2, 0.0) + (isk2 or 0)
+    for d in out:
+        d["verlust"] = round(verlust.get(d["day"], 0.0))
     return out
 
 
@@ -13641,6 +13701,9 @@ html[data-skin=cockpit] #packBox svg{
 .chart .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end}
 .chart .seg1{background:var(--cyan);border-radius:2px 2px 0 0}
 .chart .seg2{background:var(--green)}
+.chartneg{height:44px;margin-top:2px;align-items:flex-start}
+.chartneg .col{justify-content:flex-start}
+.chartneg .segv{background:var(--red);border-radius:0 0 2px 2px;opacity:.85}
 .legend{display:flex;gap:14px;font-size:11px;color:var(--dim);margin-top:6px}
 .dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 .progress{background:var(--inset);border-radius:8px;height:16px;overflow:hidden;margin:8px 0}
@@ -15281,10 +15344,12 @@ function mfpValues(chars){
  let owner='';
  if(mainName&&act.some(c=>c.name===mainName))owner=mainName;
  else{const b=act.find(c=>c.command_ship);owner=b?b.name:(top?top.name:'');}
- // ISK/min der Flotte: Dauerleistung je Char mal seiner aktuellen
- // Wertdichte (Erz-ISK je m³ dieser Session). Bewusst "ungefaehr": die
- // Dichte haengt am gerade gebaggerten Erzmix (Eron, 21.08.2026).
- const iskmin=miners.reduce((s2,c)=>s2+sustainedRate(c)*((c.m3>0&&c.ore_isk>0)?(c.ore_isk/c.m3):0),0);
+ // ISK/min der Flotte: ECHTER Session-Durchsatz (geminte Erz-ISK je
+ // Sitzungsminute, summiert). Die erste Fassung nahm die Top-5-Spitze und
+ // war zu optimistisch, Erons Beleg: 82M in 31 min sind 2,7M/min, angezeigt
+ // waren 4,5 (22.08.2026). Die m³/min daneben bleibt bewusst die
+ // Spitzen-Dauerleistung, der Tooltip erklaert den Unterschied.
+ const iskmin=miners.reduce((s2,c)=>s2+((c.ore_isk>0&&c.session_min>0)?(c.ore_isk/Math.max(1,c.session_min)):0),0);
  return {miners,m3min,ver,mined,avgBonus,tier:mfpTier(m3min),iskmin,
          fullVer:ver.length>0&&ver.length===miners.length,owner};
 }
@@ -15311,7 +15376,7 @@ function fleetPowerCard(chars){
    <div class="mfpmain">
     <span class="mfpval ${t.c}">${fmt(Math.round(v.m3min))}</span>
     <span class="mfpunit">m³/min</span>
-    ${v.iskmin>0?`<span class="mfpunit" style="color:var(--gold)" title="${lang==='en'?'Approximate: sustained rate times the current ore mix value per m³':'Ungefähr: Dauerleistung mal Wertdichte des aktuellen Erzmixes'}">≈ ${fmtM(v.iskmin)} ISK/min</span>`:''}
+    ${v.iskmin>0?`<span class="mfpunit" style="color:var(--gold)" title="${lang==='en'?'Real session average: mined ore ISK per session minute, summed over the fleet. The m³/min next to it is deliberately the sustained peak (top 5 minutes per character).':'Echter Session-Durchschnitt: geminte Erz-ISK je Sitzungsminute, über die Flotte summiert. Die m³/min daneben ist bewusst die Spitzen-Dauerleistung (Top-5-Minuten je Charakter).'}">≈ ${fmtM(v.iskmin)} ISK/min</span>`:''}
     <span class="mfpsub">${sub}</span>
    </div>
    <div class="mfpbarwrap"><div class="mfpbar ${t.c}" style="width:${pct}%"></div></div>
@@ -15859,10 +15924,14 @@ function renderMonth(days,kristalle,verschnitt){
      const h1=110*d.ore_isk/max, h2=110*d.bounty/max;
      return `<div class="col" title="${d.day}: ${fmtM(d.total)} ISK">
        <div class="seg2" style="height:${h2}px"></div><div class="seg1" style="height:${h1}px"></div></div>`;}).join('')}</div>
+   ${(()=>{const maxV=Math.max(...days.map(d=>d.verlust||0));
+     if(!(maxV>0))return '';
+     return `<div class="chart chartneg">${days.map(d=>`<div class="col" title="${d.day}: −${fmtM(d.verlust||0)} ISK ${lang==='en'?'real losses (crystals, ships)':'reale Verluste (Kristalle, Schiffe)'}"><div class="segv" style="height:${Math.round(40*(d.verlust||0)/maxV)}px"></div></div>`).join('')}</div>`;})()}
    <div class="legend"><span><span class="dot" style="background:var(--cyan)"></span>Erz</span>
-   <span><span class="dot" style="background:var(--green)"></span>Bounties</span></div>
+   <span><span class="dot" style="background:var(--green)"></span>Bounties</span>
+   ${days.some(d=>d.verlust>0)?`<span><span class="dot" style="background:var(--red)"></span>${lang==='en'?'Real losses (crystals, ships)':'Reale Verluste (Kristalle, Schiffe)'}</span>`:''}</div>
    <table>${days.slice().reverse().map(d=>
-    `<tr><td>${d.day}</td><td class="r">${fmt(d.m3)} m³</td><td class="r">${fmt(d.depleted)} Asteroiden</td><td class="r out">${fmtM(d.dmg_out)} dmg</td><td class="r isk">${fmtM(d.total)} ISK</td></tr>`).join('')}</table>
+    `<tr><td>${d.day}</td><td class="r">${fmt(d.m3)} m³</td><td class="r">${fmt(d.depleted)} Asteroiden</td><td class="r out">${fmtM(d.dmg_out)} dmg</td><td class="r in">${d.verlust?('−'+fmtM(d.verlust)):'·'}</td><td class="r isk">${fmtM(d.total)} ISK</td></tr>`).join('')}</table>
   </div>`+verschnittCard(verschnitt)+kristallCard(kristalle);
 }
 // Bergbau-Verluste je Monat und Erz (Eron Solette): der Rueckstand der
