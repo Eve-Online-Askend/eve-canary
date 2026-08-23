@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.49.2"
+VERSION = "2.49.3"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -8784,6 +8784,22 @@ def portrait_url(name):
     return f"https://images.evetech.net/characters/{cid}/portrait?size=64" if cid else None
 
 
+def spark_minuten(s):
+    """Erz-m³ je Minute fuers Frontend, echte Wanduhr-Minuten.
+
+    rate_min bekommt nur bei einer Lieferung eine neue Minute. Ohne das
+    Auffuellen mit Null-Minuten blieben alte Spitzen ewig unter den letzten
+    60 Eintraegen und die Dauerleistung (Top 5 der letzten Stunde) stand
+    noch nach 74 min Foerderpause auf vollem Wert (Eron Solette, 23.08.2026).
+    Die laufende, noch unfertige Minute bleibt bewusst ohne Null."""
+    werte = [round(sum(mix.values())) for _, mix in list(s.rate_min)[-60:]]
+    if s.rate_min:
+        leer = int((time.time() - s.rate_min[-1][0]) // 60) - 1
+        if leer > 0:
+            werte = (werte + [0] * min(60, leer))[-60:]
+    return werte
+
+
 def snapshot_live():
     pm = prices.get(CONFIG["region"])
     chars = []
@@ -9046,7 +9062,7 @@ def snapshot_live():
             "salvage": s.salvage,
             "spark_out": [b[1]["out"] for b in list(s.dmg_min)[-60:]],
             "spark_in": [b[1]["in"] for b in list(s.dmg_min)[-60:]],
-            "spark": [round(sum(mix.values())) for _, mix in list(s.rate_min)[-60:]],
+            "spark": spark_minuten(s),
         })
     # Versteckte Charaktere raus, BEVOR sortiert wird: sie fehlen damit in
     # den Live-Karten, im OBS-Overlay, im Mini-Overlay und in jeder Summe,

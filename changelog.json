@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.49.3",
+  "d": "2026-08-23",
+  "de": [
+   "DIE m³/min VERGISST JETZT WIRKLICH, gefunden von Eron Solette: nach dem Abdocken stand seine Mining Fleet Power noch 74 Minuten nach der letzten Lieferung auf vollen 33.320 m³/min. Der Tooltip verspricht die besten 5 Minuten der LETZTEN STUNDE, aber die Minutenliste bekam nur bei einer Lieferung einen neuen Eintrag. Ohne Nachschub fielen alte Spitzenminuten deshalb nie aus dem Fenster. Jetzt werden Pausen-Minuten als Nullen mitgezaehlt: nach einem Stopp laeuft die Zahl binnen einer Stunde ehrlich auf null aus, und die Balkengrafik je Schiff zeigt die Pause auch sichtbar. Der Nachlauf-Hinweis bleibt und sagt weiterhin dazu, wie lange die letzte Lieferung her ist."
+  ],
+  "en": [
+   "THE m³/min NOW TRULY FORGETS, found by Eron Solette: after undocking, his Mining Fleet Power still showed a full 33,320 m³/min 74 minutes after the last delivery. The tooltip promises the best 5 minutes of the LAST HOUR, but the minute list only got a new entry when a delivery arrived. Without new ore, old peak minutes never fell out of the window. Pause minutes are now counted as zeros: after a stop the number honestly fades to zero within an hour, and the per-ship bar graph shows the pause too. The tailing-off note stays and still says how long ago the last delivery was."
+  ]
+ },
+ {
   "v": "2.49.2",
   "d": "2026-08-23",
   "de": [
