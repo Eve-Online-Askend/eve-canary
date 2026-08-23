@@ -1,12 +1,22 @@
 [
  {
+  "v": "2.49.2",
+  "d": "2026-08-23",
+  "de": [
+   "Korrektur am Nachlauf-Tooltip der Mining Fleet Power: der Satz ueber weiterliefernde Drohnen ist gestrichen. Er stammte aus einer falschen Deutung von Eron Solettes Logs, sein Einspruch war berechtigt. Die echte Quelle der Lieferungen waren seine Modulated Strip Miner II selbst, die Logs zeigen es bis zur letzten Zeile. Der Tooltip erklaert jetzt nur noch die Dauerleistungs-Mechanik, die stimmt."
+  ],
+  "en": [
+   "Correction to the tailing-off tooltip of the Mining Fleet Power: the sentence about drones that keep delivering has been removed. It came from a wrong reading of Eron Solette's logs, his objection was justified. The real source of the deliveries was his Modulated Strip Miner II themselves, the logs show it down to the last line. The tooltip now only explains the sustained-output mechanic, which is correct."
+  ]
+ },
+ {
   "v": "2.49.1",
   "d": "2026-08-23",
   "de": [
-   "DIE MINING FLEET POWER SAGT JETZT DAZU, WENN SIE NACHLAEUFT, geklaert mit Eron Solettes Morgen-Logs: seine m³/min hielt sich trotz abgeschalteter Laser, und die Zeilen zeigten warum. Erstens liefern die MINING-DROHNEN seiner Hulks unabhaengig von den Strip Minern weiter (im Log als viele gleichgrosse Portionen im Sekundentakt klar erkennbar, rund 9.000 Einheiten je Minute und Charakter). Zweitens ist die Zahl als Dauerleistung gebaut, der Schnitt der fuenf besten Minuten der letzten Stunde, und faellt nach einem Stopp bewusst langsam. Beides ist korrekt, war aber nicht sichtbar: liegt die letzte Erz-Lieferung mehr als zwei Minuten zurueck, steht jetzt ein goldener Hinweis an der Karte, Nachlauf samt Minutenangabe, und der Tooltip erklaert die Mechanik inklusive der weiterbaggernden Drohnen."
+   "DIE MINING FLEET POWER SAGT JETZT DAZU, WENN SIE NACHLAEUFT, angestossen von Eron Solette: seine m³/min hielt sich nach dem Abschalten der Laser. Der Grund ist die Bauart der Zahl: sie ist die DAUERLEISTUNG, der Schnitt der fuenf besten Minuten der letzten Stunde, und faellt nach einem Stopp bewusst langsam statt sofort auf null. Das ist korrekt, war aber nicht sichtbar: liegt die letzte Erz-Lieferung mehr als zwei Minuten zurueck, steht jetzt ein goldener Hinweis an der Karte, Nachlauf samt Minutenangabe, und der Tooltip erklaert die Mechanik. KORREKTUR zur ersten Fassung dieser Notiz: die Behauptung, Mining-Drohnen haetten weitergeliefert, war falsch, danke an Eron fuer den Einspruch. Die Logs benennen die echte Quelle selbst: die Modulated Strip Miner II lieferten bis zur letzten Logzeile im festen 14-Sekunden-Takt weiter, inklusive der Modulmeldung -completed operations- am Ende."
   ],
   "en": [
-   "THE MINING FLEET POWER NOW SAYS WHEN IT IS TAILING OFF, clarified with Eron Solette's morning logs: his m³/min held up despite switched-off lasers, and the lines showed why. First, the MINING DRONES of his Hulks keep delivering independently of the strip miners (clearly visible in the log as many equally sized portions in quick succession, around 9,000 units per minute per character). Second, the number is built as sustained output, the average of the five best minutes of the last hour, and deliberately fades slowly after a stop. Both are correct but were invisible: if the last ore delivery is more than two minutes ago, a golden note now sits on the card, tailing off with the minutes, and the tooltip explains the mechanics including the drones that keep digging."
+   "THE MINING FLEET POWER NOW SAYS WHEN IT IS TAILING OFF, prompted by Eron Solette: his m³/min held up after switching off the lasers. The reason is the design of the number: it is the SUSTAINED OUTPUT, the average of the five best minutes of the last hour, and deliberately fades slowly after a stop instead of dropping to zero. That is correct but was invisible: if the last ore delivery is more than two minutes ago, a golden note now sits on the card, tailing off with the minutes, and the tooltip explains the mechanics. CORRECTION to the first version of this note: the claim that mining drones kept delivering was wrong, thanks to Eron for the objection. The logs name the real source themselves: the Modulated Strip Miner II kept delivering in a fixed 14 second rhythm until the very last log line, including the module message -completed operations- at the end."
   ]
  },
  {

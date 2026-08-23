@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.49.1"
+VERSION = "2.49.2"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -15372,8 +15372,8 @@ function fleetPowerCard(chars){
  if(v.stillSeit!=null&&v.stillSeit>120){
   const m2=Math.round(v.stillSeit/60);
   sub+=(lang==='en'
-    ?` · <span style="color:var(--gold)" title="This number is the sustained peak (best 5 minutes of the last hour) and fades slowly after a stop. Drones keep delivering even with strip miners off.">tailing off, last delivery ${m2} min ago</span>`
-    :` · <span style="color:var(--gold)" title="Diese Zahl ist die Dauerleistung (beste 5 Minuten der letzten Stunde) und fällt nach einem Stopp langsam ab. Drohnen liefern auch bei abgeschalteten Strip Minern weiter.">Nachlauf, letzte Lieferung vor ${m2} min</span>`);
+    ?` · <span style="color:var(--gold)" title="This number is the sustained peak (best 5 minutes of the last hour) and fades slowly after a stop.">tailing off, last delivery ${m2} min ago</span>`
+    :` · <span style="color:var(--gold)" title="Diese Zahl ist die Dauerleistung (beste 5 Minuten der letzten Stunde) und fällt nach einem Stopp langsam ab.">Nachlauf, letzte Lieferung vor ${m2} min</span>`);
  }
  const verLine=v.mined>0
    ?`<div class="mfpver">✅ ESI-verifiziert: <b>${fmtC(v.mined)} m³</b> in 30 Tagen gefördert · Ø ${fmtC(v.mined/30)}/Tag${v.avgBonus!=null?' · Skill-Bonus +'+v.avgBonus+'%':''}</div>`
