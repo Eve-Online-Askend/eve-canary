@@ -195,10 +195,15 @@ li{margin:5px 0}
 .partner .ptxt{flex:1 1 260px;min-width:0}
 .partner .ptxt b{display:block;color:var(--white);font-weight:600;font-size:15.5px}
 .partner .ptxt p{margin:4px 0 0;font-size:13px;color:var(--dim);line-height:1.5}
+.partner .pact{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.partner .pcode{background:var(--inset);border:1px dashed var(--gold);color:var(--gold);
+ border-radius:8px;padding:9px 13px;font-weight:700;font-size:14px;letter-spacing:.5px;
+ cursor:pointer;font-family:inherit}
+.partner .pcode:hover{background:rgba(217,163,60,.12)}
 .partner .pbtn{display:inline-block;background:var(--gold);color:#231703;border-radius:9px;
  padding:10px 18px;font-weight:700;text-decoration:none;font-size:14px;white-space:normal}
 .partner .pbtn:hover{filter:brightness(1.08)}
-@media(max-width:560px){.partner{gap:12px}.partner .pbtn{width:100%;text-align:center}}
+@media(max-width:560px){.partner{gap:12px}.partner .pact{width:100%}.partner .pbtn{flex:1;text-align:center}}
 .missionCta{margin:16px 0 0}
 .missionCta .cta{display:inline-block;background:var(--cyan);color:#06222a;border-radius:9px;
  padding:11px 20px;font-weight:700;text-decoration:none;font-size:15px}
@@ -303,9 +308,12 @@ header.eng .missionCta{margin-left:auto}
   <div class="pico">🤝</div>
   <div class="ptxt">
    <b data-i18n="partner.t">EVE Canary is now a partner of Markee Dragon</b>
-   <p data-i18n="partner.p">Official EVE Online store for PLEX, Omega and game time. The link leads to their affiliate programme: signing up through it supports the work on Canary. Canary itself stays free and local, as always.</p>
+   <p data-i18n="partner.p">Official EVE Online store for PLEX, Omega and game time. Enter the code <b>canary</b> at checkout and you save 3 percent, while part of the order goes back into the work on Canary. Canary itself stays free and local, as always.</p>
   </div>
-  <a class="pbtn" href="https://store.markeedragon.com/affiliate.php?id=1259&amp;redirect=https://store.markeedragon.com/affiliate/signupform.php" target="_blank" rel="noopener">Join the affiliate program at Markee Dragon!</a>
+  <span class="pact">
+   <button class="pcode" id="pcode" data-code="canary">canary ⧉</button>
+   <a class="pbtn" href="https://store.markeedragon.com/affiliate.php?id=1259&amp;redirect=index.php?cat=4" target="_blank" rel="noopener" data-i18n="partner.cta">To the shop</a>
+  </span>
 </aside>
 
 <h2 data-i18n="h.features">What it does</h2>
@@ -639,7 +647,8 @@ const LANGS = {
     'h.req': 'Voraussetzungen',
     'h.downloads': 'Downloads', 'dl.loading': 'Download-Zahlen werden geladen …',
     'partner.t': 'EVE Canary ist jetzt Partner von Markee Dragon',
-    'partner.p': 'Offizieller EVE-Online-Händler für PLEX, Omega und Spielzeit. Der Link führt zu deren Partnerprogramm: Wer sich darüber anmeldet, unterstützt die Arbeit an Canary. Canary selbst bleibt wie immer kostenlos und lokal.',
+    'partner.p': 'Offizieller EVE-Online-Händler für PLEX, Omega und Spielzeit. Mit dem Code <b>canary</b> im Checkout sparst du 3 Prozent, und ein Teil der Bestellung fließt zurück in die Arbeit an Canary. Canary selbst bleibt wie immer kostenlos und lokal.',
+    'partner.cta': 'Zum Shop',
     'h.journey': 'Der Weg',
     'journey.intro': 'Angefangen als kleiner Log-Leser, der nur „Strip Miner aus“ meldete. Heute ein komplettes Cockpit: Mining, Missionen, Gank-Rudel-Radar, Erz-Schatzkammer, Steckbriefe, Planetary Industry. Offen entwickelt, ein Meilenstein nach dem anderen, immer lokal und kostenlos.',
     'h.thanks': 'Danke',
@@ -739,7 +748,8 @@ const LANGS = {
     'h.req': 'Prérequis',
     'h.downloads': 'Téléchargements', 'dl.loading': 'Chargement des téléchargements …',
     'partner.t': 'EVE Canary est désormais partenaire de Markee Dragon',
-    'partner.p': 'Boutique officielle EVE Online pour le PLEX, Omega et le temps de jeu. Le lien mène à leur programme d\'affiliation : s\'y inscrire soutient le travail sur Canary. Canary lui-même reste gratuit et local, comme toujours.',
+    'partner.p': 'Boutique officielle EVE Online pour le PLEX, Omega et le temps de jeu. Avec le code <b>canary</b> au paiement, vous économisez 3 pour cent, et une partie de la commande revient au travail sur Canary. Canary lui-même reste gratuit et local, comme toujours.',
+    'partner.cta': 'Vers la boutique',
     'h.journey': 'Le parcours',
     'journey.intro': 'Au début un simple lecteur de logs qui disait juste « strip miner coupé ». Aujourd\'hui un vrai cockpit : minage, missions, radar anti-gankers, trésor de minerai, fiches perso, Planetary Industry. Développé au grand jour, un jalon après l\'autre, toujours local et gratuit.',
     'h.thanks': 'Merci',
@@ -839,7 +849,8 @@ const LANGS = {
     'h.req': 'Требования',
     'h.downloads': 'Загрузки', 'dl.loading': 'Загрузка чисел …',
     'partner.t': 'EVE Canary теперь партнёр Markee Dragon',
-    'partner.p': 'Официальный магазин EVE Online: PLEX, Omega и игровое время. Ссылка ведёт в их партнёрскую программу: регистрация по ней поддерживает работу над Canary. Сам Canary, как и прежде, остаётся бесплатным и локальным.',
+    'partner.p': 'Официальный магазин EVE Online: PLEX, Omega и игровое время. С кодом <b>canary</b> при оформлении заказа вы экономите 3 процента, а часть суммы возвращается в работу над Canary. Сам Canary, как и прежде, остаётся бесплатным и локальным.',
+    'partner.cta': 'В магазин',
     'h.journey': 'Путь',
     'journey.intro': 'Начиналось как небольшой читатель логов, который просто говорил «стрип-майнер выключен». Сегодня это полноценная панель: майнинг, миссии, радар банд ганкеров, хранилище руды, профили, Planetary Industry. Разрабатывается открыто, веха за вехой, всегда локально и бесплатно.',
     'h.thanks': 'Спасибо',
@@ -1267,6 +1278,25 @@ function applyLang(code) {
   renderThanks();      // Danke-Bereich in der neuen Sprache
   renderMined();       // Gemeinsame Foerdermenge in der neuen Sprache
 }
+
+// Rabattcode mit einem Klick in die Zwischenablage.
+(function () {
+  const b = document.getElementById('pcode');
+  if (!b) return;
+  b.onclick = async () => {
+    const code = b.dataset.code;
+    try { await navigator.clipboard.writeText(code); }
+    catch (e) {
+      const t = document.createElement('textarea');
+      t.value = code; document.body.appendChild(t); t.select();
+      try { document.execCommand('copy'); } catch (e2) {}
+      document.body.removeChild(t);
+    }
+    const alt = b.textContent;
+    b.textContent = code + ' ✓';
+    setTimeout(() => { b.textContent = alt; }, 1200);
+  };
+})();
 
 // Umschalter bauen
 const nav = document.getElementById('lang');
