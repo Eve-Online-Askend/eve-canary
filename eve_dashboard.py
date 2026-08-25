@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.50.0"
+VERSION = "2.50.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -19292,6 +19292,20 @@ tick();setInterval(tick,2000);
 PAGE = PAGE.replace("__LOGO__", LOGO_DATA_URI)
 
 
+def port_belegt_von_prozess(port):
+    """True, wenn auf dem Port wirklich ein Programm lauscht.
+
+    Unterscheidet die zwei Faelle, die beim Start denselben OSError werfen:
+    ein zweiter Canary laeuft schon (Verbindung klappt) oder der alte Socket
+    klingt nach einem Neustart nur noch ab (TIME_WAIT, Verbindung scheitert).
+    Im ersten Fall hat Warten keinen Zweck, im zweiten sehr wohl."""
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.6):
+            return True
+    except OSError:
+        return False
+
+
 if __name__ == "__main__":
     try:
         # Zeilenweise ausgeben: bei umgeleiteter Ausgabe (Autostart, nohup,
@@ -19334,14 +19348,28 @@ if __name__ == "__main__":
             srv = Server(("127.0.0.1", port), Handler)
             break
         except OSError:
-            time.sleep(0.5)
+            if attempt == 0:
+                # Laeuft dort schon ein Canary, ist Warten sinnlos: sofort
+                # Bescheid sagen. Sonst stand hier bis zu 12 Sekunden lang
+                # gar nichts, und wer abbrach, bekam einen Traceback zu
+                # sehen (Savox76, 24.08.2026).
+                if port_belegt_von_prozess(port):
+                    break
+                print(f"Port {port} ist noch belegt, warte kurz auf die"
+                      " vorherige Sitzung ...")
+            try:
+                time.sleep(0.5)
+            except KeyboardInterrupt:
+                print()
+                print("Abgebrochen.")
+                sys.exit(0)
     if srv is None:
         print(f"EVE Canary läuft offenbar schon (Port {port} ist belegt).")
         print("Einfach das vorhandene Fenster nutzen: http://localhost:" + str(port))
         try:
             input("Enter zum Schließen ...")
-        except EOFError:
-            pass  # ohne Konsole (Autostart) einfach still beenden
+        except (EOFError, KeyboardInterrupt):
+            pass  # ohne Konsole (Autostart) oder bei Strg+C still beenden
         sys.exit(1)
 
     # Zweiter Lauscher auf dem IPv6-Loopback. Grund: "localhost" loest unter
@@ -19388,4 +19416,13 @@ if __name__ == "__main__":
             threading.Timer(0.5, lambda: webbrowser.open(f"http://localhost:{port}")).start()
         except Exception:
             pass
-    srv.serve_forever()
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        print()
+        print("EVE Canary beendet. Fly safe. o7")
+        try:
+            srv.server_close()
+        except Exception:
+            pass
+        sys.exit(0)

@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.50.1",
+  "d": "2026-08-24",
+  "de": [
+   "KEINE ROHEN FEHLERMELDUNGEN MEHR BEIM START, gemeldet von Savox76: startet man Canary ein zweites Mal, war der Port belegt. Canary hat dann bis zu zwoelf Sekunden STUMM gewartet, weil nach einem Update der alte Socket noch abklingen kann. Wer in dieser Stille abbrach, bekam eine seitenlange Python-Fehlermeldung zu sehen, die nach einem Absturz aussah, es aber nie war. Drei Aenderungen: Canary prueft jetzt sofort, ob dort wirklich schon ein Canary laeuft, und sagt es in derselben Sekunde statt zu schweigen. Muss es doch warten, schreibt es waehrenddessen hin, worauf es wartet. Und Strg+C beendet das Fenster jetzt ueberall sauber mit einer Zeile statt mit einem Fehlerbericht."
+  ],
+  "en": [
+   "NO MORE RAW ERROR DUMPS AT STARTUP, reported by Savox76: starting Canary a second time left the port occupied. Canary then waited SILENTLY for up to twelve seconds, because after an update the old socket can still be winding down. Anyone who cancelled during that silence got a page-long Python error that looked like a crash but never was. Three changes: Canary now checks immediately whether another Canary is really running there and says so in the same second instead of staying quiet. If it does have to wait, it writes down what it is waiting for. And Ctrl+C now closes the window cleanly with one line everywhere instead of an error report."
+  ]
+ },
+ {
   "v": "2.50.0",
   "d": "2026-08-23",
   "de": [
