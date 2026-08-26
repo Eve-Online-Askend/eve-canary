@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.50.1"
+VERSION = "2.51.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -5465,6 +5465,30 @@ DRONE_ONLY_SHIP_IDS = {42244,  # Porpoise
                        28352}  # Rorqual
 DRONE_ONLY_SHIP_NAMES = ("Porpoise", "Orca", "Rorqual")
 
+# Alle Ruempfe, mit denen man in EVE Erz foerdert: Bergbau-Fregatten, Barges,
+# Exhumers und die drei Command Ships. Typ-IDs aus market_types.json (SDE),
+# damit sie sprachunabhaengig sind; die Namen sind nur der Rueckfall, falls ESI
+# einmal keine ID liefert. Grundlage der Rollenerkennung: das Schiff sagt am
+# genauesten, was einer gerade tut (Michael Starlight sass in einer Megathron
+# und wurde trotzdem als Miner angezeigt, 24.08.2026).
+MINING_SHIP_IDS = {
+    32880,  # Venture
+    33697,  # Prospect
+    37135,  # Endurance
+    17480,  # Procurer
+    17478,  # Retriever
+    17476,  # Covetor
+    22546,  # Skiff
+    22548,  # Mackinaw
+    22544,  # Hulk
+    42244,  # Porpoise
+    28606,  # Orca
+    28352,  # Rorqual
+}
+MINING_SHIP_NAMES = ("Venture", "Prospect", "Endurance", "Procurer", "Retriever",
+                     "Covetor", "Skiff", "Mackinaw", "Hulk", "Porpoise", "Orca",
+                     "Rorqual")
+
 
 def _is_booster(s):
     """True, wenn dieser Char ein Command Ship (Orca/Porpoise/Rorqual per ESI)
@@ -8141,19 +8165,39 @@ const fmtC = (n) => { n = n || 0;
   return n >= 1e6 ? (n / 1e6).toFixed(2) + ' M' : n >= 1e3 ? (n / 1e3).toFixed(1) + ' K'
        : String(Math.round(n)); };
 
-// Rolle je Charakter, aus dem, was wirklich im Log stand.
+// Rolle je Charakter. DAS SCHIFF ENTSCHEIDET (Askend, 24.08.2026): sitzt er in
+// einem Bergbauschiff, ist er Miner, sonst nicht. Vorher zaehlte allein, ob in
+// dieser Sitzung IRGENDWANN Erz kam, und das klebte: Michael Starlight wechselte
+// mitten in der Sitzung in eine Megathron, machte 3 Kills und stand im Stream
+// trotzdem als MINING mit Foerderrate da. An Nirahses Logs gemessen ist das kein
+// Sonderfall, sondern jede sechste Mining-Sitzung eines Solo-Spielers.
 //
-// Foerdern gewinnt vor Kampf. Ein Hulk schiesst zwischendurch eine Ratte weg,
-// das macht ihn nicht zum Kampfschiff, und im Stream soll seine Rate stehen
-// bleiben statt auf Schadenszahlen umzuspringen. Kommt ein Ganker, sagt das
-// rote UNTER BESCHUSS in derselben Zeile deutlich genug Bescheid.
+// Ohne EVE-Login kennt Canary das Schiff nicht (mining_ship === null). Dann
+// entscheidet die Taetigkeit: Erz in den letzten 5 Minuten heisst Foerdern.
+// Diese Grenze ist gemessen, nicht geschaetzt: von 110.000 echten Pausen
+// ZWISCHEN zwei Lieferungen liegen 99,5 bis 99,9 Prozent darunter, ein Hulk mit
+// einer Ratte zwischendurch bleibt also MINING.
 //
 // PvP nur, wenn wirklich ein Spieler beteiligt war. Der Parser erkennt das am
 // "[TICKER](Schiff)" im Kampflog, das steht bei NPCs nie, und Drohnen, Wracks
 // und Tuerme sind dort schon aussortiert. Ohne diese Pruefung waere jede
 // Mission ein Gefecht gegen Mitspieler.
+const ERZ_FRISCH = 300;   // Sekunden ohne Erz, ab denen niemand mehr foerdert
+function foerdert(c) {
+  if (c.role) return c.role === 'mining';
+  if (c.mining_ship === true) return true;
+  if (c.mining_ship === false) return false;
+  const seit = c.mine_idle;      // null = in dieser Sitzung nie Erz
+  if (seit != null && seit < ERZ_FRISCH) return true;
+  return (c.m3 || 0) > 0 && seit == null;
+}
 function rolle(c) {
-  if ((c.m3 || 0) > 0) return ['mining', 'MINING'];
+  // Hat der Nutzer die Rolle von Hand gesetzt, gilt sie. Er weiss besser als
+  // jede Heuristik, was der Charakter gerade tut.
+  if (c.role === 'mining') return ['mining', 'MINING'];
+  if (c.role === 'mission') return ['pve', 'MISSION'];
+  if (c.role === 'pvp') return ['pvp', 'PVP'];
+  if (foerdert(c)) return ['mining', 'MINING'];
   if (!((c.dmg_out || 0) > 0 || (c.dmg_in || 0) > 0)) return null;
   if ((c.pvp_out || 0) > 0 || (c.pvp_in || 0) > 0) return ['pvp', 'PVP'];
   if (c.mission && c.mission.name) return ['pve', 'MISSION'];
@@ -8176,7 +8220,9 @@ function iskH(c) {
   // Beim Foerdern bleibt es bei der gemessenen Rate mal Wert je m3. Die
   // reagiert sofort, waehrend eine Rechnung ueber die ganze Sitzungsdauer
   // erst traege nachzieht. Diese Zahl ist erprobt, die wird nicht angefasst.
-  if (m3 && rate) return rate * (isk / m3);
+  // Nur eben wirklich beim Foerdern: wer laengst im Kampfschiff sitzt, bekommt
+  // die ISK/h aus der Sitzungsdauer wie jeder andere auch.
+  if (m3 && rate && foerdert(c)) return rate * (isk / m3);
   // Alle anderen ueber die Sitzungsdauer. Unter fuenf Minuten bleibt es aus:
   // eine einzelne Bounty geteilt durch zwei Minuten ergaebe eine Fantasiezahl,
   // die im Stream schlimmer ist als gar keine.
@@ -8190,11 +8236,11 @@ function iskH(c) {
 // Foerdern zaehlt die Rate, beim Kaempfen der Schaden. Frueher stand dort
 // stur die Foerderrate, sodass eine PvP-Flotte nur Nullen anzeigte.
 function rechts(c) {
-  const rate = c.m3h || 0, isk = gesamtIsk(c);
+  const rate = foerdert(c) ? (c.m3h || 0) : 0, isk = gesamtIsk(c);
   const raus = c.dmg_out || 0, rein = c.dmg_in || 0;
-  // Gleiche Grenze wie bei der Rolle: wer foerdert, bleibt beim Erz, auch
-  // wenn er nebenbei Ratten wegschiesst.
-  const kampf = (c.m3 || 0) <= 0 && (raus > 0 || rein > 0);
+  // Gleiche Grenze wie bei der Rolle, sonst stuende die Foerderrate neben
+  // einem Kampf-Etikett.
+  const kampf = !foerdert(c) && (raus > 0 || rein > 0);
   const unten = [];
   if (rate > 0) {
     unten.push(fmt(rate) + ' m³/h');
@@ -8943,6 +8989,15 @@ def snapshot_live():
         is_cmd = (((esi_char or {}).get("ship_type_id") in DRONE_ONLY_SHIP_IDS)
                   or any(n in _shipname for n in DRONE_ONLY_SHIP_NAMES))
         drone_only = (is_cmd or s.core_on())
+        # Bergbauschiff am Steuer? Entscheidet die Rollenanzeige in Karten und
+        # Overlay. None heisst "Schiff unbekannt" (kein EVE-Login) und ist NICHT
+        # dasselbe wie False: dann zaehlt weiter, was zuletzt passiert ist.
+        _stid = (esi_char or {}).get("ship_type_id")
+        if _stid is None and not _shipname:
+            mining_ship = None
+        else:
+            mining_ship = bool(_stid in MINING_SHIP_IDS
+                               or any(n in _shipname for n in MINING_SHIP_NAMES))
         chars.append({
             "kristalle": sorted(s.kristalle.items(), key=lambda x: -x[1]),
             "kristall_ts": round(s.kristall_ts) if s.kristall_ts else None,
@@ -8953,6 +9008,7 @@ def snapshot_live():
             "portrait": portrait_url(s.name),
             "esi_linked": esi_char is not None,
             "ship": (esi_char or {}).get("ship"),
+            "mining_ship": mining_ship,
             # Command Ship (Orca/Porpoise/Rorqual) am Steuer? Nur dann macht der
             # Flotten-Block Sinn. NUR ueber den echten Schiffstyp/-namen, NICHT ueber
             # drone_only (das ist auch bei Drohnen-Mining/aktivem Kern True und wuerde
@@ -15709,12 +15765,21 @@ function miningCardHtml(c){
 // macht (oder Waffen/Ziele hat) und nicht mint, bekommt die Kampf-Karte; wer mint
 // und nicht kaempft, die Mining-Karte. Nur wenn es eindeutig ist. Sonst entscheidet
 // der oben gewaehlte Modus. So muss man fuer Kampf-Chars keine Rolle mehr setzen.
+// Rolle eines Charakters. Dieselbe Regel wie im OBS-Overlay, damit Karte und
+// Stream nie Verschiedenes behaupten: DAS SCHIFF ENTSCHEIDET, solange Canary es
+// kennt (EVE-Login). Ohne Login zaehlt, ob in den letzten 5 Minuten Erz kam;
+// die Grenze ist an 110.000 echten Liefer-Pausen gemessen (99,5 bis 99,9 %
+// liegen darunter), ein Hulk mit einer Ratte zwischendurch bleibt also Miner.
 function autoRole(c){
  if(c.role)return c.role;
+ if(c.mining_ship===true)return 'mining';
+ if(c.mining_ship===false)return 'pvp';
+ const frisch=c.mine_idle!=null&&c.mine_idle<300;
+ if(frisch)return 'mining';
  const mining=(c.m3||0)>0||(c.ores&&c.ores.length>0);
  const combat=(c.dmg_out||0)>0||(c.weapons&&c.weapons.length>0)||(c.top_targets&&c.top_targets.length>0);
- if(combat&&!mining)return 'pvp';
- if(mining&&!combat)return 'mining';
+ if(combat)return 'pvp';
+ if(mining)return 'mining';
  return liveMode==='combat'?'pvp':'mining';
 }
 // Karte je nach Rolle waehlen: Mining-Chars -> Mining-Karte, alle anderen

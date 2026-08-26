@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.51.0",
+  "d": "2026-08-24",
+  "de": [
+   "DIE ROLLE HAENGT JETZT AM SCHIFF, aufgefallen in Michael Starlights Stream: er sass in einer Megathron, hatte 3 Abschuesse und 1,83 Mrd zerstoert, und das Overlay schrieb trotzdem MINING samt Foerderrate daneben. Grund war die alte Regel: kam in einer Sitzung IRGENDWANN einmal Erz, galt der Charakter bis zum Andocken als Miner, egal was danach kam. Neu entscheidet der Rumpf, den Canary ueber den EVE-Login ohnehin kennt: die zwoelf Bergbauschiffe (Venture, Prospect, Endurance, Procurer, Retriever, Covetor, Skiff, Mackinaw, Hulk, Porpoise, Orca, Rorqual) heissen Mining, jedes andere Schiff nicht. Ohne EVE-Login entscheidet weiterhin die Taetigkeit, aber jetzt mit Gedaechtnis fuer die Zeit: Erz in den letzten fuenf Minuten heisst foerdern. Diese Grenze ist an 110.000 echten Liefer-Pausen aus gespendeten Logs gemessen, 99,5 bis 99,9 Prozent liegen darunter. Ein Hulk, der zwischendurch eine Ratte wegschiesst, bleibt also MINING, aber der Wechsel ins Kampfschiff kommt jetzt an. Dasselbe gilt fuer die Karten im Dashboard, damit Stream und Fenster nie Verschiedenes behaupten, und die von Hand gesetzte Rolle schlaegt ab sofort auch im Overlay jede Automatik.",
+   "Die Foerderrate und die ISK/h aus Erz stehen nur noch da, wo wirklich gefoerdert wird. Vorher blieb die m³/h eines frueheren Trips neben den Abschuessen stehen."
+  ],
+  "en": [
+   "THE ROLE NOW FOLLOWS THE SHIP, spotted in Michael Starlight's stream: he was flying a Megathron with 3 kills and 1.83 bn destroyed, and the overlay still said MINING with a mining rate next to it. The old rule was to blame: if ore arrived at ANY point in a session, the character counted as a miner until docking, no matter what came after. Now the hull decides, which Canary knows anyway through the EVE login: the twelve mining ships (Venture, Prospect, Endurance, Procurer, Retriever, Covetor, Skiff, Mackinaw, Hulk, Porpoise, Orca, Rorqual) mean mining, any other ship does not. Without an EVE login the activity still decides, but now with a sense of time: ore within the last five minutes means mining. That limit is measured against 110,000 real gaps between deliveries from donated logs, 99.5 to 99.9 percent are below it. So a Hulk shooting the odd rat stays MINING, while switching into a combat ship now registers. The same applies to the dashboard cards, so stream and window never claim different things, and a manually set role now overrides the automatic detection in the overlay too.",
+   "The mining rate and the ore ISK/h now only show where mining is actually happening. Before, the m³/h of an earlier trip stayed next to the kill count."
+  ]
+ },
+ {
   "v": "2.50.1",
   "d": "2026-08-24",
   "de": [
