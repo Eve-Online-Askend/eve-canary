@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.51.1",
+  "d": "2026-08-24",
+  "de": [
+   "DAS MINI-OVERLAY ZEIGT JETZT DIE, DIE WIRKLICH FLIEGEN, aufgefallen in BamKis Mining-Mittwoch: drei Charaktere, die nur kurz zum Abernten der Planeten eingeloggt waren, standen mit 0 ISK und 0 m³/h ganz oben und schoben einen echten Miner aus dem Fenster. Grund war eine fehlende Zeile: das OBS-Overlay filtert seit jeher auf aktive Charaktere, das kleine schwebende Overlay nahm die Liste dagegen ungefiltert, und die ist alphabetisch. Wer mit A anfaengt, war vorn, egal ob er etwas tat. Jetzt gilt fuer beide Bauarten dieselbe Auswahl: ausgeloggte Charaktere fallen raus, und einsortiert wird nach dem, was zaehlt. Ganz oben, wer eine Warnung hat (unter Beschuss, Frachtraum voll, Laser aus), dann wer gerade foerdert oder kaempft, dann wer heute schon etwas geholt hat, und zuletzt die nur eingeloggten. Bei gleichem Rang bleibt es alphabetisch, damit nichts im Sekundentakt herumspringt.",
+   "Die Flottensumme unter der Liste zaehlt nur noch die Charaktere, die auch gefoerdert haben. Vorher stand dort die Gesamtzahl aller Charaktere, also \"7 Chars\" neben der Foerdermenge von vieren."
+  ],
+  "en": [
+   "THE MINI OVERLAY NOW SHOWS WHO IS ACTUALLY FLYING, spotted during BamKi's mining Wednesday: three characters that were only briefly logged in to harvest their planets sat at the top with 0 ISK and 0 m³/h and pushed a real miner out of the window. A missing line was to blame: the OBS overlay has always filtered for active characters, while the small floating overlay took the list unfiltered, and that list is alphabetical. Whoever started with an A came first, whether they were doing anything or not. Both variants now use the same selection: logged-off characters drop out, and the order follows what matters. At the top whoever has a warning (under fire, cargo full, laser off), then whoever is currently mining or fighting, then whoever has earned something today, and last the merely logged in. Within the same rank it stays alphabetical so nothing jumps around every second.",
+   "The fleet total below the list now counts only the characters that actually mined. Before it showed the total number of characters, so \"7 chars\" next to the output of four."
+  ]
+ },
+ {
   "v": "2.51.0",
   "d": "2026-08-24",
   "de": [

@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.51.0"
+VERSION = "2.51.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -16273,7 +16273,7 @@ function drawOverlayCanvas(d){
  x.strokeStyle='#2a313d';x.lineWidth=1;x.beginPath();x.moveTo(8,32);x.lineTo(W-8,32);x.stroke();
  if(!d){x.textAlign='left';x.fillStyle='#8a94a6';x.font='13px sans-serif';x.fillText('warte auf Daten ...',12,58);return;}
  const now=Date.now()/1000; let y=50;
- (d.chars||[]).slice(0,6).forEach(c=>{
+ ovChars(d,6).forEach(c=>{
   const r=ovStatus(c,d.state),cls=r[0],txt=r[1];
   x.beginPath();x.arc(14,y+1,5,0,7);x.fillStyle=ovColor(cls);x.fill();
   x.textAlign='left';x.fillStyle='#eaf0f7';x.font='bold 14px sans-serif';
@@ -16323,6 +16323,36 @@ function dangerLine(c){
  return `<div class="sub dngline"><span class="dngdot ${risk}"></span>Sicherheit ${sec}`
   +` · Verluste letzte Stunde: ${d.ship_kills} Schiffe${pods} · Verkehr ${fmt(d.jumps)} Sprünge${badge}</div>`;
 }
+// Wen zeigt das Mini-Overlay, und in welcher Reihenfolge?
+//
+// BamKis Stream vom 24.08.2026 hat das Loch gezeigt: das Overlay nahm einfach
+// die Charakter-Liste, wie sie kam, also ALPHABETISCH und ohne Filter. Drei
+// Charaktere, die nur kurz fuers Abernten der Planeten eingeloggt waren,
+// standen deshalb ganz oben (0 ISK, 0 m³/h) und schoben den vierten echten
+// Miner aus dem Fenster. Das OBS-Overlay filtert seit jeher auf aktive
+// Charaktere, das Mini-Overlay nicht.
+//
+// Jetzt gilt: erst raus, wer gar nicht online ist, dann nach vorne, wer etwas
+// tut oder Hilfe braucht. "Online" allein reicht als Kriterium nicht: wer im
+// Wurmloch geparkt ist, ist online, arbeitet aber nicht.
+function ovRang(c,st){
+ const [cls]=ovStatus(c,st);
+ if(cls==='bad')return 0;                                   // braucht sofort Blick
+ if(cls==='warn')return 1;
+ const foerdertJetzt=(c.mine_idle!=null&&c.mine_idle<300)||(c.m3h||0)>0;
+ const kaempftJetzt=(c.dps_out||0)>0||(c.dps_in||0)>0;
+ if(foerdertJetzt||kaempftJetzt)return 2;                   // gerade dabei
+ if((c.m3||0)>0||(c.total_isk||0)>0)return 3;               // heute schon etwas geholt
+ return 4;                                                  // eingeloggt, sonst nichts
+}
+function ovChars(d,limit){
+ const st=d.state||{};
+ const liste=(d.chars||[]).filter(c=>c.active);
+ // Innerhalb desselben Rangs bleibt es alphabetisch, damit die Reihenfolge
+ // nicht bei jedem Takt springt.
+ liste.sort((a,b)=>ovRang(a,st)-ovRang(b,st)||a.name.localeCompare(b.name));
+ return limit?liste.slice(0,limit):liste;
+}
 function ovStatus(c,st){
  if(c.dps_in>0)return['bad','UNTER BESCHUSS'];
  if(c.cargo_full)return['bad','FRACHTRAUM VOLL'];
@@ -16361,7 +16391,7 @@ async function overlayTick(){
   doc.body.classList.toggle('alarm',hot);
   doc.getElementById('ov').innerHTML=
    `<div class="hd"><span>🐤 <b>CANARY</b></span><span>${new Date().toLocaleTimeString()}</span></div>`+
-   d.chars.map(c=>{const [cls,txt]=ovStatus(c,d.state);
+   ovChars(d).map(c=>{const [cls,txt]=ovStatus(c,d.state);
     return `<div class="row"><span class="dot ${cls}"></span>
      <span><div class="nm">${esc(c.name)} <span class="sys">· ${esc(c.system)}</span></div>
      ${c.ship?`<div class="shp">${esc(c.ship)}</div>`:''}
@@ -16371,10 +16401,15 @@ async function overlayTick(){
    // was hat die Truppe zusammen geholt. Einzelwerte stehen darueber, hier
    // zaehlt nur das Ergebnis. Nur zeigen, wenn wirklich gefoerdert wurde,
    // sonst steht dort eine leere Null herum.
-   (()=>{const m3=d.chars.reduce((s,c)=>s+(c.m3||0),0);
-     const isk=d.chars.reduce((s,c)=>s+(c.ore_isk||0),0);
+   (()=>{const gezeigt=ovChars(d);
+     const m3=gezeigt.reduce((s,c)=>s+(c.m3||0),0);
+     const isk=gezeigt.reduce((s,c)=>s+(c.ore_isk||0),0);
      if(!m3)return '';
-     return `<div class="sum"><span>${d.chars.length} ${d.chars.length===1?'Char':'Chars'}</span>
+     // Gezaehlt werden die Charaktere, die auch wirklich gefoerdert haben.
+     // Vorher stand hier die Gesamtzahl aller Charaktere, also auch der
+     // geparkten: "7 Chars" neben der Foerdermenge von vieren.
+     const n=gezeigt.filter(c=>(c.m3||0)>0).length;
+     return `<div class="sum"><span>${n} ${n===1?'Char':'Chars'}</span>
       <span class="sv">${fmtC(m3)} m³<small>${fmtM(isk)} ISK</small></span></div>`;})()+
    alerts.map(a=>`<div class="al ${a.kind}">[${new Date(a.ts*1000).toLocaleTimeString()}] ${esc(a.text)}</div>`).join('');
   // Das Overlay ist ein EIGENES Dokument, tr(document.body) erreicht es nicht.
