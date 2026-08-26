@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.51.1"
+VERSION = "2.51.2"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -16245,12 +16245,12 @@ async function toggleOverlay(){
  const vid=document.createElement('video');
  if(!('requestPictureInPicture' in vid)||!document.pictureInPictureEnabled){
   alert('Dein Browser unterstützt kein schwebendes Overlay (kein Picture-in-Picture).');return;}
- ffCanvas=document.createElement('canvas');ffCanvas.width=340;ffCanvas.height=320;
+ ffCanvas=document.createElement('canvas');ffCanvas.width=340;ffCanvas.height=352;
  ffCtx=ffCanvas.getContext('2d');
  drawOverlayCanvas(null);                        // erste Zeichnung, bevor der Stream startet
  ffStream=ffCanvas.captureStream(4);
  vid.srcObject=ffStream;vid.muted=true;vid.playsInline=true;
- vid.style.cssText='position:fixed;left:-10000px;top:0;width:340px;height:320px;opacity:0';
+ vid.style.cssText='position:fixed;left:-10000px;top:0;width:340px;height:352px;opacity:0';
  document.body.appendChild(vid);ffVid=vid;
  vid.addEventListener('leavepictureinpicture',ffCleanup);
  try{await vid.play();await vid.requestPictureInPicture();}
@@ -16283,6 +16283,27 @@ function drawOverlayCanvas(d){
   x.fillStyle='#8a94a6';x.font='11px sans-serif';x.fillText(fmt(c.m3h)+' m³/h',W-10,y+21);
   y+=37;
  });
+ // Flottensumme (BamKi, 24.08.2026): im Stream ist das die Zahl, nach der im
+ // Chat gefragt wird. Das HTML-Overlay hatte sie laengst, dem gezeichneten
+ // fehlte sie. Nur zeigen, wenn wirklich gefoerdert wurde, sonst stuende dort
+ // eine leere Null. Gezaehlt werden die Charaktere mit Erz, nicht alle.
+ const gezeigt=ovChars(d,6);
+ const sumM3=gezeigt.reduce((a,c)=>a+(c.m3||0),0);
+ if(sumM3>0){
+  const sumIsk=gezeigt.reduce((a,c)=>a+(c.ore_isk||0),0);
+  const n=gezeigt.filter(c=>(c.m3||0)>0).length;
+  y+=4;
+  x.strokeStyle='#1e2636';x.lineWidth=1;
+  x.beginPath();x.moveTo(10,y);x.lineTo(W-10,y);x.stroke();
+  y+=15;
+  x.textAlign='left';x.fillStyle='#5d6b80';x.font='9px sans-serif';
+  x.fillText((n+(n===1?' CHAR':' CHARS')).toUpperCase(),10,y);
+  x.textAlign='right';x.fillStyle='#35c8e8';x.font='bold 13px sans-serif';
+  x.fillText(fmtC(sumM3)+' m³',W-10,y);
+  x.fillStyle='#e8c645';x.font='600 9px sans-serif';
+  x.fillText(fmtM(sumIsk)+' ISK',W-10,y+11);
+  y+=22;
+ }
  const alerts=(d.state.alerts||[]).filter(a=>now-a.ts<180).slice(-3).reverse();
  x.textAlign='left';x.font='11px sans-serif';
  alerts.forEach(a=>{

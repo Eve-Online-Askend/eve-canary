@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.51.2",
+  "d": "2026-08-24",
+  "de": [
+   "DIE FLOTTENSUMME STEHT JETZT AUCH IM GEZEICHNETEN MINI-OVERLAY (BamKi). Canary hat zwei Bauarten des schwebenden Fensters: Chrome und Edge bekommen ein richtiges HTML-Fenster, Firefox und Safari ein gezeichnetes Bild. Nur die erste zeigte unten die Gesamtmenge der Flotte, dabei ist genau das die Zahl, nach der im Stream-Chat gefragt wird. Jetzt steht sie in beiden: wie viele Charaktere gefoerdert haben, wie viel m³ zusammengekommen sind und was das an ISK wert ist. Das Bild ist dafuer um eine Zeilenhoehe gewachsen, damit der Alarm-Ticker darunter nicht herausfaellt."
+  ],
+  "en": [
+   "THE FLEET TOTAL NOW ALSO SHOWS IN THE DRAWN MINI OVERLAY (BamKi). Canary has two builds of the floating window: Chrome and Edge get a real HTML window, Firefox and Safari a drawn image. Only the first showed the fleet total at the bottom, even though that is exactly the number people ask about in stream chat. It is now in both: how many characters mined, how many m³ they gathered together and what that is worth in ISK. The image grew by one row height so the alert ticker below it does not fall out."
+  ]
+ },
+ {
   "v": "2.51.1",
   "d": "2026-08-24",
   "de": [
