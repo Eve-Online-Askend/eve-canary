@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.52.1"
+VERSION = "2.52.2"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1499,11 +1499,27 @@ def parse_line(raw):
         # entdeckt). Englischer Client-Text; andere Sprachen werden wie bei
         # den vier bekannten Sprachsignalen ueber gesammelte Beispielzeilen
         # nachgeruestet, nicht geraten.
-        mk = re.search(r"deactivates due to the destruction of the (.+?) "
-                       r"it was fitted with", text)
+        mk = re.search(r"^(.*?)\s*deactivates due to the destruction of the "
+                       r"(.+?) it was fitted with", text)
         if mk:
-            return {**base, "kind": "kristall",
-                    "key": mk.group(1).strip(), "value": 1}
+            werkzeug, verbraucht = mk.group(1).strip(), mk.group(2).strip()
+            # DIESELBE Zeile schreibt auch ein Laser, dem die Munition
+            # ausgeht: "Mega Pulse Laser II deactivates due to the destruction
+            # of the Scorch L it was fitted with." Amarr-Kristalle sind Munition
+            # und keine Mining-Kristalle, standen aber in der Tabelle
+            # (Vile Gangster, 26.08.2026). An drei gespendeten Bestaenden
+            # gemessen: 1.004 solcher Zeilen, davon 919 echte Mining-Kristalle
+            # (ALLE mit "Mining Crystal" im Namen) und 85 Laser-Munition
+            # (Scorch, Conflagration, Multifrequency, Aurora). Zwei Merkmale
+            # muessen es sein: der Name allein trennt die englischen Faelle
+            # sauber, das Werkzeug faengt zusaetzlich den Tag ab, an dem eine
+            # andere Client-Sprache den Kristallnamen uebersetzt.
+            if ("Mining Crystal" in verbraucht
+                    or any(werkzeug.startswith(t) for t in MINING_TOOLS)):
+                return {**base, "kind": "kristall",
+                        "key": verbraucht, "value": 1}
+            return {**base, "kind": "noise", "key": "munition_leer",
+                    "raw": verbraucht, "value": 1}
         for tool in MINING_TOOLS:
             # Modulnamen sind nie lokalisiert: "Strip Miner I* schaltet ab, …"
             if text.startswith(tool):
@@ -2149,6 +2165,31 @@ def mission_verbinden(mid):
             "min": round((neu["end_ts"] - neu["start_ts"]) / 60),
             "loot_isk": round(neu["loot_isk"] or 0),
             "kills": neu["kills"], "bounty": round(neu["bounty"] or 0)}
+
+
+def munition_aus_kristallen():
+    """Einmalig: Laser-Munition aus der Kristall-Tabelle werfen.
+
+    Bis v2.52.1 zaehlte JEDE Zeile "... deactivates due to the destruction of
+    the X it was fitted with" als zersprungener Mining-Kristall. Dieselbe Zeile
+    schreibt aber auch ein Laser, dem die Munition ausgeht, weshalb Scorch,
+    Conflagration und Multifrequency in der Tabelle standen (Vile Gangster,
+    26.08.2026). An drei gespendeten Bestaenden gemessen waren 85 von 1.004
+    solchen Zeilen Munition. Der Parser trennt das jetzt, die schon
+    gespeicherten Zeilen muessen aber weg: die Tabelle wird beim Neu-Einlesen
+    NICHT geleert (PRIMARY KEY dedupliziert nur), sie blieben sonst ewig
+    stehen. Nur englische Namen sind betroffen, andere Sprachen kamen nie in
+    die Tabelle."""
+    if meta_get("kristall_munition_weg") == "1":
+        return
+    with DB_LOCK:
+        weg = DB.execute("DELETE FROM kristalle "
+                         "WHERE typ NOT LIKE '%Mining Crystal%'").rowcount
+        DB.commit()
+    meta_set("kristall_munition_weg", "1")
+    if weg:
+        print(f"Aufgeraeumt: {weg} Eintraege waren Laser-Munition, "
+              "kein Mining-Kristall.")
 
 
 def abyss_bloecke_aufraeumen():
@@ -19592,6 +19633,7 @@ if __name__ == "__main__":
             pass
     rebuild_if_needed()   # nach Parser-Update einmal alle Logs frisch neu einlesen
     abyss_bloecke_aufraeumen()   # Altlasten: Bloecke aus mehreren Durchgaengen
+    munition_aus_kristallen()    # Altlasten: Laser-Munition in der Kristall-Tabelle
     for _name, _t in (("Ingest", ingest), ("ChatWatch", chatwatch),
                       ("Prices", prices), ("Esi", esi), ("ThreatIntel", threat),
                       ("ClipWatch", clipwatch), ("ServerStatus", serverstatus),

@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.52.2",
+  "d": "2026-08-26",
+  "de": [
+   "AMARR-MUNITION STAND IN DER KRISTALL-TABELLE, gemeldet von Vile Gangster: unter den zerbrochenen Mining-Kristallen tauchten Scorch, Conflagration und Imperial Navy Multifrequency auf. Das ist Laser-Munition und kein Bergbau-Kristall. Der Grund liegt im Spiel selbst: EVE schreibt fuer beides die GLEICHE Zeile, egal ob einem Strip Miner der Kristall zerspringt oder einem Mega Pulse Laser die Munition ausgeht. An den gespendeten Logbestaenden von Nirahse, blacy und Ramone nachgezaehlt: 1.004 solcher Zeilen, davon 919 echte Mining-Kristalle und 85 Munition. Canary trennt das jetzt an zwei Merkmalen, dem Namen des verbrauchten Teils und dem Werkzeug davor, damit es auch dann noch stimmt, wenn eine andere Client-Sprache die Namen uebersetzt. Schon gespeicherte Munitions-Eintraege raeumt Canary beim naechsten Start einmalig aus der Tabelle, denn die wird beim Neu-Einlesen absichtlich nicht geleert."
+  ],
+  "en": [
+   "AMARR AMMUNITION WAS LISTED AS MINING CRYSTALS, reported by Vile Gangster: Scorch, Conflagration and Imperial Navy Multifrequency showed up among the shattered mining crystals. That is laser ammunition, not mining crystals. The reason is in the game itself: EVE writes the SAME line for both, whether a strip miner shatters its crystal or a Mega Pulse Laser runs out of ammunition. Counted against the donated log archives of Nirahse, blacy and Ramone: 1,004 such lines, of which 919 are real mining crystals and 85 are ammunition. Canary now separates them by two marks, the name of the consumed item and the tool in front of it, so it still holds when another client language translates the names. Ammunition entries already stored are cleared from the table once at the next start, because that table is deliberately not wiped on a re-read."
+  ]
+ },
+ {
   "v": "2.52.1",
   "d": "2026-08-24",
   "de": [
