@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.53.3",
+  "d": "2026-08-28",
+  "de": [
+   "SPALTENUEBERSCHRIFTEN STEHEN JETZT UEBER IHRER SPALTE, gemeldet von Eron Solette: im Industrie-Tab waren die Ueberschriften zentriert, die Inhalte darunter linksbuendig. Der Browser stellt Kopfzellen von sich aus mittig, und Canarys Regel dagegen galt nur fuer Tabellen mit einem eigenen Kopfbereich. Genau den hat KEINE der zehn Karten-Tabellen, die Ueberschriften standen also ueberall verrutscht, nur ist es in schmalen Tabellen kaum aufgefallen und in der breiten Industrie-Tabelle sofort. Jetzt sitzen Kopf und Daten auf derselben Kante, in allen Tabellen, und Zahlenspalten bleiben rechts."
+  ],
+  "en": [
+   "COLUMN HEADINGS NOW SIT OVER THEIR COLUMN, reported by Eron Solette: in the industry tab the headings were centred while the content below was left aligned. Browsers centre header cells by themselves, and Canary's rule against that only applied to tables with a dedicated header section. NONE of the ten card tables has one, so the headings were off everywhere, it just barely showed in narrow tables and jumped out in the wide industry table. Heading and data now share the same edge in every table, and numeric columns stay right aligned."
+  ]
+ },
+ {
   "v": "2.53.2",
   "d": "2026-08-28",
   "de": [

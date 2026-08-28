@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.53.2"
+VERSION = "2.53.3"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -13462,6 +13462,14 @@ td,th{padding:3px 10px;border-top:1px solid var(--line)}
 td:first-child,th:first-child{padding-left:0}
 td:last-child,th:last-child{padding-right:0}
 th{border-top:none}
+/* Kopfzellen linksbuendig wie die Daten darunter. Der Browser zentriert th von
+   sich aus, und die Regel dagegen stand nur unter "thead th". Keine der zehn
+   Karten-Tabellen benutzt aber ein <thead>, ihre Ueberschriften standen also
+   alle zentriert ueber linksbuendigen Spalten. In schmalen Tabellen faellt das
+   kaum auf, in der breiten Industrie-Tabelle sehr wohl (Eron Solette,
+   28.08.2026). Zahlenspalten bleiben rechts. */
+th{text-align:left}
+th.r{text-align:right}
 td.r{text-align:right;color:var(--dim);white-space:nowrap}
 /* Spaltenkoepfe: leise, aber da. Ohne sie muss man aus den Zahlen raten,
    welche Spalte Menge, welche Volumen und welche Wert ist. */
