@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.53.0",
+  "d": "2026-08-28",
+  "de": [
+   "NEUER TAB: INDUSTRIE, gewuenscht von Eron Solette. Der gleiche Gedanke wie beim Planeten-Tab, nur fuer die Oefen und Labore: was laeuft gerade, und wann ist es fertig. Fertigung, Materialforschung, Zeitforschung, Kopieren, Erfindung und Reaktionen, sortiert danach, was zuerst faellig wird, mit Restzeit je Auftrag und der genauen Uhrzeit im Mouseover. Oben stehen die Zahlen: wie viele Auftraege laufen, wie viele fertig auf Abholung warten, wie viele pausiert sind und was an Anlagegebuehren zusammengekommen ist.",
+   "ZWEI MELDUNGEN, jede genau einmal. Ist ein Auftrag durch, sagt Canary Bescheid. Und wenn einer PAUSIERT, meldet es das auch: das heisst in EVE fast immer, dass die Struktur offline gegangen ist und die Produktion steht. Im Spiel merkt man das sonst nur zufaellig. ESI liefert die Auftraege alle fuenf Minuten neu, spaeter als das kann keine der beiden Meldungen sein.",
+   "WICHTIG: dafuer braucht Canary eine neue Nur-Lese-Berechtigung, die es vorher nicht gab. Verbinde deine Charaktere in den Optionen einmal neu, sonst bleibt die Liste leer. Der Tab sagt das auch selbst, statt einfach nichts anzuzeigen. Am Charakter erscheint wie gewohnt das rote Zeichen, solange eine Berechtigung fehlt. Corp-Auftraege sind bewusst nicht dabei, die haengen an einer eigenen Berechtigung samt Corp-Rolle."
+  ],
+  "en": [
+   "NEW TAB: INDUSTRY, requested by Eron Solette. The same idea as the planets tab, only for your furnaces and labs: what is running, and when will it be done. Manufacturing, material and time research, copying, invention and reactions, sorted by what finishes first, with the remaining time per job and the exact clock time in the mouseover. The figures sit on top: how many jobs are running, how many are finished and waiting to be collected, how many are paused, and what the installation fees add up to.",
+   "TWO ALERTS, each exactly once. When a job is done, Canary says so. And when one is PAUSED it says that too: in EVE that almost always means the structure went offline and production has stopped. In game you usually only notice by chance. ESI refreshes the jobs every five minutes, so neither alert can be later than that.",
+   "IMPORTANT: this needs a new read-only permission that did not exist before. Reconnect your characters in the options once, otherwise the list stays empty. The tab says so itself instead of just showing nothing. The familiar red mark appears on a character while a permission is missing. Corporation jobs are deliberately not included, they sit behind their own permission and a corp role."
+  ]
+ },
+ {
   "v": "2.52.3",
   "d": "2026-08-26",
   "de": [

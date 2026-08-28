@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.52.3"
+VERSION = "2.53.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -5473,7 +5473,8 @@ ESI_SCOPES = ("esi-assets.read_assets.v1 esi-location.read_ship_type.v1 "
               "esi-wallet.read_character_wallet.v1 esi-location.read_online.v1 "
               "esi-ui.open_window.v1 esi-skills.read_skills.v1 "
               "esi-industry.read_character_mining.v1 esi-planets.manage_planets.v1 "
-              "esi-markets.read_character_orders.v1")
+              "esi-markets.read_character_orders.v1 "
+              "esi-industry.read_character_jobs.v1")
 # Wie lange ein begonnener SSO-Login einloesbar bleibt. Danach ist der state
 # wertlos und der Eintrag wird beim naechsten Login-Versuch weggeraeumt.
 SSO_PENDING_TTL = 600
@@ -5497,6 +5498,11 @@ HW_TYPE_ID = 16272  # Heavy Water
 # Wallet-Journal-Typen fuer die Missions-Statistik
 JOURNAL_TYPES = {"agent_mission_reward", "agent_mission_time_bonus_reward",
                  "bounty_prizes", "bounty_prize"}
+# Industrie-Taetigkeiten. IDs am SDE-Dump geprueft (industryactivities.json),
+# mehr als diese sechs gibt es im Spiel nicht.
+JOB_ARTEN = {1: "Fertigung", 3: "Zeitforschung", 4: "Materialforschung",
+             5: "Kopieren", 8: "Erfindung", 9: "Reaktion"}
+
 CORE_TYPES = {62590: "t1", 62591: "t2",   # Medium Industrial Core I/II (Porpoise)
               58945: "t1", 58950: "t2"}   # Large Industrial Core I/II (Orca)
 # Wo ESI Ware lagert statt Module einzubauen. Ein Industriekern im Frachtraum
@@ -5628,6 +5634,7 @@ class Esi(threading.Thread):
         self.group_miss = {}  # type_id -> ts des letzten Fehlschlags (Negativ-Cache)
         self.tid_cache = {}   # Produktname -> type_id (fuer Icon/Tier der Fabrik-Produkte)
         self.pi_alerted = {}  # (char, planet_id) -> Ablauf-ts, fuer den PI-Ablauf-Alarm ohne Wiederholung
+        self.job_alerted = {}  # (char, job_id, status) -> gemeldet, damit jede Meldung genau einmal kommt
         self.party_names = {} # id -> Name (Agenten aus dem Wallet-Journal)
         # Serialisiert den Token-Refresh: poll-Thread und HTTP-Thread (ui_open)
         # duerfen nicht gleichzeitig dasselbe Refresh-Token einloesen (CCP
@@ -6032,6 +6039,90 @@ class Esi(threading.Thread):
         if not tid:
             return None
         return PI_GROUP_TIER.get(self.type_group(tid), "P0")
+
+    def sync_industry(self, name, c):
+        """Industrie-Auftraege (Scope esi-industry.read_character_jobs).
+
+        Liefert je Auftrag den exakten Fertigstellungszeitpunkt, ESI haelt die
+        Antwort nur 300 Sekunden vor. Das ist zwoelfmal frischer als die Assets
+        und genau deshalb taugt es fuer Laufzeiten (Wunsch von Eron Solette,
+        28.08.2026). Fertige und abgeholte Auftraege interessieren nicht, die
+        Liste soll zeigen, was noch laeuft."""
+        jobs, hdr = self._get(c, f"/characters/{c['char_id']}/industry/jobs/")
+        try:
+            exp = email.utils.parsedate_to_datetime(hdr["Expires"]).timestamp()
+        except Exception:
+            exp = time.time() + 300
+        try:
+            asof = email.utils.parsedate_to_datetime(hdr["Last-Modified"]).timestamp()
+        except Exception:
+            asof = time.time()
+
+        def _ts(x):
+            if not x:
+                return None
+            try:
+                return datetime.fromisoformat(x.replace("Z", "+00:00")).timestamp()
+            except Exception:
+                return None
+
+        raus = []
+        for j in jobs or []:
+            if (j.get("status") or "") in ("delivered", "cancelled", "reverted"):
+                continue
+            raus.append({
+                "id": j.get("job_id"),
+                "art": JOB_ARTEN.get(j.get("activity_id"), "Sonstiges"),
+                "status": j.get("status") or "active",
+                "produkt": j.get("product_type_id") or j.get("blueprint_type_id"),
+                "runs": j.get("runs") or 0,
+                "ende": _ts(j.get("end_date")),
+                "start": _ts(j.get("start_date")),
+                "pause": _ts(j.get("pause_date")),
+                "kosten": round(j.get("cost") or 0.0),
+            })
+        raus.sort(key=lambda x: (x["ende"] is None, x["ende"] or 0))
+        # Produktnamen in EINEM Abruf, sonst haengt die Ansicht beim ersten Mal.
+        self.type_names_bulk([j["produkt"] for j in raus if j["produkt"]])
+        for j in raus:
+            j["name"] = (self.type_name(j["produkt"]) or str(j["produkt"] or "?")
+                         ) if j["produkt"] else "?"
+        c["industry"] = {"jobs": raus, "as_of": asof, "next": exp}
+        c["industry_next"] = exp + 10
+        try:
+            self._job_alerts(name, raus)
+        except Exception as e:
+            log_error("CN-ESI-01", "_job_alerts", e)
+
+    def _job_alerts(self, name, jobs):
+        """Zwei Meldungen je Auftrag, jede genau einmal.
+
+        FERTIG: ESI setzt den Status auf 'ready', sobald der Auftrag durch ist.
+        Bei 300 Sekunden Cache ist die Meldung hoechstens fuenf Minuten spaet.
+        PAUSIERT: 'paused' heisst, die Struktur ist offline gegangen und der
+        Auftrag steht. Im Spiel merkt man das sonst nur zufaellig, deshalb ist
+        das die eigentlich wertvolle der beiden Meldungen."""
+        for j in jobs:
+            kennung = (name, j["id"], j["status"])
+            if kennung in self.job_alerted:
+                continue
+            if j["status"] == "ready":
+                self.job_alerted[kennung] = True
+                self.job_alerted.pop((name, j["id"], "active"), None)
+                stk = f" ×{j['runs']}" if j["runs"] > 1 else ""
+                alerts.push("job", name,
+                            f"🏭 {name}: {j['art']} fertig · {j['name']}{stk}")
+            elif j["status"] == "paused":
+                self.job_alerted[kennung] = True
+                alerts.push("job", name,
+                            f"🏭 {name}: {j['art']} PAUSIERT · {j['name']}"
+                            " · Struktur offline?")
+        # Aufraeumen: Auftraege, die nicht mehr in der Liste stehen, sind
+        # abgeholt. Ohne das waechst die Merkliste ueber Wochen.
+        offen = {(name, j["id"], j["status"]) for j in jobs}
+        for k in [k for k in self.job_alerted
+                  if k[0] == name and k not in offen]:
+            self.job_alerted.pop(k, None)
 
     def sync_planets(self, name, c):
         """Planetary Industry (Scope esi-planets): Kolonien + je Kolonie das Layout.
@@ -6538,6 +6629,19 @@ class Esi(threading.Thread):
                     c.pop("esi_mining", None)
                     c.pop("mined_30d", None)
                     c["mining_next"] = time.time() + 1800
+                # Industrie-Auftraege (neuer Scope seit v2.53.0). Wie bei den
+                # Planeten: 403 heisst, der Char wurde noch nicht neu verbunden.
+                try:
+                    if time.time() >= c.get("industry_next", 0):
+                        self.sync_industry(name, c)
+                    c["industry_scope"] = True
+                except urllib.error.HTTPError as e:
+                    if e.code == 403:
+                        c["industry_scope"] = False
+                        c.pop("industry", None)
+                        c["industry_next"] = time.time() + 1800
+                except Exception:
+                    pass
                 # Planetary Industry (neuer Scope). Fehlt er (Char noch nicht neu
                 # verbunden), kommt 403 -> als "neu verbinden" markieren, nicht
                 # dauernd nachfragen. Andere Fehler lassen die alten Daten stehen.
@@ -11492,6 +11596,46 @@ def query_vault():
             "next": soonest, "chars": chars}
 
 
+def query_industrie():
+    """Industrie-Auftraege aller verbundenen Charaktere, nach Fertigstellung
+    sortiert. Liefert zusaetzlich die Charaktere, die den Scope noch nicht
+    erteilt haben: die Ansicht sagt dann, was zu tun ist, statt leer zu bleiben
+    (Wunsch von Eron Solette, 28.08.2026)."""
+    now = time.time()
+    jobs, reconnect, chars = [], [], []
+    stale = None
+    for nm, c in ((CONFIG.get("esi") or {}).get("chars", {})).items():
+        if c.get("industry_scope") is False:
+            reconnect.append(nm)
+            continue
+        ind = c.get("industry")
+        if not ind:
+            continue
+        stale = ind.get("as_of") if stale is None else min(stale, ind.get("as_of") or stale)
+        eigene = ind.get("jobs") or []
+        if eigene:
+            chars.append({"name": nm, "n": len(eigene),
+                          "fertig": sum(1 for j in eigene if j["status"] == "ready"),
+                          "pausiert": sum(1 for j in eigene if j["status"] == "paused")})
+        for j in eigene:
+            jobs.append({**j, "char": nm})
+    jobs.sort(key=lambda j: (j["ende"] is None, j["ende"] or 0))
+    fertig = [j for j in jobs if j["status"] == "ready"]
+    pausiert = [j for j in jobs if j["status"] == "paused"]
+    laufend = [j for j in jobs if j["status"] not in ("ready", "paused")]
+    naechster = next((j["ende"] for j in laufend if j["ende"]), None)
+    return {"jobs": jobs[:200], "chars": sorted(chars, key=lambda x: -x["n"]),
+            "reconnect": sorted(reconnect),
+            "n": len(jobs), "n_fertig": len(fertig), "n_pausiert": len(pausiert),
+            "n_laufend": len(laufend),
+            "naechster": int(naechster) if naechster else None,
+            "kosten": round(sum(j["kosten"] for j in jobs)),
+            "as_of": int(stale) if stale else None,
+            "arten": sorted(({"art": a, "n": sum(1 for j in jobs if j["art"] == a)}
+                             for a in {j["art"] for j in jobs}),
+                            key=lambda x: -x["n"])}
+
+
 def query_planeten():
     """Planetary Industry: Kolonien aller PI-verbundenen Chars. Liefert eine flache,
     nach Ablauf sortierte Extraktor-Liste (die 'was zuerst nachfuellen'-Tafel) plus
@@ -12196,6 +12340,8 @@ class Handler(BaseHTTPRequestHandler):
             elif view == "vault":
                 data["vault"] = query_vault()
                 data["vault"]["advisor"] = query_ore_advisor(CONFIG["region"])
+            elif view == "industrie":
+                data["industrie"] = query_industrie()
             elif view == "planeten":
                 data["planeten"] = query_planeten()
             elif view == "jobs":
@@ -14072,6 +14218,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="missionen">🎯 Missionen</span>
  <span data-v="timeline">🕑 Verlauf</span>
  <span data-v="profil">🪪 Steckbrief</span>
+ <span data-v="industrie">🏭 Industrie</span>
  <span data-v="planeten">🪐 Planeten</span>
  <span data-v="vault">💎 Erz-Schatzkammer</span>
  <span data-v="wallet">🧾 Wallet Buddy</span>
@@ -14321,7 +14468,7 @@ function lsGet(key,fallback){try{const v=localStorage.getItem(key);return v==nul
 // Muss ALLE Bereiche aus dem nav enthalten, sonst landet ein direkt
 // aufgerufener Pfad oder die Zurueck-Taste stumm auf "live". Genau das ist
 // dem Wallet-Tab passiert, er fehlte hier seit seiner Einfuehrung.
-const VIEWS=['live','month','total','analyse','intel','missionen','timeline','profil','planeten','vault','wallet','beute','rechner','jobs'];
+const VIEWS=['live','month','total','analyse','intel','missionen','timeline','profil','industrie','planeten','vault','wallet','beute','rechner','jobs'];
 // Filament-Stufen in der Reihenfolge T1 bis T6 und die fuenf Wetterlagen. Die
 // Namen sind die englischen aus dem Spiel, denn genau die schreibt Canary in
 // den Namen des Laufs und liest sie dort auch wieder heraus.
@@ -14404,6 +14551,8 @@ const VIEW_INFO={
   q:'Daten: deine Logdateien und, wenn du den EVE-Login benutzt, die Belohnungen aus dem Wallet-Journal.'},
  profil:{d:'Ein Steckbrief je Charakter: Bild, Corp, Schiff und Vermögen. Das Netz daneben zeigt, worin dieser Charakter stark ist, im Vergleich zu deinen anderen.',
   q:'Daten: die Datenbank von Canary für das Netz. Mit EVE-Login Bild, Kontostand und Schiff. Corp und Sicherheitsstatus über öffentliche Quellen.'},
+ industrie:{d:'Alles, was gerade in deinen Öfen und Laboren steht: Fertigung, Forschung, Kopien, Erfindung und Reaktionen. Sortiert danach, was zuerst fertig wird. Canary meldet sich, wenn ein Auftrag durch ist, und warnt, wenn einer pausiert, weil die Struktur offline ging.',
+  q:'Daten: nur über den EVE-Login, aus deinen Industrie-Aufträgen. ESI hält sie 5 Minuten vor, die Laufzeiten sind also fast live. Braucht eine Berechtigung, die es früher nicht gab: verbinde deine Charaktere einmal neu, sonst bleibt die Liste leer.'},
  planeten:{d:'Deine Planeten-Fabriken. Wann läuft ein Extraktor ab, was liegt im Lager, was wird produziert und was ist es wert.',
   q:'Daten: nur über den EVE-Login. Achtung: die Lagerstände sind so aktuell, wie du die Kolonie zuletzt im Spiel geöffnet hast. Die Ablaufzeiten stimmen dagegen immer.'},
  wallet:{d:'Dein Wallet unter der Lupe. Oben die Bilanz: Einnahmen, Ausgaben und was unterm Strich bleibt, je Kategorie und umschaltbar für 7 Tage, 30 Tage oder alles. Darunter der Handel im Detail, welches Item wirklich Gewinn bringt und was Gebühren und Steuer fressen, dazu Ranglisten nach Umsatz und verkaufter Menge.',
@@ -15197,7 +15346,7 @@ $('#charFilter').onchange=()=>{
   localStorage.setItem('roleFilter','');
   document.querySelectorAll('.rolef').forEach(x=>x.classList.toggle('on',x.dataset.role===''));
  }
- if(view==='planeten')renderPlaneten(lastPlaneten);else renderLiveView();};
+ if(view==='industrie')renderIndustrie(lastIndustrie);else if(view==='planeten')renderPlaneten(lastPlaneten);else renderLiveView();};
 {const ms=$('#mainCharSel'); if(ms)ms.onchange=()=>localStorage.setItem('mainChar',ms.value);}
 $('#sortChars').onclick=()=>{
  charSortMode=!charSortMode;
@@ -17507,6 +17656,7 @@ function renderVault(v){
 // Planetary Industry: Ueberblick + nach Ablauf sortierte Extraktor-Tafel +
 // einklappbare Char-Bloecke. Countdown wird bei jedem Tick (2s) neu gerechnet.
 let lastPlaneten=null;
+let lastIndustrie=null;
 function piType(t,en){
  const M={barren:['🟤','Barren','Öde'],temperate:['🟢','Temperate','Gemäßigt'],
   gas:['🟠','Gas','Gas'],ice:['🔵','Ice','Eis'],lava:['🔴','Lava','Lava'],
@@ -17539,6 +17689,81 @@ function piLeft(expiry,en){
  const m=Math.round(s/60);
  const txt=m<90?('in '+m+' min'):(m<60*24?('in '+Math.round(m/60)+' h'):('in '+Math.round(m/1440)+(en?' d':' t')));
  return {cls:s<6*3600?'warn':'ok',txt};
+}
+function jobRest(ende,now,en){
+ if(!ende)return '?';
+ const sek=ende-now;
+ if(sek<=0)return en?'done':'fertig';
+ const m=Math.round(sek/60);
+ if(m<90)return m+' min';
+ const st=Math.round(sek/3600);
+ return st<48?(st+(en?' h':' Std')):(Math.round(sek/86400)+(en?' d':' Tage'));
+}
+// Industrie-Tab (Eron Solette, 28.08.2026): was steht gerade in den Oefen und
+// Laboren, und wann ist es fertig. Aufbau bewusst wie beim Planeten-Tab, damit
+// sich beide gleich anfuehlen.
+function renderIndustrie(ind){
+ lastIndustrie=ind=ind||{jobs:[],chars:[],reconnect:[]};
+ const en=lang==='en', now=Date.now()/1000;
+ syncCharFilter(ind.chars||[]);
+ if(!(ind.jobs||[]).length){
+  // Leer heisst dreierlei, und die drei brauchen verschiedene Antworten.
+  const msg=(ind.reconnect||[]).length
+   ?(en?`Reconnect your characters in ⚙ Options: industry jobs need a new read-only permission that did not exist before. ${ind.reconnect.length} character(s) waiting.`
+       :`Verbinde deine Charaktere in ⚙ Optionen einmal neu: für Industrie-Aufträge braucht Canary eine neue Nur-Lese-Berechtigung, die es vorher nicht gab. ${ind.reconnect.length} Charakter(e) warten darauf.`)
+   :((ind.chars||[]).length||ind.as_of
+     ?(en?'No industry jobs running right now. Anything you start shows up here within five minutes.'
+         :'Gerade laufen keine Industrie-Aufträge. Was du startest, steht hier binnen fünf Minuten.')
+     :(en?'No characters connected yet. Connect them via ⚙ Options, then your production and research runtimes appear here.'
+         :'Noch keine Charaktere verbunden. Über ⚙ Optionen verbinden, dann stehen hier deine Laufzeiten aus Produktion und Forschung.'));
+  $('#grid').innerHTML=`<div class="card" style="grid-column:1/-1"><b>🏭 ${en?'Industry':'Industrie'}</b>
+   <div class="sub" style="margin-top:6px">${msg}</div></div>`;
+  return;
+ }
+ const asof=ind.as_of?((en?'synced ':'Abgleich vor ')+Math.max(0,Math.round((now-ind.as_of)/60))+(en?' min ago':' min')):'';
+ // ACHTUNG: 'charFilter' ist die ID des Auswahlfelds, der Browser legt dafuer
+ // eine gleichnamige Variable an. Der gewaehlte Name steht im localStorage,
+ // genau wie es die anderen Ansichten machen.
+ const f=localStorage.getItem('charFilter')||'';
+ const J=(ind.jobs||[]).filter(j=>!f||j.char===f);
+ const zeile=j=>{
+  const fertig=j.status==='ready', pause=j.status==='paused';
+  const kl=fertig?'grn':(pause?'in':'');
+  const rest=fertig?(en?'ready':'fertig'):(pause?(en?'paused':'pausiert'):jobRest(j.ende,now,en));
+  const wann=j.ende?new Date(j.ende*1000).toLocaleString():'';
+  return `<tr><td>${esc(j.char)}</td><td>${esc(j.art)}</td>
+   <td>${esc(j.name)}${j.runs>1?` <span class="sub">×${j.runs}</span>`:''}</td>
+   <td class="r ${kl}" title="${wann}">${rest}</td></tr>`;};
+ const tafel=(titel,liste,hinweis)=>liste.length?`<div class="card" style="grid-column:1/-1">
+   <div class="chead"><span class="char">${titel}</span><span class="sub">· ${liste.length}</span></div>
+   ${hinweis?`<div class="sub" style="margin-bottom:6px">${hinweis}</div>`:''}
+   <table><tr><th>${en?'Character':'Charakter'}</th><th>${en?'Activity':'Tätigkeit'}</th>
+   <th>${en?'Product':'Produkt'}</th><th class="r">${en?'Ready in':'Fertig in'}</th></tr>
+   ${liste.map(zeile).join('')}</table></div>`:'';
+ const pausiert=J.filter(j=>j.status==='paused');
+ const fertig=J.filter(j=>j.status==='ready');
+ const laufend=J.filter(j=>j.status!=='ready'&&j.status!=='paused');
+ $('#grid').innerHTML=`
+  <div class="card" style="grid-column:1/-1">
+   <div class="chead"><span class="char">🏭 ${en?'Industry':'Industrie'}</span>
+    <span class="sub">· ${asof} · ${en?'ESI refreshes every 5 min':'ESI liefert alle 5 min neu'}</span></div>
+   <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+    <div class="stat" title="${en?'Jobs still running, across all connected characters.':'Aufträge, die noch laufen, über alle verbundenen Charaktere.'}">
+     <div class="l">${en?'Running':'Laufend'}</div><div class="v out">${ind.n_laufend||0}</div></div>
+    <div class="stat" title="${en?'Finished and waiting to be delivered.':'Fertig und wartet darauf, abgeholt zu werden.'}">
+     <div class="l">${en?'Ready':'Fertig'}</div><div class="v grn">${ind.n_fertig||0}</div></div>
+    <div class="stat" title="${en?'Paused jobs. In EVE that almost always means the structure went offline.':'Pausierte Aufträge. In EVE heißt das fast immer: die Struktur ist offline gegangen.'}">
+     <div class="l">${en?'Paused':'Pausiert'}</div><div class="v ${(ind.n_pausiert||0)?'in':''}">${ind.n_pausiert||0}</div></div>
+    <div class="stat" title="${en?'Installation fees and facility tax of all listed jobs.':'Anlagegebühren und Struktursteuer aller gelisteten Aufträge.'}">
+     <div class="l">${en?'Fees':'Gebühren'}</div><div class="v isk">${fmtM(ind.kosten||0)}</div></div>
+   </div>
+   ${(ind.arten||[]).length?`<div class="sub" style="margin-top:8px">${ind.arten.map(a=>esc(a.art)+' '+a.n).join(' · ')}</div>`:''}
+  </div>
+  ${tafel('⏸ '+(en?'Paused':'Pausiert'),pausiert,
+    en?'A paused job is not burning time, it is standing still. Almost always the structure went offline.'
+      :'Ein pausierter Auftrag läuft nicht weiter, er steht. Fast immer ist die Struktur offline gegangen.')}
+  ${tafel('✅ '+(en?'Ready to collect':'Fertig zum Abholen'),fertig,'')}
+  ${tafel('⏳ '+(en?'Running':'Laufend'),laufend,'')}`;
 }
 function renderPlaneten(pl){
  lastPlaneten=pl=pl||{chars:[],extractors:[],reconnect:[]};
@@ -19510,6 +19735,7 @@ async function tick(){
    else if(view==='analyse')renderAnalyse(d.analyse);
    else if(view==='intel')renderIntel(d.intel_auto,d.blutspur);
    else if(view==='vault')renderVault(d.vault);
+   else if(view==='industrie')renderIndustrie(d.industrie);
    else if(view==='planeten')renderPlaneten(d.planeten);
    else if(view==='timeline')renderTimeline(d.timeline);
    else if(view==='profil')renderProfiles(d.profiles);
