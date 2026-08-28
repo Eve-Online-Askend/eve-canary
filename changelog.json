@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.53.2",
+  "d": "2026-08-28",
+  "de": [
+   "KAPUTTE BILDER IM INDUSTRIE-TAB BEHOBEN, gemeldet von Eron Solette: bei seinen beiden Forschungsauftraegen stand statt des Symbols ein leeres Bild-Zeichen. Der Grund liegt im Bilddienst von EVE: er hat je Gegenstand nur bestimmte Darstellungen, und eine BLAUPAUSE kennt nur bp und bpc, aber kein icon. Fragt man trotzdem danach, antwortet er mit einem Fehler statt mit einem Bild (an seinen beiden Blaupausen nachgeprueft). Genau das passierte, solange die Auftragsdaten noch aus der Vorversion im Zwischenspeicher lagen, denn die kannte die Angabe zur Taetigkeit noch nicht. Jetzt entscheidet Canary die Darstellung dort, wo alle Angaben sicher vorliegen, und nicht mehr im Browser. Zusaetzlich versucht ein fehlgeschlagenes Bild einmal die andere Darstellung und verschwindet danach lautlos: eine Zeile ohne Symbol ist besser als ein kaputtes Bild-Zeichen."
+  ],
+  "en": [
+   "BROKEN PICTURES IN THE INDUSTRY TAB FIXED, reported by Eron Solette: his two research jobs showed an empty image marker instead of the icon. The reason lies in the EVE image service: it only offers certain renditions per item, and a BLUEPRINT has bp and bpc but no icon. Ask for one anyway and it answers with an error instead of a picture (verified against both of his blueprints). That is exactly what happened while the job data still came from the previous version in the cache, because that version did not yet carry the activity. Canary now decides the rendition where all the information is reliably present rather than in the browser. On top of that, a failed picture tries the other rendition once and then disappears quietly: a row without an icon beats a broken image marker."
+  ]
+ },
+ {
   "v": "2.53.1",
   "d": "2026-08-28",
   "de": [

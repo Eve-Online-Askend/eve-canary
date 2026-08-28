@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.53.1"
+VERSION = "2.53.2"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -6070,16 +6070,26 @@ class Esi(threading.Thread):
         for j in jobs or []:
             if (j.get("status") or "") in ("delivered", "cancelled", "reverted"):
                 continue
+            akt = j.get("activity_id")
+            bp_id = j.get("blueprint_type_id")
+            prod = j.get("product_type_id") or bp_id
+            # Welches Bild zeigt die Zeile? Der offizielle Bilddienst hat je Typ
+            # NUR bestimmte Varianten: eine Blaupause kennt bp und bpc, aber
+            # KEIN icon, und antwortet darauf mit HTTP 400 (nachgeprueft an
+            # 31046 und 30988, den beiden Blaupausen aus Eron Solettes Meldung
+            # vom 28.08.2026). Deshalb wird hier entschieden, wo Aktivitaet und
+            # beide Typ-IDs sicher vorliegen, statt im Frontend zu raten.
+            forschung, kopie = akt in (3, 4), akt in (5, 8)
+            zeigt_bp = forschung or (bp_id is not None and prod == bp_id)
             raus.append({
                 "id": j.get("job_id"),
-                # Die Aktivitaets-ID kommt mit, weil erst sie sagt, WELCHES Bild
-                # passt: eine Forschung zeigt die Blaupause, eine Fertigung das
-                # fertige Teil. Der Bilddienst hat dafuer eigene Varianten.
-                "act": j.get("activity_id"),
-                "art": JOB_ARTEN.get(j.get("activity_id"), "Sonstiges"),
+                "act": akt,
+                "art": JOB_ARTEN.get(akt, "Sonstiges"),
                 "status": j.get("status") or "active",
-                "bp": j.get("blueprint_type_id"),
-                "produkt": j.get("product_type_id") or j.get("blueprint_type_id"),
+                "bp": bp_id,
+                "bild_id": (bp_id or prod) if forschung else prod,
+                "bild": "bpc" if kopie else ("bp" if zeigt_bp else "icon"),
+                "produkt": prod,
                 "runs": j.get("runs") or 0,
                 "ende": _ts(j.get("end_date")),
                 "start": _ts(j.get("start_date")),
@@ -17743,17 +17753,16 @@ function renderIndustrie(ind){
  // genau wie es die anderen Ansichten machen.
  const f=localStorage.getItem('charFilter')||'';
  const J=(ind.jobs||[]).filter(j=>!f||j.char===f);
- // Welches Bild passt? Der offizielle Bilddienst kennt eigene Varianten:
- // 'bp' fuer die Blaupause, 'bpc' fuer eine Kopie, 'icon' fuer das fertige
- // Teil. Eine Materialforschung zeigt also die Blaupause, eine Fertigung das
- // Produkt. Bei Erfindung kommt eine Kopie heraus, deshalb 'bpc'.
- // Groessen sind vorgegeben (32, 64, 128 ...), 32 passt zur Zeilenhoehe.
+ // Die Variante entscheidet das Backend, dort liegen Aktivitaet und beide
+ // Typ-IDs sicher vor. Hier steht nur noch der Notnagel fuer Daten aus einer
+ // aelteren Fassung, die im Zwischenspeicher liegen und das Feld noch nicht
+ // kennen: dann sagt der Name, ob es eine Blaupause ist. Groessen sind
+ // vorgegeben (32, 64, 128 ...), 32 passt zur Zeilenhoehe.
  const jobBild=j=>{
-  const forschung=(j.act===3||j.act===4), kopie=(j.act===5||j.act===8);
-  const id=forschung?(j.bp||j.produkt):j.produkt;
+  const id=j.bild_id||j.produkt;
   if(!id)return '';
-  const art=forschung?'bp':(kopie?'bpc':'icon');
-  return `<img class="jobico" loading="lazy" alt=""
+  const art=j.bild||(/blueprint/i.test(j.name||'')?'bp':'icon');
+  return `<img class="jobico" loading="lazy" alt="" data-zweit="${art==='icon'?'bp':'icon'}"
    src="https://images.evetech.net/types/${encodeURIComponent(id)}/${art}?size=32">`;};
  const zeile=j=>{
   const fertig=j.status==='ready', pause=j.status==='paused';
@@ -17793,6 +17802,17 @@ function renderIndustrie(ind){
       :'Ein pausierter Auftrag läuft nicht weiter, er steht. Fast immer ist die Struktur offline gegangen.')}
   ${tafel('✅ '+(en?'Ready to collect':'Fertig zum Abholen'),fertig,'')}
   ${tafel('⏳ '+(en?'Running':'Laufend'),laufend,'')}`;
+ // Der Bilddienst hat je Typ nur bestimmte Varianten und antwortet sonst mit
+ // HTTP 400. Schlaegt ein Bild fehl, wird EINMAL die andere Variante versucht,
+ // danach verschwindet es lautlos. Eine Zeile ohne Symbol ist immer noch
+ // besser als ein kaputtes Bild-Zeichen (Eron Solette, 28.08.2026).
+ $('#grid').querySelectorAll('img.jobico').forEach(b=>{
+  b.onerror=()=>{
+   const zweit=b.dataset.zweit;
+   if(zweit){b.removeAttribute('data-zweit');
+    b.src=b.src.replace(/[/](bp|bpc|icon)[?]/,'/'+zweit+'?');return;}
+   b.style.display='none';};
+ });
 }
 function renderPlaneten(pl){
  lastPlaneten=pl=pl||{chars:[],extractors:[],reconnect:[]};
