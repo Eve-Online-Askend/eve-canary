@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.53.0"
+VERSION = "2.53.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -6072,8 +6072,13 @@ class Esi(threading.Thread):
                 continue
             raus.append({
                 "id": j.get("job_id"),
+                # Die Aktivitaets-ID kommt mit, weil erst sie sagt, WELCHES Bild
+                # passt: eine Forschung zeigt die Blaupause, eine Fertigung das
+                # fertige Teil. Der Bilddienst hat dafuer eigene Varianten.
+                "act": j.get("activity_id"),
                 "art": JOB_ARTEN.get(j.get("activity_id"), "Sonstiges"),
                 "status": j.get("status") or "active",
+                "bp": j.get("blueprint_type_id"),
                 "produkt": j.get("product_type_id") or j.get("blueprint_type_id"),
                 "runs": j.get("runs") or 0,
                 "ende": _ts(j.get("end_date")),
@@ -13378,6 +13383,18 @@ tr.lvl-yellow td{background:rgba(228,179,76,.07)}
 #mfpDlg .mfphier td:first-child{border-radius:8px 0 0 8px}
 #mfpDlg .mfphier td:last-child{border-radius:0 8px 8px 0}
 .mfpmain{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:8px 0 10px}
+/* Industrie-Tab: Item-Bilder vom offiziellen EVE-Bilddienst in 32 px, damit
+   sie scharf bleiben. Feste Groesse, sonst springt die Zeile beim Nachladen.
+   Der dunkle Rahmen faengt die sehr hellen Blaupausen-Symbole ab. */
+.jobico{width:32px;height:32px;flex:0 0 32px;border-radius:4px;
+ background:var(--inset);border:1px solid var(--line);object-fit:contain}
+.jobprod{display:flex;align-items:center;gap:9px}
+.jobprod span{min-width:0}
+/* Charakter und Taetigkeit brauchen keine halbe Bildschirmbreite, der Platz
+   gehoert dem Produktnamen. */
+#grid .jobtab td:first-child,#grid .jobtab th:first-child{width:20%}
+#grid .jobtab td:nth-child(2),#grid .jobtab th:nth-child(2){width:16%}
+#grid .jobtab td:last-child,#grid .jobtab th:last-child{width:9%;white-space:nowrap}
 .mfpval{font-size:40px;font-weight:800;line-height:1}
 .mfpunit{font-size:15px;color:var(--dim);font-weight:600}
 .mfpsub{font-size:11px;color:var(--dim);margin-left:auto}
@@ -17726,18 +17743,30 @@ function renderIndustrie(ind){
  // genau wie es die anderen Ansichten machen.
  const f=localStorage.getItem('charFilter')||'';
  const J=(ind.jobs||[]).filter(j=>!f||j.char===f);
+ // Welches Bild passt? Der offizielle Bilddienst kennt eigene Varianten:
+ // 'bp' fuer die Blaupause, 'bpc' fuer eine Kopie, 'icon' fuer das fertige
+ // Teil. Eine Materialforschung zeigt also die Blaupause, eine Fertigung das
+ // Produkt. Bei Erfindung kommt eine Kopie heraus, deshalb 'bpc'.
+ // Groessen sind vorgegeben (32, 64, 128 ...), 32 passt zur Zeilenhoehe.
+ const jobBild=j=>{
+  const forschung=(j.act===3||j.act===4), kopie=(j.act===5||j.act===8);
+  const id=forschung?(j.bp||j.produkt):j.produkt;
+  if(!id)return '';
+  const art=forschung?'bp':(kopie?'bpc':'icon');
+  return `<img class="jobico" loading="lazy" alt=""
+   src="https://images.evetech.net/types/${encodeURIComponent(id)}/${art}?size=32">`;};
  const zeile=j=>{
   const fertig=j.status==='ready', pause=j.status==='paused';
   const kl=fertig?'grn':(pause?'in':'');
   const rest=fertig?(en?'ready':'fertig'):(pause?(en?'paused':'pausiert'):jobRest(j.ende,now,en));
   const wann=j.ende?new Date(j.ende*1000).toLocaleString():'';
   return `<tr><td>${esc(j.char)}</td><td>${esc(j.art)}</td>
-   <td>${esc(j.name)}${j.runs>1?` <span class="sub">×${j.runs}</span>`:''}</td>
+   <td class="jobprod">${jobBild(j)}<span>${esc(j.name)}${j.runs>1?` <span class="sub">×${j.runs}</span>`:''}</span></td>
    <td class="r ${kl}" title="${wann}">${rest}</td></tr>`;};
  const tafel=(titel,liste,hinweis)=>liste.length?`<div class="card" style="grid-column:1/-1">
    <div class="chead"><span class="char">${titel}</span><span class="sub">· ${liste.length}</span></div>
    ${hinweis?`<div class="sub" style="margin-bottom:6px">${hinweis}</div>`:''}
-   <table><tr><th>${en?'Character':'Charakter'}</th><th>${en?'Activity':'Tätigkeit'}</th>
+   <table class="jobtab"><tr><th>${en?'Character':'Charakter'}</th><th>${en?'Activity':'Tätigkeit'}</th>
    <th>${en?'Product':'Produkt'}</th><th class="r">${en?'Ready in':'Fertig in'}</th></tr>
    ${liste.map(zeile).join('')}</table></div>`:'';
  const pausiert=J.filter(j=>j.status==='paused');
@@ -17755,7 +17784,7 @@ function renderIndustrie(ind){
     <div class="stat" title="${en?'Paused jobs. In EVE that almost always means the structure went offline.':'Pausierte Aufträge. In EVE heißt das fast immer: die Struktur ist offline gegangen.'}">
      <div class="l">${en?'Paused':'Pausiert'}</div><div class="v ${(ind.n_pausiert||0)?'in':''}">${ind.n_pausiert||0}</div></div>
     <div class="stat" title="${en?'Installation fees and facility tax of all listed jobs.':'Anlagegebühren und Struktursteuer aller gelisteten Aufträge.'}">
-     <div class="l">${en?'Fees':'Gebühren'}</div><div class="v isk">${fmtM(ind.kosten||0)}</div></div>
+     <div class="l">${en?'Fees':'Gebühren'}</div><div class="v isk">${fmtM(ind.kosten||0)} ISK</div></div>
    </div>
    ${(ind.arten||[]).length?`<div class="sub" style="margin-top:8px">${ind.arten.map(a=>esc(a.art)+' '+a.n).join(' · ')}</div>`:''}
   </div>

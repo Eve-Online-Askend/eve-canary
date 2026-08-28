@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.53.1",
+  "d": "2026-08-28",
+  "de": [
+   "DER INDUSTRIE-TAB HAT JETZT BILDER. Vor jedem Auftrag steht das Symbol dessen, was dabei entsteht, aus dem offiziellen EVE-Bilddienst. Canary waehlt dabei die passende Darstellung: eine Forschung zeigt die Blaupause, eine Kopie zeigt die Kopie, eine Fertigung oder Reaktion das fertige Teil. Damit erkennt man die Zeile am Bild, ohne den Namen zu lesen. Dazu bekommen Charakter und Taetigkeit feste, schmalere Spalten, damit der Platz dem Produktnamen gehoert, und an den Gebuehren steht endlich ISK dran."
+  ],
+  "en": [
+   "THE INDUSTRY TAB NOW HAS PICTURES. Every job carries the icon of what it produces, from the official EVE image service. Canary picks the fitting rendition: research shows the blueprint, copying shows the copy, manufacturing and reactions show the finished item. That way you recognise a row by its picture without reading the name. Character and activity also get fixed, narrower columns so the space belongs to the product name, and the fees finally say ISK."
+  ]
+ },
+ {
   "v": "2.53.0",
   "d": "2026-08-28",
   "de": [
