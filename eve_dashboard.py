@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.51.2"
+VERSION = "2.52.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -11118,6 +11118,16 @@ def query_wallet(days=30, char=None):
         tx = DB.execute("SELECT char, ts, type_id, qty, price, is_buy, loc_id "
                         "FROM trades WHERE ts>=?" + nur + " ORDER BY ts",
                         [seit] + arg).fetchall()
+        # Alles VOR dem Zeitraum: nur zum Aufbau des Lagerbestands, nie fuer
+        # eine angezeigte Zahl. Ohne diesen Vorlauf fand ein Verkauf aus alter
+        # Lagerware keinen Einkauf und zaehlte als gar nichts. Gemessen an
+        # Askends eigenem Wallet zeigte die 7-Tage-Ansicht deshalb einen
+        # einzigen Rundlauf statt fuenf, minus 42.900 statt plus 367.100 ISK
+        # (Nirahse, 24.08.2026). In der 30-Tage-Ansicht faellt es kaum auf,
+        # weil dort die meisten Kaeufe ohnehin im Fenster liegen.
+        vorlauf = (DB.execute("SELECT ts, type_id, qty, price, is_buy FROM trades "
+                              "WHERE ts<?" + nur + " ORDER BY ts",
+                              [seit] + arg).fetchall() if seit else [])
         # Ein- und Ausgaben je Art getrennt: eine Art kann beides haben (Spenden
         # gehen hin UND her), eine Summe allein wuerde das verschlucken.
         wb = DB.execute(
@@ -11133,9 +11143,29 @@ def query_wallet(days=30, char=None):
                 max((r[6] for r in wb if r[6] is not None), default=None))
     gekauft = {t[2] for t in tx if t[5]}
     verkauft = {t[2] for t in tx if not t[5]}
-    rund = gekauft & verkauft            # nur diese gelten als Handel
+    # Ob etwas Handelsware oder Eigenproduktion ist, entscheidet die GANZE
+    # Historie, nicht der gewaehlte Zeitraum: wer im Juni eingekauft hat und
+    # heute verkauft, betreibt Handel und keine Eigenproduktion.
+    gekauft_je = gekauft | {r[1] for r in vorlauf if r[4]}
+    verkauft_je = verkauft | {r[1] for r in vorlauf if not r[4]}
 
     lager = {}                            # type_id -> [[menge, preis], ...]
+    # Lager aus dem Vorlauf aufbauen: Kaeufe legen ein, aeltere Verkaeufe
+    # nehmen wieder heraus. Ohne die alten Verkaeufe stuende hier Ware, die
+    # laengst weg ist, und der erste Verkauf im Zeitraum bekaeme einen
+    # falschen Einkaufspreis.
+    for _ts, tid, qty, price, is_buy in vorlauf:
+        if is_buy:
+            lager.setdefault(tid, []).append([qty, price])
+            continue
+        rest = qty
+        while rest > 0 and lager.get(tid):
+            los = lager[tid][0]
+            n = min(rest, los[0])
+            los[0] -= n
+            rest -= n
+            if los[0] == 0:
+                lager[tid].pop(0)
     stat = {}                             # type_id -> Kennzahlen
     for _, ts, tid, qty, price, is_buy, _loc in tx:
         s = stat.setdefault(tid, {"kauf_st": 0, "kauf_isk": 0.0, "verk_st": 0,
@@ -11169,6 +11199,10 @@ def query_wallet(days=30, char=None):
 
     # Alle benoetigten Typnamen in EINEM Abruf holen. Einzeln aufgeloest kostete
     # das nach jedem Neustart gemessene 15,4 Sekunden, in denen die Ansicht stand.
+    # Rundlauf ist, was tatsaechlich gegen einen Einkauf verrechnet werden
+    # konnte. Vorher war es "im Zeitraum gekauft UND verkauft", was alte
+    # Lagerware ausschloss.
+    rund = {t for t, s2 in stat.items() if s2["matched"]}
     esi.type_names_bulk([t for t in stat if t in rund]
                         + [o["type_id"] for n, c in
                            ((CONFIG.get("esi") or {}).get("chars") or {}).items()
@@ -11215,8 +11249,13 @@ def query_wallet(days=30, char=None):
     # kommt aus dem eigenen Wallet, ist also keine geratene Pauschale.
     m_kauf = sum(s["kauf_isk"] for s in stat.values())
     m_verk = sum(s["verk_isk"] for s in stat.values())
-    r_kauf = sum(s["kauf_isk"] for t, s in stat.items() if t in rund)
-    r_verk = sum(s["verk_isk"] for t, s in stat.items() if t in rund)
+    # Nur die WIRKLICH verrechneten Stueck, nicht alles, was von diesen Typen
+    # ueber den Tisch ging. Sonst legt Canary die Gebuehren fuer tausend selbst
+    # geforderte Stueck auf die fuenf zugekauften um, und aus einem kleinen
+    # Gewinn wird ein dickes Minus. Fiel beim Umbau auf Lager-Vorlauf auf.
+    # So geht die Zeile auch auf: r_verk - r_kauf = brutto.
+    r_kauf = sum(s.get("ek_matched", 0.0) for t, s in stat.items() if t in rund)
+    r_verk = sum(s.get("vk_matched", 0.0) for t, s in stat.items() if t in rund)
     s_satz = steuer / m_verk if m_verk else 0.0            # Steuer faellt beim Verkauf an
     b_satz = broker / (m_kauf + m_verk) if (m_kauf + m_verk) else 0.0
     geb = s_satz * r_verk + b_satz * (r_kauf + r_verk)
@@ -11324,20 +11363,20 @@ def query_wallet(days=30, char=None):
     # es nicht auf, weil es keinen Einkaufspreis gibt.
     eigen = sorted(
         ({"type_id": t, "name": nm(t), "stk": s["verk_st"], "isk": round(s["verk_isk"])}
-         for t, s in stat.items() if t in (verkauft - gekauft) and s["verk_isk"]),
+         for t, s in stat.items() if t in (verkauft - gekauft_je) and s["verk_isk"]),
         key=lambda x: -x["isk"])[:10]
     eigen_ges = round(sum(s["verk_isk"] for t, s in stat.items()
-                          if t in (verkauft - gekauft)))
+                          if t in (verkauft - gekauft_je)))
     # Eigenbedarf: gekauft und nie verkauft.
     bedarf = sorted(
         ({"type_id": t, "name": nm(t), "stk": s["kauf_st"], "isk": round(s["kauf_isk"])}
-         for t, s in stat.items() if t in (gekauft - verkauft) and s["kauf_isk"]),
+         for t, s in stat.items() if t in (gekauft - verkauft_je) and s["kauf_isk"]),
         key=lambda x: -x["isk"])[:10]
     bedarf_ges = round(sum(s["kauf_isk"] for t, s in stat.items()
-                           if t in (gekauft - verkauft)))
+                           if t in (gekauft - verkauft_je)))
     tops = {"umsatz": top_umsatz, "menge": top_menge,
-            "eigen": eigen, "eigen_ges": eigen_ges, "eigen_n": len(verkauft - gekauft),
-            "bedarf": bedarf, "bedarf_ges": bedarf_ges, "bedarf_n": len(gekauft - verkauft),
+            "eigen": eigen, "eigen_ges": eigen_ges, "eigen_n": len(verkauft - gekauft_je),
+            "bedarf": bedarf, "bedarf_ges": bedarf_ges, "bedarf_n": len(gekauft - verkauft_je),
             "rund_n": len(rund), "typen": len(stat)}
 
     return {"tage": days, "bilanz": bilanz, "tops": tops, "posten": posten[:40],
@@ -17244,13 +17283,21 @@ function renderWallet(w){
  }
  let h=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">🧾 ${en?'Trading result':'Handelsergebnis'}</span>
    <span class="sub">· ${w.tage?((en?'last ':'letzte ')+w.tage+(en?' days':' Tage')):(en?'all data':'alle Daten')} · ${w.trades} ${en?'executions':'Ausführungen'}</span></div>
-  <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+  ${(w.tops&&w.tops.rund_n)?`<div class="stats" style="grid-template-columns:repeat(4,1fr)">
    ${kachel(en?'Gross margin':'Brutto-Marge',fmtM(w.brutto)+' ISK',vz(w.brutto))}
    ${kachel(en?'Fees & tax':'Gebühren & Steuer','-'+fmtM(w.gebuehren)+' ISK','in')}
    ${kachel(en?'Net':'Netto',fmtM(w.netto)+' ISK',vz(w.netto))}
    ${kachel(en?'Turnover':'Umsatz',fmtM(w.verkauf)+' ISK')}
-  </div>
-  <div class="sub" style="margin-top:8px">${en
+  </div>`:''}
+  <div class="sub" style="margin-top:8px">${!(w.tops&&w.tops.rund_n)
+    // Kein einziger Rundlauf: vier Nullen nebeneinander sehen aus wie ein
+    // kaputtes Feld statt wie eine Aussage (Nirahse, 24.08.2026: "dass die
+    // Handelsbilanzen hier alle 0 ISK sind obwohl der Hauptteil des Incomes
+    // am Markt generiert wurde ist schwer nachzuvollziehen"). Also Klartext.
+    ? (en
+      ? `No round trips in this period, so there is no trading margin to show. A trading result needs both sides: a purchase price and a sale price for the same item.${(w.tops&&w.tops.eigen_ges)?` Your market income came from goods you never bought, worth <b>${fmtM(w.tops.eigen_ges)} ISK</b>: mined, produced or looted. There is no purchase price for that, so it is income, not margin. It is listed below under “sold, never bought”.`:''}`
+      : `In diesem Zeitraum gab es keinen einzigen Rundlauf, deshalb steht hier keine Handelsspanne. Ein Handelsergebnis braucht beide Seiten: einen Einkaufspreis und einen Verkaufspreis für dieselbe Ware.${(w.tops&&w.tops.eigen_ges)?` Deine Markt-Einnahmen kamen aus Ware, die du nie gekauft hast, im Wert von <b>${fmtM(w.tops.eigen_ges)} ISK</b>: selbst gefördert, gebaut oder erbeutet. Dafür gibt es keinen Einkaufspreis, das ist Einnahme und keine Spanne. Aufgeschlüsselt steht sie unten unter „Verkauft, nie gekauft“.`:''}`)
+    : en
     ? `Counted as trading are only items you both bought and sold (FIFO). Items you only bought are listed separately as stock, otherwise your own ship would look like a huge loss. Fees are apportioned to that traded volume at your own effective rates (${w.satz_steuer}% tax on sales, ${w.satz_broker}% broker), because the ${fmtM(w.geb_gesamt)} ISK booked overall also covers stock you have not sold yet.`
     : `Als Handel zählen nur Sachen, die du gekauft UND verkauft hast (FIFO). Nur Gekauftes steht getrennt als Bestand, sonst sähe dein eigenes Schiff wie ein Riesenverlust aus. Die Gebühren sind anteilig auf diese Handelsmenge umgelegt, zu deinen echten Sätzen (${w.satz_steuer}% Steuer auf Verkäufe, ${w.satz_broker}% Broker), denn die insgesamt gebuchten ${fmtM(w.geb_gesamt)} ISK betreffen auch Bestand, den du noch nicht verkauft hast.`}</div>
  </div>`;

@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.52.0",
+  "d": "2026-08-24",
+  "de": [
+   "DAS HANDELSERGEBNIS FINDET JETZT AUCH ALTE EINKAEUFE, gemeldet von Nirahse: seine Handelsbilanz stand auf 0 ISK, obwohl der Grossteil seiner Einnahmen am Markt entstand. Die Rechnung schaute nur in den gewaehlten Zeitraum. Wer Lagerware verkauft, die er drei Wochen vorher eingekauft hat, hatte im 7-Tage-Fenster keinen passenden Einkauf, und der Verkauf zaehlte als gar nichts. An einem echten Wallet nachgemessen: die 7-Tage-Ansicht fand einen einzigen Rundlauf statt fuenf und zeigte minus 42.900 statt plus 367.100 ISK. In der 30-Tage-Ansicht faellt es kaum auf, weil dort die meisten Einkaeufe ohnehin im Fenster liegen, deshalb ist es so lange niemandem aufgefallen. Jetzt baut Canary den Lagerbestand aus der GANZEN bekannten Historie auf und zaehlt trotzdem nur die Verkaeufe des gewaehlten Zeitraums.",
+   "Dabei noch ein Rechenfehler gefunden: die Gebuehren wurden auf ALLE Verkaeufe der Handelsware umgelegt, auch auf selbst gefoerderte Stueck derselben Sorte. Jetzt zaehlen nur die wirklich verrechneten Stueck, und die Zeile geht auf: Verkauf minus Einkauf ergibt genau die Brutto-Marge.",
+   "Und wenn es wirklich keinen Rundlauf gab, stehen dort keine vier Nullen mehr. Stattdessen steht da, warum: ein Handelsergebnis braucht einen Einkaufs- UND einen Verkaufspreis fuer dieselbe Ware. Wer selbst foerdert, baut oder erbeutet, hat keinen Einkaufspreis, und sieht jetzt stattdessen den Wert dieser Ware genannt."
+  ],
+  "en": [
+   "THE TRADING RESULT NOW ALSO FINDS OLDER PURCHASES, reported by Nirahse: his trading balance read 0 ISK even though most of his income came from the market. The calculation only looked inside the selected period. Anyone selling stock bought three weeks earlier had no matching purchase in the 7 day window, so the sale counted as nothing at all. Measured against a real wallet: the 7 day view found a single round trip instead of five and showed minus 42,900 instead of plus 367,100 ISK. In the 30 day view it barely shows, because most purchases fall inside that window anyway, which is why nobody noticed for so long. Canary now builds the stock from the WHOLE known history while still counting only the sales of the selected period.",
+   "This turned up another miscalculation: fees were spread across ALL sales of a traded item, including self-mined units of the same type. Only the units actually matched now count, and the line adds up: sales minus purchases equals the gross margin exactly.",
+   "And when there really was no round trip, there are no longer four zeros sitting there. Instead it says why: a trading result needs both a purchase and a sale price for the same item. Anyone who mines, builds or loots has no purchase price, and now sees the value of those goods named instead."
+  ]
+ },
+ {
   "v": "2.51.2",
   "d": "2026-08-24",
   "de": [
