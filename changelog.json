@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.52.1",
+  "d": "2026-08-24",
+  "de": [
+   "HEAVY WATER STEHT NUR NOCH DA, WO ES AUCH VERBRAUCHT WIRD, gemeldet von Vile Gangster: seine Hulks zeigten in der Live-Ansicht und im Overlay eine Heavy-Water-Restlaufzeit samt Warnung, obwohl ein Hulk gar keinen Industriekern hat. Er faehrt mit ihnen Wasser zur Orca, jeder m³ zaehlt. Die alte Bedingung lautete kein Kern UND null Einheiten, ein Hulk MIT Wasser im Laderaum fiel also in den Verbrauchs-Zweig. Das erklaert auch, warum die Anzeige kam und ging: war das Wasser in der Orca, stand dort null und der Eintrag verschwand, beim naechsten Beladen war er wieder da. Jetzt entscheidet allein der EINGEBAUTE Industriekern, den nur Porpoise, Orca und Rorqual haben. Ein Kern, der als Ware im Laderaum oder Flottenhangar liegt, zaehlt ausdruecklich nicht. Wer keinen EVE-Login nutzt, kann den Bestand wie bisher von Hand setzen. Bestehende Falschanzeigen verschwinden mit dem naechsten ESI-Abgleich, spaetestens nach einer Stunde."
+  ],
+  "en": [
+   "HEAVY WATER NOW ONLY SHOWS WHERE IT IS ACTUALLY BURNED, reported by Vile Gangster: his Hulks showed a heavy water countdown and warning in the live view and the overlay, even though a Hulk has no industrial core at all. He uses them to ferry water to the Orca, every m³ counts. The old condition was no core AND zero units, so a Hulk WITH water in its hold fell into the consumption branch. That also explains why the display came and went: once the water was in the Orca it read zero and the entry vanished, and it came back on the next load. Now only a FITTED industrial core decides, which just the Porpoise, Orca and Rorqual have. A core sitting as cargo in the hold or fleet hangar explicitly does not count. Anyone without an EVE login can still set the amount by hand. Existing false readings disappear with the next ESI sync, at most an hour."
+  ]
+ },
+ {
   "v": "2.52.0",
   "d": "2026-08-24",
   "de": [

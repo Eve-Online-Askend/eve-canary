@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.52.0"
+VERSION = "2.52.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -5458,6 +5458,30 @@ JOURNAL_TYPES = {"agent_mission_reward", "agent_mission_time_bonus_reward",
                  "bounty_prizes", "bounty_prize"}
 CORE_TYPES = {62590: "t1", 62591: "t2",   # Medium Industrial Core I/II (Porpoise)
               58945: "t1", 58950: "t2"}   # Large Industrial Core I/II (Orca)
+# Wo ESI Ware lagert statt Module einzubauen. Ein Industriekern im Frachtraum
+# ist Fracht und verbraucht nichts.
+FRACHT_FLAGS = ("Cargo", "Fleet", "Ship", "Ore", "Specialized", "Corp", "Hangar")
+
+
+def hw_kern(in_ship):
+    """Welcher Industriekern ist EINGEBAUT? Sonst None.
+
+    Heavy Water verbraucht in EVE ausschliesslich ein laufender Industriekern
+    (Porpoise, Orca, Rorqual). Alles andere traegt es nur herum. Vile Gangster
+    faehrt mit seinen Hulks Heavy Water zur Orca, und jeder Hulk bekam dafuer
+    eine Restlaufzeit samt Warnung angezeigt (24.08.2026).
+
+    Kennt ESI den Einbauort nicht (location_flag fehlt), gilt der Kern als
+    eingebaut: lieber wie bisher anzeigen als eine echte Orca uebersehen."""
+    for i in in_ship:
+        if i.get("type_id") not in CORE_TYPES:
+            continue
+        if str(i.get("location_flag") or "").startswith(FRACHT_FLAGS):
+            continue
+        return CORE_TYPES[i["type_id"]]
+    return None
+
+
 # Reine Drohnen-/Boost-Schiffe: haben KEINE Strip Miner, minern nur mit Drohnen.
 # Für sie darf die "Strip Miner aus"-Warnung nie kommen.
 DRONE_ONLY_SHIP_IDS = {42244,  # Porpoise
@@ -6153,13 +6177,18 @@ class Esi(threading.Thread):
             log_error("CN-ESI-01", "build_vault", e)
         in_ship = [i for i in items if i.get("location_id") == ship["ship_item_id"]]
         units = sum(i["quantity"] for i in in_ship if i["type_id"] == HW_TYPE_ID)
-        core = next((CORE_TYPES[i["type_id"]] for i in in_ship
-                     if i["type_id"] in CORE_TYPES), None)
+        core = hw_kern(in_ship)
         with CONFIG_LOCK:
             hw = CONFIG.setdefault("heavy_water", {})
             prev = hw.get(name) or {}
-            if core is None and units == 0:
-                # Schiff ohne Industriekern (Barge, Hauler, ...) -> keine Anzeige
+            if core is None:
+                # KEIN Industriekern an Bord, also verbraucht dieses Schiff auch
+                # kein Heavy Water. Bis v2.52 reichte es, dass HW im Frachtraum
+                # lag: Vile Gangster faehrt mit seinen Hulks HW zur Orca, und
+                # jeder davon bekam eine Restlaufzeit samt Warnung angezeigt
+                # (24.08.2026). Das erklaert auch, warum die Anzeige kam und
+                # ging: sobald das Wasser in der Orca war, stand hier 0 und der
+                # Eintrag verschwand, beim naechsten Beladen kam er wieder.
                 if prev.get("esi"):
                     hw.pop(name, None)
             else:
