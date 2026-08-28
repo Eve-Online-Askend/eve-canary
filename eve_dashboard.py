@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.52.2"
+VERSION = "2.52.3"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -16056,9 +16056,9 @@ function combatCardHtml(c){
        <div class="sub"><span class="out">▮ raus</span> · <span class="in">▮ rein</span> · gleiche Skala</div>`:'';})()}
     <div class="sect">⚔ Offense</div>
     <div class="stats">
-     <div class="stat"><div class="l">Schaden raus</div><div class="v out">${fmt(c.dmg_out||0)}</div></div>
-     <div class="stat"><div class="l">DPS</div><div class="v out">${c.dps_out}</div></div>
-     <div class="stat"><div class="l">Trefferquote</div><div class="v">${hit==null?'—':hit+'%'}</div><div class="l">${shots?c.hits_out+' / '+shots:''}</div></div>
+     <div class="stat" title="Gesamtschaden dieser Sitzung, so wie er beim Gegner angekommen ist: nach dessen Widerständen. Drohnen zählen mit, sie schreiben eigene Zeilen. Canary summiert nur, was im Kampflog steht."><div class="l">Schaden raus</div><div class="v out">${fmt(c.dmg_out||0)}</div></div>
+     <div class="stat" title="Schaden je Sekunde im Schnitt der letzten 60 Sekunden, nach den Widerständen des Gegners und inklusive Drohnen. Liegt deshalb immer unter der Zahl im Fitting-Fenster, die gegen 0 Prozent Widerstand rechnet. Nachladen, Zielwechsel und Anflug ziehen sie mit herunter."><div class="l">DPS</div><div class="v out">${c.dps_out}</div></div>
+     <div class="stat" title="Anteil deiner Schüsse, die getroffen haben. Fehlschüsse stehen als eigene Zeile im Kampflog, deshalb ist die Quote gezählt und nicht geschätzt."><div class="l">Trefferquote</div><div class="v">${hit==null?'—':hit+'%'}</div><div class="l">${shots?c.hits_out+' / '+shots:''}</div></div>
      ${c.kills>0
        ?`<div class="stat"><div class="l">Kills</div><div class="v">${c.kills}</div></div>`
        :`<div class="stat"><div class="l">Gegner bekämpft</div><div class="v">${c.enemy_types||0}</div><div class="l" title="EVE protokolliert keine NPC-Tode. Ohne Bounty ist die Zahl der bekämpften Gegnertypen der einzige gesicherte Wert.">Typen · aus Log</div></div>`}
@@ -18802,6 +18802,14 @@ const EN = {
 '◱ Mini-Overlay öffnen/schließen':'Open/close mini overlay',
 'Neue Version verfügbar, Klick installiert sie':'New version available, click to install',
 // Hero-Leiste
+// Tooltips der Kampf-Kacheln (MelvinMafia fragte am 26.08.2026, ob die
+// DPS nach Widerstaenden ist; sie ist es, stand aber nirgends).
+'Gesamtschaden dieser Sitzung, so wie er beim Gegner angekommen ist: nach dessen Widerständen. Drohnen zählen mit, sie schreiben eigene Zeilen. Canary summiert nur, was im Kampflog steht.':
+ 'Total damage this session as it landed on the target: after its resistances. Drones count too, they write their own lines. Canary only adds up what the combat log says.',
+'Schaden je Sekunde im Schnitt der letzten 60 Sekunden, nach den Widerständen des Gegners und inklusive Drohnen. Liegt deshalb immer unter der Zahl im Fitting-Fenster, die gegen 0 Prozent Widerstand rechnet. Nachladen, Zielwechsel und Anflug ziehen sie mit herunter.':
+ 'Damage per second, averaged over the last 60 seconds, after the resistances of the target and including drones. That is why it always sits below the number in the fitting window, which assumes 0 percent resistance. Reloading, switching targets and closing distance drag it down too.',
+'Anteil deiner Schüsse, die getroffen haben. Fehlschüsse stehen als eigene Zeile im Kampflog, deshalb ist die Quote gezählt und nicht geschätzt.':
+ 'Share of your shots that hit. Misses have their own line in the combat log, so this rate is counted, not estimated.',
 '⛏ Geminert heute':'⛏ Mined today','🎯 Verdient heute':'🎯 Earned today',
 'Gestern':'Yesterday','Letzte 7 Tage':'Last 7 days','Letzte 30 Tage':'Last 30 days',
 '/Tag':'/day','aktive Tage':'active days','Bester Tag':'Best day',

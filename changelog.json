@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.52.3",
+  "d": "2026-08-26",
+  "de": [
+   "DIE KAMPFZAHLEN ERKLAEREN SICH JETZT SELBST, angestossen von MelvinMafias Frage, ob die angezeigte DPS nach Widerstaenden ist. Sie ist es, nur stand es nirgends. Jetzt sagt ein Mouseover an jeder der drei Kacheln, was sie misst: Schaden raus ist der Gesamtschaden der Sitzung, so wie er beim Gegner ankam, also nach dessen Widerstaenden und inklusive Drohnen, denn Canary summiert nur, was im Kampflog steht. Die DPS ist der Schnitt der letzten 60 Sekunden und liegt deshalb immer unter der Zahl im Fitting-Fenster, die gegen 0 Prozent Widerstand rechnet; Nachladen, Zielwechsel und Anflug ziehen sie mit herunter. Und die Trefferquote ist gezaehlt und nicht geschaetzt, weil Fehlschuesse eine eigene Logzeile haben."
+  ],
+  "en": [
+   "THE COMBAT NUMBERS NOW EXPLAIN THEMSELVES, prompted by MelvinMafia asking whether the displayed DPS is after resistances. It is, but nothing said so. A mouseover on each of the three tiles now says what it measures: damage out is the session total as it landed on the target, so after its resistances and including drones, because Canary only adds up what the combat log says. The DPS is the average of the last 60 seconds and therefore always sits below the number in the fitting window, which assumes 0 percent resistance; reloading, switching targets and closing distance drag it down too. And the hit rate is counted rather than estimated, because misses have their own log line."
+  ]
+ },
+ {
   "v": "2.52.2",
   "d": "2026-08-26",
   "de": [
