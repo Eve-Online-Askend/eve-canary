@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.57.0",
+  "d": "2026-08-29",
+  "de": [
+   "DIE ABYSS-UEBERSICHT KENNT JETZT DAS SCHIFF, gefragt von Nirahse: fliegt man ein Filament mit einem Cruiser oder mit drei Fregatten, macht das in der Beute einen grossen Unterschied. Vorweg das ernuechternde Ergebnis der Suche: das EIGENE Schiff steht in KEINER Logzeile. An 400 Logdateien geprueft, jeder Schiffsname dort gehoert einem NPC oder einem anderen Spieler. Die einzige Quelle ist der EVE-Login, und der kennt nur das AKTUELLE Schiff. Canary haelt es deshalb ab sofort beim Abschluss eines Laufs fest, samt Klasse (Fregatte, Zerstoerer, Cruiser; die Gruppen-Kennungen sind bei ESI abgefragt, nicht geraten). Rueckwirkend geht es nicht, fuer Laeufe von vorher steht dort nichts.",
+   "DAMIT DIE ALTEN LAEUFE NICHT STOEREN, hat die Abyss-Uebersicht jetzt einen Zeitraum: 30 Tage, 90 Tage oder alles, Vorgabe 30 Tage. Die Laeufe ohne Schiffsangabe fallen damit von selbst heraus. Der Vorschlag, sie ersatzweise als Cruiser zu zaehlen, ist bewusst NICHT umgesetzt: die Tabelle hatte gar kein Zeitfenster, die Annahme waere dauerhaft stehen geblieben und haette ausgerechnet den Vergleich verfaelscht, um den es geht. Geraten wird hier nichts, es steht ehrlich ohne Angabe da."
+  ],
+  "en": [
+   "THE ABYSS OVERVIEW NOW KNOWS THE SHIP, asked for by Nirahse: flying a filament with one cruiser or with three frigates makes a big difference to the loot. First the sobering result of the search: your OWN ship appears in NO log line. Checked against 400 log files, every ship name in there belongs to an NPC or another player. The only source is the EVE login, and it only knows the CURRENT ship. Canary therefore records it from now on when a run ends, including the class (frigate, destroyer, cruiser; the group identifiers were queried from ESI, not guessed). It cannot be done retroactively, so runs from before have nothing there.",
+   "SO THE OLD RUNS DO NOT GET IN THE WAY, the abyss overview now has a time range: 30 days, 90 days or everything, 30 days by default. Runs without a ship drop out by themselves. The suggestion to count them as cruisers instead was deliberately NOT implemented: the table had no time window at all, so the assumption would have stayed forever and would have skewed exactly the comparison this is about. Nothing is guessed here, it honestly says no details."
+  ]
+ },
+ {
   "v": "2.56.0",
   "d": "2026-08-29",
   "de": [

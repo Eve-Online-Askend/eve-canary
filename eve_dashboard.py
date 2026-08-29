@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.56.0"
+VERSION = "2.57.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1846,6 +1846,17 @@ try:  # v2.39: Erstkontakt-Zeit je Gegner + Kampfabschnitte (Savox76). Eine
     DB.commit()
 except sqlite3.OperationalError:
     pass
+try:  # v2.57: geflogenes Schiff je Einsatz (Nirahse: nach Cruiser, Zerstoerer
+      # oder Fregatte aufschluesseln). Das eigene Schiff steht in KEINER
+      # Logzeile, an 400 Dateien geprueft: jeder Schiffsname dort gehoert
+      # einem NPC oder einem anderen Spieler. Einzige Quelle ist ESI, und die
+      # kennt nur das AKTUELLE Schiff, deshalb wird es beim Abschluss des
+      # Einsatzes mitgeschrieben. Rueckwirkend geht es nicht.
+    DB.execute("ALTER TABLE missions ADD COLUMN ship TEXT")
+    DB.execute("ALTER TABLE missions ADD COLUMN ship_group INTEGER")
+    DB.commit()
+except sqlite3.OperationalError:
+    pass
 try:  # v2.42: Salvage getrennt vom Loot (MelvinMafia). Eigene Spalten statt
       # Vermischung: Salvage ist Marktware und darf NIE in die Missions-
       # Erkennung laufen (loot_namen liest weiterhin nur loot_text).
@@ -2427,8 +2438,8 @@ def _save_mission_sql(mid, m):
     DB.execute("""INSERT INTO missions
         (mid,char_id,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
          hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,ewar,
-         logi_out,logi_in,gegner_erst)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         logi_out,logi_in,gegner_erst,ship,ship_group)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(mid) DO UPDATE SET
          char=excluded.char, end_ts=excluded.end_ts, system=excluded.system,
          dmg_out=excluded.dmg_out, dmg_in=excluded.dmg_in, kills=excluded.kills,
@@ -2436,14 +2447,21 @@ def _save_mission_sql(mid, m):
          miss_in=excluded.miss_in, weapons=excluded.weapons, enemies=excluded.enemies,
          dialog=COALESCE(excluded.dialog, missions.dialog), ewar=excluded.ewar,
          logi_out=excluded.logi_out, logi_in=excluded.logi_in,
-         gegner_erst=excluded.gegner_erst""",
+         gegner_erst=excluded.gegner_erst,
+         -- Nur setzen, wenn ESI wirklich etwas geliefert hat. Ein spaeteres
+         -- Neueinlesen der Logs kennt das Schiff nicht und wuerde die einmal
+         -- richtig gespeicherte Angabe sonst wieder ausloeschen.
+         ship=COALESCE(excluded.ship, missions.ship),
+         ship_group=COALESCE(excluded.ship_group, missions.ship_group)""",
         (mid, m["char_id"], m["char"], m["start_ts"], m["end_ts"], m["system"],
          m["dmg_out"], m["dmg_in"], m["kills"], m["bounty"], m["hits"],
          m["miss_out"], m["miss_in"], json.dumps(m["weapons"], ensure_ascii=False),
          json.dumps(m["enemies"], ensure_ascii=False), None, None, m.get("dialog"),
          json.dumps(m.get("ewar") or [], ensure_ascii=False),
          m.get("logi_out") or 0, m.get("logi_in") or 0,
-         json.dumps(m.get("gegner_erst") or {}, ensure_ascii=False)))
+         json.dumps(m.get("gegner_erst") or {}, ensure_ascii=False),
+         m.get("ship"),
+         (esi.type_group(m["ship_type_id"]) if m.get("ship_type_id") else None)))
 
 
 def do_backup():
@@ -3945,7 +3963,13 @@ class CharSession:
             return None
         gegner = sorted(self.targets.items(), key=lambda x: -x[1])[:30]
         namen = {g[0] for g in gegner}
+        # Geflogenes Schiff aus ESI. Das eigene Schiff steht in KEINER Logzeile
+        # (an 400 Dateien geprueft), ESI kennt aber nur das AKTUELLE, deshalb
+        # wird es hier beim Abschluss festgehalten. Ohne EVE-Login bleibt es
+        # leer, und rueckwirkend gibt es nichts (Nirahse, 29.08.2026).
+        _ec = (CONFIG.get("esi") or {}).get("chars", {}).get(self.name) or {}
         return {"char_id": self.char_id, "char": self.name,
+                "ship": _ec.get("ship"), "ship_type_id": _ec.get("ship_type_id"),
                 "start_ts": self.first_ts or end_ts, "end_ts": end_ts,
                 "system": self.mission_system or self.system or "?",
                 "dmg_out": self.dmg_out, "dmg_in": self.dmg_in, "kills": self.kills,
@@ -11881,6 +11905,19 @@ ABYSS_TIER_GEGNER = {"photic abyssal overmind": 1, "twilit abyssal overmind": 2,
 # nennt, hat die Stufe schon hingeschrieben. Nur die englischen Filamentnamen,
 # denn nur die sind belegt. Steht dort etwas anderes, bleibt die Stufe leer,
 # statt geraten zu werden.
+# Schiffsklasse aus der ESI-Gruppe. Die IDs sind bei ESI abgefragt, nicht
+# geraten: 25/324 Fregatten (Worm, Succubus, Hawk, Enyo), 420/1305 Zerstoerer
+# (Catalyst, Hecate, Jackdaw, Svipul, Confessor), 26/358 Cruiser (Gila, Vexor,
+# Caracal, Vagabond, Ishtar, Cerberus, Sacrilege). Mehr Klassen laesst der
+# Abyss nicht zu, die uebrigen Gruppen sind der Vollstaendigkeit halber dabei.
+SHIP_KLASSEN = {
+    25: "Fregatte", 324: "Fregatte", 830: "Fregatte", 831: "Fregatte",
+    834: "Fregatte", 893: "Fregatte", 1283: "Fregatte", 1527: "Fregatte",
+    420: "Zerstörer", 541: "Zerstörer", 1305: "Zerstörer", 1534: "Zerstörer",
+    26: "Cruiser", 358: "Cruiser", 832: "Cruiser", 833: "Cruiser",
+    894: "Cruiser", 906: "Cruiser", 963: "Cruiser",
+}
+
 ABYSS_TIER_NAME = {"calm": 1, "agitated": 2, "fierce": 3,
                    "raging": 4, "chaotic": 5, "cataclysmic": 6}
 ABYSS_WETTER = ["dark", "electrical", "exotic", "firestorm", "gamma"]
@@ -11990,7 +12027,7 @@ def abyss_gruppen(abyss_rows, i_start=0, i_ende=1, i_cid=2, i_sys=3):
     return list(gruppen.values())
 
 
-def query_abyss_ertrag(chars=None):
+def query_abyss_ertrag(chars=None, tage=30):
     """Abyss-Ertrag je Filament: ISK pro Durchgang und ISK pro Minute.
 
     Wunsch von Nirahse (29.08.2026). Zwei Dinge machen das ueberhaupt
@@ -12006,7 +12043,14 @@ def query_abyss_ertrag(chars=None):
     was man im Spiel verdient hat.
 
     Multibox-Laeufe werden ueber abyss_gruppen zu EINEM Durchgang
-    zusammengefasst, ihr Loot addiert."""
+    zusammengefasst, ihr Loot addiert.
+
+    tage begrenzt den Zeitraum (0 = alles). Vorgabe 30 Tage, und zwar aus
+    einem inhaltlichen Grund: das geflogene Schiff kann Canary erst seit
+    v2.57 festhalten, aeltere Laeufe haben dort nichts stehen. Mit einem
+    Zeitfenster verschwinden sie von selbst, statt dass irgendetwas geraten
+    werden muesste (Nirahse schlug vor, sie pauschal als Cruiser zu zaehlen;
+    das waere geraten und bliebe ohne Zeitfenster dauerhaft stehen)."""
     # Ein einzelner Name als Zeichenkette zerfaellt sonst still in seine
     # Buchstaben ("Alpha" -> A,l,p,h,a) und die Abfrage findet nichts,
     # ohne zu meckern. Genau das ist beim Umbau auf Mehrfachauswahl
@@ -12015,10 +12059,13 @@ def query_abyss_ertrag(chars=None):
         chars = [chars]
     with DB_LOCK:
         rows = DB.execute(
-            "SELECT start_ts,end_ts,char_id,system,label,loot_isk,enemies,char "
-            "FROM missions ORDER BY start_ts").fetchall()
+            "SELECT start_ts,end_ts,char_id,system,label,loot_isk,enemies,char,"
+            "ship,ship_group FROM missions ORDER BY start_ts").fetchall()
+    seit = (time.time() - tage * 86400) if tage else 0
     ab = []
     for r in rows:
+        if seit and (r[0] or 0) < seit:
+            continue
         try:
             gg = json.loads(r[6] or "[]")
         except Exception:
@@ -12045,9 +12092,20 @@ def query_abyss_ertrag(chars=None):
         for t in teile:
             stufe = stufe or abyss_tier_aus_name(t[0][4] or "")                 or abyss_tier_aus_gegnern(t[1])
             wetter = wetter or abyss_wetter_aus_name(t[0][4] or "")
+        # Geflogenes Schiff: bei Multibox nehmen wir den ersten, der eins hat.
+        # Fliegt die Crew verschiedene Rümpfe, ist die Klasse die aussagekraeftige
+        # Angabe, deshalb steht sie getrennt.
+        schiff = klasse = None
+        for t in teile:
+            if not schiff and t[0][8]:
+                schiff = t[0][8]
+                klasse = SHIP_KLASSEN.get(t[0][9])
         schl = (stufe, wetter)
         e = eimer.setdefault(schl, {"stufe": stufe, "wetter": wetter,
-                                    "runs": 0, "isk": 0.0, "min": 0.0})
+                                    "runs": 0, "isk": 0.0, "min": 0.0,
+                                    "schiffe": {}})
+        if schiff:
+            e["schiffe"][schiff] = e["schiffe"].get(schiff, 0) + 1
         e["runs"] += 1
         e["isk"] += loot
         e["min"] += minuten
@@ -12056,18 +12114,61 @@ def query_abyss_ertrag(chars=None):
         ges_min += minuten
 
     def fertig(e):
+        # Meistgeflogenes Schiff dieser Sorte, plus wie viele Laeufe ueberhaupt
+        # eine Angabe haben. Ohne EVE-Login oder bei alten Laeufen bleibt es leer.
+        top = sorted(e["schiffe"].items(), key=lambda x: -x[1])
         return {"stufe": e["stufe"], "wetter": e["wetter"], "runs": e["runs"],
+                "schiff": top[0][0] if top else None,
+                "schiffe": len(top),
+                "mit_schiff": sum(n for _n, n in top),
                 "isk": round(e["isk"]),
                 "isk_run": round(e["isk"] / e["runs"]) if e["runs"] else 0,
                 "min": round(e["min"] / e["runs"], 1) if e["runs"] else 0,
                 "isk_min": round(e["isk"] / e["min"]) if e["min"] else 0}
+
+    # Nach Schiffsklasse: genau das war die Frage (Cruiser, Zerstoerer oder
+    # Fregatte). Eigene Liste statt einer weiteren Spalte, weil dieselbe
+    # Filament-Sorte mit verschiedenen Ruempfen geflogen werden kann.
+    kl = {}
+    for idx in gruppen:
+        teile = [ab[i] for i in idx]
+        loot = sum(float(t[0][5] or 0) for t in teile)
+        start = min(t[0][0] for t in teile if t[0][0])
+        ende = max((t[0][1] or 0) for t in teile)
+        minuten = max(0.0, (ende - start) / 60.0) if ende and start else 0.0
+        name = klassen = None
+        for t in teile:
+            if t[0][9] is not None:
+                klassen = SHIP_KLASSEN.get(t[0][9])
+                name = t[0][8]
+                break
+        k = kl.setdefault(klassen, {"klasse": klassen, "runs": 0, "isk": 0.0,
+                                    "min": 0.0, "schiffe": {}})
+        k["runs"] += 1
+        k["isk"] += loot
+        k["min"] += minuten
+        if name:
+            k["schiffe"][name] = k["schiffe"].get(name, 0) + 1
+    klassen_liste = []
+    for k in kl.values():
+        top = sorted(k["schiffe"].items(), key=lambda x: -x[1])
+        klassen_liste.append({
+            "klasse": k["klasse"], "runs": k["runs"], "isk": round(k["isk"]),
+            "isk_run": round(k["isk"] / k["runs"]) if k["runs"] else 0,
+            "isk_min": round(k["isk"] / k["min"]) if k["min"] else 0,
+            "min": round(k["min"] / k["runs"], 1) if k["runs"] else 0,
+            "schiffe": [n for n, _ in top[:4]]})
+    klassen_liste.sort(key=lambda x: (x["klasse"] is None, -x["isk_run"]))
 
     liste = [fertig(e) for e in eimer.values()]
     # Benannte zuerst nach Ertrag, "ohne Angabe" immer ans Ende: sie ist keine
     # Filament-Sorte, sondern die Restmenge.
     liste.sort(key=lambda x: ((x["stufe"] is None and x["wetter"] is None),
                               -x["isk_run"]))
-    return {"zeilen": liste, "runs": ges_runs, "isk": round(ges_isk),
+    return {"zeilen": liste, "klassen": klassen_liste, "tage": tage,
+            "mit_schiff": sum(k["runs"] for k in klassen_liste
+                              if k["klasse"] is not None),
+            "runs": ges_runs, "isk": round(ges_isk),
             "isk_run": round(ges_isk / ges_runs) if ges_runs else 0,
             "isk_min": round(ges_isk / ges_min) if ges_min else 0,
             "min": round(ges_min / ges_runs, 1) if ges_runs else 0,
@@ -12534,7 +12635,12 @@ class Handler(BaseHTTPRequestHandler):
                 data["abyss_n"] = abyss_anzahl()
                 data["loot_tage"] = query_loot_tage()
                 data["loot_auswertung"] = query_loot_auswertung(wahl)
-                data["abyss_ertrag"] = query_abyss_ertrag(wahl)
+                try:
+                    atage = int(self.path.split("atage=")[1].split("&")[0])                         if "atage=" in self.path else 30
+                except ValueError:
+                    atage = 30
+                data["abyss_ertrag"] = query_abyss_ertrag(
+                    wahl, atage if atage in (0, 30, 90, 365) else 30)
                 data["chars"] = snapshot_live()
                 data["mchars"] = erlaubt
                 data["mchar"] = mgewaehlt
@@ -14749,6 +14855,10 @@ let walletChar=localStorage.getItem('walletChar')||'';
 // ihre Crew zusammen sehen, und gemeinsame Abyss-Laeufe zaehlen dann als ein
 // Durchgang (Askend, 29.08.2026). Eigener Wert, damit sie nicht mit der
 // Wallet-Auswahl kollidiert.
+// Zeitraum der Abyss-Uebersicht. 30 Tage als Vorgabe, damit Laeufe ohne
+// Schiffsangabe (vor v2.57) von selbst herausfallen, statt geraten zu werden.
+let abyssTage=Number(localStorage.getItem('abyssTage')??30);
+if(![0,30,90,365].includes(abyssTage))abyssTage=30;
 let missChars=(()=>{try{const r=JSON.parse(localStorage.getItem('missChars')||'[]');
   return Array.isArray(r)?r.filter(x=>typeof x==='string'):[];}catch(e){return [];}})();
 function applyFs(){
@@ -18472,7 +18582,12 @@ function renderMissions(d){
     return (st||we)?[st,we].filter(Boolean).join(' '):(en6?'no details':'ohne Angabe');
    };
    return `<div class="card" style="grid-column:1/-1">
-    <div class="sect">🌀 ${en6?'Abyss yield per filament':'Abyss-Ertrag je Filament'}</div>
+    <div class="sect" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+     <span>🌀 ${en6?'Abyss yield per filament':'Abyss-Ertrag je Filament'}</span>
+     <span style="margin-left:auto;display:flex;gap:6px">${[[30,en6?'30 days':'30 Tage'],
+       [90,en6?'90 days':'90 Tage'],[0,en6?'all':'alles']].map(([t,l])=>
+       `<span class="pill atage${abyssTage===t?' on':''}" data-at="${t}">${l}</span>`).join('')}</span>
+    </div>
     <div class="stats" style="grid-template-columns:repeat(4,1fr)">
      <div class="stat"><div class="l">${en6?'Runs':'Durchgänge'}</div><div class="v">${A.runs}</div></div>
      <div class="stat"><div class="l">${en6?'ISK per run':'ISK je Durchgang'}</div><div class="v isk">${fmtM(A.isk_run)}</div></div>
@@ -18486,9 +18601,18 @@ function renderMissions(d){
      <td class="r isk">${fmtM(z.isk_run)}</td><td class="r isk">${fmtM(z.isk_min)}</td>
      <td class="r">${z.min} min</td></tr>`).join('')}
     </table>
+    ${(A.klassen&&A.mit_schiff)?`<div class="sect" style="margin-top:12px">${en6?'By ship class':'Nach Schiffsklasse'}</div>
+    <table class="jobtab"><tr><th>${en6?'Class':'Klasse'}</th><th>${en6?'Ships':'Schiffe'}</th>
+     <th class="r">${en6?'Runs':'Durchgänge'}</th><th class="r">${en6?'ISK per run':'ISK je Durchgang'}</th>
+     <th class="r">ISK/min</th><th class="r">${en6?'Ø duration':'Ø Dauer'}</th></tr>
+    ${A.klassen.map(k=>`<tr><td>${k.klasse?esc(k.klasse):(en6?'no details':'ohne Angabe')}</td>
+     <td class="sub">${(k.schiffe||[]).map(esc).join(', ')||'—'}</td>
+     <td class="r">${k.runs}</td><td class="r isk">${fmtM(k.isk_run)}</td>
+     <td class="r isk">${fmtM(k.isk_min)}</td><td class="r">${k.min} min</td></tr>`).join('')}
+    </table>`:''}
     <div class="sub" style="margin-top:8px">${en6
-      ? `Abyss NPCs pay no bounty, so the loot you entered is the entire yield of a run. Which filament was used is in no log file: the tier comes from six known Overmind enemies, the weather only from the name you give a run (there are dropdowns for both when naming). ${A.ohne_angabe?`${A.ohne_angabe} run(s) carry no details yet and are listed separately, they still count towards the totals.`:''} Runs flown together by several characters count as ONE run, their loot added up.`
-      : `Abyss-Gegner zahlen keine Bounty, der von dir eingetragene Loot ist deshalb der vollständige Ertrag eines Laufs. Welches Filament du gezogen hast, steht in keiner Logdatei: die Stufe erkennt Canary an sechs bekannten Overmind-Gegnern, das Wetter nur an dem Namen, den du dem Lauf gibst (beim Benennen gibt es dafür zwei Auswahlfelder). ${A.ohne_angabe?`${A.ohne_angabe} Durchgang/Durchgänge ohne Angabe stehen als eigene Zeile und zählen in der Summe mit.`:''} Läufe, die mehrere Charaktere gemeinsam geflogen sind, zählen als EIN Durchgang, ihr Loot wird addiert.`}</div>
+      ? `Abyss NPCs pay no bounty, so the loot you entered is the entire yield of a run. Which filament was used is in no log file: the tier comes from six known Overmind enemies, the weather only from the name you give a run (there are dropdowns for both when naming). ${A.ohne_angabe?`${A.ohne_angabe} run(s) carry no details yet and are listed separately, they still count towards the totals.`:''} Runs flown together by several characters count as ONE run, their loot added up.${A.mit_schiff<A.runs?` The ship comes from the EVE login and is recorded when a run ends, so it is missing for the ${A.runs-A.mit_schiff} run(s) flown before this feature existed. Your own ship appears in no log line, only ESI knows it.`:''}`
+      : `Abyss-Gegner zahlen keine Bounty, der von dir eingetragene Loot ist deshalb der vollständige Ertrag eines Laufs. Welches Filament du gezogen hast, steht in keiner Logdatei: die Stufe erkennt Canary an sechs bekannten Overmind-Gegnern, das Wetter nur an dem Namen, den du dem Lauf gibst (beim Benennen gibt es dafür zwei Auswahlfelder). ${A.ohne_angabe?`${A.ohne_angabe} Durchgang/Durchgänge ohne Angabe stehen als eigene Zeile und zählen in der Summe mit.`:''} Läufe, die mehrere Charaktere gemeinsam geflogen sind, zählen als EIN Durchgang, ihr Loot wird addiert.${A.mit_schiff<A.runs?` Das Schiff kommt aus dem EVE-Login und wird beim Abschluss eines Laufs festgehalten, bei ${A.runs-A.mit_schiff} Durchgang/Durchgängen von vorher fehlt es deshalb. Dein eigenes Schiff steht in keiner Logzeile, nur ESI kennt es.`:''}`}</div>
    </div>`;})()}
 
  ${(m.agents&&m.agents.length)?`<div class="card">
@@ -18597,6 +18721,11 @@ function renderMissions(d){
  // Server neu, deshalb ein voller Takt statt nur Neuzeichnen. Die Seitenzahlen
  // gehen auf Anfang zurueck, sonst steht man bei einem Charakter mit wenigen
  // Missionen auf einer leeren Seite drei.
+ document.querySelectorAll('.atage').forEach(el=>el.onclick=()=>{
+  abyssTage=Number(el.dataset.at);
+  localStorage.setItem('abyssTage',abyssTage);
+  tick();
+ });
  document.querySelectorAll('.mchar').forEach(el=>el.onclick=()=>{
   const w=el.dataset.mc||'';
   if(!w)missChars=[];                       // "Alle" leert die Auswahl
@@ -20025,8 +20154,9 @@ async function tick(){
   // rechnet die Bilanz danach. Bei allen anderen Ansichten bleibt die URL wie sie war.
   const zusatz=(reqView==='wallet')
     ?('&days='+walletTage+(walletChar?'&wchar='+encodeURIComponent(walletChar):''))
-    :((reqView==='missionen'&&missChars.length)
-        ?('&mchar='+encodeURIComponent(missChars.join(',')))
+    :((reqView==='missionen')
+        ?('&atage='+abyssTage
+          +(missChars.length?('&mchar='+encodeURIComponent(missChars.join(','))):''))
         :'');
   // Harte Zeitgrenze fuer den Abruf. Ohne sie kann eine Verbindung, die nie
   // beantwortet wird (Server startet zwischendurch neu, der Socket bleibt aber
