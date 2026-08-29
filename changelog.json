@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.58.1",
+  "d": "2026-08-29",
+  "de": [
+   "DIE MENUELEISTE BLEIBT BEIM SCROLLEN STEHEN, gewuenscht von Vile Gangster: aehnlich wie eine fixierte Zeile in der Tabellenkalkulation. Wer in einer langen Ansicht wie den 30 Tagen weit unten war, musste bisher erst wieder ganz nach oben, nur um den Tab zu wechseln. Die helle Linie unter der Leiste war schon da und traegt jetzt die Kante.",
+   "UND DER WAAGERECHTE ROLLBALKEN IM MENUE IST WEG (Nirahse): bei schmalem Fenster bricht die Leiste jetzt um, statt einen eigenen Rollbalken zu bekommen. Bei 900 Pixel Fensterbreite passen die fuenfzehn Ansichten in drei Zeilen, ohne dass etwas abgeschnitten wird. Unter 760 Pixel scrollt die Leiste bewusst wieder mit: dort waechst sie auf sieben Zeilen und wuerde fixiert ein Fuenftel des Bildschirms dauerhaft belegen, gemessen 22 Prozent. Umbrechen tut sie in jeder Breite."
+  ],
+  "en": [
+   "THE MENU BAR NOW STAYS PUT WHILE SCROLLING, requested by Vile Gangster: similar to a frozen row in a spreadsheet. Anyone far down a long view like the 30 days had to scroll all the way back up just to switch tabs. The light line under the bar was already there and now carries its edge.",
+   "AND THE HORIZONTAL SCROLLBAR IN THE MENU IS GONE (Nirahse): on a narrow window the bar now wraps instead of getting its own scrollbar. At 900 pixels of window width the fifteen views fit into three rows with nothing cut off. Below 760 pixels the bar deliberately scrolls along again: there it grows to seven rows and, if pinned, would permanently occupy a fifth of the screen, measured at 22 percent. It wraps at every width."
+  ]
+ },
+ {
   "v": "2.58.0",
   "d": "2026-08-29",
   "de": [

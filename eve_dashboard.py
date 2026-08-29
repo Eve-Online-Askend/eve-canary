@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.58.0"
+VERSION = "2.58.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -13555,10 +13555,26 @@ html[data-skin=photon] .rolesel{border-radius:1px}
 #loadbar>div{height:100%;width:35%;background:var(--cyan);border-radius:2px;
  animation:lb 900ms ease-in-out infinite}
 @keyframes lb{0%{margin-left:-35%}100%{margin-left:100%}}
+/* Menueleiste bleibt beim Scrollen stehen (Vile Gangster, 29.08.2026: wie die
+   fixierte Zeile in einer Tabellenkalkulation). Ohne das musste man aus einer
+   langen Ansicht wie den 30 Tagen erst wieder ganz nach oben, nur um den Tab
+   zu wechseln. Die Linie unter der Leiste war schon da und traegt jetzt die
+   Kante. Der eigene Hintergrund ist Pflicht, sonst scheint der Inhalt durch.
+   Randabstand negativ ausgleichen, damit die Flaeche bis an den Fensterrand
+   reicht und beim Scrollen nichts seitlich daneben durchlaeuft. */
 nav{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:12px;
- overflow-x:auto;scrollbar-width:thin}
-nav::-webkit-scrollbar{height:4px}
-nav::-webkit-scrollbar-thumb{background:var(--line);border-radius:2px}
+ position:sticky;top:0;z-index:30;background:var(--bg);
+ margin-left:-18px;margin-right:-18px;padding:0 18px;
+ /* Kein waagerechter Rollbalken mehr, die Leiste bricht um (Nirahse). Bei
+    fuenfzehn Ansichten passt sie in einem schmalen Fenster sonst nicht, und
+    ein Rollbalken IM Menue findet niemand. */
+ flex-wrap:wrap;row-gap:0}
+/* Nur fixieren, solange die Leiste schmal bleibt. Gemessen: bei 900 px passt
+   sie in drei Zeilen und nimmt 12% der Fensterhoehe, bei 455 px sind es sieben
+   Zeilen und 22%. Eine fixierte Leiste, die ein Fuenftel des Bildschirms
+   dauerhaft belegt, hilft niemandem mehr, deshalb faellt sie darunter zurueck
+   ins Mitscrollen. Umbrechen tut sie in jeder Breite. */
+@media (max-width:760px){nav{position:static}}
 nav span{white-space:nowrap;flex:none}
 /* Kopfleiste: je enger das Fenster, desto kompakter die Schalter. Sonst geht
    sie auf vier Zeilen auf und frisst den halben Bildschirm, besonders wenn
