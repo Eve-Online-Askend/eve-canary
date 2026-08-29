@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.55.0"
+VERSION = "2.56.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -18235,22 +18235,30 @@ function renderMissions(d){
    loot_tage:(d.loot_tage||[]).filter(x=>gewaehlt.has(x.char))});
  }
  const live=(d.chars||[]).filter(c=>c.bounty>0||c.kills>0);
+ // Verdienst je Tag aus der Tagesuebersicht statt aus dem Wallet-Journal:
+ // nur dort steckt der LOOT mit drin. Ohne ihn stand bei einem reinen
+ // Abyss-Flieger immer null, weil Abyss-Gegner keine Bounty zahlen und es
+ // keine Agenten-Belohnung gibt (Nirahse, 29.08.2026). Salvage zaehlt mit,
+ // es ist Ertrag desselben Laufs. Die Zeile folgt damit auch dem
+ // Charakterfilter, denn loot_tage ist oben schon gefiltert.
+ const proTag={};
+ (d.loot_tage||[]).forEach(x=>{
+  const e=proTag[x.tag]||(proTag[x.tag]={isk:0,runs:0});
+  e.isk+=x.total||0; e.runs+=x.runs||0;
+ });
  const byDay={};(m.days||[]).forEach(x=>byDay[x.day]=x);
  const iso=n=>new Date(Date.now()-n*864e5).toISOString().slice(0,10);
- const y=byDay[iso(1)]||{};
+ // Missionszahl bleibt die aus dem Journal (abgeschlossene Missionen mit
+ // Belohnung), die Tagesuebersicht zaehlt Runs. Beides nebeneinander waere
+ // verwirrend, deshalb bleibt es bei der bekannten Zahl.
+ const tag=n=>proTag[iso(n)]||{isk:0,runs:0};
  let wIsk=0,wMis=0;
- for(let n=0;n<7;n++){const x=byDay[iso(n)];if(x){wIsk+=x.total;wMis+=x.missions;}}
- $('#hero').innerHTML=heroTiles('🎯 Verdient heute',t.total||0,y.total||0,wIsk,
-  (t.missions||0)+' Missionen',wMis+' Missionen · Ø '+fmtM(wIsk/7)+'/Tag');
- $('#grid').innerHTML=`
- <div class="alphabanner" style="grid-column:1/-1">🧪 <b>${lang==='en'?'Alpha phase, module in development':'Alpha-Phase, Modul in Entwicklung'}</b> · ${lang==='en'?'faction tips and verified rewards are still being checked against real logs. Feedback welcome.':'Fraktions-Tipps und verifizierte Belohnungen werden noch an echten Logs geprüft. Rückmeldungen willkommen.'}</div>
- ${state.sim?`<div style="grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;align-items:center">
-   <span class="sub" style="color:var(--dim)">${lang==='en'?'Local demo (not shipped)':'Lokale Demo (nicht ausgeliefert)'}</span>
-   <button class="btn${SIM.on?' simon':''}" onclick="toggleSim()">${SIM.on?(lang==='en'?'⏹ Stop simulation':'⏹ Simulation stoppen'):(lang==='en'?'▶ Start simulation':'▶ Simulation starten')}</button></div>`:''}
- ${(()=>{
-   // Charakter-Auswahl wie im Wallet Buddy. Sie wird IMMER gebaut, auch wenn
-   // der gewaehlte Charakter gerade nichts vorzuweisen hat: sonst landet man
-   // auf einer leeren Seite ohne die Auswahl und kommt nicht mehr zurueck.
+ for(let n=0;n<7;n++){wIsk+=tag(n).isk; const x=byDay[iso(n)]; if(x)wMis+=x.missions;}
+ // Die Charakter-Auswahl steht GANZ OBEN, ueber allem, was auf sie reagiert,
+ // also auch ueber den Verdienst-Kacheln (Nirahse, 29.08.2026). Sie wird
+ // immer gebaut, auch wenn der gewaehlte Charakter nichts vorzuweisen hat:
+ // sonst landet man auf einer leeren Seite ohne die Auswahl.
+ const charWahl=(()=>{
    const namen=d.mchars||[];
    if(namen.length<2)return '';
    const an=w=>w?missChars.includes(w):!missChars.length;
@@ -18259,11 +18267,18 @@ function renderMissions(d){
      ?`<span class="sub" style="color:var(--gold)">${lang==='en'
         ?'flying together: joint abyss runs count as one'
         :'fliegen zusammen: gemeinsame Abyss-Läufe zählen als ein Durchgang'}</span>`:'';
-   return `<div class="card" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+   return `<div class="card" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
     <span class="sub" style="letter-spacing:1px;text-transform:uppercase;font-size:10px">${lang==='en'?'Character':'Charakter'}</span>
     ${knopf('',lang==='en'?'All':'Alle')}${namen.map(n=>knopf(n,n)).join('')}
     ${hinweis}
-   </div>`;})()}
+   </div>`;})();
+ $('#hero').innerHTML=charWahl+heroTiles('🎯 Verdient heute',tag(0).isk,tag(1).isk,wIsk,
+  (t.missions||0)+' Missionen',wMis+' Missionen · Ø '+fmtM(wIsk/7)+'/Tag');
+ $('#grid').innerHTML=`
+ <div class="alphabanner" style="grid-column:1/-1">🧪 <b>${lang==='en'?'Alpha phase, module in development':'Alpha-Phase, Modul in Entwicklung'}</b> · ${lang==='en'?'faction tips and verified rewards are still being checked against real logs. Feedback welcome.':'Fraktions-Tipps und verifizierte Belohnungen werden noch an echten Logs geprüft. Rückmeldungen willkommen.'}</div>
+ ${state.sim?`<div style="grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;align-items:center">
+   <span class="sub" style="color:var(--dim)">${lang==='en'?'Local demo (not shipped)':'Lokale Demo (nicht ausgeliefert)'}</span>
+   <button class="btn${SIM.on?' simon':''}" onclick="toggleSim()">${SIM.on?(lang==='en'?'⏹ Stop simulation':'⏹ Simulation stoppen'):(lang==='en'?'▶ Start simulation':'▶ Simulation starten')}</button></div>`:''}
  ${renderMissionLive(d.chars)}
  <div class="card" style="grid-column:1/-1">
   <b>Heute im Detail (EVE-Zeit)</b>
@@ -18271,12 +18286,23 @@ function renderMissions(d){
     if(m.asof)p.push('Stand: vor '+Math.max(0,Math.round((now-m.asof)/60))+' min');
     if(m.next){const nx=Math.round((m.next-now)/60);p.push(nx>0?'nächster Abgleich in '+nx+' min':'Abgleich läuft gerade');}
     return `<div class="sub">${p.join(' · ')}. Das In-Game-Wallet ist sofort aktuell, ESI hängt bis zu 1 Stunde nach.</div>`;})():''}
-  <div class="stats" style="margin-top:10px">
+  ${(()=>{
+    // Fuenf Kacheln in EINER Zeile, Reihenfolge von Nirahse (29.08.2026):
+    // Missionen, Bounty, Loot, Belohnung, Zeitboni. Vorher waren es vier und
+    // sie brachen in eine zweite Zeile um, obwohl kaum Inhalt drinsteht.
+    // Der Loot-Wert kommt NICHT aus dem Wallet-Journal, sondern aus dem, was
+    // du an den Missionen eintraegst. Salvage zaehlt mit, es ist Ertrag
+    // desselben Laufs.
+    const heute=new Date().toISOString().slice(0,10);
+    const hl=(d.loot_tage||[]).filter(x=>x.tag===heute);
+    const lootHeute=hl.reduce((s2,x)=>s2+(x.loot||0)+(x.salv||0),0);
+    return `<div class="stats" style="margin-top:10px;grid-template-columns:repeat(5,1fr)">
    <div class="stat"><div class="l">Missionen erledigt</div><div class="v out">${t.missions||0}</div></div>
+   <div class="stat"><div class="l">Bounties</div><div class="v grn">${fmtM(t.bounty||0)}</div></div>
+   <div class="stat" title="Loot und Bergung, die du an deinen Missionen eingetragen hast. Steht in keiner Logdatei, EVE protokolliert weder Plündern noch Bergung."><div class="l">Loot</div><div class="v isk">${fmtM(lootHeute)}</div></div>
    <div class="stat"><div class="l">Belohnungen</div><div class="v isk">${fmtM(t.reward||0)}</div></div>
    <div class="stat"><div class="l">Zeitboni</div><div class="v isk">${fmtM(t.bonus||0)}</div></div>
-   <div class="stat"><div class="l">Bounties</div><div class="v grn">${fmtM(t.bounty||0)}</div></div>
-  </div>
+  </div>`;})()}
   ${(m.mine_systems&&m.mine_systems.length)?`<div class="sub" style="margin-top:8px">Bounties aus deinen Mining-Systemen (${m.mine_systems.join(', ')}) zählen hier nicht mit, das sind Belt-Ratten.</div>`:''}
   ${m.linked?'':'<div class="cardwarn" style="margin-top:10px">⚠ Kein EVE-Login verbunden. Belohnungen und Boni kommen aus dem Wallet-Journal (ESI), einzurichten unter ⚙ Optionen.</div>'}
   ${live.length?'<div class="sect">Live-Session (aus den Gamelogs)</div>'+live.map(c=>

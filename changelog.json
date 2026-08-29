@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.56.0",
+  "d": "2026-08-29",
+  "de": [
+   "DER LOOT ZAEHLT JETZT BEIM VERDIENST MIT, gemeldet von Nirahse: wer nur Abyss fliegt, sah bei \"Verdient heute\" immer eine Null. Zu Recht, denn diese Zahl kam allein aus dem Wallet-Journal, und Abyss zahlt weder Bounty noch Agenten-Belohnung. Der ganze Ertrag steckt im Loot, den du selbst eintraegst. Genau der fliesst jetzt ein, samt Bergung, sie gehoert zum selben Lauf. An echten Daten gemessen macht das den Unterschied zwischen 3,6 und 14,1 Millionen in sieben Tagen.",
+   "HEUTE IM DETAIL HAT JETZT FUENF FELDER IN EINER ZEILE, in der Reihenfolge Missionen, Bounty, Loot, Belohnung, Zeitboni. Der Loot-Wert ist neu, vorher fehlte er dort ganz. Vier Felder brachen bisher in eine zweite Zeile um, obwohl kaum Inhalt drinsteht, jetzt nutzen fuenf die Fensterbreite besser.",
+   "DIE CHARAKTER-AUSWAHL STEHT GANZ OBEN, ueber allem, was auf sie reagiert, also auch ueber den Verdienst-Feldern. Vorher sass sie darunter und man sah nicht, dass die Zahlen darueber der Auswahl folgen. Alle drei Punkte kommen aus Nirahses durchgearbeitetem Vorschlag."
+  ],
+  "en": [
+   "LOOT NOW COUNTS TOWARDS YOUR EARNINGS, reported by Nirahse: anyone flying only abyss sites saw a plain zero under \"earned today\". Rightly so, because that number came from the wallet journal alone, and abyss pays neither bounty nor agent reward. The entire yield sits in the loot you enter yourself. That now flows in, salvage included, it belongs to the same run. Measured against real data it is the difference between 3.6 and 14.1 million over seven days.",
+   "TODAY IN DETAIL NOW HAS FIVE FIELDS IN ONE ROW, in the order missions, bounty, loot, reward, time bonus. The loot value is new, it was missing there entirely. Four fields used to wrap into a second row despite holding almost nothing, five now use the width of the window properly.",
+   "THE CHARACTER SELECTOR SITS RIGHT AT THE TOP, above everything that reacts to it, including the earnings fields. It used to sit below them, so you could not tell that the numbers above follow the selection. All three points come from Nirahse's worked-through proposal."
+  ]
+ },
+ {
   "v": "2.55.0",
   "d": "2026-08-29",
   "de": [
