@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.54.0"
+VERSION = "2.55.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -10877,8 +10877,16 @@ def query_loot_auswertung(char=None):
     naechsten Takt von allein."""
     # Auch die Abdeckung ("X von Y Missionen") muss dem Charakterfilter folgen,
     # sonst stuende der Loot EINES Charakters neben der Missionszahl ALLER.
-    nur = " AND char=?" if char else ""
-    arg = [char] if char else []
+    # Mehrere Namen sind erlaubt (Multibox-Crew zusammen sehen).
+    # Ein einzelner Name als Zeichenkette zerfaellt sonst still in seine
+    # Buchstaben ("Alpha" -> A,l,p,h,a) und die Abfrage findet nichts,
+    # ohne zu meckern. Genau das ist beim Umbau auf Mehrfachauswahl
+    # passiert und erst der Testlauf hat es gezeigt.
+    if isinstance(char, str):
+        char = [char]
+    namen = list(char) if char else []
+    nur = (" AND char IN (%s)" % ",".join("?" * len(namen))) if namen else ""
+    arg = list(namen)
     with DB_LOCK:
         rows = DB.execute(
             "SELECT mid, start_ts, system, label, loot_isk, loot_text, "
@@ -11768,14 +11776,21 @@ def query_missions(char=None):
     char schraenkt ALLES auf einen Charakter ein, auch die Gegner aus den
     Gamelogs. Gewuenscht von Nirahse (29.08.2026): eine Auswahl oben, die auf
     jede Tabelle der Seite wirkt, statt einer eigenen Tabelle je Aufschluesselung."""
+    # Ein einzelner Name als Zeichenkette zerfaellt sonst still in seine
+    # Buchstaben ("Alpha" -> A,l,p,h,a) und die Abfrage findet nichts,
+    # ohne zu meckern. Genau das ist beim Umbau auf Mehrfachauswahl
+    # passiert und erst der Testlauf hat es gezeigt.
+    if isinstance(char, str):
+        char = [char]
     mine_sys = CONFIG.get("mine_systems") or {}
     mine_ids = {i for i in mine_sys.values() if i}
     with DB_LOCK:
         rows = DB.execute(
             "SELECT char, ts, ref_type, amount, party, ctx FROM journal").fetchall()
     days, agents, chars = {}, {}, {}
+    nur = set(char) if char else None
     for zeilen_char, ts, ref, amount, party, ctx in rows:
-        if char and zeilen_char != char:
+        if nur and zeilen_char not in nur:
             continue
         if ref in ("bounty_prizes", "bounty_prize") and ctx in mine_ids:
             continue
@@ -11806,7 +11821,7 @@ def query_missions(char=None):
     # wen hast du bekaempft, wer hat zurueckgeschossen.
     foes = {}
     for _day, _cid, _cname, kind, key, value in all_rows(30, ("dmg_out", "dmg_in")):
-        if char and _cname != char:
+        if nur and _cname not in nur:
             continue
         if not key or key == "?":
             continue
@@ -11932,6 +11947,132 @@ def abyss_anzahl():
             n += 1
     _ABYSS_N.update({"ts": time.time(), "n": n})
     return n
+
+
+def abyss_gruppen(abyss_rows, i_start=0, i_ende=1, i_cid=2, i_sys=3):
+    """Gleichzeitige Durchgaenge zu Gruppen verbinden, ueber die Verbindung.
+
+    Multiboxing erzeugt bewusst eine Zeile JE CHARAKTER (jeder hat eigenen
+    Schaden und eigenes Log). Jede Auswertung, die Durchgaenge zaehlt, muss
+    diese Zeilen zu EINEM Durchgang zusammenfassen, sonst zaehlt eine
+    Dreier-Flotte als drei Laeufe und jeder Schnitt ist kaputt.
+
+    Regel wie im Export und in der Missionsliste: anderer Charakter, gleiches
+    System, rein UND raus innerhalb von 90 Sekunden. Verbunden statt paarweise,
+    damit drei Charaktere auch dann eine Gruppe sind, wenn der erste und der
+    letzte 100 s auseinanderliegen und beide nur den mittleren beruehren.
+
+    Gibt eine Liste von Listen zurueck, jede innere Liste sind die Indizes
+    einer Gruppe, in der Reihenfolge des ersten Auftretens."""
+    eltern = list(range(len(abyss_rows)))
+
+    def wurzel(i):
+        while eltern[i] != i:
+            eltern[i] = eltern[eltern[i]]
+            i = eltern[i]
+        return i
+
+    def zusammen(a, b):
+        return (a[i_cid] != b[i_cid]
+                and (a[i_sys] or "?") == (b[i_sys] or "?")
+                and abs((a[i_start] or 0) - (b[i_start] or 0)) <= 90
+                and abs((a[i_ende] or 0) - (b[i_ende] or 0)) <= 90)
+
+    for i in range(len(abyss_rows)):
+        for j in range(i + 1, len(abyss_rows)):
+            if zusammen(abyss_rows[i], abyss_rows[j]):
+                wi, wj = wurzel(i), wurzel(j)
+                if wi != wj:
+                    eltern[wj] = wi
+    gruppen = {}
+    for i in range(len(abyss_rows)):
+        gruppen.setdefault(wurzel(i), []).append(i)
+    return list(gruppen.values())
+
+
+def query_abyss_ertrag(chars=None):
+    """Abyss-Ertrag je Filament: ISK pro Durchgang und ISK pro Minute.
+
+    Wunsch von Nirahse (29.08.2026). Zwei Dinge machen das ueberhaupt
+    moeglich: Abyss-Gegner zahlen KEINE Bounty, der eingetragene Loot ist
+    also der vollstaendige Ertrag eines Laufs, und Start und Ende stehen
+    sekundengenau in der Datenbank.
+
+    Das Filament selbst steht in KEINER Logdatei. Die Stufe erkennt Canary
+    nur an sechs Overmind-Gegnern, das Wetter gar nicht. Beides kommt sonst
+    aus dem Namen, den der Spieler dem Lauf gibt (dafuer gibt es beim
+    Benennen zwei Auswahlfelder). Laeufe ohne Angabe zaehlen in der Summe
+    mit und stehen als eigene Zeile, sonst passt die Summe nicht zu dem,
+    was man im Spiel verdient hat.
+
+    Multibox-Laeufe werden ueber abyss_gruppen zu EINEM Durchgang
+    zusammengefasst, ihr Loot addiert."""
+    # Ein einzelner Name als Zeichenkette zerfaellt sonst still in seine
+    # Buchstaben ("Alpha" -> A,l,p,h,a) und die Abfrage findet nichts,
+    # ohne zu meckern. Genau das ist beim Umbau auf Mehrfachauswahl
+    # passiert und erst der Testlauf hat es gezeigt.
+    if isinstance(chars, str):
+        chars = [chars]
+    with DB_LOCK:
+        rows = DB.execute(
+            "SELECT start_ts,end_ts,char_id,system,label,loot_isk,enemies,char "
+            "FROM missions ORDER BY start_ts").fetchall()
+    ab = []
+    for r in rows:
+        try:
+            gg = json.loads(r[6] or "[]")
+        except Exception:
+            gg = []
+        if ist_abyss(r[3], gg):
+            ab.append((r, gg))
+    if chars:
+        # Erst filtern, DANN gruppieren: sonst zieht ein nicht gewaehlter
+        # Charakter seine Mitflieger in eine Gruppe, die es hier nicht gibt.
+        ab = [x for x in ab if x[0][7] in chars]
+    gruppen = abyss_gruppen([x[0] for x in ab])
+
+    eimer = {}
+    ges_isk = ges_min = 0.0
+    ges_runs = 0
+    for idx in gruppen:
+        teile = [ab[i] for i in idx]
+        loot = sum(float(t[0][5] or 0) for t in teile)
+        start = min(t[0][0] for t in teile if t[0][0])
+        ende = max((t[0][1] or 0) for t in teile)
+        minuten = max(0.0, (ende - start) / 60.0) if ende and start else 0.0
+        # Stufe und Wetter: aus dem Namen, sonst aus den Gegnern (nur Stufe).
+        stufe = wetter = None
+        for t in teile:
+            stufe = stufe or abyss_tier_aus_name(t[0][4] or "")                 or abyss_tier_aus_gegnern(t[1])
+            wetter = wetter or abyss_wetter_aus_name(t[0][4] or "")
+        schl = (stufe, wetter)
+        e = eimer.setdefault(schl, {"stufe": stufe, "wetter": wetter,
+                                    "runs": 0, "isk": 0.0, "min": 0.0})
+        e["runs"] += 1
+        e["isk"] += loot
+        e["min"] += minuten
+        ges_runs += 1
+        ges_isk += loot
+        ges_min += minuten
+
+    def fertig(e):
+        return {"stufe": e["stufe"], "wetter": e["wetter"], "runs": e["runs"],
+                "isk": round(e["isk"]),
+                "isk_run": round(e["isk"] / e["runs"]) if e["runs"] else 0,
+                "min": round(e["min"] / e["runs"], 1) if e["runs"] else 0,
+                "isk_min": round(e["isk"] / e["min"]) if e["min"] else 0}
+
+    liste = [fertig(e) for e in eimer.values()]
+    # Benannte zuerst nach Ertrag, "ohne Angabe" immer ans Ende: sie ist keine
+    # Filament-Sorte, sondern die Restmenge.
+    liste.sort(key=lambda x: ((x["stufe"] is None and x["wetter"] is None),
+                              -x["isk_run"]))
+    return {"zeilen": liste, "runs": ges_runs, "isk": round(ges_isk),
+            "isk_run": round(ges_isk / ges_runs) if ges_runs else 0,
+            "isk_min": round(ges_isk / ges_min) if ges_min else 0,
+            "min": round(ges_min / ges_runs, 1) if ges_runs else 0,
+            "ohne_angabe": sum(x["runs"] for x in liste
+                               if x["stufe"] is None and x["wetter"] is None)}
 
 
 def abyss_export_tsv():
@@ -12365,10 +12506,14 @@ class Handler(BaseHTTPRequestHandler):
                 # Tabellen der Seite (Nirahse, 29.08.2026). Nur Namen, die in
                 # den Missionen wirklich vorkommen, alles andere wird still
                 # ignoriert und zeigt wieder alles.
-                mchar = ""
+                # Mehrere Namen, durch Komma getrennt. EVE-Namen enthalten
+                # keine Kommas (nur Buchstaben, Ziffern, Leerzeichen, Bindestrich
+                # und Apostroph), das Trennzeichen ist also eindeutig.
+                mgewaehlt = []
                 if "mchar=" in self.path:
-                    mchar = urllib.parse.unquote(
+                    roh = urllib.parse.unquote(
                         self.path.split("mchar=")[1].split("&")[0])
+                    mgewaehlt = [n.strip() for n in roh.split(",") if n.strip()]
                 # Aus BEIDEN Quellen: wer Missionen geflogen ist (missions)
                 # und wer Belohnungen kassiert hat (journal). Sonst fehlt ein
                 # Charakter als Knopf, dessen Zahlen oben trotzdem mitzaehlen.
@@ -12380,16 +12525,19 @@ class Handler(BaseHTTPRequestHandler):
                         | {r[0] for r in DB.execute(
                             "SELECT DISTINCT char FROM journal "
                             "WHERE char IS NOT NULL AND char!=''")})
-                if mchar not in erlaubt:
-                    mchar = ""
-                data["missions"] = query_missions(mchar or None)
+                # Unbekannte Namen still verwerfen: bleibt nichts uebrig,
+                # wird wieder alles gezeigt statt einer leeren Seite.
+                mgewaehlt = [n for n in mgewaehlt if n in erlaubt]
+                wahl = mgewaehlt or None
+                data["missions"] = query_missions(wahl)
                 data["mission_log"], data["mission_offen"] = query_mission_history()
                 data["abyss_n"] = abyss_anzahl()
                 data["loot_tage"] = query_loot_tage()
-                data["loot_auswertung"] = query_loot_auswertung(mchar or None)
+                data["loot_auswertung"] = query_loot_auswertung(wahl)
+                data["abyss_ertrag"] = query_abyss_ertrag(wahl)
                 data["chars"] = snapshot_live()
                 data["mchars"] = erlaubt
-                data["mchar"] = mchar
+                data["mchar"] = mgewaehlt
             elif view == "vault":
                 data["vault"] = query_vault()
                 data["vault"]["advisor"] = query_ore_advisor(CONFIG["region"])
@@ -14597,9 +14745,12 @@ if(![0,7,30].includes(walletTage))walletTage=30;
 // Auf welchen Charakter der Wallet Buddy eingeschraenkt ist. Leer = alle.
 // Der Server prueft den Namen ohnehin gegen die vorhandenen Wallet-Daten.
 let walletChar=localStorage.getItem('walletChar')||'';
-// Charakter-Auswahl der Missions-Seite. Eigener Wert, damit sie nicht mit
-// der Wallet-Auswahl kollidiert (Nirahse, 29.08.2026).
-let missChar=localStorage.getItem('missChar')||'';
+// Charakter-Auswahl der Missions-Seite, MEHRFACH waehlbar: Multiboxer wollen
+// ihre Crew zusammen sehen, und gemeinsame Abyss-Laeufe zaehlen dann als ein
+// Durchgang (Askend, 29.08.2026). Eigener Wert, damit sie nicht mit der
+// Wallet-Auswahl kollidiert.
+let missChars=(()=>{try{const r=JSON.parse(localStorage.getItem('missChars')||'[]');
+  return Array.isArray(r)?r.filter(x=>typeof x==='string'):[];}catch(e){return [];}})();
 function applyFs(){
  document.documentElement.dataset.fs=fontsize;
  $('#fontsize').textContent=FS_LABEL[fontsize];
@@ -18077,10 +18228,11 @@ function renderMissions(d){
  // Charakter-Auswahl: Zusammenfassung und Loot-Auswertung filtert der Server,
  // Missionsliste und Tagestabelle tragen den Namen je Zeile und werden hier
  // gefiltert. So wirkt EINE Auswahl auf die ganze Seite (Nirahse, 29.08.2026).
- if(missChar){
+ if(missChars.length){
+  const gewaehlt=new Set(missChars);
   d=Object.assign({},d,{
-   mission_log:(d.mission_log||[]).filter(x=>x.char===missChar),
-   loot_tage:(d.loot_tage||[]).filter(x=>x.char===missChar)});
+   mission_log:(d.mission_log||[]).filter(x=>gewaehlt.has(x.char)),
+   loot_tage:(d.loot_tage||[]).filter(x=>gewaehlt.has(x.char))});
  }
  const live=(d.chars||[]).filter(c=>c.bounty>0||c.kills>0);
  const byDay={};(m.days||[]).forEach(x=>byDay[x.day]=x);
@@ -18101,10 +18253,16 @@ function renderMissions(d){
    // auf einer leeren Seite ohne die Auswahl und kommt nicht mehr zurueck.
    const namen=d.mchars||[];
    if(namen.length<2)return '';
-   const knopf=(w,l)=>`<span class="pill mchar${missChar===w?' on':''}" data-mc="${esc(w)}">${esc(l)}</span>`;
+   const an=w=>w?missChars.includes(w):!missChars.length;
+   const knopf=(w,l)=>`<span class="pill mchar${an(w)?' on':''}" data-mc="${esc(w)}">${esc(l)}</span>`;
+   const hinweis=missChars.length>1
+     ?`<span class="sub" style="color:var(--gold)">${lang==='en'
+        ?'flying together: joint abyss runs count as one'
+        :'fliegen zusammen: gemeinsame Abyss-Läufe zählen als ein Durchgang'}</span>`:'';
    return `<div class="card" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <span class="sub" style="letter-spacing:1px;text-transform:uppercase;font-size:10px">${lang==='en'?'Character':'Charakter'}</span>
     ${knopf('',lang==='en'?'All':'Alle')}${namen.map(n=>knopf(n,n)).join('')}
+    ${hinweis}
    </div>`;})()}
  ${renderMissionLive(d.chars)}
  <div class="card" style="grid-column:1/-1">
@@ -18277,6 +18435,35 @@ function renderMissions(d){
    return `<div class="card" style="grid-column:1/-1">
     <div class="sect">${en5?'💰 Loot & salvage analysis':'💰 Loot- & Salvage-Auswertung'}</div>${inhalt}</div>`;
   })()}
+ ${(()=>{
+   // Abyss-Ertrag je Filament (Nirahse, 29.08.2026). Abyss-Gegner zahlen keine
+   // Bounty, der eingetragene Loot IST also der ganze Ertrag eines Laufs.
+   const A=d.abyss_ertrag;
+   if(!A||!A.runs)return '';
+   const en6=lang==='en';
+   const nam=z=>{
+    const st=z.stufe?('T'+z.stufe):'', we=z.wetter?(z.wetter[0].toUpperCase()+z.wetter.slice(1)):'';
+    return (st||we)?[st,we].filter(Boolean).join(' '):(en6?'no details':'ohne Angabe');
+   };
+   return `<div class="card" style="grid-column:1/-1">
+    <div class="sect">🌀 ${en6?'Abyss yield per filament':'Abyss-Ertrag je Filament'}</div>
+    <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+     <div class="stat"><div class="l">${en6?'Runs':'Durchgänge'}</div><div class="v">${A.runs}</div></div>
+     <div class="stat"><div class="l">${en6?'ISK per run':'ISK je Durchgang'}</div><div class="v isk">${fmtM(A.isk_run)}</div></div>
+     <div class="stat"><div class="l">ISK/min</div><div class="v isk">${fmtM(A.isk_min)}</div></div>
+     <div class="stat"><div class="l">${en6?'Ø duration':'Ø Dauer'}</div><div class="v out">${A.min} min</div></div>
+    </div>
+    <table><tr><th>${en6?'Filament':'Filament'}</th><th class="r">${en6?'Runs':'Durchgänge'}</th>
+     <th class="r">${en6?'ISK per run':'ISK je Durchgang'}</th><th class="r">ISK/min</th>
+     <th class="r">${en6?'Ø duration':'Ø Dauer'}</th></tr>
+    ${A.zeilen.map(z=>`<tr><td>${esc(nam(z))}</td><td class="r">${z.runs}</td>
+     <td class="r isk">${fmtM(z.isk_run)}</td><td class="r isk">${fmtM(z.isk_min)}</td>
+     <td class="r">${z.min} min</td></tr>`).join('')}
+    </table>
+    <div class="sub" style="margin-top:8px">${en6
+      ? `Abyss NPCs pay no bounty, so the loot you entered is the entire yield of a run. Which filament was used is in no log file: the tier comes from six known Overmind enemies, the weather only from the name you give a run (there are dropdowns for both when naming). ${A.ohne_angabe?`${A.ohne_angabe} run(s) carry no details yet and are listed separately, they still count towards the totals.`:''} Runs flown together by several characters count as ONE run, their loot added up.`
+      : `Abyss-Gegner zahlen keine Bounty, der von dir eingetragene Loot ist deshalb der vollständige Ertrag eines Laufs. Welches Filament du gezogen hast, steht in keiner Logdatei: die Stufe erkennt Canary an sechs bekannten Overmind-Gegnern, das Wetter nur an dem Namen, den du dem Lauf gibst (beim Benennen gibt es dafür zwei Auswahlfelder). ${A.ohne_angabe?`${A.ohne_angabe} Durchgang/Durchgänge ohne Angabe stehen als eigene Zeile und zählen in der Summe mit.`:''} Läufe, die mehrere Charaktere gemeinsam geflogen sind, zählen als EIN Durchgang, ihr Loot wird addiert.`}</div>
+   </div>`;})()}
 
  ${(m.agents&&m.agents.length)?`<div class="card">
   <div class="sect">Top-Agenten</div><table>
@@ -18385,8 +18572,11 @@ function renderMissions(d){
  // gehen auf Anfang zurueck, sonst steht man bei einem Charakter mit wenigen
  // Missionen auf einer leeren Seite drei.
  document.querySelectorAll('.mchar').forEach(el=>el.onclick=()=>{
-  missChar=el.dataset.mc||'';
-  localStorage.setItem('missChar',missChar);
+  const w=el.dataset.mc||'';
+  if(!w)missChars=[];                       // "Alle" leert die Auswahl
+  else if(missChars.includes(w))missChars=missChars.filter(x=>x!==w);
+  else missChars=missChars.concat([w]);
+  localStorage.setItem('missChars',JSON.stringify(missChars));
   seiteRuns=0; seiteTage=0;
   tick();
  });
@@ -19412,7 +19602,7 @@ const EN = {
 'EVE: Abbaurate gefallen!':'EVE: Mining rate dropped!','EVE: Bedrohung erkannt!':'EVE: Threat detected!',
 'EVE: Heavy Water fast leer!':'EVE: Heavy Water almost empty!','EVE: Watchlist':'EVE: Watchlist',
 'Speichern':'Save','nicht gefunden!':'not found!',
-'Erz-Bilanz (nach Wert)':'Ore balance (by value)','Gegner (letzte 30 Tage)':'Enemies (last 30 days)',
+'Erz-Bilanz (nach Wert)':'Ore balance (by value)',
 // Blaetterung\n'‹ Zurück':'‹ Back','Weiter ›':'Next ›',\n'Je Charakter und Tag. Bounty kommt aus den Gamelogs, Belohnung und Zeitbonus aus dem Wallet-Journal, der Loot ist von dir an den Runs eingetragen. EVE schreibt beim Plündern nichts mit, deshalb steht dort nur, was du selbst hinterlegt hast.':\n 'Per character and day. Bounties come from the game logs, rewards and time bonuses from the wallet journal, and the loot is what you entered on the runs. EVE records nothing when you loot, so that column only holds what you put there yourself.',\n// Loot pro Tag
 // "Summe" statt "Gesamt" als Spaltenkopf: der Reiter oben heisst auch "Gesamt",
 // und da der deutsche Text der Schluessel ist, hat der zweite Eintrag den ersten
@@ -19809,7 +19999,9 @@ async function tick(){
   // rechnet die Bilanz danach. Bei allen anderen Ansichten bleibt die URL wie sie war.
   const zusatz=(reqView==='wallet')
     ?('&days='+walletTage+(walletChar?'&wchar='+encodeURIComponent(walletChar):''))
-    :((reqView==='missionen'&&missChar)?('&mchar='+encodeURIComponent(missChar)):'');
+    :((reqView==='missionen'&&missChars.length)
+        ?('&mchar='+encodeURIComponent(missChars.join(',')))
+        :'');
   // Harte Zeitgrenze fuer den Abruf. Ohne sie kann eine Verbindung, die nie
   // beantwortet wird (Server startet zwischendurch neu, der Socket bleibt aber
   // offen), tickBusy fuer immer auf true stehen lassen: dann wechselt kein Tab

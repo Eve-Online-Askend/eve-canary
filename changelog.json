@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.55.0",
+  "d": "2026-08-29",
+  "de": [
+   "ABYSS-ERTRAG JE FILAMENT, gewuenscht von Nirahse: eine eigene Uebersicht auf der Missions-Seite mit ISK je Durchgang und ISK pro Minute, aufgeschluesselt nach Stufe und Wetter. Zwei Dinge machen das ueberhaupt genau: Abyss-Gegner zahlen keine Bounty, der von dir eingetragene Loot ist deshalb der VOLLSTAENDIGE Ertrag eines Laufs, und Start und Ende stehen sekundengenau in der Datenbank. Was in KEINER Logdatei steht, ist das Filament selbst: die Stufe erkennt Canary nur an sechs Overmind-Gegnern, das Wetter gar nicht. Beides kommt aus dem Namen, den du einem Lauf gibst, und dafuer gibt es beim Benennen laengst zwei Auswahlfelder. Laeufe ohne Angabe verschwinden nicht, sie stehen als eigene Zeile am Ende und zaehlen in der Summe mit, damit die Zahl zu dem passt, was du wirklich verdient hast.",
+   "DIE CHARAKTER-KNOEPFE SIND JETZT MEHRFACH WAEHLBAR (Askend). Wer als Multiboxer zu mehreren fliegt, klickt einfach seine Crew an und sieht sie zusammen. Wichtig dabei: ein Abyss-Durchgang, den mehrere gemeinsam geflogen sind, zaehlt als EIN Durchgang und nicht als drei, ihr Loot wird addiert. Ohne das waere jeder Schnitt kaputt, denn Canary legt fuer jeden Charakter absichtlich eine eigene Zeile an. Sobald mehr als ein Charakter gewaehlt ist, steht der Hinweis dazu auch auf der Seite."
+  ],
+  "en": [
+   "ABYSS YIELD PER FILAMENT, requested by Nirahse: its own overview on the missions page with ISK per run and ISK per minute, broken down by tier and weather. Two things make this exact at all: abyss NPCs pay no bounty, so the loot you entered is the ENTIRE yield of a run, and start and end are in the database to the second. What is in NO log file is the filament itself: Canary only recognises the tier from six overmind enemies and the weather not at all. Both come from the name you give a run, and there have long been two dropdowns for exactly that when naming. Runs without details do not vanish, they sit as their own row at the end and count towards the totals, so the number matches what you actually earned.",
+   "THE CHARACTER BUTTONS ARE NOW MULTI-SELECT (Askend). Multiboxers flying several characters simply click their crew and see them together. Importantly: an abyss run flown together by several characters counts as ONE run, not three, and their loot is added up. Without that every average would be wrong, because Canary deliberately keeps a separate row per character. As soon as more than one character is selected, the page says so."
+  ]
+ },
+ {
   "v": "2.54.0",
   "d": "2026-08-29",
   "de": [
