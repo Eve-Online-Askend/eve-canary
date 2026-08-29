@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.57.0"
+VERSION = "2.58.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -11914,8 +11914,8 @@ SHIP_KLASSEN = {
     25: "Fregatte", 324: "Fregatte", 830: "Fregatte", 831: "Fregatte",
     834: "Fregatte", 893: "Fregatte", 1283: "Fregatte", 1527: "Fregatte",
     420: "Zerstörer", 541: "Zerstörer", 1305: "Zerstörer", 1534: "Zerstörer",
-    26: "Cruiser", 358: "Cruiser", 832: "Cruiser", 833: "Cruiser",
-    894: "Cruiser", 906: "Cruiser", 963: "Cruiser",
+    26: "Kreuzer", 358: "Kreuzer", 832: "Kreuzer", 833: "Kreuzer",
+    894: "Kreuzer", 906: "Kreuzer", 963: "Kreuzer",
 }
 
 ABYSS_TIER_NAME = {"calm": 1, "agitated": 2, "fierce": 3,
@@ -12100,8 +12100,13 @@ def query_abyss_ertrag(chars=None, tage=30):
             if not schiff and t[0][8]:
                 schiff = t[0][8]
                 klasse = SHIP_KLASSEN.get(t[0][9])
-        schl = (stufe, wetter)
+        # Eine Zeile je Filament UND Schiffsklasse (Nirahse, 29.08.2026: eine
+        # Tabelle mit einer Spalte mehr statt zwei Tabellen untereinander).
+        # Dasselbe Filament mit Fregatten geflogen ergibt eine eigene Zeile,
+        # und genau darum ging es ihm: der Vergleich steht nebeneinander.
+        schl = (stufe, wetter, klasse)
         e = eimer.setdefault(schl, {"stufe": stufe, "wetter": wetter,
+                                    "klasse": klasse,
                                     "runs": 0, "isk": 0.0, "min": 0.0,
                                     "schiffe": {}})
         if schiff:
@@ -12117,57 +12122,21 @@ def query_abyss_ertrag(chars=None, tage=30):
         # Meistgeflogenes Schiff dieser Sorte, plus wie viele Laeufe ueberhaupt
         # eine Angabe haben. Ohne EVE-Login oder bei alten Laeufen bleibt es leer.
         top = sorted(e["schiffe"].items(), key=lambda x: -x[1])
-        return {"stufe": e["stufe"], "wetter": e["wetter"], "runs": e["runs"],
+        return {"stufe": e["stufe"], "wetter": e["wetter"],
+                "klasse": e["klasse"], "runs": e["runs"],
                 "schiff": top[0][0] if top else None,
-                "schiffe": len(top),
-                "mit_schiff": sum(n for _n, n in top),
                 "isk": round(e["isk"]),
                 "isk_run": round(e["isk"] / e["runs"]) if e["runs"] else 0,
                 "min": round(e["min"] / e["runs"], 1) if e["runs"] else 0,
                 "isk_min": round(e["isk"] / e["min"]) if e["min"] else 0}
-
-    # Nach Schiffsklasse: genau das war die Frage (Cruiser, Zerstoerer oder
-    # Fregatte). Eigene Liste statt einer weiteren Spalte, weil dieselbe
-    # Filament-Sorte mit verschiedenen Ruempfen geflogen werden kann.
-    kl = {}
-    for idx in gruppen:
-        teile = [ab[i] for i in idx]
-        loot = sum(float(t[0][5] or 0) for t in teile)
-        start = min(t[0][0] for t in teile if t[0][0])
-        ende = max((t[0][1] or 0) for t in teile)
-        minuten = max(0.0, (ende - start) / 60.0) if ende and start else 0.0
-        name = klassen = None
-        for t in teile:
-            if t[0][9] is not None:
-                klassen = SHIP_KLASSEN.get(t[0][9])
-                name = t[0][8]
-                break
-        k = kl.setdefault(klassen, {"klasse": klassen, "runs": 0, "isk": 0.0,
-                                    "min": 0.0, "schiffe": {}})
-        k["runs"] += 1
-        k["isk"] += loot
-        k["min"] += minuten
-        if name:
-            k["schiffe"][name] = k["schiffe"].get(name, 0) + 1
-    klassen_liste = []
-    for k in kl.values():
-        top = sorted(k["schiffe"].items(), key=lambda x: -x[1])
-        klassen_liste.append({
-            "klasse": k["klasse"], "runs": k["runs"], "isk": round(k["isk"]),
-            "isk_run": round(k["isk"] / k["runs"]) if k["runs"] else 0,
-            "isk_min": round(k["isk"] / k["min"]) if k["min"] else 0,
-            "min": round(k["min"] / k["runs"], 1) if k["runs"] else 0,
-            "schiffe": [n for n, _ in top[:4]]})
-    klassen_liste.sort(key=lambda x: (x["klasse"] is None, -x["isk_run"]))
 
     liste = [fertig(e) for e in eimer.values()]
     # Benannte zuerst nach Ertrag, "ohne Angabe" immer ans Ende: sie ist keine
     # Filament-Sorte, sondern die Restmenge.
     liste.sort(key=lambda x: ((x["stufe"] is None and x["wetter"] is None),
                               -x["isk_run"]))
-    return {"zeilen": liste, "klassen": klassen_liste, "tage": tage,
-            "mit_schiff": sum(k["runs"] for k in klassen_liste
-                              if k["klasse"] is not None),
+    mit_schiff = sum(z["runs"] for z in liste if z["klasse"])
+    return {"zeilen": liste, "tage": tage, "mit_schiff": mit_schiff,
             "runs": ges_runs, "isk": round(ges_isk),
             "isk_run": round(ges_isk / ges_runs) if ges_runs else 0,
             "isk_min": round(ges_isk / ges_min) if ges_min else 0,
@@ -13761,6 +13730,14 @@ th{border-top:none}
    kaum auf, in der breiten Industrie-Tabelle sehr wohl (Eron Solette,
    28.08.2026). Zahlenspalten bleiben rechts. */
 th{text-align:left}
+/* ESI-Markierung an den Tabs (Askend, 29.08.2026): man soll auf einen Blick
+   sehen, welche Ansicht den EVE-Login nutzt, UND ob er da ist. Klein und
+   dezent, damit die Leiste nicht zum Ampelbrett wird. */
+nav span .esitab{margin-left:5px;font-size:9px;line-height:1;vertical-align:2px;
+ opacity:.85;cursor:help}
+nav span .esitab.an{filter:grayscale(0);opacity:.6}
+nav span .esitab.aus{filter:grayscale(1);opacity:.5}
+nav span .esitab.warn{filter:none;opacity:1;text-shadow:0 0 6px var(--gold)}
 th.r{text-align:right}
 td.r{text-align:right;color:var(--dim);white-space:nowrap}
 /* Spaltenkoepfe: leise, aber da. Ohne sie muss man aus den Zahlen raten,
@@ -14807,6 +14784,69 @@ const ABYSS_WETTER=['Dark','Electrical','Exotic','Firestorm','Gamma'];
 function abyssNotiz(label){
  const bekannt=new Set(ABYSS_STUFEN.concat(ABYSS_WETTER).map(s=>s.toLowerCase()));
  return String(label||'').split(' ').filter(w=>w&&!bekannt.has(w.toLowerCase())).join(' ');
+}
+// Welche Ansicht braucht den EVE-Login, und wie stark? Am 29.08.2026 an
+// einem Canary OHNE Login durchgetestet, nicht geschaetzt (Askend: das muss
+// man sehen, in beiden Faellen).
+//   voll = ohne Login steht dort nichts
+//   teil = laeuft aus den Logs, ESI ergaenzt einzelne Angaben
+const ESI_TABS={
+ industrie:'voll', planeten:'voll', vault:'voll', wallet:'voll',
+ live:'teil', missionen:'teil', profil:'teil', timeline:'teil'};
+// Welche Berechtigung diese Ansicht wirklich braucht. Ohne das warnte jeder
+// ESI-Tab, sobald IRGENDEINE Freigabe fehlte: nach dem Industrie-Update
+// standen acht Warnungen da, obwohl nur eine Ansicht betroffen war.
+// Die Kurznamen kommen aus char_health (esi-assets.read_assets.v1 -> assets).
+const ESI_SCOPE={
+ industrie:'industry', planeten:'planets', vault:'assets', wallet:'wallet',
+ live:'assets', missionen:'wallet', profil:'wallet', timeline:'wallet'};
+// Was genau ESI in dieser Ansicht beisteuert. Steht im Mouseover, damit die
+// Markierung nicht nur warnt, sondern erklaert.
+const ESI_WAS={
+ industrie:'Fertigung, Forschung und ihre Laufzeiten',
+ planeten:'Kolonien, Extraktoren und Ablaufzeiten',
+ vault:'Erz-Bestand in den Stationen',
+ wallet:'Wallet-Journal und Markt-Transaktionen',
+ live:'Schiff, Kontostand, Frachtraum, Heavy Water',
+ missionen:'Belohnungen und Zeitboni aus dem Journal, Schiff beim Abyss',
+ profil:'Porträt, Kontostand und Schiff',
+ timeline:'die ESI-Ereignisse im Verlauf'};
+// Markierung an den Tabs auffrischen. Drei Zustaende: gebraucht und verbunden,
+// gebraucht und NICHT verbunden, gebraucht aber ein Char muss neu verbunden
+// werden (fehlender Scope, z.B. nach dem Industrie-Update).
+function esiTabs(){
+ const chars=((state&&state.esi&&state.esi.chars)||[]);
+ const verbunden=chars.filter(c=>c.status==='verbunden');
+ const fehlend=verbunden.filter(c=>!c.ok);
+ const en=lang==='en';
+ document.querySelectorAll('nav span[data-v]').forEach(el=>{
+  const art=ESI_TABS[el.dataset.v];
+  let m=el.querySelector('.esitab');
+  if(!art){if(m)m.remove();return;}
+  if(!m){m=document.createElement('span');m.className='esitab';el.appendChild(m);}
+  const was=ESI_WAS[el.dataset.v]||'';
+  let kl,titel;
+  if(!verbunden.length){
+   kl='aus';
+   titel=(art==='voll'
+     ?(en?`Needs the EVE login. Without it this view stays empty: ${was}.`
+         :`Braucht den EVE-Login. Ohne ihn bleibt diese Ansicht leer: ${was}.`)
+     :(en?`Works without the EVE login, from your logs. With it you also get: ${was}.`
+         :`Läuft auch ohne EVE-Login aus deinen Logs. Mit Login kommt dazu: ${was}.`))
+     +(en?' Set it up under ⚙ Options.':' Einrichten unter ⚙ Optionen.');
+  }else if(fehlend.filter(c=>(c.missing||[]).includes(ESI_SCOPE[el.dataset.v])).length){
+   const n=fehlend.filter(c=>(c.missing||[]).includes(ESI_SCOPE[el.dataset.v])).length;
+   kl='warn';
+   titel=(en?`${n} character(s) need reconnecting, otherwise this stays incomplete: ${was}.`
+           :`${n} Charakter(e) einmal neu verbinden, sonst fehlt hier etwas: ${was}.`);
+  }else{
+   kl='an';
+   titel=(en?`EVE login connected, this view uses it for: ${was}.`
+           :`EVE-Login verbunden, diese Ansicht nutzt ihn für: ${was}.`);
+  }
+  if(m.dataset.kl!==kl){m.dataset.kl=kl;m.className='esitab '+kl;m.textContent='🛰';}
+  if(m.title!==titel)m.title=titel;
+ });
 }
 let view=location.pathname.replace(/^\\//,'')||'live', state=null, lastAlertId=Number(localStorage.getItem('lastAlertId')||0);
 if(!VIEWS.includes(view))view='live';
@@ -18594,22 +18634,16 @@ function renderMissions(d){
      <div class="stat"><div class="l">ISK/min</div><div class="v isk">${fmtM(A.isk_min)}</div></div>
      <div class="stat"><div class="l">${en6?'Ø duration':'Ø Dauer'}</div><div class="v out">${A.min} min</div></div>
     </div>
-    <table><tr><th>${en6?'Filament':'Filament'}</th><th class="r">${en6?'Runs':'Durchgänge'}</th>
+    <table><tr><th>${en6?'Filament':'Filament'}</th><th>${en6?'Ship class':'Schiffklasse'}</th>
+     <th class="r">${en6?'Runs':'Durchgänge'}</th>
      <th class="r">${en6?'ISK per run':'ISK je Durchgang'}</th><th class="r">ISK/min</th>
      <th class="r">${en6?'Ø duration':'Ø Dauer'}</th></tr>
-    ${A.zeilen.map(z=>`<tr><td>${esc(nam(z))}</td><td class="r">${z.runs}</td>
+    ${A.zeilen.map(z=>`<tr><td>${esc(nam(z))}</td>
+     <td${z.klasse?'':' class="sub"'}>${z.klasse?esc(z.klasse):(en6?'unknown':'unbekannt')}</td>
+     <td class="r">${z.runs}</td>
      <td class="r isk">${fmtM(z.isk_run)}</td><td class="r isk">${fmtM(z.isk_min)}</td>
      <td class="r">${z.min} min</td></tr>`).join('')}
     </table>
-    ${(A.klassen&&A.mit_schiff)?`<div class="sect" style="margin-top:12px">${en6?'By ship class':'Nach Schiffsklasse'}</div>
-    <table class="jobtab"><tr><th>${en6?'Class':'Klasse'}</th><th>${en6?'Ships':'Schiffe'}</th>
-     <th class="r">${en6?'Runs':'Durchgänge'}</th><th class="r">${en6?'ISK per run':'ISK je Durchgang'}</th>
-     <th class="r">ISK/min</th><th class="r">${en6?'Ø duration':'Ø Dauer'}</th></tr>
-    ${A.klassen.map(k=>`<tr><td>${k.klasse?esc(k.klasse):(en6?'no details':'ohne Angabe')}</td>
-     <td class="sub">${(k.schiffe||[]).map(esc).join(', ')||'—'}</td>
-     <td class="r">${k.runs}</td><td class="r isk">${fmtM(k.isk_run)}</td>
-     <td class="r isk">${fmtM(k.isk_min)}</td><td class="r">${k.min} min</td></tr>`).join('')}
-    </table>`:''}
     <div class="sub" style="margin-top:8px">${en6
       ? `Abyss NPCs pay no bounty, so the loot you entered is the entire yield of a run. Which filament was used is in no log file: the tier comes from six known Overmind enemies, the weather only from the name you give a run (there are dropdowns for both when naming). ${A.ohne_angabe?`${A.ohne_angabe} run(s) carry no details yet and are listed separately, they still count towards the totals.`:''} Runs flown together by several characters count as ONE run, their loot added up.${A.mit_schiff<A.runs?` The ship comes from the EVE login and is recorded when a run ends, so it is missing for the ${A.runs-A.mit_schiff} run(s) flown before this feature existed. Your own ship appears in no log line, only ESI knows it.`:''}`
       : `Abyss-Gegner zahlen keine Bounty, der von dir eingetragene Loot ist deshalb der vollständige Ertrag eines Laufs. Welches Filament du gezogen hast, steht in keiner Logdatei: die Stufe erkennt Canary an sechs bekannten Overmind-Gegnern, das Wetter nur an dem Namen, den du dem Lauf gibst (beim Benennen gibt es dafür zwei Auswahlfelder). ${A.ohne_angabe?`${A.ohne_angabe} Durchgang/Durchgänge ohne Angabe stehen als eigene Zeile und zählen in der Summe mit.`:''} Läufe, die mehrere Charaktere gemeinsam geflogen sind, zählen als EIN Durchgang, ihr Loot wird addiert.${A.mit_schiff<A.runs?` Das Schiff kommt aus dem EVE-Login und wird beim Abschluss eines Laufs festgehalten, bei ${A.runs-A.mit_schiff} Durchgang/Durchgängen von vorher fehlt es deshalb. Dein eigenes Schiff steht in keiner Logzeile, nur ESI kennt es.`:''}`}</div>
@@ -19496,6 +19530,7 @@ const EN = {
  'Damage per second, averaged over the last 60 seconds, after the resistances of the target and including drones. That is why it always sits below the number in the fitting window, which assumes 0 percent resistance. Reloading, switching targets and closing distance drag it down too.',
 'Anteil deiner Schüsse, die getroffen haben. Fehlschüsse stehen als eigene Zeile im Kampflog, deshalb ist die Quote gezählt und nicht geschätzt.':
  'Share of your shots that hit. Misses have their own line in the combat log, so this rate is counted, not estimated.',
+'Kreuzer':'Cruiser','Zerstörer':'Destroyer','Fregatte':'Frigate',
 '⛏ Geminert heute':'⛏ Mined today','🎯 Verdient heute':'🎯 Earned today',
 'Gestern':'Yesterday','Letzte 7 Tage':'Last 7 days','Letzte 30 Tage':'Last 30 days',
 '/Tag':'/day','aktive Tage':'active days','Bester Tag':'Best day',
@@ -20182,7 +20217,7 @@ async function tick(){
     neuladen=true; location.reload(); return;
    }
   }
-  state=d.state;regionPills();handleAlerts();updateBadge();updateBanner();serverBadge();bootScreen();renderViewInfo();
+  state=d.state;esiTabs();regionPills();handleAlerts();updateBadge();updateBanner();serverBadge();bootScreen();renderViewInfo();
   if(state.log_ok===false){renderSetup();return;}
   if(!$('#setup').hidden){$('#setup').hidden=true;$('#setup').dataset.built='';}
   if(view!=='live'&&view!=='month'&&view!=='total'&&view!=='analyse')$('#empty').hidden=true;

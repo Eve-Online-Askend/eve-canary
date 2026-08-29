@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.58.0",
+  "d": "2026-08-29",
+  "de": [
+   "JEDER TAB SAGT JETZT, OB ER DEN EVE-LOGIN BRAUCHT (Askend). An den acht Ansichten, die ESI nutzen, steht ein kleines Satelliten-Zeichen, und es hat drei Zustaende: grau heisst \"hier waere mehr moeglich, aber du bist nicht verbunden\", unauffaellig heisst \"verbunden, laeuft\", und golden leuchtend heisst \"ein Charakter muss einmal neu verbunden werden\". Im Mouseover steht jeweils genau, was ESI in DIESER Ansicht beisteuert, zum Beispiel Kolonien und Ablaufzeiten bei den Planeten oder Belohnungen und Zeitboni bei den Missionen. Die sieben Ansichten, die vollstaendig aus den Logs laufen, tragen bewusst kein Zeichen. Wichtig dabei: die Warnung erscheint nur an der Ansicht, der die Freigabe WIRKLICH fehlt. Ohne das haetten nach dem Industrie-Update alle acht gewarnt, obwohl nur eine betroffen war.",
+   "DER ABYSS-ERTRAG STEHT JETZT IN EINER TABELLE STATT IN ZWEI, nach Nirahses Rueckmeldung. Die Schiffsklasse ist eine Spalte geworden: Kreuzer, Zerstoerer, Fregatte oder unbekannt. Dasselbe Filament mit Fregatten geflogen ergibt damit eine eigene Zeile neben derselben Sorte mit einem Kreuzer, und genau dieser Vergleich war der Anlass. Den genauen Rumpfnamen zeigt Canary nicht mehr, er war fuer die Frage unwichtig."
+  ],
+  "en": [
+   "EVERY TAB NOW SAYS WHETHER IT NEEDS THE EVE LOGIN (Askend). The eight views that use ESI carry a small satellite mark with three states: grey means \"more would be possible here, but you are not connected\", muted means \"connected, working\", and glowing gold means \"one character needs reconnecting once\". The mouseover says exactly what ESI contributes in THAT view, for example colonies and expiry times for planets, or rewards and time bonuses for missions. The seven views that run entirely from your logs deliberately carry no mark. Importantly, the warning only appears on the view whose permission is actually missing. Without that, all eight would have warned after the industry update although only one was affected.",
+   "THE ABYSS YIELD IS NOW ONE TABLE INSTEAD OF TWO, following Nirahse's feedback. The ship class became a column: cruiser, destroyer, frigate or unknown. The same filament flown with frigates now gets its own row next to the same kind flown with a cruiser, and that comparison was the whole point. The exact hull name is no longer shown, it did not matter for the question."
+  ]
+ },
+ {
   "v": "2.57.0",
   "d": "2026-08-29",
   "de": [
