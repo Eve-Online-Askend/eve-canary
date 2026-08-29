@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.53.3"
+VERSION = "2.54.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -10863,7 +10863,7 @@ def query_kristalle():
     return {"monate": out}
 
 
-def query_loot_auswertung():
+def query_loot_auswertung(char=None):
     """Loot-Bilanz und Herkunft je Gegenstand (MelvinMafia, 19.08.2026):
     was habe ich gelootet und gesalvaged, was war es wert, was war der
     Schnitt je Mission, und aus welcher Mission kam ein Gegenstand am
@@ -10875,13 +10875,19 @@ def query_loot_auswertung():
     getrennt ausgewiesen. Preise Jita ueber den cache-first-Weg: beim
     allerersten Aufruf fehlen einzelne Preise noch und kommen mit dem
     naechsten Takt von allein."""
+    # Auch die Abdeckung ("X von Y Missionen") muss dem Charakterfilter folgen,
+    # sonst stuende der Loot EINES Charakters neben der Missionszahl ALLER.
+    nur = " AND char=?" if char else ""
+    arg = [char] if char else []
     with DB_LOCK:
         rows = DB.execute(
             "SELECT mid, start_ts, system, label, loot_isk, loot_text, "
             "salvage_isk, salvage_text FROM missions "
-            "WHERE (loot_text IS NOT NULL AND loot_text!='') "
-            "OR (salvage_text IS NOT NULL AND salvage_text!='')").fetchall()
-        gesamt = DB.execute("SELECT COUNT(*) FROM missions").fetchone()[0]
+            "WHERE ((loot_text IS NOT NULL AND loot_text!='') "
+            "OR (salvage_text IS NOT NULL AND salvage_text!=''))" + nur,
+            arg).fetchall()
+        gesamt = DB.execute("SELECT COUNT(*) FROM missions WHERE 1=1" + nur,
+                            arg).fetchone()[0]
     now = time.time()
     heute = time.strftime("%Y-%m-%d", time.gmtime(now))
     zr = {k: {"n": 0, "loot": 0, "salv": 0} for k in ("heute", "d7", "d30")}
@@ -11755,22 +11761,29 @@ def query_planeten():
             "total_rest_isk": total_rest_isk, "kosten": kosten, "products": products}
 
 
-def query_missions():
+def query_missions(char=None):
     """Missions-Statistik aus dem Wallet-Journal: Tage, Quellen, Agenten, Chars.
-    Bounties aus bekannten Mining-Systemen bleiben draussen (Belt-Ratten)."""
+    Bounties aus bekannten Mining-Systemen bleiben draussen (Belt-Ratten).
+
+    char schraenkt ALLES auf einen Charakter ein, auch die Gegner aus den
+    Gamelogs. Gewuenscht von Nirahse (29.08.2026): eine Auswahl oben, die auf
+    jede Tabelle der Seite wirkt, statt einer eigenen Tabelle je Aufschluesselung."""
     mine_sys = CONFIG.get("mine_systems") or {}
     mine_ids = {i for i in mine_sys.values() if i}
     with DB_LOCK:
         rows = DB.execute(
             "SELECT char, ts, ref_type, amount, party, ctx FROM journal").fetchall()
     days, agents, chars = {}, {}, {}
-    for char, ts, ref, amount, party, ctx in rows:
+    for zeilen_char, ts, ref, amount, party, ctx in rows:
+        if char and zeilen_char != char:
+            continue
         if ref in ("bounty_prizes", "bounty_prize") and ctx in mine_ids:
             continue
         day = datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%d")
         d = days.setdefault(day, {"day": day, "missions": 0, "reward": 0,
                                   "bonus": 0, "bounty": 0, "total": 0})
-        c = chars.setdefault(char, {"char": char, "missions": 0, "total": 0})
+        c = chars.setdefault(zeilen_char,
+                             {"char": zeilen_char, "missions": 0, "total": 0})
         d["total"] += amount
         c["total"] += amount
         if ref == "agent_mission_reward":
@@ -11793,6 +11806,8 @@ def query_missions():
     # wen hast du bekaempft, wer hat zurueckgeschossen.
     foes = {}
     for _day, _cid, _cname, kind, key, value in all_rows(30, ("dmg_out", "dmg_in")):
+        if char and _cname != char:
+            continue
         if not key or key == "?":
             continue
         f = foes.setdefault(key, {"name": key, "dealt": 0, "taken": 0})
@@ -12346,12 +12361,35 @@ class Handler(BaseHTTPRequestHandler):
             elif view == "uhr":
                 data["uhr_liste"] = query_uhr_liste()
             elif view == "missionen":
-                data["missions"] = query_missions()
+                # Charakter-Auswahl wie im Wallet Buddy: sie wirkt auf ALLE
+                # Tabellen der Seite (Nirahse, 29.08.2026). Nur Namen, die in
+                # den Missionen wirklich vorkommen, alles andere wird still
+                # ignoriert und zeigt wieder alles.
+                mchar = ""
+                if "mchar=" in self.path:
+                    mchar = urllib.parse.unquote(
+                        self.path.split("mchar=")[1].split("&")[0])
+                # Aus BEIDEN Quellen: wer Missionen geflogen ist (missions)
+                # und wer Belohnungen kassiert hat (journal). Sonst fehlt ein
+                # Charakter als Knopf, dessen Zahlen oben trotzdem mitzaehlen.
+                with DB_LOCK:
+                    erlaubt = sorted({
+                        r[0] for r in DB.execute(
+                            "SELECT DISTINCT char FROM missions "
+                            "WHERE char IS NOT NULL AND char!=''")}
+                        | {r[0] for r in DB.execute(
+                            "SELECT DISTINCT char FROM journal "
+                            "WHERE char IS NOT NULL AND char!=''")})
+                if mchar not in erlaubt:
+                    mchar = ""
+                data["missions"] = query_missions(mchar or None)
                 data["mission_log"], data["mission_offen"] = query_mission_history()
                 data["abyss_n"] = abyss_anzahl()
                 data["loot_tage"] = query_loot_tage()
-                data["loot_auswertung"] = query_loot_auswertung()
+                data["loot_auswertung"] = query_loot_auswertung(mchar or None)
                 data["chars"] = snapshot_live()
+                data["mchars"] = erlaubt
+                data["mchar"] = mchar
             elif view == "vault":
                 data["vault"] = query_vault()
                 data["vault"]["advisor"] = query_ore_advisor(CONFIG["region"])
@@ -14559,6 +14597,9 @@ if(![0,7,30].includes(walletTage))walletTage=30;
 // Auf welchen Charakter der Wallet Buddy eingeschraenkt ist. Leer = alle.
 // Der Server prueft den Namen ohnehin gegen die vorhandenen Wallet-Daten.
 let walletChar=localStorage.getItem('walletChar')||'';
+// Charakter-Auswahl der Missions-Seite. Eigener Wert, damit sie nicht mit
+// der Wallet-Auswahl kollidiert (Nirahse, 29.08.2026).
+let missChar=localStorage.getItem('missChar')||'';
 function applyFs(){
  document.documentElement.dataset.fs=fontsize;
  $('#fontsize').textContent=FS_LABEL[fontsize];
@@ -18033,6 +18074,14 @@ function renderMissions(d){
    mission_log:(SIM.history||[]).concat(d.mission_log||[]),
    missions:SIM.summary||d.missions});
  const m=d.missions||{},t=m.today||{};
+ // Charakter-Auswahl: Zusammenfassung und Loot-Auswertung filtert der Server,
+ // Missionsliste und Tagestabelle tragen den Namen je Zeile und werden hier
+ // gefiltert. So wirkt EINE Auswahl auf die ganze Seite (Nirahse, 29.08.2026).
+ if(missChar){
+  d=Object.assign({},d,{
+   mission_log:(d.mission_log||[]).filter(x=>x.char===missChar),
+   loot_tage:(d.loot_tage||[]).filter(x=>x.char===missChar)});
+ }
  const live=(d.chars||[]).filter(c=>c.bounty>0||c.kills>0);
  const byDay={};(m.days||[]).forEach(x=>byDay[x.day]=x);
  const iso=n=>new Date(Date.now()-n*864e5).toISOString().slice(0,10);
@@ -18046,6 +18095,17 @@ function renderMissions(d){
  ${state.sim?`<div style="grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;align-items:center">
    <span class="sub" style="color:var(--dim)">${lang==='en'?'Local demo (not shipped)':'Lokale Demo (nicht ausgeliefert)'}</span>
    <button class="btn${SIM.on?' simon':''}" onclick="toggleSim()">${SIM.on?(lang==='en'?'⏹ Stop simulation':'⏹ Simulation stoppen'):(lang==='en'?'▶ Start simulation':'▶ Simulation starten')}</button></div>`:''}
+ ${(()=>{
+   // Charakter-Auswahl wie im Wallet Buddy. Sie wird IMMER gebaut, auch wenn
+   // der gewaehlte Charakter gerade nichts vorzuweisen hat: sonst landet man
+   // auf einer leeren Seite ohne die Auswahl und kommt nicht mehr zurueck.
+   const namen=d.mchars||[];
+   if(namen.length<2)return '';
+   const knopf=(w,l)=>`<span class="pill mchar${missChar===w?' on':''}" data-mc="${esc(w)}">${esc(l)}</span>`;
+   return `<div class="card" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <span class="sub" style="letter-spacing:1px;text-transform:uppercase;font-size:10px">${lang==='en'?'Character':'Charakter'}</span>
+    ${knopf('',lang==='en'?'All':'Alle')}${namen.map(n=>knopf(n,n)).join('')}
+   </div>`;})()}
  ${renderMissionLive(d.chars)}
  <div class="card" style="grid-column:1/-1">
   <b>Heute im Detail (EVE-Zeit)</b>
@@ -18217,22 +18277,11 @@ function renderMissions(d){
    return `<div class="card" style="grid-column:1/-1">
     <div class="sect">${en5?'💰 Loot & salvage analysis':'💰 Loot- & Salvage-Auswertung'}</div>${inhalt}</div>`;
   })()}
- ${(m.foes&&m.foes.length)?`<div class="card" style="grid-column:1/-1">
-  <div class="sect">Gegner (letzte 30 Tage)</div>
-  <div style="overflow-x:auto"><table>
-  <tr><th>Gegner</th><th class="r">Schaden ausgeteilt</th><th class="r">Schaden kassiert</th></tr>`+
-  m.foes.map(f=>`<tr><td>${esc(f.name)}</td><td class="r out">${f.dealt?fmt(f.dealt):'&ndash;'}</td><td class="r in">${f.taken?fmt(f.taken):'&ndash;'}</td></tr>`).join('')+
-  `</table></div>
-  <div class="sub" style="margin-top:8px">Kommt direkt aus den Gamelogs. Reine Belt-Ratten-Trips (nur Flotten-Bounty ohne echten Kampf) werden herausgefiltert.</div>
- </div>`:''}
+
  ${(m.agents&&m.agents.length)?`<div class="card">
   <div class="sect">Top-Agenten</div><table>
   <tr><th>Agent</th><th class="r">Missionen</th><th class="r">ISK</th></tr>`+
-  m.agents.map(a=>`<tr><td>${esc(a.agent)}</td><td class="r">${a.missions}</td><td class="r isk">${fmtM(a.isk)}</td></tr>`).join('')+'</table></div>':''}
- ${(m.chars&&m.chars.length)?`<div class="card">
-  <div class="sect">Nach Charakter (gesamt)</div><table>
-  <tr><th>Charakter</th><th class="r">Missionen</th><th class="r">ISK</th></tr>`+
-  m.chars.map(c=>`<tr><td>${esc(c.char)}</td><td class="r">${c.missions}</td><td class="r isk">${fmtM(c.total)}</td></tr>`).join('')+'</table></div>':''}`;
+  m.agents.map(a=>`<tr><td>${esc(a.agent)}</td><td class="r">${a.missions}</td><td class="r isk">${fmtM(a.isk)}</td></tr>`).join('')+'</table></div>':''}`;
  // Gesicherten Zustand zurueckschreiben, bevor irgendein Handler haengt.
  Object.entries(lootOffen).forEach(([mid,z])=>{
   const box=[...document.querySelectorAll('.mlootedit')].find(e=>e.dataset.mid===mid);
@@ -18330,6 +18379,16 @@ function renderMissions(d){
    t.textContent=(r&&r.error)||(en3?'failed':'hat nicht geklappt');
    setTimeout(()=>{t.textContent=alt;},2500);
   }
+ });
+ // Charakter-Auswahl: die Zusammenfassung und die Loot-Auswertung rechnet der
+ // Server neu, deshalb ein voller Takt statt nur Neuzeichnen. Die Seitenzahlen
+ // gehen auf Anfang zurueck, sonst steht man bei einem Charakter mit wenigen
+ // Missionen auf einer leeren Seite drei.
+ document.querySelectorAll('.mchar').forEach(el=>el.onclick=()=>{
+  missChar=el.dataset.mc||'';
+  localStorage.setItem('missChar',missChar);
+  seiteRuns=0; seiteTage=0;
+  tick();
  });
  document.querySelectorAll('[data-blatt]').forEach(el=>el.onclick=()=>{
   const zu=parseInt(el.dataset.zu,10);
@@ -19750,7 +19809,7 @@ async function tick(){
   // rechnet die Bilanz danach. Bei allen anderen Ansichten bleibt die URL wie sie war.
   const zusatz=(reqView==='wallet')
     ?('&days='+walletTage+(walletChar?'&wchar='+encodeURIComponent(walletChar):''))
-    :'';
+    :((reqView==='missionen'&&missChar)?('&mchar='+encodeURIComponent(missChar)):'');
   // Harte Zeitgrenze fuer den Abruf. Ohne sie kann eine Verbindung, die nie
   // beantwortet wird (Server startet zwischendurch neu, der Socket bleibt aber
   // offen), tickBusy fuer immer auf true stehen lassen: dann wechselt kein Tab

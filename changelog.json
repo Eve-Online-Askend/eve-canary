@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.54.0",
+  "d": "2026-08-29",
+  "de": [
+   "DIE MISSIONS-SEITE IST AUFGERAEUMT, nach einem ausgearbeiteten Vorschlag von Nirahse. Sie hatte acht Bloecke untereinander und war entsprechend lang. Neu ist eine CHARAKTER-AUSWAHL ganz oben, wie im Wallet Buddy: [Alle] [Char 1] [Char 2] und so weiter. Sie wirkt auf ALLES auf der Seite, also auf die Zusammenfassung oben, die Missionsliste, die Tagesuebersicht und die Loot-Auswertung samt ihrer Abdeckung. Damit ist die Tabelle Nach Charakter ueberfluessig geworden und entfaellt, denn die Auswahl kann dasselbe und mehr. Die Gegnerliste der letzten 30 Tage entfaellt ebenfalls. Was bleibt, ist genau das, was man beim Missionsfliegen wirklich benutzt: Info, Zusammenfassung, Missionsliste zum Eintragen und Benennen, Tagesuebersicht und Loot-Statistik.",
+   "Beim Umschalten des Charakters gehen halb getippte Loot-Eintraege nicht verloren, sie stehen nach dem Zurueckschalten unveraendert da. Die Seitenzahlen springen dabei auf Anfang, sonst landet man bei einem Charakter mit wenigen Missionen auf einer leeren Seite drei."
+  ],
+  "en": [
+   "THE MISSIONS PAGE HAS BEEN TIDIED UP, following a worked-out proposal by Nirahse. It had eight blocks stacked up and was long to match. New is a CHARACTER SELECTOR right at the top, like in Wallet Buddy: [All] [Char 1] [Char 2] and so on. It applies to EVERYTHING on the page: the summary at the top, the mission list, the daily overview and the loot analysis including its coverage. That makes the per-character table redundant and it is gone, because the selector does the same and more. The enemy list of the last 30 days is gone as well. What remains is exactly what you use while running missions: info, summary, the mission list for entering loot and names, the daily overview and the loot statistics.",
+   "Switching character does not lose half-typed loot entries, they are still there unchanged when you switch back. Page numbers jump back to the first page, otherwise a character with few missions leaves you looking at an empty page three."
+  ]
+ },
+ {
   "v": "2.53.3",
   "d": "2026-08-28",
   "de": [
