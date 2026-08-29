@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.58.2",
+  "d": "2026-08-29",
+  "de": [
+   "MACOS WIRD JETZT GETRENNT GEZAEHLT. Bisher liefen Mac-Installationen unsichtbar in der Linux-Zahl mit, denn beide Systeme laden denselben Starter und genau dessen Downloads werden gezaehlt. Der Installer holt auf einem Mac ab sofort eine eigene leere Marke, mehr nicht: kein Wert, keine Kennung, kein Name. Auf der Homepage heisst die Kachel bis dahin ehrlich Linux/macOS, weil die bisherigen Zahlen sich nicht rueckwirkend trennen lassen. Eine macOS-Installation gibt es uebrigens laengst, der Installer erkennt den Mac von selbst und legt den Starter dorthin, wo er hingehoert.",
+   "DIE FOERDERMENGEN-KARTE ZEIGT JETZT AUCH DIE ZAHL DER MELDER JE MONAT. Das war eine ehrliche Luecke: die Monatsbalken luden dazu ein, einen Rueckgang als weniger Foerderung zu lesen, obwohl auch einfach weniger Leute geteilt haben koennten. Dazu steht jetzt der wichtigste Vorbehalt dabei: die Groessenklassen gehen in Dreierschritten, ein einziger Melder eine Klasse tiefer bewegt die Monatssumme staerker als jede echte Veraenderung. Ein Monatsvergleich taugt hier also nicht, die Gesamtsumme dagegen schon, denn sie ist und bleibt eine belegbare Untergrenze."
+  ],
+  "en": [
+   "MACOS IS NOW COUNTED SEPARATELY. Until now Mac installations were invisibly part of the Linux figure, because both systems download the same starter and it is those downloads that get counted. On a Mac the installer now fetches its own empty marker, nothing more: no value, no identifier, no name. Until that builds up, the homepage tile honestly says Linux/macOS, because the existing numbers cannot be separated retroactively. A macOS installation has existed for a while by the way, the installer detects a Mac by itself and puts the starter where it belongs.",
+   "THE MINED-TOGETHER CARD NOW ALSO SHOWS HOW MANY SOURCES REPORTED PER MONTH. That was an honest gap: the monthly bars invited you to read a drop as less mining, when it could just as well have been fewer people sharing. The most important caveat now sits next to it: the size bands go up in steps of three, so a single source dropping one band moves the monthly total more than any real change. Comparing months therefore says nothing here, while the overall total still does, because it remains a provable lower bound."
+  ]
+ },
+ {
   "v": "2.58.1",
   "d": "2026-08-29",
   "de": [

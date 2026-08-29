@@ -172,5 +172,16 @@ else
 fi
 echo ""
 
+# Zaehlmarke fuer macOS. Linux und macOS laden denselben Starter, in der
+# Statistik waren sie deshalb nicht zu trennen und macOS lief unsichtbar unter
+# "Linux" mit. Hier wird EINE leere Datei geholt, mehr nicht: kein Wert, keine
+# Kennung, kein Name. Allein die Downloadzahl dieser Datei sagt spaeter, wie
+# viele Installationen auf einem Mac laufen. Schlaegt es fehl, ist das egal,
+# die Installation haengt nicht daran.
+if [ -n "$MAC" ]; then
+  JAHR="$(date -u +%Y 2>/dev/null || echo 2026)"
+  $DL /dev/null "https://github.com/Eve-Online-Askend/eve-canary/releases/download/stats-$JAHR/mac-$JAHR.json" >/dev/null 2>&1 || true
+fi
+
 cd "$DIR"
 exec ./start_dashboard.sh

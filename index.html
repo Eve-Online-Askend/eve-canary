@@ -1002,17 +1002,17 @@ function minedHtml() {
   if (!m3) return '';
   const L = ({
     de: { m3: 'mindestens gefördert', isk: 'mindestens erwirtschaftet', unit: 'Kubikmeter Erz',
-          isku: 'ISK Marktwert', mon: 'Nach Monat',
-          foot: n => `Freigegeben von bis zu ${n} Installationen. Gezählt wird die Untergrenze jeder Größenklasse, die tatsächliche Menge liegt also höher.` },
+          isku: 'ISK Marktwert', mon: 'Nach Monat', wer: 'Melder',
+          foot: n => `Freigegeben von bis zu ${n} Installationen. Gezählt wird die Untergrenze jeder Größenklasse, die tatsächliche Menge liegt also höher. Die Klassen gehen in Dreierschritten: rutscht ein einzelner Melder eine Klasse tiefer, bewegt das die Monatssumme stärker als jede echte Veränderung. Ein Monatsvergleich taugt hier deshalb nicht.` },
     fr: { m3: 'extrait au minimum', isk: 'généré au minimum', unit: 'mètres cubes de minerai',
-          isku: 'ISK de valeur marchande', mon: 'Par mois',
-          foot: n => `Partagé par jusqu'à ${n} installations. Seule la borne inférieure de chaque tranche est comptée, la quantité réelle est donc supérieure.` },
+          isku: 'ISK de valeur marchande', mon: 'Par mois', wer: 'sources',
+          foot: n => `Partagé par jusqu'à ${n} installations. Seule la borne inférieure de chaque tranche est comptée, la quantité réelle est donc supérieure. Les tranches vont de trois en trois : si une seule source descend d'une tranche, cela déplace le total mensuel plus que tout changement réel. Comparer les mois n'a donc pas de sens ici.` },
     ru: { m3: 'добыто как минимум', isk: 'заработано как минимум', unit: 'кубометров руды',
-          isku: 'ISK рыночной стоимости', mon: 'По месяцам',
+          isku: 'ISK рыночной стоимости', mon: 'По месяцам', wer: 'источников',
           foot: n => `Поделились до ${n} установок. Считается нижняя граница каждого диапазона, поэтому реальный объём выше.` },
     en: { m3: 'mined at least', isk: 'earned at least', unit: 'cubic metres of ore',
-          isku: 'ISK market value', mon: 'By month',
-          foot: n => `Shared by up to ${n} installations. Only the lower bound of each band is counted, so the real figure is higher.` }
+          isku: 'ISK market value', mon: 'By month', wer: 'sources',
+          foot: n => `Shared by up to ${n} installations. Only the lower bound of each band is counted, so the real figure is higher. The bands go up in steps of three: if a single source drops one band, that moves the monthly total more than any real change. Comparing months therefore says nothing here.` }
   })[curLang] || {};
   const max = Math.max(...mon.map(k => ST.ertrag[k].m3 || 0), 1);
   return `<div class="mined">`
@@ -1025,7 +1025,9 @@ function minedHtml() {
       ? `<div class="minedmon"><div class="dltop">${L.mon}</div>`
         + mon.map(k => `<div class="row"><span class="m">${k}</span>`
           + `<span class="barw"><span class="bar" style="width:${Math.max(3, Math.round(100 * (ST.ertrag[k].m3 || 0) / max))}%"></span></span>`
-          + `<span class="v">${kurz(ST.ertrag[k].m3 || 0, curLang)} m³</span></div>`).join('')
+          + `<span class="v">${kurz(ST.ertrag[k].m3 || 0, curLang)} m³`
+          + (ST.ertrag[k].melder ? `<small>${ST.ertrag[k].melder} ${L.wer}</small>` : '')
+          + `</span></div>`).join('')
         + `</div>`
       : '')
     + `<p class="minedfoot">${L.foot(melder)}</p>`;
@@ -1042,13 +1044,13 @@ function installsHtml() {
   const win = ST.installs.win || 0, lin = ST.installs.lin || 0;
   if (!win && !lin) return '';
   const L = ({
-    de: { tot: 'Installationen insgesamt', win: 'Windows', lin: 'Linux',
+    de: { tot: 'Installationen insgesamt', win: 'Windows', lin: 'Linux/macOS',
           note: 'Gezählt über die Startdateien, die nur beim Einrichten geladen werden. Updates zählen dabei nicht mit.' },
-    fr: { tot: 'installations au total', win: 'Windows', lin: 'Linux',
+    fr: { tot: 'installations au total', win: 'Windows', lin: 'Linux/macOS',
           note: 'Comptées via les fichiers de démarrage, téléchargés uniquement lors de l\'installation. Les mises à jour ne comptent pas.' },
-    ru: { tot: 'установок всего', win: 'Windows', lin: 'Linux',
+    ru: { tot: 'установок всего', win: 'Windows', lin: 'Linux/macOS',
           note: 'Считается по стартовым файлам, которые скачиваются только при установке. Обновления не учитываются.' },
-    en: { tot: 'installations in total', win: 'Windows', lin: 'Linux',
+    en: { tot: 'installations in total', win: 'Windows', lin: 'Linux/macOS',
           note: 'Counted through the start files, which are only fetched when setting up. Updates do not count towards this.' }
   })[curLang] || {};
   return `<div class="dltotal"><b>${(win + lin).toLocaleString(curLang)}</b> ${L.tot}</div>`
