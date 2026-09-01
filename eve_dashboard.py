@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.59.0"
+VERSION = "2.59.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -11779,7 +11779,10 @@ def query_abyss(chars=None, tage=30):
     # (1 Kreuzer = 1, bis 2 Zerstoerer = 2, bis 3 Fregatten = 3, an der
     # EVE-University geprueft). Die Schiffszahl steckt in der Gruppierung,
     # die query_abyss_ertrag schon gebildet hat.
-    verbraucht = ertrag.get("runs", 0)
+    # Verbraucht wird je SCHIFF, nicht je Lauf. Bei Solo-Laeufen ist das
+    # dasselbe, bei einer Multibox-Flotte nicht: drei Fregatten in einem Lauf
+    # kosten drei Filamente. Fiel beim Nachrechnen der ersten Fassung auf.
+    verbraucht = ertrag.get("schiffe") or ertrag.get("runs", 0)
     erbeutet = sum(f["menge"] for f in fil)
     fil_isk = sum(f["isk"] or 0 for f in fil)
     # Bester Lauf: hoechste ISK je Minute, nicht hoechster Gesamtwert. Ein
@@ -12186,7 +12189,7 @@ def query_abyss_ertrag(chars=None, tage=30):
 
     eimer = {}
     ges_isk = ges_min = 0.0
-    ges_runs = 0
+    ges_runs = ges_schiffe = 0
     for idx in gruppen:
         teile = [ab[i] for i in idx]
         loot = sum(float(t[0][5] or 0) for t in teile)
@@ -12223,6 +12226,12 @@ def query_abyss_ertrag(chars=None, tage=30):
         ges_runs += 1
         ges_isk += loot
         ges_min += minuten
+        # Filamente je Lauf = Anzahl der SCHIFFE, nicht der Laeufe: ein Kreuzer
+        # kostet eines, bis zu zwei Zerstoerer zwei, bis zu drei Fregatten drei
+        # (an der EVE-University geprueft). Die Gruppengroesse ist die
+        # Schiffszahl. Ohne das zaehlte eine Dreier-Flotte nur ein Filament und
+        # die Bilanz sah zu gut aus.
+        ges_schiffe += len(idx)
 
     def fertig(e):
         # Meistgeflogenes Schiff dieser Sorte, plus wie viele Laeufe ueberhaupt
@@ -12243,7 +12252,7 @@ def query_abyss_ertrag(chars=None, tage=30):
                               -x["isk_run"]))
     mit_schiff = sum(z["runs"] for z in liste if z["klasse"])
     return {"zeilen": liste, "tage": tage, "mit_schiff": mit_schiff,
-            "runs": ges_runs, "isk": round(ges_isk),
+            "runs": ges_runs, "schiffe": ges_schiffe, "isk": round(ges_isk),
             "isk_run": round(ges_isk / ges_runs) if ges_runs else 0,
             "isk_min": round(ges_isk / ges_min) if ges_min else 0,
             "min": round(ges_min / ges_runs, 1) if ges_runs else 0,

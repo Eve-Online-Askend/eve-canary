@@ -1,5 +1,15 @@
 [
  {
+  "v": "2.59.1",
+  "d": "2026-08-29",
+  "de": [
+   "FILAMENT-BILANZ KORRIGIERT: verbraucht wird je SCHIFF, nicht je Durchgang. Wer allein fliegt, merkt keinen Unterschied, wer zu dritt mit Fregatten einfliegt, sehr wohl: das kostet drei Filamente, nicht eines. Die erste Fassung zaehlte einen Lauf als ein Filament und liess die Bilanz bei Multiboxern damit zu gut aussehen. Aufgefallen beim Nachrechnen der eigenen Zahlen, behoben und mit vier Faellen abgesichert."
+  ],
+  "en": [
+   "FILAMENT BALANCE CORRECTED: consumption counts per SHIP, not per run. Flying solo you see no difference, entering with three frigates you do: that costs three filaments, not one. The first version counted one run as one filament and so made the balance look too good for multiboxers. Spotted while checking the numbers, fixed and covered by four test cases."
+  ]
+ },
+ {
   "v": "2.59.0",
   "d": "2026-08-29",
   "de": [
