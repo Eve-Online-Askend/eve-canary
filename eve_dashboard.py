@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.58.2"
+VERSION = "2.59.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -11689,6 +11689,112 @@ def query_industrie():
                             key=lambda x: -x["n"])}
 
 
+TAB = chr(9)   # Trennzeichen der eingefuegten Frachtraum-Zeilen
+
+
+def abyss_beute(rows):
+    """Beute aller uebergebenen Abyss-Laeufe: Menge und Wert je Gegenstand,
+    getrennt nach Filamenten und dem Rest.
+
+    Die Filamente muessen getrennt stehen, weil sie der EINSATZ des naechsten
+    Laufs sind und nicht Gewinn wie ein Mutaplasmid. An echten Daten gemessen
+    droppte JEDER Lauf welche, im Schnitt 4,6 Stueck bei einem verbrauchten
+    (29.08.2026). Genau daraus wird die Filament-Bilanz."""
+    items = {}
+    for txt in rows:
+        for zeile in (txt or "").splitlines():
+            if TAB not in zeile:
+                continue
+            teile = zeile.split(TAB)
+            name = teile[0].strip()
+            if not name:
+                continue
+            try:
+                menge = int(re.sub(r"[^0-9]", "", teile[1]) or 0)
+            except (ValueError, IndexError):
+                menge = 0
+            e = items.setdefault(name, {"name": name, "menge": 0, "laeufe": 0})
+            e["menge"] += max(1, menge)
+            e["laeufe"] += 1
+    if not items:
+        return [], []
+    ids = resolve_item_ids(sorted(items))
+    try:
+        pm = hub_prices_bg("10000002", set(ids.values())) if ids else {}
+    except Exception:
+        pm = {}
+    fil, rest = [], []
+    for name, e in items.items():
+        tid = ids.get(name)
+        preis = (pm.get(tid) or (0, 0))[0] if tid else 0
+        satz = {"name": name, "menge": e["menge"], "laeufe": e["laeufe"],
+                "stueck": round(preis) if preis else None,
+                "isk": round(e["menge"] * preis) if preis else None}
+        (fil if name.endswith("Filament") else rest).append(satz)
+    fil.sort(key=lambda x: -(x["isk"] or 0))
+    rest.sort(key=lambda x: -(x["isk"] or 0))
+    return fil, rest
+
+
+def query_abyss(chars=None, tage=30):
+    """Alles fuer den Abyss-Bereich: Kennzahlen, Filament-Bilanz, Top-Beute
+    und die beste Runde.
+
+    Die LAEUFE selbst kommen bewusst NICHT aus einer eigenen Tabelle: es sind
+    dieselben Datensaetze wie in der Missions-Liste. Wer hier Loot eintraegt
+    oder benennt, bearbeitet dieselbe Zeile (Askend, 29.08.2026), sonst waeren
+    zwei Wahrheiten in der Datenbank."""
+    if isinstance(chars, str):
+        chars = [chars]
+    ertrag = query_abyss_ertrag(chars, tage)
+    seit = (time.time() - tage * 86400) if tage else 0
+    nur = set(chars) if chars else None
+    with DB_LOCK:
+        rows = DB.execute(
+            "SELECT mid,char,start_ts,end_ts,system,label,loot_isk,loot_text,"
+            "salvage_isk,enemies,ship,ship_group FROM missions "
+            "WHERE start_ts>=? ORDER BY start_ts DESC", (seit,)).fetchall()
+    laeufe = []
+    for r in rows:
+        if nur and r[1] not in nur:
+            continue
+        try:
+            gg = json.loads(r[9] or "[]")
+        except Exception:
+            gg = []
+        if not ist_abyss(r[4], gg):
+            continue
+        dauer = ((r[3] or 0) - (r[2] or 0)) / 60.0
+        wert = float(r[6] or 0) + float(r[8] or 0)
+        laeufe.append({
+            "mid": r[0], "char": r[1], "start": int(r[2] or 0),
+            "min": round(dauer, 1), "label": r[5], "isk": round(wert),
+            "isk_min": round(wert / dauer) if dauer > 0 else 0,
+            "stufe": abyss_tier_aus_name(r[5] or "") or abyss_tier_aus_gegnern(gg),
+            "wetter": abyss_wetter_aus_name(r[5] or ""),
+            "schiff": r[10], "klasse": SHIP_KLASSEN.get(r[11]),
+            "loot_text": r[7] or ""})
+    fil, rest = abyss_beute([l["loot_text"] for l in laeufe])
+    # Filament-Bilanz: verbraucht wird EIN Filament je Schiff im Lauf
+    # (1 Kreuzer = 1, bis 2 Zerstoerer = 2, bis 3 Fregatten = 3, an der
+    # EVE-University geprueft). Die Schiffszahl steckt in der Gruppierung,
+    # die query_abyss_ertrag schon gebildet hat.
+    verbraucht = ertrag.get("runs", 0)
+    erbeutet = sum(f["menge"] for f in fil)
+    fil_isk = sum(f["isk"] or 0 for f in fil)
+    # Bester Lauf: hoechste ISK je Minute, nicht hoechster Gesamtwert. Ein
+    # langer Lauf mit viel Beute ist nicht automatisch der beste.
+    best = max((l for l in laeufe if l["min"] > 0),
+               key=lambda l: l["isk_min"], default=None)
+    return {"ertrag": ertrag, "tage": tage,
+            "laeufe": laeufe[:200], "n": len(laeufe),
+            "filamente": fil[:12], "beute": rest[:10],
+            "bilanz": {"verbraucht": verbraucht, "erbeutet": erbeutet,
+                       "netto": erbeutet - verbraucht, "isk": fil_isk},
+            "best": best,
+            "mit_loot": sum(1 for l in laeufe if l["loot_text"].strip())}
+
+
 def query_planeten():
     """Planetary Industry: Kolonien aller PI-verbundenen Chars. Liefert eine flache,
     nach Ablauf sortierte Extraktor-Liste (die 'was zuerst nachfuellen'-Tafel) plus
@@ -12616,6 +12722,24 @@ class Handler(BaseHTTPRequestHandler):
             elif view == "vault":
                 data["vault"] = query_vault()
                 data["vault"]["advisor"] = query_ore_advisor(CONFIG["region"])
+            elif view == "abyss":
+                mgew = []
+                if "mchar=" in self.path:
+                    roh = urllib.parse.unquote(
+                        self.path.split("mchar=")[1].split("&")[0])
+                    mgew = [n.strip() for n in roh.split(",") if n.strip()]
+                try:
+                    atage = int(self.path.split("atage=")[1].split("&")[0])                         if "atage=" in self.path else 30
+                except ValueError:
+                    atage = 30
+                data["abyss"] = query_abyss(
+                    mgew or None, atage if atage in (0, 30, 90, 365) else 30)
+                with DB_LOCK:
+                    data["mchars"] = sorted({
+                        r[0] for r in DB.execute(
+                            "SELECT DISTINCT char FROM missions "
+                            "WHERE char IS NOT NULL AND char!=''")})
+                data["mchar"] = mgew
             elif view == "industrie":
                 data["industrie"] = query_industrie()
             elif view == "planeten":
@@ -14538,6 +14662,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="missionen">🎯 Missionen</span>
  <span data-v="timeline">🕑 Verlauf</span>
  <span data-v="profil">🪪 Steckbrief</span>
+ <span data-v="abyss">🌀 Abyss</span>
  <span data-v="industrie">🏭 Industrie</span>
  <span data-v="planeten">🪐 Planeten</span>
  <span data-v="vault">💎 Erz-Schatzkammer</span>
@@ -14788,7 +14913,7 @@ function lsGet(key,fallback){try{const v=localStorage.getItem(key);return v==nul
 // Muss ALLE Bereiche aus dem nav enthalten, sonst landet ein direkt
 // aufgerufener Pfad oder die Zurueck-Taste stumm auf "live". Genau das ist
 // dem Wallet-Tab passiert, er fehlte hier seit seiner Einfuehrung.
-const VIEWS=['live','month','total','analyse','intel','missionen','timeline','profil','industrie','planeten','vault','wallet','beute','rechner','jobs'];
+const VIEWS=['live','month','total','analyse','intel','missionen','timeline','profil','abyss','industrie','planeten','vault','wallet','beute','rechner','jobs'];
 // Filament-Stufen in der Reihenfolge T1 bis T6 und die fuenf Wetterlagen. Die
 // Namen sind die englischen aus dem Spiel, denn genau die schreibt Canary in
 // den Namen des Laufs und liest sie dort auch wieder heraus.
@@ -14808,14 +14933,15 @@ function abyssNotiz(label){
 //   teil = laeuft aus den Logs, ESI ergaenzt einzelne Angaben
 const ESI_TABS={
  industrie:'voll', planeten:'voll', vault:'voll', wallet:'voll',
- live:'teil', missionen:'teil', profil:'teil', timeline:'teil'};
+ live:'teil', missionen:'teil', profil:'teil', timeline:'teil', abyss:'teil'};
 // Welche Berechtigung diese Ansicht wirklich braucht. Ohne das warnte jeder
 // ESI-Tab, sobald IRGENDEINE Freigabe fehlte: nach dem Industrie-Update
 // standen acht Warnungen da, obwohl nur eine Ansicht betroffen war.
 // Die Kurznamen kommen aus char_health (esi-assets.read_assets.v1 -> assets).
 const ESI_SCOPE={
  industrie:'industry', planeten:'planets', vault:'assets', wallet:'wallet',
- live:'assets', missionen:'wallet', profil:'wallet', timeline:'wallet'};
+ live:'assets', missionen:'wallet', profil:'wallet', timeline:'wallet',
+ abyss:'location'};
 // Was genau ESI in dieser Ansicht beisteuert. Steht im Mouseover, damit die
 // Markierung nicht nur warnt, sondern erklaert.
 const ESI_WAS={
@@ -14826,7 +14952,8 @@ const ESI_WAS={
  live:'Schiff, Kontostand, Frachtraum, Heavy Water',
  missionen:'Belohnungen und Zeitboni aus dem Journal, Schiff beim Abyss',
  profil:'Porträt, Kontostand und Schiff',
- timeline:'die ESI-Ereignisse im Verlauf'};
+ timeline:'die ESI-Ereignisse im Verlauf',
+ abyss:'das geflogene Schiff je Durchgang'};
 // Markierung an den Tabs auffrischen. Drei Zustaende: gebraucht und verbunden,
 // gebraucht und NICHT verbunden, gebraucht aber ein Char muss neu verbunden
 // werden (fehlender Scope, z.B. nach dem Industrie-Update).
@@ -14944,6 +15071,8 @@ const VIEW_INFO={
   q:'Daten: deine Logdateien und, wenn du den EVE-Login benutzt, die Belohnungen aus dem Wallet-Journal.'},
  profil:{d:'Ein Steckbrief je Charakter: Bild, Corp, Schiff und Vermögen. Das Netz daneben zeigt, worin dieser Charakter stark ist, im Vergleich zu deinen anderen.',
   q:'Daten: die Datenbank von Canary für das Netz. Mit EVE-Login Bild, Kontostand und Schiff. Corp und Sicherheitsstatus über öffentliche Quellen.'},
+ abyss:{d:'Alle deine Abyss-Durchgänge an einem Ort: Ertrag je Filament und Schiffsklasse, die Filament-Bilanz (verbraucht gegen erbeutet), deine beste Runde und was am meisten einbringt. Die Läufe sind dieselben wie in den Missionen, wer hier Loot einträgt oder benennt, bearbeitet denselben Datensatz.',
+  q:'Daten: Kampf und Dauer aus deinen Logs, die Beute trägst du selbst ein. Abyss-Gegner zahlen keine Bounty, der eingetragene Loot ist deshalb der vollständige Ertrag. Stufe und Wetter stehen in keiner Logdatei, sie kommen aus dem Namen, den du dem Lauf gibst.'},
  industrie:{d:'Alles, was gerade in deinen Öfen und Laboren steht: Fertigung, Forschung, Kopien, Erfindung und Reaktionen. Sortiert danach, was zuerst fertig wird. Canary meldet sich, wenn ein Auftrag durch ist, und warnt, wenn einer pausiert, weil die Struktur offline ging.',
   q:'Daten: nur über den EVE-Login, aus deinen Industrie-Aufträgen. ESI hält sie 5 Minuten vor, die Laufzeiten sind also fast live. Braucht eine Berechtigung, die es früher nicht gab: verbinde deine Charaktere einmal neu, sonst bleibt die Liste leer.'},
  planeten:{d:'Deine Planeten-Fabriken. Wann läuft ein Extraktor ab, was liegt im Lager, was wird produziert und was ist es wert.',
@@ -15739,7 +15868,8 @@ $('#charFilter').onchange=()=>{
   localStorage.setItem('roleFilter','');
   document.querySelectorAll('.rolef').forEach(x=>x.classList.toggle('on',x.dataset.role===''));
  }
- if(view==='industrie')renderIndustrie(lastIndustrie);else if(view==='planeten')renderPlaneten(lastPlaneten);else renderLiveView();};
+ if(view==='abyss')renderAbyss(lastAbyss);
+ else if(view==='industrie')renderIndustrie(lastIndustrie);else if(view==='planeten')renderPlaneten(lastPlaneten);else renderLiveView();};
 {const ms=$('#mainCharSel'); if(ms)ms.onchange=()=>localStorage.setItem('mainChar',ms.value);}
 $('#sortChars').onclick=()=>{
  charSortMode=!charSortMode;
@@ -18333,458 +18463,11 @@ function blaettern(id, seite, gesamt){
   </div>`;
 }
 
-function renderMissions(d){
- letzteMissionen = d;
- lastMissionD=d;                         // fuer die lokale Simulation merken
- // Offene Loot-Eingaben ueber den Neubau retten. Diese Ansicht baut das Grid
- // im 2-Sekunden-Takt komplett neu, und dabei war das Eingabefeld wieder
- // zugeklappt: gemessen ging es nach 1.016 ms wieder zu, mitsamt allem, was
- // schon getippt war. Deshalb hier Zustand, Text und Cursor sichern und nach
- // dem Neubau zurueckschreiben. Das betraf jeden Browser, nicht nur Firefox.
- // Waehrend im Loot-Feld getippt wird, gar nicht erst neu bauen. Sonst
- // verliert die Eingabe bei jedem Takt kurz den Fokus, und genau das macht
- // das Einfuegen mit Strg+V unzuverlaessig.
- // Dasselbe gilt fuer das Feld zum Benennen einer Mission. Das war in 2.1.0
- // vergessen worden, und der Kasten klappte prompt nach einem Takt wieder zu,
- // mitsamt dem schon Getippten. Gemeldet von Nirahse, in Firefox wie in Chrome.
- const tippt=document.activeElement&&document.activeElement.classList;
- // Die Auswahlfelder gehoeren mit in den Schutz: ein aufgeklapptes select
- // schnappt beim Neubau zu, und dann waehlt man ins Leere.
- if(tippt&&(tippt.contains('mlootin')||tippt.contains('msalvin')||tippt.contains('mnamein')
-            ||tippt.contains('abysstier')||tippt.contains('abysswetter')))return;
- const lootOffen={};
- document.querySelectorAll('.mlootedit').forEach(b=>{
-  if(b.hidden)return;
-  const ta=b.querySelector('.mlootin');
-  const sa=b.querySelector('.msalvin');
-  lootOffen[b.dataset.mid]={
-   text:ta?ta.value:'',
-   start:ta?ta.selectionStart:0, end:ta?ta.selectionEnd:0,
-   fokus:document.activeElement===ta,
-   stext:sa?sa.value:'',
-   sstart:sa?sa.selectionStart:0, send:sa?sa.selectionEnd:0,
-   sfokus:document.activeElement===sa,
-   sstatus:(([...document.querySelectorAll('.msalvstat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||'',
-   status:(([...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||''};
- });
- const nameOffen={};
- document.querySelectorAll('.mnameedit').forEach(b=>{
-  if(b.hidden)return;
-  const inp=b.querySelector('.mnamein');
-  // Stufe und Wetter mitsichern: sie stehen bis zum Druck auf "Merken" NUR im
-  // Formular. Der Tippschutz oben greift nur, solange das Auswahlfeld selbst
-  // den Fokus hat, nach einem Klick auf "übernehmen" liegt der aber auf dem
-  // Knopf, und der naechste Takt hat die Auswahl wieder weggeworfen.
-  // Beim Audit gefunden.
-  const tSel=b.querySelector('.abysstier'), wSel=b.querySelector('.abysswetter');
-  nameOffen[b.dataset.mid]={
-   text:inp?inp.value:'',
-   start:inp?inp.selectionStart:0, end:inp?inp.selectionEnd:0,
-   fokus:document.activeElement===inp,
-   tier:tSel?tSel.value:null, wetter:wSel?wSel.value:null,
-   status:(([...document.querySelectorAll('.mnamestat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||''};
- });
- // Lokale Demo (nur mit sim_mode-Flag, reine Frontend-Simulation): Live-Char,
- // 50-Missionen-Historie und Journal-Summen einspeisen, nichts davon aus DB/Logs.
- if(SIM.on&&SIM.char)d=Object.assign({},d,{
-   chars:[SIM.char].concat(d.chars||[]),
-   mission_log:(SIM.history||[]).concat(d.mission_log||[]),
-   missions:SIM.summary||d.missions});
- const m=d.missions||{},t=m.today||{};
- // Charakter-Auswahl: Zusammenfassung und Loot-Auswertung filtert der Server,
- // Missionsliste und Tagestabelle tragen den Namen je Zeile und werden hier
- // gefiltert. So wirkt EINE Auswahl auf die ganze Seite (Nirahse, 29.08.2026).
- if(missChars.length){
-  const gewaehlt=new Set(missChars);
-  d=Object.assign({},d,{
-   mission_log:(d.mission_log||[]).filter(x=>gewaehlt.has(x.char)),
-   loot_tage:(d.loot_tage||[]).filter(x=>gewaehlt.has(x.char))});
- }
- const live=(d.chars||[]).filter(c=>c.bounty>0||c.kills>0);
- // Verdienst je Tag aus der Tagesuebersicht statt aus dem Wallet-Journal:
- // nur dort steckt der LOOT mit drin. Ohne ihn stand bei einem reinen
- // Abyss-Flieger immer null, weil Abyss-Gegner keine Bounty zahlen und es
- // keine Agenten-Belohnung gibt (Nirahse, 29.08.2026). Salvage zaehlt mit,
- // es ist Ertrag desselben Laufs. Die Zeile folgt damit auch dem
- // Charakterfilter, denn loot_tage ist oben schon gefiltert.
- const proTag={};
- (d.loot_tage||[]).forEach(x=>{
-  const e=proTag[x.tag]||(proTag[x.tag]={isk:0,runs:0});
-  e.isk+=x.total||0; e.runs+=x.runs||0;
- });
- const byDay={};(m.days||[]).forEach(x=>byDay[x.day]=x);
- const iso=n=>new Date(Date.now()-n*864e5).toISOString().slice(0,10);
- // Missionszahl bleibt die aus dem Journal (abgeschlossene Missionen mit
- // Belohnung), die Tagesuebersicht zaehlt Runs. Beides nebeneinander waere
- // verwirrend, deshalb bleibt es bei der bekannten Zahl.
- const tag=n=>proTag[iso(n)]||{isk:0,runs:0};
- let wIsk=0,wMis=0;
- for(let n=0;n<7;n++){wIsk+=tag(n).isk; const x=byDay[iso(n)]; if(x)wMis+=x.missions;}
- // Die Charakter-Auswahl steht GANZ OBEN, ueber allem, was auf sie reagiert,
- // also auch ueber den Verdienst-Kacheln (Nirahse, 29.08.2026). Sie wird
- // immer gebaut, auch wenn der gewaehlte Charakter nichts vorzuweisen hat:
- // sonst landet man auf einer leeren Seite ohne die Auswahl.
- const charWahl=(()=>{
-   const namen=d.mchars||[];
-   if(namen.length<2)return '';
-   const an=w=>w?missChars.includes(w):!missChars.length;
-   const knopf=(w,l)=>`<span class="pill mchar${an(w)?' on':''}" data-mc="${esc(w)}">${esc(l)}</span>`;
-   const hinweis=missChars.length>1
-     ?`<span class="sub" style="color:var(--gold)">${lang==='en'
-        ?'flying together: joint abyss runs count as one'
-        :'fliegen zusammen: gemeinsame Abyss-Läufe zählen als ein Durchgang'}</span>`:'';
-   return `<div class="card" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-    <span class="sub" style="letter-spacing:1px;text-transform:uppercase;font-size:10px">${lang==='en'?'Character':'Charakter'}</span>
-    ${knopf('',lang==='en'?'All':'Alle')}${namen.map(n=>knopf(n,n)).join('')}
-    ${hinweis}
-   </div>`;})();
- $('#hero').innerHTML=charWahl+heroTiles('🎯 Verdient heute',tag(0).isk,tag(1).isk,wIsk,
-  (t.missions||0)+' Missionen',wMis+' Missionen · Ø '+fmtM(wIsk/7)+'/Tag');
- $('#grid').innerHTML=`
- <div class="alphabanner" style="grid-column:1/-1">🧪 <b>${lang==='en'?'Alpha phase, module in development':'Alpha-Phase, Modul in Entwicklung'}</b> · ${lang==='en'?'faction tips and verified rewards are still being checked against real logs. Feedback welcome.':'Fraktions-Tipps und verifizierte Belohnungen werden noch an echten Logs geprüft. Rückmeldungen willkommen.'}</div>
- ${state.sim?`<div style="grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;align-items:center">
-   <span class="sub" style="color:var(--dim)">${lang==='en'?'Local demo (not shipped)':'Lokale Demo (nicht ausgeliefert)'}</span>
-   <button class="btn${SIM.on?' simon':''}" onclick="toggleSim()">${SIM.on?(lang==='en'?'⏹ Stop simulation':'⏹ Simulation stoppen'):(lang==='en'?'▶ Start simulation':'▶ Simulation starten')}</button></div>`:''}
- ${renderMissionLive(d.chars)}
- <div class="card" style="grid-column:1/-1">
-  <b>Heute im Detail (EVE-Zeit)</b>
-  ${(m.asof||m.next)?(()=>{const now=Date.now()/1000;const p=['Aus dem Wallet-Journal (ESI)'];
-    if(m.asof)p.push('Stand: vor '+Math.max(0,Math.round((now-m.asof)/60))+' min');
-    if(m.next){const nx=Math.round((m.next-now)/60);p.push(nx>0?'nächster Abgleich in '+nx+' min':'Abgleich läuft gerade');}
-    return `<div class="sub">${p.join(' · ')}. Das In-Game-Wallet ist sofort aktuell, ESI hängt bis zu 1 Stunde nach.</div>`;})():''}
-  ${(()=>{
-    // Fuenf Kacheln in EINER Zeile, Reihenfolge von Nirahse (29.08.2026):
-    // Missionen, Bounty, Loot, Belohnung, Zeitboni. Vorher waren es vier und
-    // sie brachen in eine zweite Zeile um, obwohl kaum Inhalt drinsteht.
-    // Der Loot-Wert kommt NICHT aus dem Wallet-Journal, sondern aus dem, was
-    // du an den Missionen eintraegst. Salvage zaehlt mit, es ist Ertrag
-    // desselben Laufs.
-    const heute=new Date().toISOString().slice(0,10);
-    const hl=(d.loot_tage||[]).filter(x=>x.tag===heute);
-    const lootHeute=hl.reduce((s2,x)=>s2+(x.loot||0)+(x.salv||0),0);
-    return `<div class="stats" style="margin-top:10px;grid-template-columns:repeat(5,1fr)">
-   <div class="stat"><div class="l">Missionen erledigt</div><div class="v out">${t.missions||0}</div></div>
-   <div class="stat"><div class="l">Bounties</div><div class="v grn">${fmtM(t.bounty||0)}</div></div>
-   <div class="stat" title="Loot und Bergung, die du an deinen Missionen eingetragen hast. Steht in keiner Logdatei, EVE protokolliert weder Plündern noch Bergung."><div class="l">Loot</div><div class="v isk">${fmtM(lootHeute)}</div></div>
-   <div class="stat"><div class="l">Belohnungen</div><div class="v isk">${fmtM(t.reward||0)}</div></div>
-   <div class="stat"><div class="l">Zeitboni</div><div class="v isk">${fmtM(t.bonus||0)}</div></div>
-  </div>`;})()}
-  ${(m.mine_systems&&m.mine_systems.length)?`<div class="sub" style="margin-top:8px">Bounties aus deinen Mining-Systemen (${m.mine_systems.join(', ')}) zählen hier nicht mit, das sind Belt-Ratten.</div>`:''}
-  ${m.linked?'':'<div class="cardwarn" style="margin-top:10px">⚠ Kein EVE-Login verbunden. Belohnungen und Boni kommen aus dem Wallet-Journal (ESI), einzurichten unter ⚙ Optionen.</div>'}
-  ${live.length?'<div class="sect">Live-Session (aus den Gamelogs)</div>'+live.map(c=>
-   // Knopf nach RECHTS, Laufzeit links daneben: dort sucht man ihn.
-   `<div class="sub" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:6px">
-     <span>⚔ <b>${esc(c.name)}</b>${c.ship?' · '+esc(c.ship):''} · ${c.kills} Kills · ${fmtM(c.bounty)} Bounties · DPS ${c.dps_out} raus / ${c.dps_in} rein</span>
-     <span class="sub mclosestat" data-char="${esc(c.name)}" style="margin-left:auto"></span>
-     <span class="sys">${lang==='en'?'running':'läuft seit'} ${c.session_min} min</span>
-     <button class="btn mclose" data-char="${esc(c.name)}" title="${lang==='en'?'Close this mission now so you can enter the loot and empty your hold before undocking':'Mission jetzt abschließen, damit du den Loot eintragen und den Laderaum leeren kannst, bevor du abdockst'}">${lang==='en'?'Finish mission':'Mission abschließen'}</button>
-    </div>`).join(''):''}
- </div>
- <div class="card" style="grid-column:1/-1">
-  <div class="sect" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-   <span>Missionen einzeln (aus den Gamelogs)</span>
-   ${d.abyss_n?`<a class="btn" href="/abyss.tsv" download style="margin-left:auto;display:inline-block;font-size:12px"
-     title="${lang==='en'?'Saves a table of all abyssal runs. Without character names, for sharing.':'Speichert eine Tabelle aller Abyss-Durchgänge. Ohne Charakternamen, zum Weitergeben.'}"
-     >🌀 ${lang==='en'?'Export abyssal runs':'Abyss-Durchgänge exportieren'} (${d.abyss_n})</a>`:''}</div>
-  ${(d.mission_log&&d.mission_log.length)?d.mission_log
-     .slice(seiteRuns*PRO_SEITE,(seiteRuns+1)*PRO_SEITE).map(x=>`
-   <div style="border-top:1px solid var(--line);padding:10px 0">
-    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:baseline">
-     <b>${new Date(x.start*1000).toLocaleString().slice(0,16)}</b>
-     <span class="char" style="font-size:12px">${esc(x.char||'')}</span>
-     <span class="sys">${x.system&&x.system!=='?'?'· '+esc(x.system)+' ':''}· ${x.min!=null?x.min:'?'} min</span>
-     ${(x.zusammen&&x.zusammen.length)?`<span class="zusammen" title="${lang==='en'
-        ? 'Same system, in and out within 90 seconds of each other. Every character keeps its own entry, because each has its own log, its own damage and its own EWAR. Whether it was one filament for the fleet or several started at the same time is not in any log file.'
-        : 'Gleiches System, rein und raus innerhalb von 90 Sekunden. Jeder Charakter behält seinen eigenen Eintrag, denn jeder hat sein eigenes Log, seinen eigenen Schaden und sein eigenes EWAR. Ob es ein Filament für die Flotte war oder mehrere gleichzeitig gestartete, steht in keiner Logdatei.'}">🤝 ${lang==='en'?'together with':'gemeinsam mit'} ${esc(x.zusammen.join(', '))}</span>`:''}
-     ${x.mission?`<span class="mtag">${missionHtml(x.mission)}</span>`:x.site?`<span class="mtag">${siteHtml(x.site)}</span>`:''}
-     <span style="margin-left:auto" class="isk"><b>${fmtM(x.total)} ISK</b></span>
-    </div>
-    ${x.nachfrage?`<div class="sub mfrage" data-mid="${esc(x.mid)}" style="margin-top:6px">
-      ❓ ${(()=>{const p='<b>'+x.nachfrage.conf+'%</b>', n='<b>'+esc(x.nachfrage.name)+'</b>';
-          // Die Auszeichnung steckt bewusst im Ausdruck und nicht als <b> im
-          // Satz: i18n_gesamt.py meldet sonst den deutschen Teil zwischen zwei
-          // Tags als unuebersetzt, obwohl die englische Fassung daneben steht.
-          return lang==='en'
-           ? `This run looks ${p} like the shared template ${n}. Not enough to say so. Was it that mission?`
-           : `Dieser Lauf sieht zu ${p} aus wie die geteilte Vorlage ${n}. Zu wenig, um es zu behaupten. War es die Mission?`;})()}
-      <button class="btn mfrageja" data-mid="${esc(x.mid)}" data-name="${esc(x.nachfrage.name)}" style="margin-left:8px">${lang==='en'?'Yes':'Ja'}</button>
-      <button class="btn geist mfragenein" data-mid="${esc(x.mid)}">${lang==='en'?'No':'Nein'}</button>
-      <span class="mfragestat sub" data-mid="${esc(x.mid)}"></span>
-      <div class="sub" style="margin-top:2px">${lang==='en'
-        ? 'Every shared template rests on a single confirmed run. A second one makes it noticeably more reliable, and your answer stays on this computer.'
-        : 'Jede geteilte Vorlage steht auf einem einzigen bestätigten Lauf. Ein zweiter macht sie deutlich verlässlicher, und deine Antwort bleibt auf diesem Rechner.'}</div>
-     </div>`:''}
-    ${(!x.kills&&!x.bounty&&!x.dmg_out&&(x.logi_out||x.logi_in))
-      ? `<div class="sub">${lang==='en'?'Support run, no damage of your own':'Unterstützungseinsatz, kein eigener Schaden'}${x.dmg_in?' · '+fmt(x.dmg_in)+' '+(lang==='en'?'damage taken':'Schaden rein'):''}${ewarInline(x.ewar)}</div>`
-      : `<div class="sub">${x.kills} Kills · Bounty ${fmtM(x.bounty)} · Schaden ${fmt(x.dmg_out)} raus / ${fmt(x.dmg_in)} rein${x.hit!=null?' · Trefferquote '+x.hit+'%':''}${x.enemies.length?' · Top: '+esc(x.enemies[0][0]):''}${ewarInline(x.ewar)}</div>`}
-    ${(x.reward!=null||x.bonus!=null)?`<div class="sub vreward">✅ ${lang==='en'?'ESI verified':'ESI-verifiziert'}: ${lang==='en'?'reward':'Belohnung'} <b class="isk">${fmtM(x.reward||0)}</b>${x.bonus?` + ${lang==='en'?'time bonus':'Zeitbonus'} <b class="isk">${fmtM(x.bonus)}</b>`:''}${x.min>0?` · ${fmtM(Math.round(((x.reward||0)+(x.bonus||0))/(x.min/60)))}/h`:''}</div>`:''}
-    ${factionHtml(x.faction)}
-    ${(x.logi_out||x.logi_in)?`<div class="sub">🔗 ${lang==='en'?'Remote assistance':'Fernunterstützung'}: ${fmt(x.logi_out||0)} ${lang==='en'?'given':'gegeben'} · ${fmt(x.logi_in||0)} ${lang==='en'?'received':'bekommen'}</div>`:''}
-    ${(x.npc&&x.npc.length)?`<div class="npc">${x.npc.map(l=>`<div>💬 ${esc(l)}</div>`).join('')}</div>`:''}
-    <div class="sub" style="margin-top:6px">${x.loot_isk!=null?'Loot: <b class="isk">'+fmtM(x.loot_isk)+'</b>':''}
-     <span class="mloottoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px">${x.loot_isk!=null?'✎ Loot ändern':'＋ Loot eintragen'}</span>
-     <span class="mreopen" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--dim);font-size:11px;margin-left:10px" title="Andocken ist kein sicherer Abschluss. Wer nur kurz zum Reparieren reingeflogen ist, holt die Mission hiermit zurück und der weitere Kampf zählt dazu.">↩ Läuft doch noch</span>
-     ${x.hat_vorher?`<span class="mmerge" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--dim);font-size:11px;margin-left:10px" title="${lang==='en'
-        ? 'For a repair stop in between: docking closes a run, so the same mission ends up as two entries. This merges this one INTO the previous run of the same character. Damage, kills, bounty and loot are added up, the earlier start is kept. Cannot be undone.'
-        : 'Für den Reparaturstopp zwischendurch: Andocken schließt einen Einsatz ab, dieselbe Mission steht dann als zwei Einträge da. Das hier schiebt diesen Eintrag IN den vorherigen Einsatz desselben Charakters. Schaden, Kills, Bounty und Loot werden addiert, der frühere Beginn bleibt. Nicht umkehrbar.'}">🔗 ${lang==='en'?'Merge into the previous run':'Mit dem vorigen verbinden'}</span>`:''}
-     <span class="mnametoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px;margin-left:10px" title="Trag den Namen aus deinem Missionsjournal ein. Canary merkt sich dazu die Gegner und erkennt künftige Läufe derselben Mission von allein.">${x.label?'🔖 Name ändern':'🔖 Mission benennen'}</span></div>
-    <div class="mnameedit" data-mid="${esc(x.mid)}" hidden>
-     ${x.abyss?`<div class="btnrow" style="margin-top:4px;align-items:center">
-      <select class="abysstier" data-mid="${esc(x.mid)}">
-       <option value="">Stufe wählen</option>
-       ${ABYSS_STUFEN.map((n,i)=>`<option value="${n}"${x.tier_name===i+1?' selected':''}>T${i+1} ${n}</option>`).join('')}
-      </select>
-      <select class="abysswetter" data-mid="${esc(x.mid)}">
-       <option value="">Wetter wählen</option>
-       ${ABYSS_WETTER.map(n=>`<option value="${n}"${(x.wetter||'')===n.toLowerCase()?' selected':''}>${n}</option>`).join('')}
-      </select>
-      <input class="mnamein" data-mid="${esc(x.mid)}" style="flex:1;min-width:130px"
-       placeholder="${lang==='en'?'note, optional':'Notiz, optional'}" value="${esc(abyssNotiz(x.label))}">
-     </div>
-     ${(x.tier_gegner&&x.tier_name!==x.tier_gegner)?`<div class="sub" style="margin-top:4px">
-       ${lang==='en'?'The enemies say':'Die Gegner sagen'} <b>T${x.tier_gegner}</b>
-       <button class="btn geist abystake" data-mid="${esc(x.mid)}" data-tier="${x.tier_gegner}"
-        title="${lang==='en'?'A rogue drone battleship is named per tier, so this one is certain. It is only there in about one run out of five.':'Ein Rogue-Drone-Schlachtschiff heißt je Stufe anders, das ist also sicher. Dabei ist es nur in etwa jedem fünften Durchgang.'}"
-        >${lang==='en'?'apply':'übernehmen'}</button></div>`:''}`
-     :`<input class="mnamein" data-mid="${esc(x.mid)}" style="width:100%;margin-top:4px" placeholder="Missionsname aus deinem Journal, z. B. Enemies Abound (1 of 5)" value="${esc(x.label||'')}">`}
-     ${gegnerAbschnitte(x)}
-     <div class="btnrow" style="margin-top:4px"><button class="btn mnamego" data-mid="${esc(x.mid)}">Merken</button>
-      <button class="btn geist mnameteil" data-mid="${esc(x.mid)}" title="Legt Name und Gegnerliste als fertigen Text in die Zwischenablage. Canary lädt nichts von selbst hoch, du fügst den Block bewusst in eine Meldung ein.">Für alle beitragen</button>
-      <span class="mnamestat sub" data-mid="${esc(x.mid)}"></span></div>
-     <div class="sub" style="margin-top:4px">${lang==='en'
-       ? `When you are done, press <b>Save</b>. Canary then keeps the ${x.enemies.length} enemy types of this run and recognises later runs with a similar line-up by itself.`
-       : `Wenn du fertig bist, drück <b>Merken</b>. Canary behält dann die ${x.enemies.length} Gegnertypen dieses Laufs und erkennt spätere Läufe mit ähnlicher Zusammenstellung von allein.`}</div>
-    </div>
-    <div class="mlootedit" data-mid="${esc(x.mid)}" hidden>
-     <textarea class="mlootin" data-mid="${esc(x.mid)}" rows="2" style="width:100%;margin-top:4px" placeholder="Frachtraum-Loot dieser Mission hier einfügen (im Spiel Strg+A, Strg+C)">${esc(x.loot_text)}</textarea>
-     <div class="btnrow" style="margin-top:4px"><button class="btn mlootgo" data-mid="${esc(x.mid)}">Loot bewerten</button> <span class="mlootstat sub" data-mid="${esc(x.mid)}"></span></div>
-     <textarea class="msalvin" data-mid="${esc(x.mid)}" rows="2" style="width:100%;margin-top:8px" placeholder="Salvage dieser Mission hier einfügen, getrennt vom Loot (gleicher Weg: markieren, kopieren)">${esc(x.salvage_text)}</textarea>
-     <div class="btnrow" style="margin-top:4px"><button class="btn msalvgo" data-mid="${esc(x.mid)}">Salvage bewerten</button> <span class="msalvstat sub" data-mid="${esc(x.mid)}"></span></div>
-    </div>
-   </div>`).join(''):'<div class="sub">Noch keine abgeschlossenen Missionen erfasst. Eine Mission gilt als abgeschlossen, sobald du fürs nächste Mal wieder abdockst.</div>'}
-  ${blaettern('runs',seiteRuns,(d.mission_log||[]).length)}
-  ${(()=>{const o=d.mission_offen; if(!o||!o.n)return '';
-    const en3=lang==='en';
-    return `<div class="sub" style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">
-      ${en3
-        ? `<b>${o.n} agent payouts could not be matched to a mission</b>, together ${fmtM(o.summe)} ISK.
-           That happens with missions that involve no combat at all: courier runs, transports, pure dialogue steps,
-           and many stages of the epic arcs. Nothing appears in the game log for those, so Canary never sees a mission.
-           The ISK is counted in the daily totals above, it just has no combat data attached.`
-        : `<b>${o.n} Agenten-Auszahlungen ließen sich keiner Mission zuordnen</b>, zusammen ${fmtM(o.summe)} ISK.
-           Das passiert bei Aufträgen ganz ohne Kampf: Kurierflüge, Transporte, reine Dialog-Schritte und viele
-           Stationen der Epic Arcs. Dazu steht nichts im Gamelog, Canary sieht also gar keine Mission.
-           In den Tagessummen oben stecken die ISK trotzdem drin, sie haben nur keine Kampfdaten dabei.`}
-      <div style="margin-top:6px">${(o.liste||[]).map(x=>
-        `${new Date(x.ts*1000).toLocaleString().slice(0,16)} · ${esc(x.char)} · <span class="isk">${fmtM(x.isk)}</span>`
-       ).join('<br>')}</div>
-     </div>`;})()}
- </div>
- <div class="card" style="grid-column:1/-1">
-  <div class="sect">Letzte 30 Tage</div>
-  <div class="sub">Je Charakter und Tag. Bounty kommt aus den Gamelogs, Belohnung und Zeitbonus aus dem Wallet-Journal, der Loot ist von dir an den Runs eingetragen. EVE schreibt beim Plündern nichts mit, deshalb steht dort nur, was du selbst hinterlegt hast.</div>
-  ${(d.loot_tage&&d.loot_tage.length)?(()=>{
-    // Standardmaessig nur die letzten Tage: bei Vielfliegern werden das sonst
-    // ueber dreissig Zeilen und die Seite wird endlos.
-    const alle=d.loot_tage;
-    const zeig=alle.slice(seiteTage*PRO_SEITE,(seiteTage+1)*PRO_SEITE);
-    return `<div style="overflow-x:auto"><table>
-   <thead><tr><th>Tag</th><th>Charakter</th><th class="r">Runs</th><th class="r">Bounty</th>
-    <th class="r">Belohnung</th><th class="r">Zeitbonus</th><th class="r">Loot</th><th class="r">Salvage</th><th class="r">Summe</th></tr></thead>`+
-   zeig.map(x=>`<tr><td>${esc(x.tag)}</td><td>${esc(x.char)}</td>
-    <td class="r">${x.runs}${x.mit_loot<x.runs?`<span title="${x.runs-x.mit_loot}${lang==='en'?' run(s) without loot entered':' Run(s) ohne eingetragenen Loot'}" style="color:var(--gold)"> *</span>`:''}</td>
-    <td class="r grn">${x.bounty?fmtM(x.bounty):'&middot;'}</td>
-    <td class="r isk">${x.reward?fmtM(x.reward):'&middot;'}</td>
-    <td class="r isk">${x.bonus?fmtM(x.bonus):'&middot;'}</td>
-    <td class="r isk">${x.loot?fmtM(x.loot):'&middot;'}</td>
-    <td class="r isk">${x.salv?fmtM(x.salv):'&middot;'}</td>
-    <td class="r isk"><b>${fmtM(x.total)}</b></td></tr>`).join('')+
-   '</table></div>'
-   +blaettern('tage',seiteTage,alle.length)
-   +(zeig.some(x=>x.mit_loot<x.runs)?'<div class="sub" style="margin-top:6px">* An diesen Tagen gibt es Runs ohne eingetragenen Loot. Die Summe ist dann niedriger als das, was wirklich rumkam.</div>':'');
-   })():'<div class="sub">Noch nichts erfasst. Sobald ein Run abgeschlossen ist, steht er hier.</div>'}
- </div>
- ${(()=>{const la=d.loot_auswertung; if(!la)return '';
-   const en5=lang==='en', zr=la.zeitraeume||{};
-   const kachel=(t,z)=>`<div class="stat"><div class="l">${t}</div><div class="v isk">${z&&z.n?fmtM(z.isk):'·'}</div><div class="l">${z&&z.n?(z.n+(en5?(z.n===1?' mission':' missions'):(z.n===1?' Mission':' Missionen'))+' · Ø '+fmtM(z.schnitt)+(z.salv?(en5?' · salvage ':' · Salvage ')+fmtM(z.salv):'')):(en5?'nothing entered':'nichts eingetragen')}</div></div>`;
-   const inhalt=la.mit_loot
-     ?`<div class="stats" style="grid-template-columns:repeat(3,1fr)">${kachel(en5?'Today':'Heute',zr.heute)}${kachel(en5?'7 days':'7 Tage',zr.d7)}${kachel(en5?'30 days':'30 Tage',zr.d30)}</div>
-      <div style="overflow-x:auto"><table>
-      <tr><th>${en5?'Item':'Gegenstand'}</th><th>${en5?'Type':'Art'}</th><th class="r">${en5?'Units':'Stück'}</th><th class="r">≈ ISK (Jita)</th><th>${en5?'most of it came from':'meiste Beute in'}</th></tr>`
-      +(la.gegenstaende||[]).slice(0,12).map(g=>{
-        const alle=(g.wo||[]).map(w=>w[0]+': '+fmt(w[1])+(en5?' units':' Stk')).join('\\n');
-        return `<tr><td>${esc(g.name)}</td><td>${g.art==='salvage'?(en5?'Salvage':'Salvage'):'Loot'}</td><td class="r">${fmt(g.menge)}</td>
-         <td class="r isk">${g.isk!=null?fmtM(g.isk):'<span style="color:var(--dim)" title="'+(en5?'price not loaded yet, comes with the next refresh':'Preis noch nicht geladen, kommt mit dem nächsten Takt')+'">·</span>'}</td>
-         <td title="${esc(alle)}">${g.wo&&g.wo.length?esc(g.wo[0][0])+' · '+fmt(g.wo[0][1])+(en5?' units':' Stk')+(g.wo.length>1?' <span style="color:var(--dim)">+'+(g.wo.length-1)+'</span>':''):''}</td></tr>`;
-      }).join('')
-      +`</table></div>
-      <div class="sub" style="margin-top:8px">${en5
-        ?`Top 12 by value, hover the source column for the full list per item. <b>${la.mit_loot} of ${la.gesamt}</b> missions have loot or salvage entered: the more you enter (📥 on each mission), the more complete this gets.`
-        :`Top 12 nach Wert, die Herkunfts-Spalte zeigt beim Überfahren die volle Liste je Gegenstand. <b>${la.mit_loot} von ${la.gesamt}</b> Missionen haben eingetragenen Loot oder Salvage: je mehr du einträgst (📥 an jeder Mission), desto vollständiger wird die Auswertung.`}</div>`
-     :`<div class="sub">${en5
-        ?'Nothing entered yet. Paste a cargo copy (Ctrl+A, Ctrl+C in game) via 📥 on a mission, loot and salvage each into their own field, then sums, averages and item origins show up here.'
-        :'Noch nichts eingetragen. Füge über 📥 an einer Mission eine Frachtraum-Kopie ein (im Spiel Strg+A, Strg+C), Loot und Salvage jeweils in ihr eigenes Feld, dann erscheinen hier Summen, Schnitte und die Herkunft je Gegenstand.'}</div>`;
-   return `<div class="card" style="grid-column:1/-1">
-    <div class="sect">${en5?'💰 Loot & salvage analysis':'💰 Loot- & Salvage-Auswertung'}</div>${inhalt}</div>`;
-  })()}
- ${(()=>{
-   // Abyss-Ertrag je Filament (Nirahse, 29.08.2026). Abyss-Gegner zahlen keine
-   // Bounty, der eingetragene Loot IST also der ganze Ertrag eines Laufs.
-   const A=d.abyss_ertrag;
-   if(!A||!A.runs)return '';
-   const en6=lang==='en';
-   const nam=z=>{
-    const st=z.stufe?('T'+z.stufe):'', we=z.wetter?(z.wetter[0].toUpperCase()+z.wetter.slice(1)):'';
-    return (st||we)?[st,we].filter(Boolean).join(' '):(en6?'no details':'ohne Angabe');
-   };
-   return `<div class="card" style="grid-column:1/-1">
-    <div class="sect" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-     <span>🌀 ${en6?'Abyss yield per filament':'Abyss-Ertrag je Filament'}</span>
-     <span style="margin-left:auto;display:flex;gap:6px">${[[30,en6?'30 days':'30 Tage'],
-       [90,en6?'90 days':'90 Tage'],[0,en6?'all':'alles']].map(([t,l])=>
-       `<span class="pill atage${abyssTage===t?' on':''}" data-at="${t}">${l}</span>`).join('')}</span>
-    </div>
-    <div class="stats" style="grid-template-columns:repeat(4,1fr)">
-     <div class="stat"><div class="l">${en6?'Runs':'Durchgänge'}</div><div class="v">${A.runs}</div></div>
-     <div class="stat"><div class="l">${en6?'ISK per run':'ISK je Durchgang'}</div><div class="v isk">${fmtM(A.isk_run)}</div></div>
-     <div class="stat"><div class="l">ISK/min</div><div class="v isk">${fmtM(A.isk_min)}</div></div>
-     <div class="stat"><div class="l">${en6?'Ø duration':'Ø Dauer'}</div><div class="v out">${A.min} min</div></div>
-    </div>
-    <table><tr><th>${en6?'Filament':'Filament'}</th><th>${en6?'Ship class':'Schiffklasse'}</th>
-     <th class="r">${en6?'Runs':'Durchgänge'}</th>
-     <th class="r">${en6?'ISK per run':'ISK je Durchgang'}</th><th class="r">ISK/min</th>
-     <th class="r">${en6?'Ø duration':'Ø Dauer'}</th></tr>
-    ${A.zeilen.map(z=>`<tr><td>${esc(nam(z))}</td>
-     <td${z.klasse?'':' class="sub"'}>${z.klasse?esc(z.klasse):(en6?'unknown':'unbekannt')}</td>
-     <td class="r">${z.runs}</td>
-     <td class="r isk">${fmtM(z.isk_run)}</td><td class="r isk">${fmtM(z.isk_min)}</td>
-     <td class="r">${z.min} min</td></tr>`).join('')}
-    </table>
-    <div class="sub" style="margin-top:8px">${en6
-      ? `Abyss NPCs pay no bounty, so the loot you entered is the entire yield of a run. Which filament was used is in no log file: the tier comes from six known Overmind enemies, the weather only from the name you give a run (there are dropdowns for both when naming). ${A.ohne_angabe?`${A.ohne_angabe} run(s) carry no details yet and are listed separately, they still count towards the totals.`:''} Runs flown together by several characters count as ONE run, their loot added up.${A.mit_schiff<A.runs?` The ship comes from the EVE login and is recorded when a run ends, so it is missing for the ${A.runs-A.mit_schiff} run(s) flown before this feature existed. Your own ship appears in no log line, only ESI knows it.`:''}`
-      : `Abyss-Gegner zahlen keine Bounty, der von dir eingetragene Loot ist deshalb der vollständige Ertrag eines Laufs. Welches Filament du gezogen hast, steht in keiner Logdatei: die Stufe erkennt Canary an sechs bekannten Overmind-Gegnern, das Wetter nur an dem Namen, den du dem Lauf gibst (beim Benennen gibt es dafür zwei Auswahlfelder). ${A.ohne_angabe?`${A.ohne_angabe} Durchgang/Durchgänge ohne Angabe stehen als eigene Zeile und zählen in der Summe mit.`:''} Läufe, die mehrere Charaktere gemeinsam geflogen sind, zählen als EIN Durchgang, ihr Loot wird addiert.${A.mit_schiff<A.runs?` Das Schiff kommt aus dem EVE-Login und wird beim Abschluss eines Laufs festgehalten, bei ${A.runs-A.mit_schiff} Durchgang/Durchgängen von vorher fehlt es deshalb. Dein eigenes Schiff steht in keiner Logzeile, nur ESI kennt es.`:''}`}</div>
-   </div>`;})()}
-
- ${(m.agents&&m.agents.length)?`<div class="card">
-  <div class="sect">Top-Agenten</div><table>
-  <tr><th>Agent</th><th class="r">Missionen</th><th class="r">ISK</th></tr>`+
-  m.agents.map(a=>`<tr><td>${esc(a.agent)}</td><td class="r">${a.missions}</td><td class="r isk">${fmtM(a.isk)}</td></tr>`).join('')+'</table></div>':''}`;
- // Gesicherten Zustand zurueckschreiben, bevor irgendein Handler haengt.
- Object.entries(lootOffen).forEach(([mid,z])=>{
-  const box=[...document.querySelectorAll('.mlootedit')].find(e=>e.dataset.mid===mid);
-  if(!box)return;
-  box.hidden=false;
-  const ta=box.querySelector('.mlootin');
-  if(ta){
-   ta.value=z.text;
-   if(z.fokus)ta.focus();
-   // Cursor immer zuruecksetzen, sonst springt er beim naechsten Klick ans Ende.
-   try{ta.setSelectionRange(z.start,z.end);}catch(e){}
-  }
-  const st=[...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===mid);
-  if(st&&z.status)st.textContent=z.status;
-  const sa=box.querySelector('.msalvin');
-  if(sa){
-   sa.value=z.stext||'';
-   if(z.sfokus)sa.focus();
-   try{sa.setSelectionRange(z.sstart||0,z.send||0);}catch(e){}
-  }
-  const sst=[...document.querySelectorAll('.msalvstat')].find(s=>s.dataset.mid===mid);
-  if(sst&&z.sstatus)sst.textContent=z.sstatus;
- });
- Object.entries(nameOffen).forEach(([mid,z])=>{
-  const box=[...document.querySelectorAll('.mnameedit')].find(e=>e.dataset.mid===mid);
-  if(!box)return;
-  box.hidden=false;
-  const inp=box.querySelector('.mnamein');
-  if(inp){
-   inp.value=z.text;
-   if(z.fokus)inp.focus();
-   try{inp.setSelectionRange(z.start,z.end);}catch(e){}
-  }
-  // Stufe und Wetter zurueckschreiben, sonst ist eine noch nicht gespeicherte
-  // Auswahl nach zwei Sekunden weg.
-  const tSel=box.querySelector('.abysstier'), wSel=box.querySelector('.abysswetter');
-  if(tSel&&z.tier!=null)tSel.value=z.tier;
-  if(wSel&&z.wetter!=null)wSel.value=z.wetter;
-  const st=[...document.querySelectorAll('.mnamestat')].find(s=>s.dataset.mid===mid);
-  if(st&&z.status)st.textContent=z.status;
- });
- // Mission von Hand abschliessen. Danach steht sie sofort unten in der Liste
- // und der Loot laesst sich eintragen, ohne dass man abdocken muss.
- document.querySelectorAll('.mclose').forEach(b=>b.onclick=async()=>{
-  const char=b.dataset.char, en2=lang==='en';
-  const finde=()=>[...document.querySelectorAll('.mclosestat')].find(s=>s.dataset.char===char);
-  const setz=t=>{const el=finde(); if(el)el.textContent=t;};
-  setz(en2?'Finishing …':'Schließe ab …');
-  let r;try{r=await post({action:'mission_close',char});}catch(e){r=null;}
-  if(!r||!r.ok){setz(en2?'Server not reachable':'Server nicht erreichbar');return;}
-  if(r.saved){
-   // Ob an der Station oder aus der Ferne, erkannt am Anflug zum Andock-
-   // Perimeter. Das ist das einzige Andock-Signal, das in beiden Sprachen im
-   // Log steht, die englische Bestaetigung gibt es auf Deutsch nicht.
-   const wo=r.docked
-     ? (en2?'Mission completed':'Mission abgeschlossen')
-     : (en2?'Mission completed remotely':'Mission remote abgeschlossen');
-   setz(`✅ ${wo} · ${r.min} min · ${fmtM(r.bounty)} ${en2?'bounty':'Bounty'} · `
-        +(en2?'enter the loot below':'Loot unten eintragen'));
-   setTimeout(tick,600);
-  }else setz(r.msg||(en2?'Nothing to save':'Nichts zu speichern'));
- });
- document.querySelectorAll('.mreopen').forEach(t=>t.onclick=async()=>{
-  const en3=lang==='en';
-  // Vorher fragen: der Eintrag verschwindet aus der Liste, und ein bereits
-  // eingetragener Loot geht mit. Das ist keine Kleinigkeit, die man
-  // versehentlich anklickt.
-  if(!confirm(en3
-   ?'Take this run back into the current session? The entry disappears from the list and reappears when the run really ends. Loot you already entered is lost.'
-   :'Diesen Einsatz zurück in die laufende Sitzung holen? Der Eintrag verschwindet aus der Liste und entsteht neu, wenn der Einsatz wirklich endet. Bereits eingetragener Loot geht dabei verloren.'))return;
-  t.textContent=en3?'Taking back …':'Hole zurück …';
-  let r;try{r=await post({action:'mission_reopen',mid:t.dataset.mid});}catch(e){r=null;}
-  if(r&&r.ok){
-   t.textContent=r.sitzung_aktiv
-    ?(en3?'✓ back in the session':'✓ zurück in der Sitzung')
-    :(en3?'✓ removed (character offline, no session to continue)'
-         :'✓ entfernt (Char offline, es läuft keine Sitzung mehr)');
-   setTimeout(()=>tick(),1200);
-  }else t.textContent=en3?'failed':'hat nicht geklappt';
- });
- // Zwei Eintraege zu einem machen. Nicht umkehrbar, deshalb mit Rueckfrage,
- // und die Rueckfrage sagt, was danach in der Zeile steht.
- document.querySelectorAll('.mmerge').forEach(t=>t.onclick=async()=>{
-  const en3=lang==='en';
-  if(!confirm(en3
-   ?'Merge this run into the previous run of the same character? Damage, kills, bounty and loot are added up, the earlier start is kept. The two entries become one. This cannot be undone.'
-   :'Diesen Einsatz mit dem vorherigen desselben Charakters verbinden? Schaden, Kills, Bounty und Loot werden addiert, der frühere Beginn bleibt stehen. Aus den zwei Einträgen wird einer. Das lässt sich nicht rückgängig machen.'))return;
-  const alt=t.textContent;
-  t.textContent=en3?'Merging …':'Verbinde …';
-  let r;try{r=await post({action:'mission_verbinden',mid:t.dataset.mid});}catch(e){r=null;}
-  if(r&&r.ok){
-   t.textContent=(en3?'✓ merged, now ':'✓ verbunden, jetzt ')+r.min+' min';
-   setTimeout(()=>tick(),1200);
-  }else{
-   t.textContent=(r&&r.error)||(en3?'failed':'hat nicht geklappt');
-   setTimeout(()=>{t.textContent=alt;},2500);
-  }
- });
- // Charakter-Auswahl: die Zusammenfassung und die Loot-Auswertung rechnet der
- // Server neu, deshalb ein voller Takt statt nur Neuzeichnen. Die Seitenzahlen
- // gehen auf Anfang zurueck, sonst steht man bei einem Charakter mit wenigen
- // Missionen auf einer leeren Seite drei.
- document.querySelectorAll('.atage').forEach(el=>el.onclick=()=>{
-  abyssTage=Number(el.dataset.at);
-  localStorage.setItem('abyssTage',abyssTage);
-  tick();
- });
- document.querySelectorAll('.mchar').forEach(el=>el.onclick=()=>{
-  const w=el.dataset.mc||'';
-  if(!w)missChars=[];                       // "Alle" leert die Auswahl
-  else if(missChars.includes(w))missChars=missChars.filter(x=>x!==w);
-  else missChars=missChars.concat([w]);
-  localStorage.setItem('missChars',JSON.stringify(missChars));
-  seiteRuns=0; seiteTage=0;
-  tick();
- });
+// Knoepfe der Einsatz-Zeilen verdrahten: Loot eintragen und bewerten, Salvage,
+// Benennen samt Stufe und Wetter, Blaettern, Rueckfragen. Wird von BEIDEN
+// Ansichten aufgerufen (Missionen und Abyss), damit dort nicht zwei Wege
+// entstehen, die denselben Datensatz unterschiedlich schreiben.
+function laufHandler(){
  document.querySelectorAll('[data-blatt]').forEach(el=>el.onclick=()=>{
   const zu=parseInt(el.dataset.zu,10);
   if(el.dataset.blatt==='runs') seiteRuns=zu; else seiteTage=zu;
@@ -18933,6 +18616,551 @@ function renderMissions(d){
   else if(st)st.textContent=r?(en2?'Error':'Fehler')
                              :(en2?'Server not reachable':'Server nicht erreichbar');
  });
+}
+let lastAbyss=null;
+// Die vollen Einsatz-Datensaetze, wie sie die Missions-Ansicht bekommt.
+// Der Abyss-Bereich rendert daraus dieselben Zeilen (laufZeile), damit
+// beide Ansichten denselben Datensatz bearbeiten.
+let lastMissionLog=null;
+// Eigener Abyss-Bereich (Askend, 29.08.2026). Zeigt DIESELBEN Laeufe wie die
+// Missions-Liste und benutzt dafuer laufZeile/laufHandler: wer hier Loot
+// eintraegt oder benennt, bearbeitet denselben Datensatz in der Datenbank.
+function renderAbyss(a){
+ lastAbyss=a=a||{laeufe:[],ertrag:{},bilanz:{},filamente:[],beute:[]};
+ const en=lang==='en';
+ syncCharFilter((a.laeufe||[]).map(l=>({name:l.char})));
+ const A=a.ertrag||{}, B=a.bilanz||{};
+ const zeitKnoepfe=()=>[[30,en?'30 days':'30 Tage'],[90,en?'90 days':'90 Tage'],[0,en?'all':'alles']]
+   .map(([w,l])=>`<span class="pill atage${abyssTage===w?' on':''}" data-at="${w}">${l}</span>`).join('');
+ if(!a.n){
+  $('#grid').innerHTML=`<div class="card" style="grid-column:1/-1">
+   <div class="sect" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <span>🌀 Abyss</span><span style="margin-left:auto;display:flex;gap:6px">${zeitKnoepfe()}</span></div>
+   <div class="sub" style="margin-top:6px">${en
+     ?'No abyssal runs in this period. Canary spots them by the Triglavian enemies and the missing local channel, nothing to set up.'
+     :'In diesem Zeitraum keine Abyss-Durchgänge. Canary erkennt sie an den Triglavian-Gegnern und am fehlenden Local, dafür musst du nichts einstellen.'}</div></div>`;
+  $('#grid').querySelectorAll('.atage').forEach(el=>el.onclick=()=>{
+   abyssTage=Number(el.dataset.at); localStorage.setItem('abyssTage',abyssTage); tick();});
+  return;
+ }
+ const nam=z=>{const st=z.stufe?('T'+z.stufe):'',
+   we=z.wetter?(z.wetter[0].toUpperCase()+z.wetter.slice(1)):'';
+   return (st||we)?[st,we].filter(Boolean).join(' '):(en?'no details':'ohne Angabe');};
+ const b=a.best;
+ const eigene=(lastMissionLog||[]).filter(x=>a.laeufe.some(l=>l.mid===x.mid));
+ const liste=(t,rows,spalten)=>rows.length?`<div class="card">
+   <div class="sect">${t}</div><table><tr>${spalten.map(c=>`<th${c[2]?' class="r"':''}>${c[0]}</th>`).join('')}</tr>
+   ${rows.map(r=>`<tr>${spalten.map(c=>`<td${c[2]?' class="r"':''}>${c[1](r)}</td>`).join('')}</tr>`).join('')}
+   </table></div>`:'';
+ $('#grid').innerHTML=`
+  <div class="card" style="grid-column:1/-1">
+   <div class="sect" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <span>🌀 ${en?'Abyssal runs':'Abyss-Durchgänge'}</span>
+    <span style="margin-left:auto;display:flex;gap:6px">${zeitKnoepfe()}</span></div>
+   <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+    <div class="stat"><div class="l">${en?'Runs':'Durchgänge'}</div><div class="v">${A.runs||0}</div></div>
+    <div class="stat"><div class="l">${en?'ISK per run':'ISK je Durchgang'}</div><div class="v isk">${fmtM(A.isk_run||0)}</div></div>
+    <div class="stat"><div class="l">ISK/min</div><div class="v isk">${fmtM(A.isk_min||0)}</div></div>
+    <div class="stat"><div class="l">${en?'Ø duration':'Ø Dauer'}</div><div class="v out">${A.min||0} min</div></div>
+   </div>
+   ${a.mit_loot<a.n?`<div class="sub" style="margin-top:8px">${en
+     ? `${a.n-a.mit_loot} of ${a.n} runs have no loot entered yet. Everything below is based on the ${a.mit_loot} that do.`
+     : `Bei ${a.n-a.mit_loot} von ${a.n} Durchgängen ist noch kein Loot eingetragen. Alles Folgende beruht auf den ${a.mit_loot}, bei denen er steht.`}</div>`:''}
+  </div>
+  <div class="card" style="grid-column:1/-1">
+   <div class="sect">🧪 ${en?'Filament balance':'Filament-Bilanz'}</div>
+   <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+    <div class="stat" title="${en?'One filament per ship in a run: one cruiser costs one, up to two destroyers two, up to three frigates three.':'Ein Filament je Schiff im Lauf: ein Kreuzer kostet eines, bis zu zwei Zerstörer zwei, bis zu drei Fregatten drei.'}">
+     <div class="l">${en?'Used':'Verbraucht'}</div><div class="v in">${B.verbraucht||0}</div></div>
+    <div class="stat" title="${en?'Filaments that dropped as loot. They fund your next run.':'Filamente, die als Beute gefallen sind. Sie finanzieren deinen nächsten Lauf.'}">
+     <div class="l">${en?'Looted':'Erbeutet'}</div><div class="v grn">${B.erbeutet||0}</div></div>
+    <div class="stat"><div class="l">${en?'Net':'Netto'}</div>
+     <div class="v ${(B.netto||0)>=0?'grn':'in'}">${(B.netto||0)>0?'+':''}${B.netto||0}</div></div>
+    <div class="stat"><div class="l">${en?'Value of them':'Ihr Wert'}</div>
+     <div class="v isk">${B.isk?fmtM(B.isk)+' ISK':'—'}</div></div>
+   </div>
+   <div class="sub" style="margin-top:8px">${en
+     ? `Does your abyss habit pay for itself? Every run consumes filaments and almost every run drops some. ${(B.netto||0)>0?`You are ${B.netto} filaments ahead, so it funds itself.`:`You are ${Math.abs(B.netto||0)} filaments short, so you are buying in.`}`
+     : `Trägt sich dein Abyss selbst? Jeder Lauf verbraucht Filamente, und fast jeder wirft welche ab. ${(B.netto||0)>0?`Du liegst ${B.netto} Filamente im Plus, es trägt sich also.`:`Dir fehlen ${Math.abs(B.netto||0)} Filamente, du kaufst also zu.`}`}</div>
+  </div>
+  ${b?`<div class="card" style="grid-column:1/-1">
+   <div class="sect">🏆 ${en?'Best run':'Beste Runde'}</div>
+   <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+    <div class="stat"><div class="l">ISK/min</div><div class="v isk">${fmtM(b.isk_min)}</div></div>
+    <div class="stat"><div class="l">${en?'Yield':'Ertrag'}</div><div class="v isk">${fmtM(b.isk)}</div></div>
+    <div class="stat"><div class="l">${en?'Duration':'Dauer'}</div><div class="v out">${b.min} min</div></div>
+    <div class="stat"><div class="l">Filament</div><div class="v">${esc(nam(b))}</div></div>
+   </div>
+   <div class="sub" style="margin-top:6px">${new Date(b.start*1000).toLocaleString()} · ${esc(b.char||'')}${b.schiff?' · '+esc(b.schiff):''}${b.klasse?' ('+esc(b.klasse)+')':''} · ${en
+     ?'measured by ISK per minute, not by total yield: a long run with a lot of loot is not automatically the best.'
+     :'gemessen an ISK je Minute, nicht am Gesamtwert: ein langer Lauf mit viel Beute ist nicht automatisch der beste.'}</div>
+  </div>`:''}
+  ${(A.zeilen&&A.zeilen.length)?`<div class="card" style="grid-column:1/-1">
+   <div class="sect">${en?'Yield per filament':'Ertrag je Filament'}</div>
+   <table><tr><th>Filament</th><th>${en?'Ship class':'Schiffklasse'}</th><th class="r">${en?'Runs':'Durchgänge'}</th>
+    <th class="r">${en?'ISK per run':'ISK je Durchgang'}</th><th class="r">ISK/min</th><th class="r">${en?'Ø duration':'Ø Dauer'}</th></tr>
+   ${A.zeilen.map(z=>`<tr><td>${esc(nam(z))}</td>
+    <td${z.klasse?'':' class="sub"'}>${z.klasse?esc(z.klasse):(en?'unknown':'unbekannt')}</td>
+    <td class="r">${z.runs}</td><td class="r isk">${fmtM(z.isk_run)}</td>
+    <td class="r isk">${fmtM(z.isk_min)}</td><td class="r">${z.min} min</td></tr>`).join('')}
+   </table>
+   <div class="sub" style="margin-top:8px">${en
+     ?'Abyss NPCs pay no bounty, so the loot you enter is the entire yield of a run. Tier and weather come from the name you give a run, the ship from the EVE login.'
+     :'Abyss-Gegner zahlen keine Bounty, der eingetragene Loot ist deshalb der vollständige Ertrag eines Laufs. Stufe und Wetter kommen aus dem Namen, den du dem Lauf gibst, das Schiff aus dem EVE-Login.'}</div>
+   </div>`:''}
+  ${liste('💎 '+(en?'Top 10 by value':'Top 10 nach Wert'), a.beute||[],
+    [[en?'Item':'Gegenstand',r=>esc(r.name),0],
+     [en?'Qty':'Menge',r=>fmt(r.menge),1],
+     [en?'Runs':'Läufe',r=>r.laeufe,1],
+     [en?'Value':'Wert',r=>r.isk!=null?fmtM(r.isk):'—',1]])}
+  ${liste('🧪 '+(en?'Filaments looted':'Erbeutete Filamente'), a.filamente||[],
+    [['Filament',r=>esc(r.name),0],
+     [en?'Qty':'Menge',r=>fmt(r.menge),1],
+     [en?'Value':'Wert',r=>r.isk!=null?fmtM(r.isk):'—',1]])}
+  <div class="card" style="grid-column:1/-1">
+   <div class="sect">${en?'Every run':'Jeder Durchgang'} · ${a.n}</div>
+   <div class="sub">${en
+     ? 'The same runs as in the missions list. Loot, name, tier and weather entered here go into the same record.'
+     : 'Dieselben Läufe wie in der Missions-Liste. Loot, Name, Stufe und Wetter, die du hier einträgst, landen im selben Datensatz.'}</div>
+   ${eigene.slice(seiteRuns*PRO_SEITE,(seiteRuns+1)*PRO_SEITE).map(laufZeile).join('')
+     || `<div class="sub" style="margin-top:8px">${en?'Open the missions tab once so the run details are loaded.':'Öffne einmal die Missionen, damit die Einzelheiten der Läufe geladen sind.'}</div>`}
+   ${blaettern('runs',seiteRuns,eigene.length)}
+  </div>`;
+ laufHandler();
+ $('#grid').querySelectorAll('.atage').forEach(el=>el.onclick=()=>{
+  abyssTage=Number(el.dataset.at); localStorage.setItem('abyssTage',abyssTage); tick();});
+}
+// EINE Zeile eines abgeschlossenen Einsatzes. Bewusst als eigene Funktion:
+// der Abyss-Bereich zeigt dieselben Laeufe wie die Missions-Liste, und wer
+// dort Loot, Namen, Stufe oder Wetter eintraegt, bearbeitet DENSELBEN
+// Datensatz in der Datenbank (Askend, 29.08.2026). Zwei Darstellungen
+// desselben Satzes waeren die sichere Quelle fuer Abweichungen.
+function laufZeile(x){
+ return `
+   <div style="border-top:1px solid var(--line);padding:10px 0">
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:baseline">
+     <b>${new Date(x.start*1000).toLocaleString().slice(0,16)}</b>
+     <span class="char" style="font-size:12px">${esc(x.char||'')}</span>
+     <span class="sys">${x.system&&x.system!=='?'?'· '+esc(x.system)+' ':''}· ${x.min!=null?x.min:'?'} min</span>
+     ${(x.zusammen&&x.zusammen.length)?`<span class="zusammen" title="${lang==='en'
+        ? 'Same system, in and out within 90 seconds of each other. Every character keeps its own entry, because each has its own log, its own damage and its own EWAR. Whether it was one filament for the fleet or several started at the same time is not in any log file.'
+        : 'Gleiches System, rein und raus innerhalb von 90 Sekunden. Jeder Charakter behält seinen eigenen Eintrag, denn jeder hat sein eigenes Log, seinen eigenen Schaden und sein eigenes EWAR. Ob es ein Filament für die Flotte war oder mehrere gleichzeitig gestartete, steht in keiner Logdatei.'}">🤝 ${lang==='en'?'together with':'gemeinsam mit'} ${esc(x.zusammen.join(', '))}</span>`:''}
+     ${x.mission?`<span class="mtag">${missionHtml(x.mission)}</span>`:x.site?`<span class="mtag">${siteHtml(x.site)}</span>`:''}
+     <span style="margin-left:auto" class="isk"><b>${fmtM(x.total)} ISK</b></span>
+    </div>
+    ${x.nachfrage?`<div class="sub mfrage" data-mid="${esc(x.mid)}" style="margin-top:6px">
+      ❓ ${(()=>{const p='<b>'+x.nachfrage.conf+'%</b>', n='<b>'+esc(x.nachfrage.name)+'</b>';
+          // Die Auszeichnung steckt bewusst im Ausdruck und nicht als <b> im
+          // Satz: i18n_gesamt.py meldet sonst den deutschen Teil zwischen zwei
+          // Tags als unuebersetzt, obwohl die englische Fassung daneben steht.
+          return lang==='en'
+           ? `This run looks ${p} like the shared template ${n}. Not enough to say so. Was it that mission?`
+           : `Dieser Lauf sieht zu ${p} aus wie die geteilte Vorlage ${n}. Zu wenig, um es zu behaupten. War es die Mission?`;})()}
+      <button class="btn mfrageja" data-mid="${esc(x.mid)}" data-name="${esc(x.nachfrage.name)}" style="margin-left:8px">${lang==='en'?'Yes':'Ja'}</button>
+      <button class="btn geist mfragenein" data-mid="${esc(x.mid)}">${lang==='en'?'No':'Nein'}</button>
+      <span class="mfragestat sub" data-mid="${esc(x.mid)}"></span>
+      <div class="sub" style="margin-top:2px">${lang==='en'
+        ? 'Every shared template rests on a single confirmed run. A second one makes it noticeably more reliable, and your answer stays on this computer.'
+        : 'Jede geteilte Vorlage steht auf einem einzigen bestätigten Lauf. Ein zweiter macht sie deutlich verlässlicher, und deine Antwort bleibt auf diesem Rechner.'}</div>
+     </div>`:''}
+    ${(!x.kills&&!x.bounty&&!x.dmg_out&&(x.logi_out||x.logi_in))
+      ? `<div class="sub">${lang==='en'?'Support run, no damage of your own':'Unterstützungseinsatz, kein eigener Schaden'}${x.dmg_in?' · '+fmt(x.dmg_in)+' '+(lang==='en'?'damage taken':'Schaden rein'):''}${ewarInline(x.ewar)}</div>`
+      : `<div class="sub">${x.kills} Kills · Bounty ${fmtM(x.bounty)} · Schaden ${fmt(x.dmg_out)} raus / ${fmt(x.dmg_in)} rein${x.hit!=null?' · Trefferquote '+x.hit+'%':''}${x.enemies.length?' · Top: '+esc(x.enemies[0][0]):''}${ewarInline(x.ewar)}</div>`}
+    ${(x.reward!=null||x.bonus!=null)?`<div class="sub vreward">✅ ${lang==='en'?'ESI verified':'ESI-verifiziert'}: ${lang==='en'?'reward':'Belohnung'} <b class="isk">${fmtM(x.reward||0)}</b>${x.bonus?` + ${lang==='en'?'time bonus':'Zeitbonus'} <b class="isk">${fmtM(x.bonus)}</b>`:''}${x.min>0?` · ${fmtM(Math.round(((x.reward||0)+(x.bonus||0))/(x.min/60)))}/h`:''}</div>`:''}
+    ${factionHtml(x.faction)}
+    ${(x.logi_out||x.logi_in)?`<div class="sub">🔗 ${lang==='en'?'Remote assistance':'Fernunterstützung'}: ${fmt(x.logi_out||0)} ${lang==='en'?'given':'gegeben'} · ${fmt(x.logi_in||0)} ${lang==='en'?'received':'bekommen'}</div>`:''}
+    ${(x.npc&&x.npc.length)?`<div class="npc">${x.npc.map(l=>`<div>💬 ${esc(l)}</div>`).join('')}</div>`:''}
+    <div class="sub" style="margin-top:6px">${x.loot_isk!=null?'Loot: <b class="isk">'+fmtM(x.loot_isk)+'</b>':''}
+     <span class="mloottoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px">${x.loot_isk!=null?'✎ Loot ändern':'＋ Loot eintragen'}</span>
+     <span class="mreopen" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--dim);font-size:11px;margin-left:10px" title="Andocken ist kein sicherer Abschluss. Wer nur kurz zum Reparieren reingeflogen ist, holt die Mission hiermit zurück und der weitere Kampf zählt dazu.">↩ Läuft doch noch</span>
+     ${x.hat_vorher?`<span class="mmerge" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--dim);font-size:11px;margin-left:10px" title="${lang==='en'
+        ? 'For a repair stop in between: docking closes a run, so the same mission ends up as two entries. This merges this one INTO the previous run of the same character. Damage, kills, bounty and loot are added up, the earlier start is kept. Cannot be undone.'
+        : 'Für den Reparaturstopp zwischendurch: Andocken schließt einen Einsatz ab, dieselbe Mission steht dann als zwei Einträge da. Das hier schiebt diesen Eintrag IN den vorherigen Einsatz desselben Charakters. Schaden, Kills, Bounty und Loot werden addiert, der frühere Beginn bleibt. Nicht umkehrbar.'}">🔗 ${lang==='en'?'Merge into the previous run':'Mit dem vorigen verbinden'}</span>`:''}
+     <span class="mnametoggle" data-mid="${esc(x.mid)}" style="cursor:pointer;color:var(--cyan);font-size:11px;margin-left:10px" title="Trag den Namen aus deinem Missionsjournal ein. Canary merkt sich dazu die Gegner und erkennt künftige Läufe derselben Mission von allein.">${x.label?'🔖 Name ändern':'🔖 Mission benennen'}</span></div>
+    <div class="mnameedit" data-mid="${esc(x.mid)}" hidden>
+     ${x.abyss?`<div class="btnrow" style="margin-top:4px;align-items:center">
+      <select class="abysstier" data-mid="${esc(x.mid)}">
+       <option value="">Stufe wählen</option>
+       ${ABYSS_STUFEN.map((n,i)=>`<option value="${n}"${x.tier_name===i+1?' selected':''}>T${i+1} ${n}</option>`).join('')}
+      </select>
+      <select class="abysswetter" data-mid="${esc(x.mid)}">
+       <option value="">Wetter wählen</option>
+       ${ABYSS_WETTER.map(n=>`<option value="${n}"${(x.wetter||'')===n.toLowerCase()?' selected':''}>${n}</option>`).join('')}
+      </select>
+      <input class="mnamein" data-mid="${esc(x.mid)}" style="flex:1;min-width:130px"
+       placeholder="${lang==='en'?'note, optional':'Notiz, optional'}" value="${esc(abyssNotiz(x.label))}">
+     </div>
+     ${(x.tier_gegner&&x.tier_name!==x.tier_gegner)?`<div class="sub" style="margin-top:4px">
+       ${lang==='en'?'The enemies say':'Die Gegner sagen'} <b>T${x.tier_gegner}</b>
+       <button class="btn geist abystake" data-mid="${esc(x.mid)}" data-tier="${x.tier_gegner}"
+        title="${lang==='en'?'A rogue drone battleship is named per tier, so this one is certain. It is only there in about one run out of five.':'Ein Rogue-Drone-Schlachtschiff heißt je Stufe anders, das ist also sicher. Dabei ist es nur in etwa jedem fünften Durchgang.'}"
+        >${lang==='en'?'apply':'übernehmen'}</button></div>`:''}`
+     :`<input class="mnamein" data-mid="${esc(x.mid)}" style="width:100%;margin-top:4px" placeholder="Missionsname aus deinem Journal, z. B. Enemies Abound (1 of 5)" value="${esc(x.label||'')}">`}
+     ${gegnerAbschnitte(x)}
+     <div class="btnrow" style="margin-top:4px"><button class="btn mnamego" data-mid="${esc(x.mid)}">Merken</button>
+      <button class="btn geist mnameteil" data-mid="${esc(x.mid)}" title="Legt Name und Gegnerliste als fertigen Text in die Zwischenablage. Canary lädt nichts von selbst hoch, du fügst den Block bewusst in eine Meldung ein.">Für alle beitragen</button>
+      <span class="mnamestat sub" data-mid="${esc(x.mid)}"></span></div>
+     <div class="sub" style="margin-top:4px">${lang==='en'
+       ? `When you are done, press <b>Save</b>. Canary then keeps the ${x.enemies.length} enemy types of this run and recognises later runs with a similar line-up by itself.`
+       : `Wenn du fertig bist, drück <b>Merken</b>. Canary behält dann die ${x.enemies.length} Gegnertypen dieses Laufs und erkennt spätere Läufe mit ähnlicher Zusammenstellung von allein.`}</div>
+    </div>
+    <div class="mlootedit" data-mid="${esc(x.mid)}" hidden>
+     <textarea class="mlootin" data-mid="${esc(x.mid)}" rows="2" style="width:100%;margin-top:4px" placeholder="Frachtraum-Loot dieser Mission hier einfügen (im Spiel Strg+A, Strg+C)">${esc(x.loot_text)}</textarea>
+     <div class="btnrow" style="margin-top:4px"><button class="btn mlootgo" data-mid="${esc(x.mid)}">Loot bewerten</button> <span class="mlootstat sub" data-mid="${esc(x.mid)}"></span></div>
+     <textarea class="msalvin" data-mid="${esc(x.mid)}" rows="2" style="width:100%;margin-top:8px" placeholder="Salvage dieser Mission hier einfügen, getrennt vom Loot (gleicher Weg: markieren, kopieren)">${esc(x.salvage_text)}</textarea>
+     <div class="btnrow" style="margin-top:4px"><button class="btn msalvgo" data-mid="${esc(x.mid)}">Salvage bewerten</button> <span class="msalvstat sub" data-mid="${esc(x.mid)}"></span></div>
+    </div>
+   </div>`;
+}
+function renderMissions(d){
+ letzteMissionen = d;
+ lastMissionD=d;                         // fuer die lokale Simulation merken
+ // Offene Loot-Eingaben ueber den Neubau retten. Diese Ansicht baut das Grid
+ // im 2-Sekunden-Takt komplett neu, und dabei war das Eingabefeld wieder
+ // zugeklappt: gemessen ging es nach 1.016 ms wieder zu, mitsamt allem, was
+ // schon getippt war. Deshalb hier Zustand, Text und Cursor sichern und nach
+ // dem Neubau zurueckschreiben. Das betraf jeden Browser, nicht nur Firefox.
+ // Waehrend im Loot-Feld getippt wird, gar nicht erst neu bauen. Sonst
+ // verliert die Eingabe bei jedem Takt kurz den Fokus, und genau das macht
+ // das Einfuegen mit Strg+V unzuverlaessig.
+ // Dasselbe gilt fuer das Feld zum Benennen einer Mission. Das war in 2.1.0
+ // vergessen worden, und der Kasten klappte prompt nach einem Takt wieder zu,
+ // mitsamt dem schon Getippten. Gemeldet von Nirahse, in Firefox wie in Chrome.
+ const tippt=document.activeElement&&document.activeElement.classList;
+ // Die Auswahlfelder gehoeren mit in den Schutz: ein aufgeklapptes select
+ // schnappt beim Neubau zu, und dann waehlt man ins Leere.
+ if(tippt&&(tippt.contains('mlootin')||tippt.contains('msalvin')||tippt.contains('mnamein')
+            ||tippt.contains('abysstier')||tippt.contains('abysswetter')))return;
+ const lootOffen={};
+ document.querySelectorAll('.mlootedit').forEach(b=>{
+  if(b.hidden)return;
+  const ta=b.querySelector('.mlootin');
+  const sa=b.querySelector('.msalvin');
+  lootOffen[b.dataset.mid]={
+   text:ta?ta.value:'',
+   start:ta?ta.selectionStart:0, end:ta?ta.selectionEnd:0,
+   fokus:document.activeElement===ta,
+   stext:sa?sa.value:'',
+   sstart:sa?sa.selectionStart:0, send:sa?sa.selectionEnd:0,
+   sfokus:document.activeElement===sa,
+   sstatus:(([...document.querySelectorAll('.msalvstat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||'',
+   status:(([...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||''};
+ });
+ const nameOffen={};
+ document.querySelectorAll('.mnameedit').forEach(b=>{
+  if(b.hidden)return;
+  const inp=b.querySelector('.mnamein');
+  // Stufe und Wetter mitsichern: sie stehen bis zum Druck auf "Merken" NUR im
+  // Formular. Der Tippschutz oben greift nur, solange das Auswahlfeld selbst
+  // den Fokus hat, nach einem Klick auf "übernehmen" liegt der aber auf dem
+  // Knopf, und der naechste Takt hat die Auswahl wieder weggeworfen.
+  // Beim Audit gefunden.
+  const tSel=b.querySelector('.abysstier'), wSel=b.querySelector('.abysswetter');
+  nameOffen[b.dataset.mid]={
+   text:inp?inp.value:'',
+   start:inp?inp.selectionStart:0, end:inp?inp.selectionEnd:0,
+   fokus:document.activeElement===inp,
+   tier:tSel?tSel.value:null, wetter:wSel?wSel.value:null,
+   status:(([...document.querySelectorAll('.mnamestat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||''};
+ });
+ // Lokale Demo (nur mit sim_mode-Flag, reine Frontend-Simulation): Live-Char,
+ // 50-Missionen-Historie und Journal-Summen einspeisen, nichts davon aus DB/Logs.
+ if(SIM.on&&SIM.char)d=Object.assign({},d,{
+   chars:[SIM.char].concat(d.chars||[]),
+   mission_log:(SIM.history||[]).concat(d.mission_log||[]),
+   missions:SIM.summary||d.missions});
+ const m=d.missions||{},t=m.today||{};
+ // Charakter-Auswahl: Zusammenfassung und Loot-Auswertung filtert der Server,
+ // Missionsliste und Tagestabelle tragen den Namen je Zeile und werden hier
+ // gefiltert. So wirkt EINE Auswahl auf die ganze Seite (Nirahse, 29.08.2026).
+ lastMissionLog=d.mission_log||[];
+ if(missChars.length){
+  const gewaehlt=new Set(missChars);
+  d=Object.assign({},d,{
+   mission_log:(d.mission_log||[]).filter(x=>gewaehlt.has(x.char)),
+   loot_tage:(d.loot_tage||[]).filter(x=>gewaehlt.has(x.char))});
+ }
+ const live=(d.chars||[]).filter(c=>c.bounty>0||c.kills>0);
+ // Verdienst je Tag aus der Tagesuebersicht statt aus dem Wallet-Journal:
+ // nur dort steckt der LOOT mit drin. Ohne ihn stand bei einem reinen
+ // Abyss-Flieger immer null, weil Abyss-Gegner keine Bounty zahlen und es
+ // keine Agenten-Belohnung gibt (Nirahse, 29.08.2026). Salvage zaehlt mit,
+ // es ist Ertrag desselben Laufs. Die Zeile folgt damit auch dem
+ // Charakterfilter, denn loot_tage ist oben schon gefiltert.
+ const proTag={};
+ (d.loot_tage||[]).forEach(x=>{
+  const e=proTag[x.tag]||(proTag[x.tag]={isk:0,runs:0});
+  e.isk+=x.total||0; e.runs+=x.runs||0;
+ });
+ const byDay={};(m.days||[]).forEach(x=>byDay[x.day]=x);
+ const iso=n=>new Date(Date.now()-n*864e5).toISOString().slice(0,10);
+ // Missionszahl bleibt die aus dem Journal (abgeschlossene Missionen mit
+ // Belohnung), die Tagesuebersicht zaehlt Runs. Beides nebeneinander waere
+ // verwirrend, deshalb bleibt es bei der bekannten Zahl.
+ const tag=n=>proTag[iso(n)]||{isk:0,runs:0};
+ let wIsk=0,wMis=0;
+ for(let n=0;n<7;n++){wIsk+=tag(n).isk; const x=byDay[iso(n)]; if(x)wMis+=x.missions;}
+ // Die Charakter-Auswahl steht GANZ OBEN, ueber allem, was auf sie reagiert,
+ // also auch ueber den Verdienst-Kacheln (Nirahse, 29.08.2026). Sie wird
+ // immer gebaut, auch wenn der gewaehlte Charakter nichts vorzuweisen hat:
+ // sonst landet man auf einer leeren Seite ohne die Auswahl.
+ const charWahl=(()=>{
+   const namen=d.mchars||[];
+   if(namen.length<2)return '';
+   const an=w=>w?missChars.includes(w):!missChars.length;
+   const knopf=(w,l)=>`<span class="pill mchar${an(w)?' on':''}" data-mc="${esc(w)}">${esc(l)}</span>`;
+   const hinweis=missChars.length>1
+     ?`<span class="sub" style="color:var(--gold)">${lang==='en'
+        ?'flying together: joint abyss runs count as one'
+        :'fliegen zusammen: gemeinsame Abyss-Läufe zählen als ein Durchgang'}</span>`:'';
+   return `<div class="card" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    <span class="sub" style="letter-spacing:1px;text-transform:uppercase;font-size:10px">${lang==='en'?'Character':'Charakter'}</span>
+    ${knopf('',lang==='en'?'All':'Alle')}${namen.map(n=>knopf(n,n)).join('')}
+    ${hinweis}
+   </div>`;})();
+ $('#hero').innerHTML=charWahl+heroTiles('🎯 Verdient heute',tag(0).isk,tag(1).isk,wIsk,
+  (t.missions||0)+' Missionen',wMis+' Missionen · Ø '+fmtM(wIsk/7)+'/Tag');
+ $('#grid').innerHTML=`
+ <div class="alphabanner" style="grid-column:1/-1">🧪 <b>${lang==='en'?'Alpha phase, module in development':'Alpha-Phase, Modul in Entwicklung'}</b> · ${lang==='en'?'faction tips and verified rewards are still being checked against real logs. Feedback welcome.':'Fraktions-Tipps und verifizierte Belohnungen werden noch an echten Logs geprüft. Rückmeldungen willkommen.'}</div>
+ ${state.sim?`<div style="grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;align-items:center">
+   <span class="sub" style="color:var(--dim)">${lang==='en'?'Local demo (not shipped)':'Lokale Demo (nicht ausgeliefert)'}</span>
+   <button class="btn${SIM.on?' simon':''}" onclick="toggleSim()">${SIM.on?(lang==='en'?'⏹ Stop simulation':'⏹ Simulation stoppen'):(lang==='en'?'▶ Start simulation':'▶ Simulation starten')}</button></div>`:''}
+ ${renderMissionLive(d.chars)}
+ <div class="card" style="grid-column:1/-1">
+  <b>Heute im Detail (EVE-Zeit)</b>
+  ${(m.asof||m.next)?(()=>{const now=Date.now()/1000;const p=['Aus dem Wallet-Journal (ESI)'];
+    if(m.asof)p.push('Stand: vor '+Math.max(0,Math.round((now-m.asof)/60))+' min');
+    if(m.next){const nx=Math.round((m.next-now)/60);p.push(nx>0?'nächster Abgleich in '+nx+' min':'Abgleich läuft gerade');}
+    return `<div class="sub">${p.join(' · ')}. Das In-Game-Wallet ist sofort aktuell, ESI hängt bis zu 1 Stunde nach.</div>`;})():''}
+  ${(()=>{
+    // Fuenf Kacheln in EINER Zeile, Reihenfolge von Nirahse (29.08.2026):
+    // Missionen, Bounty, Loot, Belohnung, Zeitboni. Vorher waren es vier und
+    // sie brachen in eine zweite Zeile um, obwohl kaum Inhalt drinsteht.
+    // Der Loot-Wert kommt NICHT aus dem Wallet-Journal, sondern aus dem, was
+    // du an den Missionen eintraegst. Salvage zaehlt mit, es ist Ertrag
+    // desselben Laufs.
+    const heute=new Date().toISOString().slice(0,10);
+    const hl=(d.loot_tage||[]).filter(x=>x.tag===heute);
+    const lootHeute=hl.reduce((s2,x)=>s2+(x.loot||0)+(x.salv||0),0);
+    return `<div class="stats" style="margin-top:10px;grid-template-columns:repeat(5,1fr)">
+   <div class="stat"><div class="l">Missionen erledigt</div><div class="v out">${t.missions||0}</div></div>
+   <div class="stat"><div class="l">Bounties</div><div class="v grn">${fmtM(t.bounty||0)}</div></div>
+   <div class="stat" title="Loot und Bergung, die du an deinen Missionen eingetragen hast. Steht in keiner Logdatei, EVE protokolliert weder Plündern noch Bergung."><div class="l">Loot</div><div class="v isk">${fmtM(lootHeute)}</div></div>
+   <div class="stat"><div class="l">Belohnungen</div><div class="v isk">${fmtM(t.reward||0)}</div></div>
+   <div class="stat"><div class="l">Zeitboni</div><div class="v isk">${fmtM(t.bonus||0)}</div></div>
+  </div>`;})()}
+  ${(m.mine_systems&&m.mine_systems.length)?`<div class="sub" style="margin-top:8px">Bounties aus deinen Mining-Systemen (${m.mine_systems.join(', ')}) zählen hier nicht mit, das sind Belt-Ratten.</div>`:''}
+  ${m.linked?'':'<div class="cardwarn" style="margin-top:10px">⚠ Kein EVE-Login verbunden. Belohnungen und Boni kommen aus dem Wallet-Journal (ESI), einzurichten unter ⚙ Optionen.</div>'}
+  ${live.length?'<div class="sect">Live-Session (aus den Gamelogs)</div>'+live.map(c=>
+   // Knopf nach RECHTS, Laufzeit links daneben: dort sucht man ihn.
+   `<div class="sub" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:6px">
+     <span>⚔ <b>${esc(c.name)}</b>${c.ship?' · '+esc(c.ship):''} · ${c.kills} Kills · ${fmtM(c.bounty)} Bounties · DPS ${c.dps_out} raus / ${c.dps_in} rein</span>
+     <span class="sub mclosestat" data-char="${esc(c.name)}" style="margin-left:auto"></span>
+     <span class="sys">${lang==='en'?'running':'läuft seit'} ${c.session_min} min</span>
+     <button class="btn mclose" data-char="${esc(c.name)}" title="${lang==='en'?'Close this mission now so you can enter the loot and empty your hold before undocking':'Mission jetzt abschließen, damit du den Loot eintragen und den Laderaum leeren kannst, bevor du abdockst'}">${lang==='en'?'Finish mission':'Mission abschließen'}</button>
+    </div>`).join(''):''}
+ </div>
+ <div class="card" style="grid-column:1/-1">
+  <div class="sect" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+   <span>Missionen einzeln (aus den Gamelogs)</span>
+   ${d.abyss_n?`<a class="btn" href="/abyss.tsv" download style="margin-left:auto;display:inline-block;font-size:12px"
+     title="${lang==='en'?'Saves a table of all abyssal runs. Without character names, for sharing.':'Speichert eine Tabelle aller Abyss-Durchgänge. Ohne Charakternamen, zum Weitergeben.'}"
+     >🌀 ${lang==='en'?'Export abyssal runs':'Abyss-Durchgänge exportieren'} (${d.abyss_n})</a>`:''}</div>
+  ${(d.mission_log&&d.mission_log.length)?d.mission_log
+     .slice(seiteRuns*PRO_SEITE,(seiteRuns+1)*PRO_SEITE).map(laufZeile).join(''):'<div class="sub">Noch keine abgeschlossenen Missionen erfasst. Eine Mission gilt als abgeschlossen, sobald du fürs nächste Mal wieder abdockst.</div>'}
+  ${blaettern('runs',seiteRuns,(d.mission_log||[]).length)}
+  ${(()=>{const o=d.mission_offen; if(!o||!o.n)return '';
+    const en3=lang==='en';
+    return `<div class="sub" style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">
+      ${en3
+        ? `<b>${o.n} agent payouts could not be matched to a mission</b>, together ${fmtM(o.summe)} ISK.
+           That happens with missions that involve no combat at all: courier runs, transports, pure dialogue steps,
+           and many stages of the epic arcs. Nothing appears in the game log for those, so Canary never sees a mission.
+           The ISK is counted in the daily totals above, it just has no combat data attached.`
+        : `<b>${o.n} Agenten-Auszahlungen ließen sich keiner Mission zuordnen</b>, zusammen ${fmtM(o.summe)} ISK.
+           Das passiert bei Aufträgen ganz ohne Kampf: Kurierflüge, Transporte, reine Dialog-Schritte und viele
+           Stationen der Epic Arcs. Dazu steht nichts im Gamelog, Canary sieht also gar keine Mission.
+           In den Tagessummen oben stecken die ISK trotzdem drin, sie haben nur keine Kampfdaten dabei.`}
+      <div style="margin-top:6px">${(o.liste||[]).map(x=>
+        `${new Date(x.ts*1000).toLocaleString().slice(0,16)} · ${esc(x.char)} · <span class="isk">${fmtM(x.isk)}</span>`
+       ).join('<br>')}</div>
+     </div>`;})()}
+ </div>
+ <div class="card" style="grid-column:1/-1">
+  <div class="sect">Letzte 30 Tage</div>
+  <div class="sub">Je Charakter und Tag. Bounty kommt aus den Gamelogs, Belohnung und Zeitbonus aus dem Wallet-Journal, der Loot ist von dir an den Runs eingetragen. EVE schreibt beim Plündern nichts mit, deshalb steht dort nur, was du selbst hinterlegt hast.</div>
+  ${(d.loot_tage&&d.loot_tage.length)?(()=>{
+    // Standardmaessig nur die letzten Tage: bei Vielfliegern werden das sonst
+    // ueber dreissig Zeilen und die Seite wird endlos.
+    const alle=d.loot_tage;
+    const zeig=alle.slice(seiteTage*PRO_SEITE,(seiteTage+1)*PRO_SEITE);
+    return `<div style="overflow-x:auto"><table>
+   <thead><tr><th>Tag</th><th>Charakter</th><th class="r">Runs</th><th class="r">Bounty</th>
+    <th class="r">Belohnung</th><th class="r">Zeitbonus</th><th class="r">Loot</th><th class="r">Salvage</th><th class="r">Summe</th></tr></thead>`+
+   zeig.map(x=>`<tr><td>${esc(x.tag)}</td><td>${esc(x.char)}</td>
+    <td class="r">${x.runs}${x.mit_loot<x.runs?`<span title="${x.runs-x.mit_loot}${lang==='en'?' run(s) without loot entered':' Run(s) ohne eingetragenen Loot'}" style="color:var(--gold)"> *</span>`:''}</td>
+    <td class="r grn">${x.bounty?fmtM(x.bounty):'&middot;'}</td>
+    <td class="r isk">${x.reward?fmtM(x.reward):'&middot;'}</td>
+    <td class="r isk">${x.bonus?fmtM(x.bonus):'&middot;'}</td>
+    <td class="r isk">${x.loot?fmtM(x.loot):'&middot;'}</td>
+    <td class="r isk">${x.salv?fmtM(x.salv):'&middot;'}</td>
+    <td class="r isk"><b>${fmtM(x.total)}</b></td></tr>`).join('')+
+   '</table></div>'
+   +blaettern('tage',seiteTage,alle.length)
+   +(zeig.some(x=>x.mit_loot<x.runs)?'<div class="sub" style="margin-top:6px">* An diesen Tagen gibt es Runs ohne eingetragenen Loot. Die Summe ist dann niedriger als das, was wirklich rumkam.</div>':'');
+   })():'<div class="sub">Noch nichts erfasst. Sobald ein Run abgeschlossen ist, steht er hier.</div>'}
+ </div>
+ ${(()=>{const la=d.loot_auswertung; if(!la)return '';
+   const en5=lang==='en', zr=la.zeitraeume||{};
+   const kachel=(t,z)=>`<div class="stat"><div class="l">${t}</div><div class="v isk">${z&&z.n?fmtM(z.isk):'·'}</div><div class="l">${z&&z.n?(z.n+(en5?(z.n===1?' mission':' missions'):(z.n===1?' Mission':' Missionen'))+' · Ø '+fmtM(z.schnitt)+(z.salv?(en5?' · salvage ':' · Salvage ')+fmtM(z.salv):'')):(en5?'nothing entered':'nichts eingetragen')}</div></div>`;
+   const inhalt=la.mit_loot
+     ?`<div class="stats" style="grid-template-columns:repeat(3,1fr)">${kachel(en5?'Today':'Heute',zr.heute)}${kachel(en5?'7 days':'7 Tage',zr.d7)}${kachel(en5?'30 days':'30 Tage',zr.d30)}</div>
+      <div style="overflow-x:auto"><table>
+      <tr><th>${en5?'Item':'Gegenstand'}</th><th>${en5?'Type':'Art'}</th><th class="r">${en5?'Units':'Stück'}</th><th class="r">≈ ISK (Jita)</th><th>${en5?'most of it came from':'meiste Beute in'}</th></tr>`
+      +(la.gegenstaende||[]).slice(0,12).map(g=>{
+        const alle=(g.wo||[]).map(w=>w[0]+': '+fmt(w[1])+(en5?' units':' Stk')).join('\\n');
+        return `<tr><td>${esc(g.name)}</td><td>${g.art==='salvage'?(en5?'Salvage':'Salvage'):'Loot'}</td><td class="r">${fmt(g.menge)}</td>
+         <td class="r isk">${g.isk!=null?fmtM(g.isk):'<span style="color:var(--dim)" title="'+(en5?'price not loaded yet, comes with the next refresh':'Preis noch nicht geladen, kommt mit dem nächsten Takt')+'">·</span>'}</td>
+         <td title="${esc(alle)}">${g.wo&&g.wo.length?esc(g.wo[0][0])+' · '+fmt(g.wo[0][1])+(en5?' units':' Stk')+(g.wo.length>1?' <span style="color:var(--dim)">+'+(g.wo.length-1)+'</span>':''):''}</td></tr>`;
+      }).join('')
+      +`</table></div>
+      <div class="sub" style="margin-top:8px">${en5
+        ?`Top 12 by value, hover the source column for the full list per item. <b>${la.mit_loot} of ${la.gesamt}</b> missions have loot or salvage entered: the more you enter (📥 on each mission), the more complete this gets.`
+        :`Top 12 nach Wert, die Herkunfts-Spalte zeigt beim Überfahren die volle Liste je Gegenstand. <b>${la.mit_loot} von ${la.gesamt}</b> Missionen haben eingetragenen Loot oder Salvage: je mehr du einträgst (📥 an jeder Mission), desto vollständiger wird die Auswertung.`}</div>`
+     :`<div class="sub">${en5
+        ?'Nothing entered yet. Paste a cargo copy (Ctrl+A, Ctrl+C in game) via 📥 on a mission, loot and salvage each into their own field, then sums, averages and item origins show up here.'
+        :'Noch nichts eingetragen. Füge über 📥 an einer Mission eine Frachtraum-Kopie ein (im Spiel Strg+A, Strg+C), Loot und Salvage jeweils in ihr eigenes Feld, dann erscheinen hier Summen, Schnitte und die Herkunft je Gegenstand.'}</div>`;
+   return `<div class="card" style="grid-column:1/-1">
+    <div class="sect">${en5?'💰 Loot & salvage analysis':'💰 Loot- & Salvage-Auswertung'}</div>${inhalt}</div>`;
+  })()}
+ ${(d.abyss_ertrag&&d.abyss_ertrag.runs)?`<div class="card" style="grid-column:1/-1">
+   <div class="sub">🌀 ${lang==='en'
+     ? `Your ${d.abyss_ertrag.runs} abyssal runs now have their own area with yield per filament, the filament balance and your best run.`
+     : `Deine ${d.abyss_ertrag.runs} Abyss-Durchgänge haben jetzt einen eigenen Bereich: Ertrag je Filament, Filament-Bilanz und deine beste Runde.`}
+   <span class="pill" onclick="document.querySelector('[data-v=abyss]').click()" style="cursor:pointer;margin-left:8px">🌀 ${lang==='en'?'Open abyss area':'Zum Abyss-Bereich'}</span></div>
+  </div>`:''}
+
+ ${(m.agents&&m.agents.length)?`<div class="card">
+  <div class="sect">Top-Agenten</div><table>
+  <tr><th>Agent</th><th class="r">Missionen</th><th class="r">ISK</th></tr>`+
+  m.agents.map(a=>`<tr><td>${esc(a.agent)}</td><td class="r">${a.missions}</td><td class="r isk">${fmtM(a.isk)}</td></tr>`).join('')+'</table></div>':''}`;
+ // Gesicherten Zustand zurueckschreiben, bevor irgendein Handler haengt.
+ Object.entries(lootOffen).forEach(([mid,z])=>{
+  const box=[...document.querySelectorAll('.mlootedit')].find(e=>e.dataset.mid===mid);
+  if(!box)return;
+  box.hidden=false;
+  const ta=box.querySelector('.mlootin');
+  if(ta){
+   ta.value=z.text;
+   if(z.fokus)ta.focus();
+   // Cursor immer zuruecksetzen, sonst springt er beim naechsten Klick ans Ende.
+   try{ta.setSelectionRange(z.start,z.end);}catch(e){}
+  }
+  const st=[...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===mid);
+  if(st&&z.status)st.textContent=z.status;
+  const sa=box.querySelector('.msalvin');
+  if(sa){
+   sa.value=z.stext||'';
+   if(z.sfokus)sa.focus();
+   try{sa.setSelectionRange(z.sstart||0,z.send||0);}catch(e){}
+  }
+  const sst=[...document.querySelectorAll('.msalvstat')].find(s=>s.dataset.mid===mid);
+  if(sst&&z.sstatus)sst.textContent=z.sstatus;
+ });
+ Object.entries(nameOffen).forEach(([mid,z])=>{
+  const box=[...document.querySelectorAll('.mnameedit')].find(e=>e.dataset.mid===mid);
+  if(!box)return;
+  box.hidden=false;
+  const inp=box.querySelector('.mnamein');
+  if(inp){
+   inp.value=z.text;
+   if(z.fokus)inp.focus();
+   try{inp.setSelectionRange(z.start,z.end);}catch(e){}
+  }
+  // Stufe und Wetter zurueckschreiben, sonst ist eine noch nicht gespeicherte
+  // Auswahl nach zwei Sekunden weg.
+  const tSel=box.querySelector('.abysstier'), wSel=box.querySelector('.abysswetter');
+  if(tSel&&z.tier!=null)tSel.value=z.tier;
+  if(wSel&&z.wetter!=null)wSel.value=z.wetter;
+  const st=[...document.querySelectorAll('.mnamestat')].find(s=>s.dataset.mid===mid);
+  if(st&&z.status)st.textContent=z.status;
+ });
+ // Mission von Hand abschliessen. Danach steht sie sofort unten in der Liste
+ // und der Loot laesst sich eintragen, ohne dass man abdocken muss.
+ document.querySelectorAll('.mclose').forEach(b=>b.onclick=async()=>{
+  const char=b.dataset.char, en2=lang==='en';
+  const finde=()=>[...document.querySelectorAll('.mclosestat')].find(s=>s.dataset.char===char);
+  const setz=t=>{const el=finde(); if(el)el.textContent=t;};
+  setz(en2?'Finishing …':'Schließe ab …');
+  let r;try{r=await post({action:'mission_close',char});}catch(e){r=null;}
+  if(!r||!r.ok){setz(en2?'Server not reachable':'Server nicht erreichbar');return;}
+  if(r.saved){
+   // Ob an der Station oder aus der Ferne, erkannt am Anflug zum Andock-
+   // Perimeter. Das ist das einzige Andock-Signal, das in beiden Sprachen im
+   // Log steht, die englische Bestaetigung gibt es auf Deutsch nicht.
+   const wo=r.docked
+     ? (en2?'Mission completed':'Mission abgeschlossen')
+     : (en2?'Mission completed remotely':'Mission remote abgeschlossen');
+   setz(`✅ ${wo} · ${r.min} min · ${fmtM(r.bounty)} ${en2?'bounty':'Bounty'} · `
+        +(en2?'enter the loot below':'Loot unten eintragen'));
+   setTimeout(tick,600);
+  }else setz(r.msg||(en2?'Nothing to save':'Nichts zu speichern'));
+ });
+ document.querySelectorAll('.mreopen').forEach(t=>t.onclick=async()=>{
+  const en3=lang==='en';
+  // Vorher fragen: der Eintrag verschwindet aus der Liste, und ein bereits
+  // eingetragener Loot geht mit. Das ist keine Kleinigkeit, die man
+  // versehentlich anklickt.
+  if(!confirm(en3
+   ?'Take this run back into the current session? The entry disappears from the list and reappears when the run really ends. Loot you already entered is lost.'
+   :'Diesen Einsatz zurück in die laufende Sitzung holen? Der Eintrag verschwindet aus der Liste und entsteht neu, wenn der Einsatz wirklich endet. Bereits eingetragener Loot geht dabei verloren.'))return;
+  t.textContent=en3?'Taking back …':'Hole zurück …';
+  let r;try{r=await post({action:'mission_reopen',mid:t.dataset.mid});}catch(e){r=null;}
+  if(r&&r.ok){
+   t.textContent=r.sitzung_aktiv
+    ?(en3?'✓ back in the session':'✓ zurück in der Sitzung')
+    :(en3?'✓ removed (character offline, no session to continue)'
+         :'✓ entfernt (Char offline, es läuft keine Sitzung mehr)');
+   setTimeout(()=>tick(),1200);
+  }else t.textContent=en3?'failed':'hat nicht geklappt';
+ });
+ // Zwei Eintraege zu einem machen. Nicht umkehrbar, deshalb mit Rueckfrage,
+ // und die Rueckfrage sagt, was danach in der Zeile steht.
+ document.querySelectorAll('.mmerge').forEach(t=>t.onclick=async()=>{
+  const en3=lang==='en';
+  if(!confirm(en3
+   ?'Merge this run into the previous run of the same character? Damage, kills, bounty and loot are added up, the earlier start is kept. The two entries become one. This cannot be undone.'
+   :'Diesen Einsatz mit dem vorherigen desselben Charakters verbinden? Schaden, Kills, Bounty und Loot werden addiert, der frühere Beginn bleibt stehen. Aus den zwei Einträgen wird einer. Das lässt sich nicht rückgängig machen.'))return;
+  const alt=t.textContent;
+  t.textContent=en3?'Merging …':'Verbinde …';
+  let r;try{r=await post({action:'mission_verbinden',mid:t.dataset.mid});}catch(e){r=null;}
+  if(r&&r.ok){
+   t.textContent=(en3?'✓ merged, now ':'✓ verbunden, jetzt ')+r.min+' min';
+   setTimeout(()=>tick(),1200);
+  }else{
+   t.textContent=(r&&r.error)||(en3?'failed':'hat nicht geklappt');
+   setTimeout(()=>{t.textContent=alt;},2500);
+  }
+ });
+ // Charakter-Auswahl: die Zusammenfassung und die Loot-Auswertung rechnet der
+ // Server neu, deshalb ein voller Takt statt nur Neuzeichnen. Die Seitenzahlen
+ // gehen auf Anfang zurueck, sonst steht man bei einem Charakter mit wenigen
+ // Missionen auf einer leeren Seite drei.
+ document.querySelectorAll('.atage').forEach(el=>el.onclick=()=>{
+  abyssTage=Number(el.dataset.at);
+  localStorage.setItem('abyssTage',abyssTage);
+  tick();
+ });
+ document.querySelectorAll('.mchar').forEach(el=>el.onclick=()=>{
+  const w=el.dataset.mc||'';
+  if(!w)missChars=[];                       // "Alle" leert die Auswahl
+  else if(missChars.includes(w))missChars=missChars.filter(x=>x!==w);
+  else missChars=missChars.concat([w]);
+  localStorage.setItem('missChars',JSON.stringify(missChars));
+  seiteRuns=0; seiteTage=0;
+  tick();
+ });
+ laufHandler();
 }
 // Aufklapp-Zustand der Job-Boerse ueberlebt den 2-Sekunden-Neuaufbau und den
 // Neustart: ohne das schnappte jede geoeffnete Erzsorte beim naechsten Tick zu.
@@ -20250,6 +20478,7 @@ async function tick(){
    else if(view==='analyse')renderAnalyse(d.analyse);
    else if(view==='intel')renderIntel(d.intel_auto,d.blutspur);
    else if(view==='vault')renderVault(d.vault);
+   else if(view==='abyss')renderAbyss(d.abyss);
    else if(view==='industrie')renderIndustrie(d.industrie);
    else if(view==='planeten')renderPlaneten(d.planeten);
    else if(view==='timeline')renderTimeline(d.timeline);

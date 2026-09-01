@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.59.0",
+  "d": "2026-08-29",
+  "de": [
+   "NEUER BEREICH: ABYSS. Alle Durchgaenge an einem Ort, mit Kennzahlen, Ertrag je Filament und Schiffsklasse, deiner besten Runde und den Top 10 der Beute nach Wert. Wichtig dabei: es sind DIESELBEN Laeufe wie in der Missions-Liste und derselbe Datensatz in der Datenbank. Wer hier Loot eintraegt, benennt oder Stufe und Wetter setzt, bearbeitet genau die Zeile, die auch in den Missionen steht, und umgekehrt. Zwei Darstellungen desselben Satzes waeren die sichere Quelle fuer Abweichungen, deshalb benutzen beide Ansichten dieselben Bausteine.",
+   "DIE FILAMENT-BILANZ, und die hat sonst niemand: ein Lauf verbraucht so viele Filamente wie Schiffe drin waren, und fast jeder Lauf wirft selbst welche ab. Canary stellt beides gegenueber und beantwortet damit die Frage, die jeder Abyss-Flieger im Kopf hat: traegt sich das selbst? An echten Daten gemessen droppte JEDER ausgewertete Lauf Filamente, im Schnitt 4,6 Stueck bei einem verbrauchten.",
+   "DIE BESTE RUNDE wird an ISK je Minute gemessen, nicht am Gesamtwert: ein langer Lauf mit viel Beute ist nicht automatisch der beste. Dabei stehen Filament, Dauer, Charakter und Schiff. Und der Bereich sagt ehrlich dazu, bei wie vielen Durchgaengen noch kein Loot eingetragen ist, denn genau darauf beruht alles Weitere."
+  ],
+  "en": [
+   "NEW AREA: ABYSS. All your runs in one place, with headline figures, yield per filament and ship class, your best run and the top 10 loot by value. Importantly these are the SAME runs as in the missions list and the same record in the database. Entering loot, naming a run or setting tier and weather here edits exactly the row that also appears under missions, and the other way round. Two renderings of one record would be a reliable source of divergence, so both views use the same building blocks.",
+   "THE FILAMENT BALANCE, which nobody else has: a run consumes as many filaments as it had ships in it, and almost every run drops some itself. Canary puts the two side by side and answers the question every abyss pilot carries around: does this pay for itself? Measured against real data, EVERY analysed run dropped filaments, on average 4.6 against one consumed.",
+   "THE BEST RUN is measured by ISK per minute, not by total yield: a long run with a lot of loot is not automatically the best. Filament, duration, character and ship are shown with it. And the area says honestly how many runs still have no loot entered, because everything else rests on exactly that."
+  ]
+ },
+ {
   "v": "2.58.2",
   "d": "2026-08-29",
   "de": [
