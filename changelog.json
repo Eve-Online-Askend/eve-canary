@@ -1,5 +1,23 @@
 [
  {
+  "v": "2.61.0",
+  "d": "2026-09-01",
+  "de": [
+   "GEOEFFNETE BEHAELTER. Jede der drei Taschen eines Abyss enthaelt genau einen Beute-Behaelter. Canary zaehlt jetzt, wie viele du davon aufgemacht hast, und zeigt den Schnitt je Durchgang, wie oft alle drei drankamen und welche Sorte es war. Eine niedrige Zahl heisst liegengelassene Beute, und genau das aendert auch jede Drop-Rate: 30 Prozent bedeuten etwas anderes, wenn in der Haelfte der Laeufe ein Behaelter zublieb.",
+   "Die Schwelle dafuer ist nicht gesetzt, sondern abgelesen. An 21.375 Abstaenden zwischen zwei Treffern auf einen Behaelter gemessen: 18 Prozent liegen unter 20 Sekunden, zwischen 20 und 45 Sekunden liegen 21 Faelle, also 0,1 Prozent, danach steigt es wieder. In dieser Luecke liegt die Trennung.",
+   "Gezaehlt wird ausdruecklich, was AUFGEMACHT wurde. An einem Behaelter, an dem man vorbeifliegt, steht keine einzige Logzeile. Und die Zahl entsteht beim Einlesen des Logs, rueckwirkend gibt es sie nicht: aeltere Durchgaenge bleiben leer und werden als nicht erfasst ausgewiesen, statt mit einer Null dazustehen, die wie keinen aufgemacht aussaehe.",
+   "WAS DER ABEND GEKOSTET HAT. Die Filament-Bilanz zaehlte bisher Stueck: verbraucht, erbeutet, netto. Jetzt steht derselbe Strich in ISK daneben, also Beute abzueglich der verbrauchten Filamente zum Jita-Preis, dazu das Netto je Durchgang und eine eigene Spalte in der Ertragstabelle. Gerechnet wird nur, wo Stufe UND Wetter feststehen, denn erst beide zusammen ergeben ein Filament mit einem Preis, und die Zahl der so gerechneten Laeufe steht dabei.",
+   "Nebenbei repariert: die Pruefung fuer das Verschmelzen zweier Einsaetze lief seit v2.24 in einen Abbruch, weil ihr selbstgebautes Schema den neuen Spalten hinterherhinkte. Sie hat seither nichts mehr geschuetzt. Jetzt greift sie wieder, und verschmolzene Laeufe zaehlen ihre Behaelter zusammen."
+  ],
+  "en": [
+   "CACHES OPENED. Each of the three pockets of an abyss holds exactly one loot cache. Canary now counts how many of them you opened, showing the average per run, how often all three were reached and which type they were. A low figure means loot left behind, and that changes every drop rate: 30 percent means something different when a cache stayed shut in half the runs.",
+   "The threshold for this was not set but read off the data. Measured across 21,375 gaps between two hits on a cache: 18 percent are under 20 seconds, between 20 and 45 seconds there are 21 cases, so 0.1 percent, and after that it rises again. The split sits in that gap.",
+   "What is counted is explicitly what was OPENED. A cache you fly past leaves not a single line in the log. And the figure is produced while the log is read, so there is nothing to add retroactively: older runs stay empty and are marked as not recorded, rather than showing a zero that would read as opened none.",
+   "WHAT THE EVENING COST. The filament balance counted pieces so far: used, looted, net. Now the same line stands next to it in ISK, meaning loot minus the filaments used at the Jita price, plus the net per run and a column of its own in the yield table. It is only calculated where tier AND weather are known, because only both together name a filament with a price, and the number of runs counted that way is shown alongside.",
+   "Fixed along the way: the check for merging two runs had been aborting since v2.24, because its hand-built schema lagged behind the new columns. It has protected nothing since. It works again, and merged runs now add up their caches."
+  ]
+ },
+ {
   "v": "2.60.0",
   "d": "2026-08-29",
   "de": [

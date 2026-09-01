@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.60.0"
+VERSION = "2.61.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1857,6 +1857,16 @@ try:  # v2.57: geflogenes Schiff je Einsatz (Nirahse: nach Cruiser, Zerstoerer
     DB.commit()
 except sqlite3.OperationalError:
     pass
+try:  # v2.61: Abyss-Behaelter. Wie viele der drei Taschen wurden geplündert?
+      # Nur fuer Laeufe ab dieser Fassung: rueckwirkend gibt es die Zahl
+      # nicht, weil sie beim Verarbeiten der Logzeilen entsteht. Alte Laeufe
+      # bleiben leer und werden als "nicht erfasst" ausgewiesen, statt eine
+      # Null zu behaupten, die wie "nichts aufgemacht" aussaehe.
+    DB.execute("ALTER TABLE missions ADD COLUMN caches INTEGER")
+    DB.execute("ALTER TABLE missions ADD COLUMN cache_typ TEXT")
+    DB.commit()
+except sqlite3.OperationalError:
+    pass
 try:  # v2.42: Salvage getrennt vom Loot (MelvinMafia). Eigene Spalten statt
       # Vermischung: Salvage ist Marktware und darf NIE in die Missions-
       # Erkennung laufen (loot_namen liest weiterhin nur loot_text).
@@ -2102,7 +2112,7 @@ def mission_verbinden(mid):
         spalten = ("mid,char_id,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,"
                    "bounty,hits,miss_out,miss_in,weapons,enemies,loot_isk,"
                    "loot_text,dialog,ewar,logi_out,logi_in,label,gegner_erst,"
-                   "salvage_isk,salvage_text")
+                   "salvage_isk,salvage_text,caches,cache_typ")
         row = DB.execute("SELECT %s FROM missions WHERE mid=?" % spalten,
                          (mid,)).fetchone()
         if not row:
@@ -2155,13 +2165,20 @@ def mission_verbinden(mid):
         # Erstkontakte: je Gegner der fruehere Zeitpunkt, Schnitte vereint.
         "gegner_erst": _gegner_erst_verbinden(frueh.get("gegner_erst"),
                                               spaet.get("gegner_erst")),
+        # Behaelter addieren: beide Teile haben je welche aufgemacht. Sind
+        # BEIDE ohne Angabe (Laeufe von vor v2.61), bleibt es ohne Angabe,
+        # statt aus zwei Leerstellen eine Null zu machen.
+        "caches": (None if frueh["caches"] is None and spaet["caches"] is None
+                   else (frueh["caches"] or 0) + (spaet["caches"] or 0)),
+        "cache_typ": frueh["cache_typ"] or spaet["cache_typ"],
     }
     with DB_LOCK:
         DB.execute(
             "UPDATE missions SET end_ts=?,system=?,dmg_out=?,dmg_in=?,kills=?,"
             "bounty=?,hits=?,miss_out=?,miss_in=?,weapons=?,enemies=?,ewar=?,"
             "logi_out=?,logi_in=?,loot_isk=?,loot_text=?,dialog=?,label=?,"
-            "gegner_erst=?,salvage_isk=?,salvage_text=? WHERE mid=?",
+            "gegner_erst=?,salvage_isk=?,salvage_text=?,caches=?,cache_typ=? "
+            "WHERE mid=?",
             (neu["end_ts"], neu["system"], neu["dmg_out"], neu["dmg_in"],
              neu["kills"], neu["bounty"], neu["hits"], neu["miss_out"],
              neu["miss_in"], json.dumps(neu["weapons"]), json.dumps(neu["enemies"]),
@@ -2169,6 +2186,7 @@ def mission_verbinden(mid):
              neu["loot_isk"], neu["loot_text"], neu["dialog"], neu["label"],
              json.dumps(neu["gegner_erst"], ensure_ascii=False),
              neu["salvage_isk"], neu["salvage_text"],
+             neu["caches"], neu["cache_typ"],
              frueh["mid"]))
         DB.execute("DELETE FROM missions WHERE mid=?", (spaet["mid"],))
         DB.commit()
@@ -2438,8 +2456,8 @@ def _save_mission_sql(mid, m):
     DB.execute("""INSERT INTO missions
         (mid,char_id,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
          hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,ewar,
-         logi_out,logi_in,gegner_erst,ship,ship_group)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         logi_out,logi_in,gegner_erst,ship,ship_group,caches,cache_typ)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(mid) DO UPDATE SET
          char=excluded.char, end_ts=excluded.end_ts, system=excluded.system,
          dmg_out=excluded.dmg_out, dmg_in=excluded.dmg_in, kills=excluded.kills,
@@ -2452,7 +2470,13 @@ def _save_mission_sql(mid, m):
          -- Neueinlesen der Logs kennt das Schiff nicht und wuerde die einmal
          -- richtig gespeicherte Angabe sonst wieder ausloeschen.
          ship=COALESCE(excluded.ship, missions.ship),
-         ship_group=COALESCE(excluded.ship_group, missions.ship_group)""",
+         ship_group=COALESCE(excluded.ship_group, missions.ship_group),
+         -- Dieselbe Vorsicht wie beim Schiff: ein erneutes Einlesen, das die
+         -- Cache-Zeilen nicht mehr sieht, darf eine einmal gezaehlte Zahl
+         -- nicht auf null zurueckdrehen.
+         caches=CASE WHEN COALESCE(excluded.caches,0) > 0
+                     THEN excluded.caches ELSE missions.caches END,
+         cache_typ=COALESCE(excluded.cache_typ, missions.cache_typ)""",
         (mid, m["char_id"], m["char"], m["start_ts"], m["end_ts"], m["system"],
          m["dmg_out"], m["dmg_in"], m["kills"], m["bounty"], m["hits"],
          m["miss_out"], m["miss_in"], json.dumps(m["weapons"], ensure_ascii=False),
@@ -2461,7 +2485,8 @@ def _save_mission_sql(mid, m):
          m.get("logi_out") or 0, m.get("logi_in") or 0,
          json.dumps(m.get("gegner_erst") or {}, ensure_ascii=False),
          m.get("ship"),
-         (esi.type_group(m["ship_type_id"]) if m.get("ship_type_id") else None)))
+         (esi.type_group(m["ship_type_id"]) if m.get("ship_type_id") else None),
+         m.get("caches"), m.get("cache_typ")))
 
 
 def do_backup():
@@ -3300,6 +3325,11 @@ class CharSession:
         self.gegner_erst = {}
         self.schnitte = []
         self.letzter_out_ts = None
+        # Abyss-Behaelter: wie viele aufgemacht, welcher Sorte. Ein neuer
+        # Behaelter beginnt nach ABYSS_CACHE_PAUSE ohne Treffer.
+        self.caches = 0
+        self.cache_typen = {}
+        self.cache_ts = None
         self.kristalle = {}   # Typ -> Anzahl zersprungen (dieser Trip)
         self.kristall_ts = None   # letzter Bruch: die Karte laesst die
                                   # Warnung nach 10 min zur Info abklingen
@@ -3447,6 +3477,17 @@ class CharSession:
                     self.schnitte.append(ev["ts"])
                 self.gegner_erst[ev["key"]] = ev["ts"]
             self.letzter_out_ts = ev["ts"]
+            mc = ABYSS_CACHE_RE.search((ev["key"] or "").lower())
+            if mc:
+                # Gezaehlt wird, was AUFGEMACHT wurde. Ein Behaelter, an dem
+                # man vorbeifliegt, hinterlaesst keine einzige Logzeile und
+                # kann deshalb auch nicht mitgezaehlt werden.
+                if (self.cache_ts is None
+                        or ev["ts"] - self.cache_ts > ABYSS_CACHE_PAUSE):
+                    self.caches += 1
+                    k = mc.group(1)
+                    self.cache_typen[k] = self.cache_typen.get(k, 0) + 1
+                self.cache_ts = ev["ts"]
             self.targets[ev["key"]] = self.targets.get(ev["key"], 0) + ev["value"]
             w = ev.get("weapon", "Schiff/Direkt")
             self.weapons[w] = self.weapons.get(w, 0) + ev["value"]
@@ -3918,6 +3959,12 @@ class CharSession:
         self.gegner_erst = dict(ge.get("erst") or {})
         self.schnitte = list(ge.get("schnitte") or [])
         self.letzter_out_ts = None
+        # Behaelter der zurueckgeholten Mission uebernehmen, sonst zaehlt der
+        # fortgesetzte Lauf wieder bei null an und die drei Taschen werden
+        # zu einer.
+        self.caches = m.get("caches") or 0
+        self.cache_typen = ({m["cache_typ"]: 1} if m.get("cache_typ") else {})
+        self.cache_ts = None
         self.mission_system = m.get("system") or self.mission_system
         self.first_ts = m.get("start_ts") or self.first_ts
         self.dock_ts = None
@@ -3937,6 +3984,11 @@ class CharSession:
         self.gegner_erst = {}
         self.schnitte = []
         self.letzter_out_ts = None
+        # Abyss-Behaelter: wie viele aufgemacht, welcher Sorte. Ein neuer
+        # Behaelter beginnt nach ABYSS_CACHE_PAUSE ohne Treffer.
+        self.caches = 0
+        self.cache_typen = {}
+        self.cache_ts = None
         self.kristalle = {}
         self.kristall_ts = None
         self.attackers = {}
@@ -3988,7 +4040,11 @@ class CharSession:
                                 "schnitte": [round(x) for x in self.schnitte]},
                 "ewar": sorted(self.ewar.items(), key=lambda x: -x[1]),
                 "logi_out": sum(self.logi_out.values()),
-                "logi_in": sum(self.logi_in.values())}
+                "logi_in": sum(self.logi_in.values()),
+                "caches": self.caches,
+                "cache_typ": (sorted(self.cache_typen,
+                                     key=lambda k: -self.cache_typen[k])[0]
+                              if self.cache_typen else None)}
 
 
 def mission_hinweis(cname, md):
@@ -11767,7 +11823,7 @@ def query_abyss(chars=None, tage=30):
     with DB_LOCK:
         rows = DB.execute(
             "SELECT mid,char,start_ts,end_ts,system,label,loot_isk,loot_text,"
-            "salvage_isk,enemies,ship,ship_group FROM missions "
+            "salvage_isk,enemies,ship,ship_group,caches,cache_typ FROM missions "
             "WHERE start_ts>=? ORDER BY start_ts DESC", (seit,)).fetchall()
     laeufe = []
     for r in rows:
@@ -11788,6 +11844,9 @@ def query_abyss(chars=None, tage=30):
             "stufe": abyss_tier_aus_name(r[5] or "") or abyss_tier_aus_gegnern(gg),
             "wetter": abyss_wetter_aus_name(r[5] or ""),
             "schiff": r[10], "klasse": SHIP_KLASSEN.get(r[11]),
+            # None heisst "nicht erfasst" und ist etwas anderes als 0
+            # ("keinen aufgemacht"). Laeufe von vor v2.61 haben hier nichts.
+            "caches": r[12], "cache_typ": r[13],
             "loot_text": r[7] or ""})
     mit = [l for l in laeufe if (l["loot_text"] or "").strip()]
     fil, rest = abyss_beute([l["loot_text"] for l in mit],
@@ -11835,7 +11894,25 @@ def query_abyss(chars=None, tage=30):
                  if je_stufe_basis.get(st)), key=lambda x: x["stufe"])})
     # Nach Wert je Lauf sortieren: was am meisten einbringt, steht oben.
     drops.sort(key=lambda d: (-(d["isk_lauf"] or 0), -d["quote"]))
-    return {"ertrag": ertrag, "tage": tage,
+    # ---- Behaelter -------------------------------------------------------
+    # Jede der drei Taschen enthaelt genau einen Behaelter. Gezaehlt wird, was
+    # AUFGEMACHT wurde: an einem Behaelter, an dem man vorbeifliegt, steht
+    # keine Logzeile. "3 von 3" heisst also, dass keiner liegengeblieben ist.
+    mit_c = [l for l in laeufe if l["caches"] is not None]
+    voll = sum(1 for l in mit_c if l["caches"] >= 3)
+    c_typen = {}
+    for l in mit_c:
+        if l["cache_typ"]:
+            c_typen[l["cache_typ"]] = c_typen.get(l["cache_typ"], 0) + 1
+    behaelter = {
+        "erfasst": len(mit_c), "gesamt": len(laeufe),
+        "summe": sum(l["caches"] for l in mit_c),
+        "schnitt": round(sum(l["caches"] for l in mit_c) / len(mit_c), 2)
+                   if mit_c else None,
+        "voll": voll,
+        "voll_quote": round(100.0 * voll / len(mit_c), 1) if mit_c else None,
+        "typen": sorted(c_typen.items(), key=lambda x: -x[1])}
+    return {"ertrag": ertrag, "tage": tage, "behaelter": behaelter,
             "drops": drops[:25], "drop_basis": basis,
             "drop_stufen": sorted(je_stufe_basis.items()),
             "laeufe": laeufe[:200], "n": len(laeufe),
@@ -12077,6 +12154,17 @@ SHIP_KLASSEN = {
 
 ABYSS_TIER_NAME = {"calm": 1, "agitated": 2, "fierce": 3,
                    "raging": 4, "chaotic": 5, "cataclysmic": 6}
+
+# Die Beute-Behaelter im Abyss. Jede der drei Taschen enthaelt genau einen
+# (EVE-University). Sie stehen als ganz normales Kampfziel im Gamelog, in
+# 1.752 von 1.857 Dateien mit Triglavian-Gegnern (94,3%).
+ABYSS_CACHE_RE = re.compile(r"triglavian (bioadaptive|biocombinative) cache")
+# Ab wann ist es ein NEUER Behaelter? An 21.375 Abstaenden zwischen zwei
+# Cache-Treffern gemessen: 18% liegen unter 20 Sekunden (mehrere Schuesse auf
+# denselben Behaelter), zwischen 20 und 45 Sekunden liegen 21 Faelle, also
+# 0,1%, und danach steigt es wieder an. Diese Luecke ist die Schwelle,
+# 30 Sekunden ist ihre Mitte. Nicht gesetzt, sondern abgelesen.
+ABYSS_CACHE_PAUSE = 30
 ABYSS_WETTER = ["dark", "electrical", "exotic", "firestorm", "gamma"]
 
 
@@ -12184,6 +12272,41 @@ def abyss_gruppen(abyss_rows, i_start=0, i_ende=1, i_cid=2, i_sys=3):
     return list(gruppen.values())
 
 
+ABYSS_TIER_WORT = {v: k.capitalize() for k, v in ABYSS_TIER_NAME.items()}
+
+
+def abyss_filament_preise(schluessel):
+    """{(stufe, wetter): ISK je Filament} fuer die uebergebenen Kombinationen.
+
+    Der Name eines Filaments ist fest gebaut: Stufe, Wetter, "Filament", also
+    "Raging Electrical Filament". Nur wo BEIDES bekannt ist, gibt es einen
+    Preis. Ist nur die Stufe bekannt (aus dem Overmind) und das Wetter nicht,
+    bleibt die Kombination aussen vor, statt einen Mittelwert ueber fuenf
+    verschiedene Filamente zu behaupten, die sich im Preis um das Hundertfache
+    unterscheiden koennen."""
+    namen = {}
+    for stufe, wetter in schluessel:
+        if not (stufe and wetter):
+            continue
+        wort = ABYSS_TIER_WORT.get(stufe)
+        if wort:
+            namen["%s %s Filament" % (wort, wetter.capitalize())] = (stufe, wetter)
+    if not namen:
+        return {}
+    try:
+        ids = resolve_item_ids(sorted(namen))
+        pm = hub_prices_bg("10000002", set(ids.values())) if ids else {}
+    except Exception:
+        return {}
+    out = {}
+    for name, schl in namen.items():
+        tid = ids.get(name)
+        preis = (pm.get(tid) or (0, 0))[0] if tid else 0
+        if preis:
+            out[schl] = preis
+    return out
+
+
 def query_abyss_ertrag(chars=None, tage=30):
     """Abyss-Ertrag je Filament: ISK pro Durchgang und ISK pro Minute.
 
@@ -12265,7 +12388,10 @@ def query_abyss_ertrag(chars=None, tage=30):
         e = eimer.setdefault(schl, {"stufe": stufe, "wetter": wetter,
                                     "klasse": klasse,
                                     "runs": 0, "isk": 0.0, "min": 0.0,
-                                    "schiffe": {}})
+                                    "schiffe": {}, "n_schiffe": 0})
+        # Fuer die Kosten zaehlt die Zahl der SCHIFFE, nicht der Durchgaenge:
+        # jedes Schiff verbraucht ein eigenes Filament.
+        e["n_schiffe"] += len(idx)
         if schiff:
             e["schiffe"][schiff] = e["schiffe"].get(schiff, 0) + 1
         e["runs"] += 1
@@ -12281,19 +12407,42 @@ def query_abyss_ertrag(chars=None, tage=30):
         # die Bilanz sah zu gut aus.
         ges_schiffe += len(idx)
 
+    # Was hat der Einsatz gekostet? Preise nur fuer Kombinationen, bei denen
+    # Stufe UND Wetter feststehen, denn erst beide zusammen ergeben ein
+    # Filament mit einem Preis.
+    preise = abyss_filament_preise({(e["stufe"], e["wetter"])
+                                    for e in eimer.values()})
+
     def fertig(e):
         # Meistgeflogenes Schiff dieser Sorte, plus wie viele Laeufe ueberhaupt
         # eine Angabe haben. Ohne EVE-Login oder bei alten Laeufen bleibt es leer.
         top = sorted(e["schiffe"].items(), key=lambda x: -x[1])
+        stueck = preise.get((e["stufe"], e["wetter"]))
+        kosten = (stueck * e["n_schiffe"]) if stueck else None
+        netto = (e["isk"] - kosten) if kosten is not None else None
         return {"stufe": e["stufe"], "wetter": e["wetter"],
                 "klasse": e["klasse"], "runs": e["runs"],
                 "schiff": top[0][0] if top else None,
                 "isk": round(e["isk"]),
                 "isk_run": round(e["isk"] / e["runs"]) if e["runs"] else 0,
                 "min": round(e["min"] / e["runs"], 1) if e["runs"] else 0,
-                "isk_min": round(e["isk"] / e["min"]) if e["min"] else 0}
+                "isk_min": round(e["isk"] / e["min"]) if e["min"] else 0,
+                # Einsatz und Netto stehen nur da, wo ein Preis ermittelt
+                # werden konnte. Sonst bleibt das Feld leer, statt den
+                # Ertrag als Gewinn auszugeben.
+                "fil_stueck": round(stueck) if stueck else None,
+                "einsatz": round(kosten) if kosten is not None else None,
+                "netto": round(netto) if netto is not None else None,
+                "netto_run": (round(netto / e["runs"])
+                              if netto is not None and e["runs"] else None)}
 
     liste = [fertig(e) for e in eimer.values()]
+    einsatz_ges = sum(z["einsatz"] or 0 for z in liste)
+    # Nur die Laeufe, fuer die es auch einen Preis gab: sonst stuende ein
+    # Netto da, das den halben Einsatz unterschlaegt.
+    mit_preis = [z for z in liste if z["einsatz"] is not None]
+    isk_mit_preis = sum(z["isk"] for z in mit_preis)
+    runs_mit_preis = sum(z["runs"] for z in mit_preis)
     # Benannte zuerst nach Ertrag, "ohne Angabe" immer ans Ende: sie ist keine
     # Filament-Sorte, sondern die Restmenge.
     liste.sort(key=lambda x: ((x["stufe"] is None and x["wetter"] is None),
@@ -12305,7 +12454,12 @@ def query_abyss_ertrag(chars=None, tage=30):
             "isk_min": round(ges_isk / ges_min) if ges_min else 0,
             "min": round(ges_min / ges_runs, 1) if ges_runs else 0,
             "ohne_angabe": sum(x["runs"] for x in liste
-                               if x["stufe"] is None and x["wetter"] is None)}
+                               if x["stufe"] is None and x["wetter"] is None),
+            "einsatz": einsatz_ges,
+            "netto": round(isk_mit_preis - einsatz_ges) if mit_preis else None,
+            "netto_run": (round((isk_mit_preis - einsatz_ges) / runs_mit_preis)
+                          if runs_mit_preis else None),
+            "runs_mit_preis": runs_mit_preis}
 
 
 def abyss_export_tsv():
@@ -18736,9 +18890,21 @@ function renderAbyss(a){
     <div class="stat"><div class="l">${en?'Value of them':'Ihr Wert'}</div>
      <div class="v isk">${B.isk?fmtM(B.isk)+' ISK':'—'}</div></div>
    </div>
+   ${A.einsatz?`<div class="stats" style="grid-template-columns:repeat(4,1fr);margin-top:10px">
+    <div class="stat" title="${en?'Jita price of the filaments used, one per ship.':'Jita-Preis der verbrauchten Filamente, eines je Schiff.'}">
+     <div class="l">${en?'Stake':'Einsatz'}</div><div class="v in">${fmtM(A.einsatz)}</div></div>
+    <div class="stat"><div class="l">${en?'Loot':'Beute'}</div><div class="v isk">${fmtM(A.isk||0)}</div></div>
+    <div class="stat"><div class="l">${en?'Net ISK':'Netto ISK'}</div>
+     <div class="v ${(A.netto||0)>=0?'grn':'in'}">${A.netto!=null?((A.netto>0?'+':'')+fmtM(A.netto)):'—'}</div></div>
+    <div class="stat"><div class="l">${en?'Net per run':'Netto je Durchgang'}</div>
+     <div class="v ${(A.netto_run||0)>=0?'grn':'in'}">${A.netto_run!=null?fmtM(A.netto_run):'—'}</div></div>
+   </div>`:''}
    <div class="sub" style="margin-top:8px">${en
      ? `Does your abyss habit pay for itself? Every run consumes filaments and almost every run drops some. ${(B.netto||0)>0?`You are ${B.netto} filaments ahead, so it funds itself.`:`You are ${Math.abs(B.netto||0)} filaments short, so you are buying in.`}`
      : `Trägt sich dein Abyss selbst? Jeder Lauf verbraucht Filamente, und fast jeder wirft welche ab. ${(B.netto||0)>0?`Du liegst ${B.netto} Filamente im Plus, es trägt sich also.`:`Dir fehlen ${Math.abs(B.netto||0)} Filamente, du kaufst also zu.`}`}</div>
+   ${A.einsatz?`<div class="sub">${en
+     ? `The ISK line only counts the ${A.runs_mit_preis} run(s) where both tier and weather are known, because only both together name a filament with a price.`
+     : `Die ISK-Zeile rechnet nur die ${A.runs_mit_preis} Durchgänge mit, bei denen Stufe UND Wetter feststehen, denn erst beide zusammen ergeben ein Filament mit einem Preis.`}</div>`:''}
   </div>
   ${b?`<div class="card" style="grid-column:1/-1">
    <div class="sect">🏆 ${en?'Best run':'Beste Runde'}</div>
@@ -18752,14 +18918,37 @@ function renderAbyss(a){
      ?'measured by ISK per minute, not by total yield: a long run with a lot of loot is not automatically the best.'
      :'gemessen an ISK je Minute, nicht am Gesamtwert: ein langer Lauf mit viel Beute ist nicht automatisch der beste.'}</div>
   </div>`:''}
+  ${(a.behaelter&&a.behaelter.erfasst)?(()=>{const H=a.behaelter;
+   return `<div class="card" style="grid-column:1/-1">
+   <div class="sect">📦 ${en?'Caches opened':'Geöffnete Behälter'}</div>
+   <div class="stats" style="grid-template-columns:repeat(4,1fr)">
+    <div class="stat"><div class="l">${en?'Ø per run':'Ø je Durchgang'}</div>
+     <div class="v">${H.schnitt} <span class="sub">/ 3</span></div></div>
+    <div class="stat"><div class="l">${en?'All three opened':'Alle drei geöffnet'}</div>
+     <div class="v ${H.voll_quote>=90?'grn':''}">${H.voll_quote}%</div></div>
+    <div class="stat"><div class="l">${en?'Caches total':'Behälter gesamt'}</div>
+     <div class="v">${fmt(H.summe)}</div></div>
+    <div class="stat"><div class="l">${en?'Runs recorded':'Erfasste Durchgänge'}</div>
+     <div class="v out">${H.erfasst} <span class="sub">/ ${H.gesamt}</span></div></div>
+   </div>
+   ${H.typen.length?`<div class="sub" style="margin-top:8px">${en?'Type':'Sorte'}: ${H.typen.map(t=>`${t[0]==='bioadaptive'?'Bioadaptive':'Biocombinative'} ${t[1]}x`).join(' · ')}</div>`:''}
+   <div class="sub" style="margin-top:8px">${en
+     ? 'Each of the three pockets holds exactly one cache. Counted is what you OPENED: a cache you fly past leaves no trace in the log, so a low figure means loot left behind, not a missing cache.'
+     : 'Jede der drei Taschen enthält genau einen Behälter. Gezählt wird, was du AUFGEMACHT hast: an einem Behälter, an dem du vorbeifliegst, steht keine Logzeile. Eine niedrige Zahl heißt also liegengelassene Beute, nicht ein fehlender Behälter.'}
+    ${H.erfasst<H.gesamt?`<b class="in">${en
+      ? ` ${H.gesamt-H.erfasst} older run(s) have no figure: it is counted while the log is read, so there is nothing to add retroactively.`
+      : ` Bei ${H.gesamt-H.erfasst} älteren Durchgängen fehlt die Zahl: sie entsteht beim Einlesen des Logs, rückwirkend gibt es sie nicht.`}</b>`:''}</div>
+   </div>`;})():''}
   ${(A.zeilen&&A.zeilen.length)?`<div class="card" style="grid-column:1/-1">
    <div class="sect">${en?'Yield per filament':'Ertrag je Filament'}</div>
    <table><tr><th>Filament</th><th>${en?'Ship class':'Schiffklasse'}</th><th class="r">${en?'Runs':'Durchgänge'}</th>
-    <th class="r">${en?'ISK per run':'ISK je Durchgang'}</th><th class="r">ISK/min</th><th class="r">${en?'Ø duration':'Ø Dauer'}</th></tr>
+    <th class="r">${en?'ISK per run':'ISK je Durchgang'}</th><th class="r">ISK/min</th><th class="r">${en?'Ø duration':'Ø Dauer'}</th>
+    <th class="r" title="${en?'Loot minus the filaments used. Only where tier and weather are known.':'Beute abzüglich der verbrauchten Filamente. Nur wo Stufe und Wetter feststehen.'}">${en?'Net per run':'Netto je Durchgang'}</th></tr>
    ${A.zeilen.map(z=>`<tr><td>${esc(nam(z))}</td>
     <td${z.klasse?'':' class="sub"'}>${z.klasse?esc(z.klasse):(en?'unknown':'unbekannt')}</td>
     <td class="r">${z.runs}</td><td class="r isk">${fmtM(z.isk_run)}</td>
-    <td class="r isk">${fmtM(z.isk_min)}</td><td class="r">${z.min} min</td></tr>`).join('')}
+    <td class="r isk">${fmtM(z.isk_min)}</td><td class="r">${z.min} min</td>
+    <td class="r ${z.netto_run==null?'sub':(z.netto_run>=0?'grn':'in')}">${z.netto_run!=null?fmtM(z.netto_run):'—'}</td></tr>`).join('')}
    </table>
    <div class="sub" style="margin-top:8px">${en
      ?'Abyss NPCs pay no bounty, so the loot you enter is the entire yield of a run. Tier and weather come from the name you give a run, the ship from the EVE login.'
