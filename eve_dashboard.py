@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.61.0"
+VERSION = "2.62.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -10370,19 +10370,42 @@ def state_info():
             "alerts": alerts.list()}
 
 
-def query_mission_history(limit=40):
+def query_mission_history(limit=40, nur_mids=None):
     """Einzelne Missionen (aus den Gamelogs, an Undock-Grenzen getrennt), neueste
-    zuerst, inkl. vom Nutzer eingefügtem Loot."""
+    zuerst, inkl. vom Nutzer eingefügtem Loot.
+
+    nur_mids holt GENAU diese Eintraege, ohne Rueckgriff auf die neuesten 40.
+    Der Abyss-Bereich braucht das: seine Laeufe koennen beliebig weit zurueck
+    liegen, und mit der Standardgrenze fehlte jeder Lauf, vor dem vierzig
+    andere Einsaetze lagen. Genau so kam es dazu, dass die Kopfzeile neun
+    Durchgaenge zaehlte und darunter nichts stand."""
     # Mehr Zeilen holen als angezeigt werden, weil gleich Belt-Ratten-Sessions
     # herausgefiltert werden (Mining-Trips, in denen nur die Flotten-Bounty ein
     # paar Gürtel-Ratten enthält). Ohne den Puffer bliebe die Liste sonst leer.
-    with DB_LOCK:
-        rows = DB.execute(
-            """SELECT mid,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
+    SPALTEN = """SELECT mid,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
                       hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,
                       char_id,ewar,logi_out,logi_in,label,gegner_erst,
                       salvage_isk,salvage_text
-               FROM missions ORDER BY start_ts DESC LIMIT ?""", (limit * 5,)).fetchall()
+               FROM missions """
+    mids = list(nur_mids or [])
+    with DB_LOCK:
+        if nur_mids is not None:
+            if not mids:
+                return [], []
+            # In Haeppchen, damit die Platzhalterliste nicht ins Unendliche
+            # waechst. SQLite vertraegt zwar viel, aber nicht beliebig viel.
+            rows = []
+            for i in range(0, len(mids), 400):
+                teil = mids[i:i + 400]
+                rows += DB.execute(
+                    SPALTEN + "WHERE mid IN (%s) ORDER BY start_ts DESC"
+                    % ",".join("?" * len(teil)), teil).fetchall()
+            rows.sort(key=lambda r: -(r[2] or 0))
+            limit = len(rows)
+        else:
+            rows = DB.execute(
+                SPALTEN + "ORDER BY start_ts DESC LIMIT ?",
+                (limit * 5,)).fetchall()
     # (mid, char, start, end) je Missionszeile fuer die Zuordnung unten.
     cand = [(x[0], x[1], x[2] or 0, x[3] or 0) for x in rows]
     # Rueckfragen, die schon mit "nein" beantwortet wurden. Einmal am Stueck
@@ -12272,6 +12295,56 @@ def abyss_gruppen(abyss_rows, i_start=0, i_ende=1, i_cid=2, i_sys=3):
     return list(gruppen.values())
 
 
+def abyss_mitflieger(mid):
+    """Die mids der Charaktere, die DENSELBEN Abyss-Durchgang geflogen sind.
+
+    Multiboxing erzeugt bewusst eine Zeile je Charakter. Wer den Lauf benennt,
+    meint aber den Durchgang, nicht die Zeile. Nirahse musste den Namen
+    deshalb bei jedem Mitflieger einzeln eintragen (01.09.2026).
+
+    Es gilt dieselbe Regel wie ueberall sonst (abyss_gruppen): anderer
+    Charakter, gleiches System, rein UND raus innerhalb von 90 Sekunden.
+    Kein eigenes Mass, sonst gaebe es zwei Wahrheiten darueber, was ein
+    gemeinsamer Durchgang ist.
+
+    Gibt eine leere Liste zurueck, wenn der Lauf kein Abyss ist oder allein
+    geflogen wurde."""
+    with DB_LOCK:
+        row = DB.execute(
+            "SELECT mid,start_ts,end_ts,char_id,system,enemies FROM missions "
+            "WHERE mid=?", (mid,)).fetchone()
+        if not row:
+            return []
+        try:
+            gg = json.loads(row[5] or "[]")
+        except Exception:
+            gg = []
+        if not ist_abyss(row[4], gg):
+            return []
+        # Nur das Zeitfenster holen, in dem ein Mitflieger ueberhaupt liegen
+        # kann. Ohne die Einschraenkung liefe das ueber die ganze Historie.
+        umfeld = DB.execute(
+            "SELECT mid,start_ts,end_ts,char_id,system,enemies FROM missions "
+            "WHERE start_ts BETWEEN ? AND ? AND mid!=?",
+            ((row[1] or 0) - 120, (row[1] or 0) + 120, mid)).fetchall()
+    zeilen = [row]
+    for r in umfeld:
+        try:
+            g2 = json.loads(r[5] or "[]")
+        except Exception:
+            g2 = []
+        if ist_abyss(r[4], g2):
+            zeilen.append(r)
+    if len(zeilen) < 2:
+        return []
+    # abyss_gruppen erwartet (start, ende, cid, system) an festen Stellen.
+    kurz = [(z[1], z[2], z[3], z[4]) for z in zeilen]
+    for idx in abyss_gruppen(kurz):
+        if 0 in idx:
+            return [zeilen[i][0] for i in idx if i != 0]
+    return []
+
+
 ABYSS_TIER_WORT = {v: k.capitalize() for k, v in ABYSS_TIER_NAME.items()}
 
 
@@ -12945,6 +13018,12 @@ class Handler(BaseHTTPRequestHandler):
                     atage = 30
                 data["abyss"] = query_abyss(
                     mgew or None, atage if atage in (0, 30, 90, 365) else 30)
+                # Die Einzelheiten jedes Laufs GLEICH mitliefern. Vorher kamen
+                # sie aus der Missionsseite, wer den Abyss-Bereich direkt
+                # oeffnete, sah eine leere Liste unter einer Kopfzeile, die
+                # neun Durchgaenge zaehlte.
+                data["abyss"]["detail"] = query_mission_history(
+                    nur_mids=[l["mid"] for l in data["abyss"]["laeufe"]])[0]
                 with DB_LOCK:
                     data["mchars"] = sorted({
                         r[0] for r in DB.execute(
@@ -13518,22 +13597,30 @@ class Handler(BaseHTTPRequestHandler):
             # Leerer Name loescht die Benennung wieder.
             mid = str(body.get("mid") or "")
             name = str(body.get("name") or "").strip()[:80]
+            # Mitflieger VOR dem Schreiben ermitteln: die Zuordnung haengt an
+            # Zeit und Ort, nicht am Namen, aber so bleibt die Reihenfolge
+            # nachvollziehbar. Wer einen Multibox-Lauf benennt, meint den
+            # Durchgang, nicht die eigene Zeile (Nirahse, 01.09.2026).
+            mit = abyss_mitflieger(mid)
             with DB_LOCK:
-                DB.execute("UPDATE missions SET label=? WHERE mid=?",
-                           (name or None, mid))
+                for m in [mid] + mit:
+                    DB.execute("UPDATE missions SET label=? WHERE mid=?",
+                               (name or None, m))
                 DB.commit()
             marken_laden()
             # Wer einen Lauf benennt, hat die Rueckfrage dazu beantwortet.
             # Wer die Benennung wieder loescht, macht auch das rueckgaengig:
             # dann ist der Lauf wieder unbekannt und darf wieder gefragt werden.
             with DB_LOCK:
-                if name:
-                    DB.execute("INSERT OR REPLACE INTO fp_nein VALUES(?,?)",
-                               (mid, time.time()))
-                else:
-                    DB.execute("DELETE FROM fp_nein WHERE mid=?", (mid,))
+                for m in [mid] + mit:
+                    if name:
+                        DB.execute("INSERT OR REPLACE INTO fp_nein VALUES(?,?)",
+                                   (m, time.time()))
+                    else:
+                        DB.execute("DELETE FROM fp_nein WHERE mid=?", (m,))
                 DB.commit()
             self._send(json.dumps({"ok": True, "name": name,
+                                   "mitflieger": len(mit),
                                    "vorlagen": len(MARKEN)}))
             return
         elif action == "fp_nein":
@@ -18815,7 +18902,9 @@ function laufHandler(){
   const st=[...document.querySelectorAll('.mfragestat')].find(e=>e.dataset.mid===mid);
   if(st)st.textContent=en2?'Saving …':'Speichere …';
   let r;try{r=await post({action:'mission_label',mid,name});}catch(e){r=null;}
-  if(r&&r.ok){if(st)st.textContent=en2?'✓ named':'✓ benannt'; setTimeout(tick,600);}
+  if(r&&r.ok){if(st)st.textContent=(en2?'✓ named':'✓ benannt')
+    +(r.mitflieger?(en2?` (+${r.mitflieger} in the same run)`:` (+${r.mitflieger} Mitflieger)`):'');
+   setTimeout(tick,600);}
   else if(st)st.textContent=r?(en2?'Error':'Fehler')
                              :(en2?'Server not reachable':'Server nicht erreichbar');
  });
@@ -18858,7 +18947,10 @@ function renderAbyss(a){
    we=z.wetter?(z.wetter[0].toUpperCase()+z.wetter.slice(1)):'';
    return (st||we)?[st,we].filter(Boolean).join(' '):(en?'no details':'ohne Angabe');};
  const b=a.best;
- const eigene=(lastMissionLog||[]).filter(x=>a.laeufe.some(l=>l.mid===x.mid));
+ // Die Zeilen kommen mit der Abyss-Antwort. lastMissionLog bleibt als
+ // Rueckfall stehen, falls eine aeltere Antwort noch ohne detail kommt.
+ const eigene=(a.detail&&a.detail.length)?a.detail
+   :(lastMissionLog||[]).filter(x=>a.laeufe.some(l=>l.mid===x.mid));
  const liste=(t,rows,spalten)=>rows.length?`<div class="card">
    <div class="sect">${t}</div><table><tr>${spalten.map(c=>`<th${c[2]?' class="r"':''}>${c[0]}</th>`).join('')}</tr>
    ${rows.map(r=>`<tr>${spalten.map(c=>`<td${c[2]?' class="r"':''}>${c[1](r)}</td>`).join('')}</tr>`).join('')}
@@ -18954,6 +19046,15 @@ function renderAbyss(a){
      ?'Abyss NPCs pay no bounty, so the loot you enter is the entire yield of a run. Tier and weather come from the name you give a run, the ship from the EVE login.'
      :'Abyss-Gegner zahlen keine Bounty, der eingetragene Loot ist deshalb der vollständige Ertrag eines Laufs. Stufe und Wetter kommen aus dem Namen, den du dem Lauf gibst, das Schiff aus dem EVE-Login.'}</div>
    </div>`:''}
+  <div class="card" style="grid-column:1/-1">
+   <div class="sect">${en?'Every run':'Jeder Durchgang'} · ${a.n}</div>
+   <div class="sub">${en
+     ? 'The same runs as in the missions list. Loot, name, tier and weather entered here go into the same record. Naming a run also names everyone who flew it with you.'
+     : 'Dieselben Läufe wie in der Missions-Liste. Loot, Name, Stufe und Wetter, die du hier einträgst, landen im selben Datensatz. Ein Name gilt gleich für alle, die mitgeflogen sind.'}</div>
+   ${eigene.slice(seiteRuns*PRO_SEITE,(seiteRuns+1)*PRO_SEITE).map(laufZeile).join('')
+     || `<div class="sub" style="margin-top:8px">${en?'No run details for this period.':'Keine Einzelheiten zu diesem Zeitraum.'}</div>`}
+   ${blaettern('runs',seiteRuns,eigene.length)}
+  </div>
   ${(a.drops&&a.drops.length)?(()=>{
    // Drop-Raten aus der EIGENEN Beute. Bezugsgroesse sind nur die Laeufe mit
    // eingetragenem Loot, und die Stichprobe steht ueberall dabei: bei zwoelf
@@ -18994,15 +19095,7 @@ function renderAbyss(a){
     [['Filament',r=>esc(r.name),0],
      [en?'Qty':'Menge',r=>fmt(r.menge),1],
      [en?'Value':'Wert',r=>r.isk!=null?fmtM(r.isk):'—',1]])}
-  <div class="card" style="grid-column:1/-1">
-   <div class="sect">${en?'Every run':'Jeder Durchgang'} · ${a.n}</div>
-   <div class="sub">${en
-     ? 'The same runs as in the missions list. Loot, name, tier and weather entered here go into the same record.'
-     : 'Dieselben Läufe wie in der Missions-Liste. Loot, Name, Stufe und Wetter, die du hier einträgst, landen im selben Datensatz.'}</div>
-   ${eigene.slice(seiteRuns*PRO_SEITE,(seiteRuns+1)*PRO_SEITE).map(laufZeile).join('')
-     || `<div class="sub" style="margin-top:8px">${en?'Open the missions tab once so the run details are loaded.':'Öffne einmal die Missionen, damit die Einzelheiten der Läufe geladen sind.'}</div>`}
-   ${blaettern('runs',seiteRuns,eigene.length)}
-  </div>`;
+  `;
  laufHandler();
  $('#grid').querySelectorAll('.atage').forEach(el=>el.onclick=()=>{
   abyssTage=Number(el.dataset.at); localStorage.setItem('abyssTage',abyssTage); tick();});

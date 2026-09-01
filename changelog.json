@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.62.0",
+  "d": "2026-09-01",
+  "de": [
+   "BEHOBEN: im Abyss-Bereich stand keine einzige Runde. Die Kopfzeile zaehlte die Durchgaenge richtig, darunter blieb die Liste leer. Gemeldet von Askend. Zwei Ursachen, die sich gegenseitig verdeckt haben: die Zeilen kamen aus der Missionsseite, wer den Abyss-Bereich direkt oeffnete, sah nur einen Hinweis. Und selbst nach einem Besuch der Missionsseite kamen dort nur die neuesten 40 Einsaetze an, ein Abyss-Lauf mit vierzig Einsaetzen davor tauchte also nie auf. Der Bereich holt seine Durchgaenge jetzt selbst, unabhaengig davon, was man vorher geoeffnet hat und wie lange sie zurueckliegen.",
+   "EIN NAME FUER ALLE MITGEFLOGENEN. Wer einen Multibox-Durchgang benennt, musste den Namen bisher bei jedem Charakter einzeln eintragen (Nirahse). Jetzt reicht einmal: der Name geht an alle, die denselben Durchgang geflogen sind, und die Rueckmeldung sagt, wie viele es waren. Zugeordnet wird nach derselben Regel wie ueberall sonst, anderer Charakter, gleiches System, rein und raus innerhalb von 90 Sekunden. Eine gewoehnliche Mission reicht ihren Namen ausdruecklich NICHT weiter, dort steht regelmaessig eine ganze Flotte im selben System.",
+   "Die Liste der Durchgaenge steht jetzt direkt unter dem Ertrag je Filament statt ganz unten (Nirahse). Dort traegt man Loot ein und benennt, das gehoert vor die Listen, die man nur liest.",
+   "Neue Pruefung fuer beides, mit der Falle als Prueffall: 450 Laeufe ueber mehrere Abfrage-Portionen, kein fehlender und kein doppelter, und die Zusicherung, dass es zu JEDEM gezaehlten Durchgang auch eine Zeile gibt."
+  ],
+  "en": [
+   "FIXED: the abyss area showed no runs at all. The heading counted the runs correctly, but the list below stayed empty. Reported by Askend. Two causes that hid each other: the rows came from the missions page, so opening the abyss area directly showed only a hint. And even after visiting the missions page, only the newest 40 runs arrived there, so an abyssal run with forty runs in front of it never appeared. The area now fetches its own runs, no matter what you opened before or how far back they are.",
+   "ONE NAME FOR EVERYONE WHO FLEW IT. Naming a multibox run used to mean entering the name for every character separately (Nirahse). Once is enough now: the name goes to everyone who flew the same run, and the confirmation says how many that was. They are matched by the same rule as everywhere else, different character, same system, in and out within 90 seconds. A regular mission explicitly does NOT pass its name on, since a whole fleet is regularly in the same system there.",
+   "The run list now sits directly below the yield per filament instead of at the very bottom (Nirahse). That is where you enter loot and name runs, so it belongs above the lists you only read.",
+   "A new check covers both, with the trap itself as a test case: 450 runs across several query batches, none missing and none duplicated, plus the guarantee that every counted run also has a row."
+  ]
+ },
+ {
   "v": "2.61.0",
   "d": "2026-09-01",
   "de": [
