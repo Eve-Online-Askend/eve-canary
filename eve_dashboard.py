@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.62.0"
+VERSION = "2.63.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -11054,6 +11054,7 @@ def query_loot_auswertung(char=None):
         preis = (pm.get(tid) or (0, 0))[0] if tid else 0
         herkunft = sorted(e["wo"].items(), key=lambda x: -x[1])[:5]
         liste.append({"name": name, "art": art, "menge": e["menge"],
+                      "tid": tid,
                       "isk": round(e["menge"] * preis) if preis else None,
                       "wo": herkunft})
     liste.sort(key=lambda x: (-(x["isk"] or 0), -x["menge"]))
@@ -11822,6 +11823,9 @@ def abyss_beute(rows, stufen=None):
         preis = (pm.get(tid) or (0, 0))[0] if tid else 0
         satz = {"name": name, "menge": e["menge"], "laeufe": e["laeufe"],
                 "je_stufe": e.get("je_stufe") or {},
+                # Fuer das Symbol in der Liste. Die ID ist oben ohnehin schon
+                # aufgeloest worden, um den Preis zu holen.
+                "tid": tid,
                 "stueck": round(preis) if preis else None,
                 "isk": round(e["menge"] * preis) if preis else None}
         (fil if name.endswith("Filament") else rest).append(satz)
@@ -11903,7 +11907,8 @@ def query_abyss(chars=None, tage=30):
         if not basis:
             break
         drops.append({
-            "name": e["name"], "laeufe": e["laeufe"], "basis": basis,
+            "name": e["name"], "tid": e.get("tid"),
+            "laeufe": e["laeufe"], "basis": basis,
             "quote": round(100.0 * e["laeufe"] / basis, 1),
             "menge": e["menge"],
             "schnitt": round(e["menge"] / e["laeufe"], 1) if e["laeufe"] else 0,
@@ -14098,6 +14103,13 @@ tr.lvl-yellow td{background:rgba(228,179,76,.07)}
 .jobico{width:32px;height:32px;flex:0 0 32px;border-radius:4px;
  background:var(--inset);border:1px solid var(--line);object-fit:contain}
 .jobprod{display:flex;align-items:center;gap:9px}
+/* Gegenstands-Symbol in den Beute-Listen. 22px passt zur Zeilenhoehe, ohne
+   sie zu strecken. Feste Groesse, sonst springt die Zeile beim Nachladen.
+   Schlaegt das Bild fehl, wird es UNSICHTBAR statt entfernt: sonst ruecken
+   die Namen der betroffenen Zeilen aus der Flucht. */
+.itemname{display:flex;align-items:center;gap:8px;min-width:0}
+.itemico{width:22px;height:22px;flex:0 0 22px;border-radius:3px;
+ background:var(--inset);border:1px solid var(--line);object-fit:contain}
 .jobprod span{min-width:0}
 /* Charakter und Taetigkeit brauchen keine halbe Bildschirmbreite, der Platz
    gehoert dem Produktnamen. */
@@ -18917,6 +18929,125 @@ function laufHandler(){
                              :(en2?'Server not reachable':'Server nicht erreichbar');
  });
 }
+// Offene Eingaben ueber einen Neubau des Gitters retten.
+//
+// Der Takt baut #grid alle zwei Sekunden komplett neu. Gemessen ging ein
+// offener Loot-Kasten nach 1.016 ms wieder zu, mitsamt allem, was schon
+// getippt war, in jedem Browser. Deshalb: waehrend jemand tippt gar nicht
+// erst neu bauen, und sonst Zustand, Text und Cursor sichern und danach
+// zurueckschreiben.
+//
+// Das steht hier an EINER Stelle, weil es sonst jede neue Ansicht, die
+// dieselben Zeilen zeichnet, erneut vergisst. Genau so ist es passiert: die
+// Missionsseite hatte die Rettung, der Abyss-Bereich hat eine eigene
+// Renderfunktion und hatte sie nicht (Askend, 01.09.2026).
+// Ein Gegenstand mit seinem Symbol. EVE liefert bei der FALSCHEN Variante
+// HTTP 400 statt eines Platzhalters, deshalb wird bei einem Fehlschlag einmal
+// die andere versucht (Blaupausen brauchen "bp") und danach still ausgeblendet.
+// Das Bild bleibt dabei im Layout stehen, sonst ruecken einzelne Zeilen aus
+// der Flucht (Eron Solette, 28.08.2026).
+function bildFehler(el){
+ const zweit=el.dataset.zweit;
+ if(zweit){el.removeAttribute('data-zweit');
+  el.src=el.src.replace(/[/](bp|bpc|icon)[?]/,'/'+zweit+'?');return;}
+ el.style.visibility='hidden';
+}
+// Ist diese Zeile ein Abyss-Durchgang? Gleiche Bedingung wie ist_abyss im
+// Backend: der Ort ODER ein Gegner, den es nur dort gibt.
+function istAbyssZeile(x){
+ return (x.system==='Abyssal Deadspace')
+   || !!(x.site&&(x.site.name||x.site)==='Abyssal Deadspace');
+}
+function itemZeile(tid,name){
+ const art=/blueprint/i.test(name||'')?'bp':'icon';
+ const bild=tid
+  ?`<img class="itemico" loading="lazy" alt="" data-zweit="${art==='icon'?'bp':'icon'}"
+     src="https://images.evetech.net/types/${encodeURIComponent(tid)}/${art}?size=32"
+     onerror="bildFehler(this)">`
+  :'<span class="itemico"></span>';
+ return `<span class="itemname">${bild}<span>${esc(name||'')}</span></span>`;
+}
+function tipptGerade(){
+ const k=document.activeElement&&document.activeElement.classList;
+ // Die Auswahlfelder gehoeren mit in den Schutz: ein aufgeklapptes select
+ // schnappt beim Neubau zu, und dann waehlt man ins Leere.
+ return !!(k&&(k.contains('mlootin')||k.contains('msalvin')||k.contains('mnamein')
+   ||k.contains('abysstier')||k.contains('abysswetter')));
+}
+function felderRetten(){
+ const loot={},name={};
+ document.querySelectorAll('.mlootedit').forEach(b=>{
+  if(b.hidden)return;
+  const ta=b.querySelector('.mlootin'), sa=b.querySelector('.msalvin');
+  loot[b.dataset.mid]={
+   text:ta?ta.value:'',
+   start:ta?ta.selectionStart:0, end:ta?ta.selectionEnd:0,
+   fokus:document.activeElement===ta,
+   stext:sa?sa.value:'',
+   sstart:sa?sa.selectionStart:0, send:sa?sa.selectionEnd:0,
+   sfokus:document.activeElement===sa,
+   sstatus:(([...document.querySelectorAll('.msalvstat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||'',
+   status:(([...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||''};
+ });
+ document.querySelectorAll('.mnameedit').forEach(b=>{
+  if(b.hidden)return;
+  const inp=b.querySelector('.mnamein');
+  // Stufe und Wetter mitsichern: sie stehen bis zum Druck auf "Merken" NUR im
+  // Formular. Der Tippschutz greift nur, solange das Auswahlfeld selbst den
+  // Fokus hat, nach einem Klick auf "übernehmen" liegt der aber auf dem Knopf.
+  const tSel=b.querySelector('.abysstier'), wSel=b.querySelector('.abysswetter');
+  name[b.dataset.mid]={
+   text:inp?inp.value:'',
+   start:inp?inp.selectionStart:0, end:inp?inp.selectionEnd:0,
+   fokus:document.activeElement===inp,
+   tier:tSel?tSel.value:null, wetter:wSel?wSel.value:null,
+   status:(([...document.querySelectorAll('.mnamestat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||''};
+ });
+ return {loot,name};
+}
+function felderZurueck(g){
+ if(!g)return;
+ Object.entries(g.loot||{}).forEach(([mid,z])=>{
+  const box=[...document.querySelectorAll('.mlootedit')].find(e=>e.dataset.mid===mid);
+  if(!box)return;
+  box.hidden=false;
+  const ta=box.querySelector('.mlootin');
+  if(ta){
+   ta.value=z.text;
+   if(z.fokus)ta.focus();
+   // Cursor immer zuruecksetzen, sonst springt er beim naechsten Klick ans Ende.
+   try{ta.setSelectionRange(z.start,z.end);}catch(e){}
+  }
+  const st=[...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===mid);
+  if(st&&z.status)st.textContent=z.status;
+  const sa=box.querySelector('.msalvin');
+  if(sa){
+   sa.value=z.stext||'';
+   if(z.sfokus)sa.focus();
+   try{sa.setSelectionRange(z.sstart||0,z.send||0);}catch(e){}
+  }
+  const sst=[...document.querySelectorAll('.msalvstat')].find(s=>s.dataset.mid===mid);
+  if(sst&&z.sstatus)sst.textContent=z.sstatus;
+ });
+ Object.entries(g.name||{}).forEach(([mid,z])=>{
+  const box=[...document.querySelectorAll('.mnameedit')].find(e=>e.dataset.mid===mid);
+  if(!box)return;
+  box.hidden=false;
+  const inp=box.querySelector('.mnamein');
+  if(inp){
+   inp.value=z.text;
+   if(z.fokus)inp.focus();
+   try{inp.setSelectionRange(z.start,z.end);}catch(e){}
+  }
+  // Stufe und Wetter zurueckschreiben, sonst ist eine noch nicht gespeicherte
+  // Auswahl nach zwei Sekunden weg.
+  const tSel=box.querySelector('.abysstier'), wSel=box.querySelector('.abysswetter');
+  if(tSel&&z.tier!=null)tSel.value=z.tier;
+  if(wSel&&z.wetter!=null)wSel.value=z.wetter;
+  const st=[...document.querySelectorAll('.mnamestat')].find(s=>s.dataset.mid===mid);
+  if(st&&z.status)st.textContent=z.status;
+ });
+}
 let lastAbyss=null;
 // Die vollen Einsatz-Datensaetze, wie sie die Missions-Ansicht bekommt.
 // Der Abyss-Bereich rendert daraus dieselben Zeilen (laufZeile), damit
@@ -18926,6 +19057,10 @@ let lastMissionLog=null;
 // Missions-Liste und benutzt dafuer laufZeile/laufHandler: wer hier Loot
 // eintraegt oder benennt, bearbeitet denselben Datensatz in der Datenbank.
 function renderAbyss(a){
+ // Nicht neu bauen, waehrend jemand tippt oder ein Auswahlfeld offen hat.
+ // Ohne das klappte der Loot-Kasten hier nach zwei Sekunden wieder zu.
+ if(tipptGerade())return;
+ const gerettet=felderRetten();
  lastAbyss=a=a||{laeufe:[],ertrag:{},bilanz:{},filamente:[],beute:[]};
  const en=lang==='en';
  syncCharFilter((a.laeufe||[]).map(l=>({name:l.char})));
@@ -18941,6 +19076,7 @@ function renderAbyss(a){
      :'In diesem Zeitraum keine Abyss-Durchgänge. Canary erkennt sie an den Triglavian-Gegnern und am fehlenden Local, dafür musst du nichts einstellen.'}</div></div>`;
   $('#grid').querySelectorAll('.atage').forEach(el=>el.onclick=()=>{
    abyssTage=Number(el.dataset.at); localStorage.setItem('abyssTage',abyssTage); tick();});
+  felderZurueck(gerettet);
   return;
  }
  const nam=z=>{const st=z.stufe?('T'+z.stufe):'',
@@ -19073,7 +19209,7 @@ function renderAbyss(a){
      <th class="r">${en?'ISK per run':'ISK je Lauf'}</th>
      ${stufen.map(x=>`<th class="r" title="${en?'Runs at this tier':'Läufe dieser Stufe'}: ${x[1]}">T${x[0]}</th>`).join('')}</tr>
     ${a.drops.map(d=>`<tr>
-     <td>${esc(d.name)}</td>
+     <td>${itemZeile(d.tid,d.name)}</td>
      <td class="r"><b>${d.quote}%</b></td>
      <td class="r sub">${d.laeufe}/${d.basis}</td>
      <td class="r">${d.schnitt}</td>
@@ -19087,15 +19223,18 @@ function renderAbyss(a){
       : 'Eine Quote von 100% heißt, dass es in jedem erfassten Lauf dabei war, nicht dass es immer fällt. Stufen-Spalten erscheinen erst ab drei erfassten Läufen dieser Stufe.'}</div>
    </div>`;})():''}
   ${liste('💎 '+(en?'Top 10 by value':'Top 10 nach Wert'), a.beute||[],
-    [[en?'Item':'Gegenstand',r=>esc(r.name),0],
+    [[en?'Item':'Gegenstand',r=>itemZeile(r.tid,r.name),0],
      [en?'Qty':'Menge',r=>fmt(r.menge),1],
      [en?'Runs':'Läufe',r=>r.laeufe,1],
      [en?'Value':'Wert',r=>r.isk!=null?fmtM(r.isk):'—',1]])}
   ${liste('🧪 '+(en?'Filaments looted':'Erbeutete Filamente'), a.filamente||[],
-    [['Filament',r=>esc(r.name),0],
+    [['Filament',r=>itemZeile(r.tid,r.name),0],
      [en?'Qty':'Menge',r=>fmt(r.menge),1],
      [en?'Value':'Wert',r=>r.isk!=null?fmtM(r.isk):'—',1]])}
   `;
+ // Erst zurueckschreiben, DANN die Handler haengen: sonst haengen sie an
+ // Feldern, die gleich wieder ueberschrieben werden.
+ felderZurueck(gerettet);
  laufHandler();
  $('#grid').querySelectorAll('.atage').forEach(el=>el.onclick=()=>{
   abyssTage=Number(el.dataset.at); localStorage.setItem('abyssTage',abyssTage); tick();});
@@ -19177,8 +19316,9 @@ function laufZeile(x){
     <div class="mlootedit" data-mid="${esc(x.mid)}" hidden>
      <textarea class="mlootin" data-mid="${esc(x.mid)}" rows="2" style="width:100%;margin-top:4px" placeholder="Frachtraum-Loot dieser Mission hier einfügen (im Spiel Strg+A, Strg+C)">${esc(x.loot_text)}</textarea>
      <div class="btnrow" style="margin-top:4px"><button class="btn mlootgo" data-mid="${esc(x.mid)}">Loot bewerten</button> <span class="mlootstat sub" data-mid="${esc(x.mid)}"></span></div>
+     ${(istAbyssZeile(x)&&!(x.salvage_text||'').trim())?'':`
      <textarea class="msalvin" data-mid="${esc(x.mid)}" rows="2" style="width:100%;margin-top:8px" placeholder="Salvage dieser Mission hier einfügen, getrennt vom Loot (gleicher Weg: markieren, kopieren)">${esc(x.salvage_text)}</textarea>
-     <div class="btnrow" style="margin-top:4px"><button class="btn msalvgo" data-mid="${esc(x.mid)}">Salvage bewerten</button> <span class="msalvstat sub" data-mid="${esc(x.mid)}"></span></div>
+     <div class="btnrow" style="margin-top:4px"><button class="btn msalvgo" data-mid="${esc(x.mid)}">Salvage bewerten</button> <span class="msalvstat sub" data-mid="${esc(x.mid)}"></span></div>`}
     </div>
    </div>`;
 }
@@ -19196,43 +19336,8 @@ function renderMissions(d){
  // Dasselbe gilt fuer das Feld zum Benennen einer Mission. Das war in 2.1.0
  // vergessen worden, und der Kasten klappte prompt nach einem Takt wieder zu,
  // mitsamt dem schon Getippten. Gemeldet von Nirahse, in Firefox wie in Chrome.
- const tippt=document.activeElement&&document.activeElement.classList;
- // Die Auswahlfelder gehoeren mit in den Schutz: ein aufgeklapptes select
- // schnappt beim Neubau zu, und dann waehlt man ins Leere.
- if(tippt&&(tippt.contains('mlootin')||tippt.contains('msalvin')||tippt.contains('mnamein')
-            ||tippt.contains('abysstier')||tippt.contains('abysswetter')))return;
- const lootOffen={};
- document.querySelectorAll('.mlootedit').forEach(b=>{
-  if(b.hidden)return;
-  const ta=b.querySelector('.mlootin');
-  const sa=b.querySelector('.msalvin');
-  lootOffen[b.dataset.mid]={
-   text:ta?ta.value:'',
-   start:ta?ta.selectionStart:0, end:ta?ta.selectionEnd:0,
-   fokus:document.activeElement===ta,
-   stext:sa?sa.value:'',
-   sstart:sa?sa.selectionStart:0, send:sa?sa.selectionEnd:0,
-   sfokus:document.activeElement===sa,
-   sstatus:(([...document.querySelectorAll('.msalvstat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||'',
-   status:(([...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||''};
- });
- const nameOffen={};
- document.querySelectorAll('.mnameedit').forEach(b=>{
-  if(b.hidden)return;
-  const inp=b.querySelector('.mnamein');
-  // Stufe und Wetter mitsichern: sie stehen bis zum Druck auf "Merken" NUR im
-  // Formular. Der Tippschutz oben greift nur, solange das Auswahlfeld selbst
-  // den Fokus hat, nach einem Klick auf "übernehmen" liegt der aber auf dem
-  // Knopf, und der naechste Takt hat die Auswahl wieder weggeworfen.
-  // Beim Audit gefunden.
-  const tSel=b.querySelector('.abysstier'), wSel=b.querySelector('.abysswetter');
-  nameOffen[b.dataset.mid]={
-   text:inp?inp.value:'',
-   start:inp?inp.selectionStart:0, end:inp?inp.selectionEnd:0,
-   fokus:document.activeElement===inp,
-   tier:tSel?tSel.value:null, wetter:wSel?wSel.value:null,
-   status:(([...document.querySelectorAll('.mnamestat')].find(s=>s.dataset.mid===b.dataset.mid)||{}).textContent)||''};
- });
+ if(tipptGerade())return;
+ const gerettet=felderRetten();
  // Lokale Demo (nur mit sim_mode-Flag, reine Frontend-Simulation): Live-Char,
  // 50-Missionen-Historie und Journal-Summen einspeisen, nichts davon aus DB/Logs.
  if(SIM.on&&SIM.char)d=Object.assign({},d,{
@@ -19389,7 +19494,7 @@ function renderMissions(d){
       <tr><th>${en5?'Item':'Gegenstand'}</th><th>${en5?'Type':'Art'}</th><th class="r">${en5?'Units':'Stück'}</th><th class="r">≈ ISK (Jita)</th><th>${en5?'most of it came from':'meiste Beute in'}</th></tr>`
       +(la.gegenstaende||[]).slice(0,12).map(g=>{
         const alle=(g.wo||[]).map(w=>w[0]+': '+fmt(w[1])+(en5?' units':' Stk')).join('\\n');
-        return `<tr><td>${esc(g.name)}</td><td>${g.art==='salvage'?(en5?'Salvage':'Salvage'):'Loot'}</td><td class="r">${fmt(g.menge)}</td>
+        return `<tr><td>${itemZeile(g.tid,g.name)}</td><td>${g.art==='salvage'?(en5?'Salvage':'Salvage'):'Loot'}</td><td class="r">${fmt(g.menge)}</td>
          <td class="r isk">${g.isk!=null?fmtM(g.isk):'<span style="color:var(--dim)" title="'+(en5?'price not loaded yet, comes with the next refresh':'Preis noch nicht geladen, kommt mit dem nächsten Takt')+'">·</span>'}</td>
          <td title="${esc(alle)}">${g.wo&&g.wo.length?esc(g.wo[0][0])+' · '+fmt(g.wo[0][1])+(en5?' units':' Stk')+(g.wo.length>1?' <span style="color:var(--dim)">+'+(g.wo.length-1)+'</span>':''):''}</td></tr>`;
       }).join('')
@@ -19415,46 +19520,7 @@ function renderMissions(d){
   <tr><th>Agent</th><th class="r">Missionen</th><th class="r">ISK</th></tr>`+
   m.agents.map(a=>`<tr><td>${esc(a.agent)}</td><td class="r">${a.missions}</td><td class="r isk">${fmtM(a.isk)}</td></tr>`).join('')+'</table></div>':''}`;
  // Gesicherten Zustand zurueckschreiben, bevor irgendein Handler haengt.
- Object.entries(lootOffen).forEach(([mid,z])=>{
-  const box=[...document.querySelectorAll('.mlootedit')].find(e=>e.dataset.mid===mid);
-  if(!box)return;
-  box.hidden=false;
-  const ta=box.querySelector('.mlootin');
-  if(ta){
-   ta.value=z.text;
-   if(z.fokus)ta.focus();
-   // Cursor immer zuruecksetzen, sonst springt er beim naechsten Klick ans Ende.
-   try{ta.setSelectionRange(z.start,z.end);}catch(e){}
-  }
-  const st=[...document.querySelectorAll('.mlootstat')].find(s=>s.dataset.mid===mid);
-  if(st&&z.status)st.textContent=z.status;
-  const sa=box.querySelector('.msalvin');
-  if(sa){
-   sa.value=z.stext||'';
-   if(z.sfokus)sa.focus();
-   try{sa.setSelectionRange(z.sstart||0,z.send||0);}catch(e){}
-  }
-  const sst=[...document.querySelectorAll('.msalvstat')].find(s=>s.dataset.mid===mid);
-  if(sst&&z.sstatus)sst.textContent=z.sstatus;
- });
- Object.entries(nameOffen).forEach(([mid,z])=>{
-  const box=[...document.querySelectorAll('.mnameedit')].find(e=>e.dataset.mid===mid);
-  if(!box)return;
-  box.hidden=false;
-  const inp=box.querySelector('.mnamein');
-  if(inp){
-   inp.value=z.text;
-   if(z.fokus)inp.focus();
-   try{inp.setSelectionRange(z.start,z.end);}catch(e){}
-  }
-  // Stufe und Wetter zurueckschreiben, sonst ist eine noch nicht gespeicherte
-  // Auswahl nach zwei Sekunden weg.
-  const tSel=box.querySelector('.abysstier'), wSel=box.querySelector('.abysswetter');
-  if(tSel&&z.tier!=null)tSel.value=z.tier;
-  if(wSel&&z.wetter!=null)wSel.value=z.wetter;
-  const st=[...document.querySelectorAll('.mnamestat')].find(s=>s.dataset.mid===mid);
-  if(st&&z.status)st.textContent=z.status;
- });
+ felderZurueck(gerettet);
  // Mission von Hand abschliessen. Danach steht sie sofort unten in der Liste
  // und der Loot laesst sich eintragen, ohne dass man abdocken muss.
  document.querySelectorAll('.mclose').forEach(b=>b.onclick=async()=>{

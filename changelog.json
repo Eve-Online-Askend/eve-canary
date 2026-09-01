@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.63.0",
+  "d": "2026-09-01",
+  "de": [
+   "BEHOBEN: im Abyss-Bereich klappte das Loot-Feld nach zwei Sekunden wieder zu, Stufe und Wetter waren gleich mit weg. Gemeldet von Askend. Die Rettung offener Eingaben ueber den Neubau gab es laengst, aber nur auf der Missionsseite. Der Abyss-Bereich zeichnet dieselben Zeilen, hat aber eine eigene Zeichenfunktion und hatte sie nie bekommen. Sie steht jetzt an EINER Stelle und gilt fuer beide, sonst vergisst sie der naechste neue Bereich wieder.",
+   "BILDER ZU DEN GEGENSTAENDEN. In den Drop-Raten, den Top 10 nach Wert, den erbeuteten Filamenten und der Loot-Auswertung der Missionen steht jetzt das Symbol des Gegenstands kompakt links neben dem Namen (Askend). Laedt ein Bild nicht, versucht Canary einmal die andere Bildvariante und blendet es danach still aus, behaelt aber seinen Platz: sonst ruecken einzelne Zeilen aus der Flucht.",
+   "Im Abyss gibt es keinen Salvage, deshalb faellt das Feld dafuer bei Abyss-Durchgaengen weg (Askend). Steht dort schon etwas, bleibt es sichtbar und aenderbar. Alles andere waere gefaehrlich: ein unsichtbarer Betrag, der in jeder Summe weiterzaehlt, ist schlimmer als ein Feld zu viel."
+  ],
+  "en": [
+   "FIXED: in the abyss area the loot field snapped shut again after two seconds, taking tier and weather with it. Reported by Askend. The rescue of open inputs across a rebuild had existed for a long time, but only on the missions page. The abyss area draws the same rows yet has its own render function and never got it. It now lives in ONE place and applies to both, otherwise the next new area forgets it again.",
+   "ITEM ICONS. In the drop rates, the top 10 by value, the looted filaments and the mission loot analysis, the item icon now sits compactly to the left of the name (Askend). If an image fails to load, Canary tries the other image variant once and then hides it quietly while keeping its space: otherwise single rows fall out of alignment.",
+   "There is no salvage in the abyss, so the salvage field is gone on abyssal runs (Askend). If something is already entered there, it stays visible and editable. Anything else would be dangerous: an invisible amount that keeps counting in every total is worse than one field too many."
+  ]
+ },
+ {
   "v": "2.62.0",
   "d": "2026-09-01",
   "de": [
