@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.60.0",
+  "d": "2026-08-29",
+  "de": [
+   "DROP-RATEN AUS DEINEN EIGENEN LAEUFEN. Keine abgeschriebene Spieltabelle, sondern was bei DIR wirklich gefallen ist: je Gegenstand die Quote, in wie vielen Laeufen er dabei war, die durchschnittliche Menge und was er im Schnitt je Lauf einbringt. Sortiert nach dem, was am meisten bringt. Ab drei erfassten Laeufen einer Filament-Stufe kommt eine eigene Spalte je Stufe dazu, damit man sieht, ob ein Fund an der Stufe haengt.",
+   "DIE STICHPROBE STEHT UEBERALL DABEI, und das ist hier der wichtigste Teil. Bezugsgroesse sind ausschliesslich die Laeufe, bei denen du den Loot eingetragen hast, alles andere waere geschoent. Unter zehn Laeufen sagt Canary offen, dass die Quoten noch kein belastbares Bild ergeben. Und eine Quote von 100 Prozent heisst, dass etwas in jedem ERFASSTEN Lauf dabei war, nicht dass es immer faellt.",
+   "Faellt ein Gegenstand in einem Lauf in zwei getrennten Zeilen an, zaehlt er trotzdem als EIN Lauf. Ohne das gaebe es Quoten ueber hundert Prozent, die Menge wird natuerlich vollstaendig summiert.",
+   "Dazu behoben: die Filament-Bilanz zaehlte den Verbrauch je Durchgang statt je SCHIFF. Wer zu dritt mit Fregatten einfliegt, verbraucht drei Filamente, nicht eines."
+  ],
+  "en": [
+   "DROP RATES FROM YOUR OWN RUNS. Not a copied game table but what actually dropped for YOU: per item the rate, in how many runs it appeared, the average quantity and what it brings in per run on average. Sorted by what pays the most. From three recorded runs of a filament tier onwards, a column per tier appears so you can see whether a find depends on the tier.",
+   "THE SAMPLE SIZE IS SHOWN EVERYWHERE, and that is the most important part here. The basis is exclusively the runs where you entered the loot, anything else would flatter the numbers. Below ten runs Canary says openly that the rates are not yet a reliable picture. And a rate of 100 percent means something appeared in every RECORDED run, not that it always drops.",
+   "If an item appears in two separate lines of one run, it still counts as ONE run. Without that there would be rates above one hundred percent, while the quantity is of course added up in full.",
+   "Also fixed: the filament balance counted consumption per run instead of per SHIP. Entering with three frigates consumes three filaments, not one."
+  ]
+ },
+ {
   "v": "2.59.1",
   "d": "2026-08-29",
   "de": [

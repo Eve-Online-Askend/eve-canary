@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.59.1"
+VERSION = "2.60.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -11692,16 +11692,22 @@ def query_industrie():
 TAB = chr(9)   # Trennzeichen der eingefuegten Frachtraum-Zeilen
 
 
-def abyss_beute(rows):
+def abyss_beute(rows, stufen=None):
     """Beute aller uebergebenen Abyss-Laeufe: Menge und Wert je Gegenstand,
     getrennt nach Filamenten und dem Rest.
 
     Die Filamente muessen getrennt stehen, weil sie der EINSATZ des naechsten
     Laufs sind und nicht Gewinn wie ein Mutaplasmid. An echten Daten gemessen
     droppte JEDER Lauf welche, im Schnitt 4,6 Stueck bei einem verbrauchten
-    (29.08.2026). Genau daraus wird die Filament-Bilanz."""
+    (29.08.2026). Genau daraus wird die Filament-Bilanz.
+
+    stufen ist die Liste der Filament-Stufen zu den Texten, gleiche Reihenfolge.
+    Damit zaehlt jeder Gegenstand auch, in wie vielen Laeufen JE STUFE er fiel,
+    woraus die Drop-Raten werden."""
     items = {}
-    for txt in rows:
+    for i, txt in enumerate(rows):
+        stufe = (stufen[i] if stufen and i < len(stufen) else None)
+        gesehen = set()
         for zeile in (txt or "").splitlines():
             if TAB not in zeile:
                 continue
@@ -11713,9 +11719,17 @@ def abyss_beute(rows):
                 menge = int(re.sub(r"[^0-9]", "", teile[1]) or 0)
             except (ValueError, IndexError):
                 menge = 0
-            e = items.setdefault(name, {"name": name, "menge": 0, "laeufe": 0})
+            e = items.setdefault(name, {"name": name, "menge": 0, "laeufe": 0,
+                                        "je_stufe": {}})
             e["menge"] += max(1, menge)
-            e["laeufe"] += 1
+            # Je Lauf hoechstens EINMAL zaehlen: ein Gegenstand, der in zwei
+            # Zeilen desselben Laufs steht, ist trotzdem in nur einem Lauf
+            # gefallen. Sonst waere die Drop-Rate ueber 100%.
+            if name not in gesehen:
+                e["laeufe"] += 1
+                gesehen.add(name)
+                if stufe:
+                    e["je_stufe"][stufe] = e["je_stufe"].get(stufe, 0) + 1
     if not items:
         return [], []
     ids = resolve_item_ids(sorted(items))
@@ -11728,6 +11742,7 @@ def abyss_beute(rows):
         tid = ids.get(name)
         preis = (pm.get(tid) or (0, 0))[0] if tid else 0
         satz = {"name": name, "menge": e["menge"], "laeufe": e["laeufe"],
+                "je_stufe": e.get("je_stufe") or {},
                 "stueck": round(preis) if preis else None,
                 "isk": round(e["menge"] * preis) if preis else None}
         (fil if name.endswith("Filament") else rest).append(satz)
@@ -11774,7 +11789,9 @@ def query_abyss(chars=None, tage=30):
             "wetter": abyss_wetter_aus_name(r[5] or ""),
             "schiff": r[10], "klasse": SHIP_KLASSEN.get(r[11]),
             "loot_text": r[7] or ""})
-    fil, rest = abyss_beute([l["loot_text"] for l in laeufe])
+    mit = [l for l in laeufe if (l["loot_text"] or "").strip()]
+    fil, rest = abyss_beute([l["loot_text"] for l in mit],
+                            [l["stufe"] for l in mit])
     # Filament-Bilanz: verbraucht wird EIN Filament je Schiff im Lauf
     # (1 Kreuzer = 1, bis 2 Zerstoerer = 2, bis 3 Fregatten = 3, an der
     # EVE-University geprueft). Die Schiffszahl steckt in der Gruppierung,
@@ -11789,7 +11806,38 @@ def query_abyss(chars=None, tage=30):
     # langer Lauf mit viel Beute ist nicht automatisch der beste.
     best = max((l for l in laeufe if l["min"] > 0),
                key=lambda l: l["isk_min"], default=None)
+    # ---- Drop-Raten ------------------------------------------------------
+    # Wie oft faellt ein Gegenstand ueberhaupt? Bezugsgroesse sind NUR die
+    # Laeufe mit eingetragenem Loot, alles andere waere geschoent. Die
+    # Stichprobe steht immer dabei: bei zwoelf Laeufen ist eine Quote von
+    # 25% ein einziger Fund mehr oder weniger.
+    basis = len(mit)
+    je_stufe_basis = {}
+    for l in mit:
+        if l["stufe"]:
+            je_stufe_basis[l["stufe"]] = je_stufe_basis.get(l["stufe"], 0) + 1
+    drops = []
+    for e in (rest + fil):
+        if not basis:
+            break
+        drops.append({
+            "name": e["name"], "laeufe": e["laeufe"], "basis": basis,
+            "quote": round(100.0 * e["laeufe"] / basis, 1),
+            "menge": e["menge"],
+            "schnitt": round(e["menge"] / e["laeufe"], 1) if e["laeufe"] else 0,
+            "isk_lauf": round(e["isk"] / basis) if e.get("isk") else None,
+            "filament": e["name"].endswith("Filament"),
+            # Je Stufe nur ausweisen, wo es auch eine Bezugsgroesse gibt.
+            "stufen": sorted(
+                ({"stufe": st, "laeufe": n, "basis": je_stufe_basis.get(st, 0),
+                  "quote": round(100.0 * n / je_stufe_basis[st], 1)}
+                 for st, n in (e.get("je_stufe") or {}).items()
+                 if je_stufe_basis.get(st)), key=lambda x: x["stufe"])})
+    # Nach Wert je Lauf sortieren: was am meisten einbringt, steht oben.
+    drops.sort(key=lambda d: (-(d["isk_lauf"] or 0), -d["quote"]))
     return {"ertrag": ertrag, "tage": tage,
+            "drops": drops[:25], "drop_basis": basis,
+            "drop_stufen": sorted(je_stufe_basis.items()),
             "laeufe": laeufe[:200], "n": len(laeufe),
             "filamente": fil[:12], "beute": rest[:10],
             "bilanz": {"verbraucht": verbraucht, "erbeutet": erbeutet,
@@ -18717,6 +18765,37 @@ function renderAbyss(a){
      ?'Abyss NPCs pay no bounty, so the loot you enter is the entire yield of a run. Tier and weather come from the name you give a run, the ship from the EVE login.'
      :'Abyss-Gegner zahlen keine Bounty, der eingetragene Loot ist deshalb der vollständige Ertrag eines Laufs. Stufe und Wetter kommen aus dem Namen, den du dem Lauf gibst, das Schiff aus dem EVE-Login.'}</div>
    </div>`:''}
+  ${(a.drops&&a.drops.length)?(()=>{
+   // Drop-Raten aus der EIGENEN Beute. Bezugsgroesse sind nur die Laeufe mit
+   // eingetragenem Loot, und die Stichprobe steht ueberall dabei: bei zwoelf
+   // Laeufen ist eine Quote von 25% ein einziger Fund mehr oder weniger.
+   const n=a.drop_basis||0;
+   const duenn=n<10;
+   const stufen=(a.drop_stufen||[]).filter(x=>x[1]>=3);
+   return `<div class="card" style="grid-column:1/-1">
+    <div class="sect">🎲 ${en?'Drop rates from your own runs':'Drop-Raten aus deinen Läufen'}</div>
+    <div class="sub">${en
+      ? `Based on the ${n} run(s) where you entered the loot. Not a game table: this is what actually dropped for YOU.`
+      : `Grundlage sind die ${n} Läufe, bei denen du den Loot eingetragen hast. Keine Spieltabelle, sondern was bei DIR wirklich gefallen ist.`}
+     ${duenn?`<b class="in"> ${en?'Still too few runs for reliable rates, treat them as a first impression.':'Noch zu wenige Läufe für belastbare Quoten, nimm sie als ersten Eindruck.'}</b>`:''}</div>
+    <table><tr><th>${en?'Item':'Gegenstand'}</th><th class="r">${en?'Drop rate':'Quote'}</th>
+     <th class="r">${en?'Runs':'Läufe'}</th><th class="r">${en?'Ø qty':'Ø Menge'}</th>
+     <th class="r">${en?'ISK per run':'ISK je Lauf'}</th>
+     ${stufen.map(x=>`<th class="r" title="${en?'Runs at this tier':'Läufe dieser Stufe'}: ${x[1]}">T${x[0]}</th>`).join('')}</tr>
+    ${a.drops.map(d=>`<tr>
+     <td>${esc(d.name)}</td>
+     <td class="r"><b>${d.quote}%</b></td>
+     <td class="r sub">${d.laeufe}/${d.basis}</td>
+     <td class="r">${d.schnitt}</td>
+     <td class="r isk">${d.isk_lauf!=null?fmtM(d.isk_lauf):'—'}</td>
+     ${stufen.map(x=>{const t=(d.stufen||[]).find(y=>y.stufe===x[0]);
+       return `<td class="r${t?'':' sub'}">${t?t.quote+'%':'—'}</td>`;}).join('')}
+    </tr>`).join('')}
+    </table>
+    <div class="sub" style="margin-top:8px">${en
+      ? 'A rate of 100% means it dropped in every run you recorded, not that it always drops. Tier columns only appear once at least three runs of that tier are recorded.'
+      : 'Eine Quote von 100% heißt, dass es in jedem erfassten Lauf dabei war, nicht dass es immer fällt. Stufen-Spalten erscheinen erst ab drei erfassten Läufen dieser Stufe.'}</div>
+   </div>`;})():''}
   ${liste('💎 '+(en?'Top 10 by value':'Top 10 nach Wert'), a.beute||[],
     [[en?'Item':'Gegenstand',r=>esc(r.name),0],
      [en?'Qty':'Menge',r=>fmt(r.menge),1],
