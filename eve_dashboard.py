@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.68.1"
+VERSION = "2.69.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -18048,6 +18048,12 @@ async function uhrTun(was,extra){
 }
 function uhrMalen(){
  const box=$('#uhrAn'); if(!box)return;
+ // Nicht neu zeichnen, solange jemand den Trip benennt. Der Kasten wird
+ // jede Sekunde neu gebaut, und das Textfeld steht mitten darin: ohne
+ // diesen Schutz war der Name nach einer Sekunde weg, samt Cursor
+ // (Voll-Audit 02.09.2026).
+ const tippt=document.activeElement;
+ if(tippt&&tippt.id==='uhrLabel')return;
  const u=(state&&state.uhr)||{an:false,sek:0,label:'',pause:false};
  if(!u.an){
   box.innerHTML=`<div class="btnrow" style="align-items:center;gap:8px">
@@ -18410,7 +18416,11 @@ function renderBlutspur(bs){
  const box=document.getElementById('packBox'); if(!box)return;
  // Nicht neu rendern, waehrend der Nutzer gerade das System-Feld tippt,
  // sonst wirft der 2s-Tick die Eingabe raus (gleiche Falle wie beim Intel-Feld).
- if(document.activeElement&&document.activeElement.id==='packCenter')return;
+ // Alle drei Eingabefelder des Kastens schuetzen, nicht nur eines. Die
+ // beiden Zahlenfelder stehen im selben Kasten und wurden mit ihm ersetzt:
+ // was man tippte, war nach zwei Sekunden wieder der Serverwert.
+ {const t=document.activeElement;
+  if(t&&['packCenter','packMelden','packAlarm'].includes(t.id))return;}
  const en=lang==='en', now=Date.now()/1000;
  if(!bs){box.innerHTML='';return;}
  if(!bs.on){
@@ -19248,6 +19258,9 @@ let letzteMissionen = null;
 function blaettern(id, seite, gesamt){
  const n = Math.ceil(gesamt / PRO_SEITE);
  if (n <= 1) return '';
+ // Zeigt die gemerkte Seite hinter das Ende (die Liste ist kuerzer geworden),
+ // dann die letzte nehmen statt eine leere Seite ohne Ausweg zu zeigen.
+ if (seite > n - 1) seite = n - 1;
  return `<div class="sub" style="display:flex;align-items:center;gap:10px;
    margin-top:10px;padding-top:8px;border-top:1px solid var(--line)">
    <span class="pill" data-blatt="${id}" data-zu="${Math.max(0, seite - 1)}"
@@ -19263,11 +19276,75 @@ function blaettern(id, seite, gesamt){
 // Ansichten aufgerufen (Missionen und Abyss), damit dort nicht zwei Wege
 // entstehen, die denselben Datensatz unterschiedlich schreiben.
 function laufHandler(){
+ // Blaettern. Jede Liste hat ihre EIGENE Seitenzahl, und neu gezeichnet
+ // wird die Ansicht, in der man gerade steht. Frueher teilten sich die
+ // Missions- und die Abyss-Liste eine Zahl und der Handler rief fest
+ // renderMissions: wer in den Missionen auf Seite 4 blaetterte und dann in
+ // den Abyss wechselte, sah dort eine leere Liste ohne Blaetterleiste, und
+ // ein Klick im Abyss warf einen in die Missionsansicht
+ // (Voll-Audit 02.09.2026).
  document.querySelectorAll('[data-blatt]').forEach(el=>el.onclick=()=>{
-  const zu=parseInt(el.dataset.zu,10);
-  if(el.dataset.blatt==='runs') seiteRuns=zu; else seiteTage=zu;
-  if(letzteMissionen) renderMissions(letzteMissionen);
+  const zu=parseInt(el.dataset.zu,10), welche=el.dataset.blatt;
+  if(welche==='runs') seiteRuns=zu;
+  else if(welche==='abyssruns') seiteAbyss=zu;
+  else seiteTage=zu;
+  if(view==='abyss'&&lastAbyss) renderAbyss(lastAbyss);
+  else if(letzteMissionen) renderMissions(letzteMissionen);
   if(lang!=='de') tr(document.body);
+ });
+ document.querySelectorAll('.mreopen').forEach(t=>t.onclick=async()=>{
+  const en3=lang==='en';
+  // Vorher fragen: der Eintrag verschwindet voruebergehend aus der Liste.
+  // Seit dem Voll-Audit vom 02.09.2026 bleibt eingetragener Loot dabei
+  // erhalten, er wird beim naechsten Abschluss wieder eingesetzt.
+  if(!confirm(en3
+   ?'Take this run back into the current session? The entry disappears from the list and reappears when the run really ends. Loot, salvage and the name you entered are kept.'
+   :'Diesen Einsatz zurück in die laufende Sitzung holen? Der Eintrag verschwindet aus der Liste und entsteht neu, wenn der Einsatz wirklich endet. Eingetragener Loot, Salvage und der Name bleiben erhalten.'))return;
+  t.textContent=en3?'Taking back …':'Hole zurück …';
+  let r;try{r=await post({action:'mission_reopen',mid:t.dataset.mid});}catch(e){r=null;}
+  if(r&&r.ok){
+   t.textContent=r.sitzung_aktiv
+    ?(en3?'✓ back in the session':'✓ zurück in der Sitzung')
+    :(en3?'✓ removed (character offline, no session to continue)'
+         :'✓ entfernt (Char offline, es läuft keine Sitzung mehr)');
+   setTimeout(()=>tick(),1200);
+  }else t.textContent=en3?'failed':'hat nicht geklappt';
+ });
+ // Zwei Eintraege zu einem machen. Nicht umkehrbar, deshalb mit Rueckfrage,
+ // und die Rueckfrage sagt, was danach in der Zeile steht.
+ document.querySelectorAll('.mmerge').forEach(t=>t.onclick=async()=>{
+  const en3=lang==='en';
+  if(!confirm(en3
+   ?'Merge this run into the previous run of the same character? Damage, kills, bounty and loot are added up, the earlier start is kept. The two entries become one. This cannot be undone.'
+   :'Diesen Einsatz mit dem vorherigen desselben Charakters verbinden? Schaden, Kills, Bounty und Loot werden addiert, der frühere Beginn bleibt stehen. Aus den zwei Einträgen wird einer. Das lässt sich nicht rückgängig machen.'))return;
+  const alt=t.textContent;
+  t.textContent=en3?'Merging …':'Verbinde …';
+  let r;try{r=await post({action:'mission_verbinden',mid:t.dataset.mid});}catch(e){r=null;}
+  if(r&&r.ok){
+   t.textContent=(en3?'✓ merged, now ':'✓ verbunden, jetzt ')+r.min+' min';
+   setTimeout(()=>tick(),1200);
+  }else{
+   t.textContent=(r&&r.error)||(en3?'failed':'hat nicht geklappt');
+   setTimeout(()=>{t.textContent=alt;},2500);
+  }
+ });
+ // Charakter-Auswahl: die Zusammenfassung und die Loot-Auswertung rechnet der
+ // Server neu, deshalb ein voller Takt statt nur Neuzeichnen. Die Seitenzahlen
+ // gehen auf Anfang zurueck, sonst steht man bei einem Charakter mit wenigen
+ // Missionen auf einer leeren Seite drei.
+ document.querySelectorAll('.atage').forEach(el=>el.onclick=()=>{
+  abyssTage=Number(el.dataset.at);
+  localStorage.setItem('abyssTage',abyssTage);
+  tick();
+ });
+ document.querySelectorAll('.mchar').forEach(el=>el.onclick=()=>{
+  const w=el.dataset.mc||'';
+  if(!w)missChars=[];                       // "Alle" leert die Auswahl
+  else if(missChars.includes(w))missChars=missChars.filter(x=>x!==w);
+  else missChars=missChars.concat([w]);
+  localStorage.setItem('missChars',JSON.stringify(missChars));
+  seiteRuns=0; seiteTage=0;
+  tick();
  });
  document.querySelectorAll('.mloottoggle').forEach(t=>t.onclick=()=>{
   const box=[...document.querySelectorAll('.mlootedit')].find(e=>e.dataset.mid===t.dataset.mid);
@@ -19533,6 +19610,10 @@ function felderZurueck(g){
   if(st&&z.status)st.textContent=z.status;
  });
 }
+// Eigene Seitenzahl fuer die Abyss-Liste. Sie teilte sich frueher eine mit
+// der Missionsliste, und weil beide verschieden viele Eintraege haben, wurde
+// die kuerzere dadurch zur Sackgasse.
+let seiteAbyss=0;
 let lastAbyss=null;
 // Die vollen Einsatz-Datensaetze, wie sie die Missions-Ansicht bekommt.
 // Der Abyss-Bereich rendert daraus dieselben Zeilen (laufZeile), damit
@@ -19672,9 +19753,9 @@ function renderAbyss(a){
    <div class="sub">${en
      ? 'The same runs as in the missions list. Loot, name, tier and weather entered here go into the same record. Naming a run also names everyone who flew it with you.'
      : 'Dieselben Läufe wie in der Missions-Liste. Loot, Name, Stufe und Wetter, die du hier einträgst, landen im selben Datensatz. Ein Name gilt gleich für alle, die mitgeflogen sind.'}</div>
-   ${eigene.slice(seiteRuns*PRO_SEITE,(seiteRuns+1)*PRO_SEITE).map(laufZeile).join('')
+   ${eigene.slice(seiteAbyss*PRO_SEITE,(seiteAbyss+1)*PRO_SEITE).map(laufZeile).join('')
      || `<div class="sub" style="margin-top:8px">${en?'No run details for this period.':'Keine Einzelheiten zu diesem Zeitraum.'}</div>`}
-   ${blaettern('runs',seiteRuns,eigene.length)}
+   ${blaettern('abyssruns',seiteAbyss,eigene.length)}
   </div>
   ${(a.drops&&a.drops.length)?(()=>{
    // Drop-Raten aus der EIGENEN Beute. Bezugsgroesse sind nur die Laeufe mit
@@ -20026,60 +20107,6 @@ function renderMissions(d){
         +(en2?'enter the loot below':'Loot unten eintragen'));
    setTimeout(tick,600);
   }else setz(r.msg||(en2?'Nothing to save':'Nichts zu speichern'));
- });
- document.querySelectorAll('.mreopen').forEach(t=>t.onclick=async()=>{
-  const en3=lang==='en';
-  // Vorher fragen: der Eintrag verschwindet voruebergehend aus der Liste.
-  // Seit dem Voll-Audit vom 02.09.2026 bleibt eingetragener Loot dabei
-  // erhalten, er wird beim naechsten Abschluss wieder eingesetzt.
-  if(!confirm(en3
-   ?'Take this run back into the current session? The entry disappears from the list and reappears when the run really ends. Loot, salvage and the name you entered are kept.'
-   :'Diesen Einsatz zurück in die laufende Sitzung holen? Der Eintrag verschwindet aus der Liste und entsteht neu, wenn der Einsatz wirklich endet. Eingetragener Loot, Salvage und der Name bleiben erhalten.'))return;
-  t.textContent=en3?'Taking back …':'Hole zurück …';
-  let r;try{r=await post({action:'mission_reopen',mid:t.dataset.mid});}catch(e){r=null;}
-  if(r&&r.ok){
-   t.textContent=r.sitzung_aktiv
-    ?(en3?'✓ back in the session':'✓ zurück in der Sitzung')
-    :(en3?'✓ removed (character offline, no session to continue)'
-         :'✓ entfernt (Char offline, es läuft keine Sitzung mehr)');
-   setTimeout(()=>tick(),1200);
-  }else t.textContent=en3?'failed':'hat nicht geklappt';
- });
- // Zwei Eintraege zu einem machen. Nicht umkehrbar, deshalb mit Rueckfrage,
- // und die Rueckfrage sagt, was danach in der Zeile steht.
- document.querySelectorAll('.mmerge').forEach(t=>t.onclick=async()=>{
-  const en3=lang==='en';
-  if(!confirm(en3
-   ?'Merge this run into the previous run of the same character? Damage, kills, bounty and loot are added up, the earlier start is kept. The two entries become one. This cannot be undone.'
-   :'Diesen Einsatz mit dem vorherigen desselben Charakters verbinden? Schaden, Kills, Bounty und Loot werden addiert, der frühere Beginn bleibt stehen. Aus den zwei Einträgen wird einer. Das lässt sich nicht rückgängig machen.'))return;
-  const alt=t.textContent;
-  t.textContent=en3?'Merging …':'Verbinde …';
-  let r;try{r=await post({action:'mission_verbinden',mid:t.dataset.mid});}catch(e){r=null;}
-  if(r&&r.ok){
-   t.textContent=(en3?'✓ merged, now ':'✓ verbunden, jetzt ')+r.min+' min';
-   setTimeout(()=>tick(),1200);
-  }else{
-   t.textContent=(r&&r.error)||(en3?'failed':'hat nicht geklappt');
-   setTimeout(()=>{t.textContent=alt;},2500);
-  }
- });
- // Charakter-Auswahl: die Zusammenfassung und die Loot-Auswertung rechnet der
- // Server neu, deshalb ein voller Takt statt nur Neuzeichnen. Die Seitenzahlen
- // gehen auf Anfang zurueck, sonst steht man bei einem Charakter mit wenigen
- // Missionen auf einer leeren Seite drei.
- document.querySelectorAll('.atage').forEach(el=>el.onclick=()=>{
-  abyssTage=Number(el.dataset.at);
-  localStorage.setItem('abyssTage',abyssTage);
-  tick();
- });
- document.querySelectorAll('.mchar').forEach(el=>el.onclick=()=>{
-  const w=el.dataset.mc||'';
-  if(!w)missChars=[];                       // "Alle" leert die Auswahl
-  else if(missChars.includes(w))missChars=missChars.filter(x=>x!==w);
-  else missChars=missChars.concat([w]);
-  localStorage.setItem('missChars',JSON.stringify(missChars));
-  seiteRuns=0; seiteTage=0;
-  tick();
  });
  laufHandler();
 }

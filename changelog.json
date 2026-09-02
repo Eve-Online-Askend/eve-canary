@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.69.0",
+  "d": "2026-09-02",
+  "de": [
+   "ZWEI KNOEPFE AN JEDER ABYSS-ZEILE WAREN TOT. 'Läuft doch noch' und 'Mit dem vorigen verbinden' wurden gezeichnet, sahen klickbar aus und taten nichts: sie bekamen ihren Klick erst weiter unten in der Missionsansicht. Im Browser gezaehlt: 10 Knoepfe, 0 verdrahtet, waehrend es in der Missionsliste 10 von 10 waren. Jetzt sind alle Knoepfe an EINER Stelle verdrahtet, die beide Ansichten benutzen.",
+   "BLAETTERN IM ABYSS-BEREICH WARF EINEN IN DIE MISSIONSANSICHT, und beide Listen teilten sich dieselbe Seitenzahl. Wer in den Missionen auf Seite 4 blaetterte und dann in den Abyss wechselte, sah dort eine leere Liste unter einer Kopfzeile, die elf Durchgaenge zaehlte, und keine Blaetterleiste, um zurueckzukommen. Jede Liste hat jetzt ihre eigene Seite, es wird die Ansicht neu gezeichnet, in der man steht, und eine Seitenzahl, die hinter das Ende zeigt, faengt sich selbst.",
+   "DER TRIP-NAME IN DER STOPPUHR WURDE JEDE SEKUNDE GELOESCHT. Solange der Dialog offen ist, zeichnet Canary den Kasten im Sekundentakt neu, und das Textfeld steht mittendrin. Wer seinen Trip benennen wollte, verlor nach einer Sekunde Text und Cursor. Ebenso die beiden Zahlenfelder der Blutspur: der Tippschutz nannte nur eines der drei Felder im selben Kasten.",
+   "Dazu eine neue Pruefung, die diese Art Fehler kuenftig ohne Klicken findet. Sie prueft dreierlei: jede ID, die das Seiten-JavaScript anfasst, muss es im HTML geben; jeder Knopf einer Einsatzzeile muss dort verdrahtet sein, wo BEIDE Ansichten hinkommen; und jedes Eingabefeld in einem getakteten Kasten braucht einen Tippschutz. Gegen die vorige Fassung schlaegt sie sechsmal fehl, gegen diese laeuft sie durch."
+  ],
+  "en": [
+   "TWO BUTTONS ON EVERY ABYSS ROW WERE DEAD. 'Still running' and 'Merge with the previous one' were drawn, looked clickable and did nothing: they only got their click further down in the missions view. Counted in the browser: 10 buttons, 0 wired, while the missions list had 10 out of 10. All row buttons are now wired in ONE place that both views use.",
+   "PAGING IN THE ABYSS AREA THREW YOU INTO THE MISSIONS VIEW, and both lists shared the same page number. Paging to page 4 in the missions and then switching to the abyss showed an empty list under a heading counting eleven runs, with no paging bar to get back. Each list now has its own page, the view you are in is the one redrawn, and a page number pointing past the end corrects itself.",
+   "THE TRIP NAME IN THE STOPWATCH WAS ERASED EVERY SECOND. While the dialog is open Canary redraws the box once a second, and the text field sits right in it. Anyone naming their trip lost the text and the cursor after one second. Same for the two number fields of the blood trail: the typing guard named only one of the three fields in that box.",
+   "Plus a new check that finds this kind of fault in future without any clicking. It checks three things: every id the page's JavaScript touches must exist in the HTML; every button of a run row must be wired where BOTH views reach it; and every input field in a box that is redrawn on the tick needs a typing guard. Against the previous release it fails six times, against this one it passes."
+  ]
+ },
+ {
   "v": "2.68.1",
   "d": "2026-09-02",
   "de": [
