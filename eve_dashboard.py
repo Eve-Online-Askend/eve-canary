@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.73.0"
+VERSION = "2.74.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -747,6 +747,14 @@ def faction_info(enemies):
 
 REGIONS = {"10000002": "Jita", "10000043": "Amarr", "10000030": "Rens",
            "10000032": "Dodixie", "10000042": "Hek"}
+# Die REGIONEN zu denselben Nummern. Gebraucht, um eine Zahl ehrlich zu
+# beschriften: das ESI-Orderbuch gilt fuer das Hub-System (Jita), die
+# Fuzzwork-Tabelle mittelt ueber die ganze Region (The Forge). Vorher stand
+# ueberall "Jita" dran, auch wenn der Durchschnitt drin war
+# (Voll-Audit 02.09.2026).
+REGION_NAMEN = {"10000002": "The Forge", "10000043": "Domain",
+                "10000030": "Heimatar", "10000032": "Sinq Laison",
+                "10000042": "Metropolis"}
 # Handels-Systeme je Region: fuer den ESI-Orderbook-Preis filtern wir auf das
 # eigentliche Hub-System, nicht die ganze Region (sonst zaehlen Randstationen mit).
 HUB_SYSTEMS = {"10000002": 30000142,   # Jita
@@ -5717,7 +5725,7 @@ class JobBoerse(threading.Thread):
         with DB_LOCK:
             meine_erze = {k for (k,) in DB.execute(
                 "SELECT DISTINCT key FROM daily WHERE kind='ore' "
-                "AND day >= date('now','-30 day')")}
+                "AND day > ?", (tagesgrenze(30),))}
             for j in alle:
                 r, p = j.get("reward") or {}, j.get("progress") or {}
                 if (self.erze.get(j["id"], (None, None))[0] in meine_erze
@@ -9246,12 +9254,29 @@ def baseline_filter(rows):
     return out
 
 
+def tagesgrenze(tage):
+    """Die Tagesgrenze fuer ein Fenster von <tage> Tagen, als 'JJJJ-MM-TT'.
+
+    Benutzt wird sie IMMER mit "day > grenze", nie mit ">=": so sind es genau
+    <tage> Kalendertage, der heutige eingeschlossen.
+
+    Es gibt diese Funktion, weil zwei Schreibweisen nebeneinander standen und
+    verschieden viele Tage ergaben: einmal 30, einmal 31 (Voll-Audit
+    02.09.2026). Der Unterschied stand im Nenner der Job-Boerse, die ihre
+    Erzmenge durch die Zahl der aktiven Tage teilt, und machte den Schnitt
+    dort kleiner als im Monat-Tab. Zwei Zahlen fuer dieselbe Frage.
+
+    Gerechnet wird in UTC, wie ueberall in der daily-Tabelle."""
+    return (datetime.now(timezone.utc)
+            - timedelta(days=int(tage))).strftime("%Y-%m-%d")
+
+
 def all_rows(days=None, kinds=None):
     q = "SELECT day,char_id,char_name,kind,key,value FROM daily WHERE 1=1"
     args = []
     if days:
-        cutoff = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        q += f" AND day > date('{cutoff}', '-{int(days)} day')"
+        q += " AND day > ?"
+        args.append(tagesgrenze(days))
     if kinds:
         q += f" AND kind IN ({','.join('?' * len(kinds))})"
         args += list(kinds)
@@ -9768,6 +9793,27 @@ BG_PRICE_LOCK = threading.Lock()
 PRICE_SOURCE = {}
 
 
+def preis_ort(region="10000002"):
+    """Wie die zuletzt benutzte Preisquelle dieser Region heisst.
+
+    Fuzzwork liefert einen Durchschnitt ueber die GANZE Region, ESI das
+    Orderbuch gefiltert auf das Hub-System. Das ist nicht dasselbe, und
+    "Jita" darf nur drangeschrieben werden, wenn es auch Jita war.
+    Gemessen am 02.09.2026: Nocxium 700,00 in der Region gegen 662,60 in
+    Jita, das sind 5,3 Prozent (Voll-Audit).
+
+    Ruft man das VOR hub_prices auf, steht dort noch die Quelle vom letzten
+    Mal. Also immer danach fragen."""
+    region = str(region)
+    if PRICE_SOURCE.get(region) == "esi":
+        # ESI filtert auf das Hub-System. REGIONS haelt genau diese Namen.
+        return {"ort": REGIONS.get(region, region), "quelle": "esi",
+                "genau": True}
+    # Fuzzwork mittelt ueber die ganze Region, also gehoert deren Name dran.
+    return {"ort": REGION_NAMEN.get(region, REGIONS.get(region, region)),
+            "quelle": "fuzzwork", "genau": False}
+
+
 def esi_orderbook(region, ids):
     """Bestes Kauf-/Verkaufsgebot je Typ direkt aus dem CCP-Orderbuch, gefiltert
     auf das Hub-System. Oeffentlich (kein Login). Cache 5 min je (Region, Typ).
@@ -9826,6 +9872,15 @@ def hub_prices_bg(region, ids):
     with CALC_LOCK:
         e = CALC_CACHE.get(region)
         vorhanden = dict(e["prices"]) if e else {}
+        # Woher die gelieferten Preise stammen, gleich mit festhalten. Ohne
+        # das laese preis_ort spaeter, was irgendein anderer Aufruf zuletzt
+        # gesetzt hat, moeglicherweise fuer eine andere Region: die
+        # Beschriftung wuerde raten statt messen (Voll-Audit 02.09.2026).
+        quellen = (e.get("src") or {}) if e else {}
+        gefragt = ids & set(vorhanden)
+        PRICE_SOURCE[str(region)] = (
+            "esi" if gefragt and all(quellen.get(t) == "esi" for t in gefragt)
+            else "fuzzwork")
     frisch = bool(e) and time.time() - e["ts"] < PRICE_REFRESH and ids <= set(vorhanden)
     if not frisch:
         with BG_PRICE_LOCK:
@@ -10336,8 +10391,13 @@ def cargo_wert(vorher, nachher):
 
     Gedacht fuer den haeufigen Fall, dass im Frachtraum-Fenster gar keine
     Wertspalte eingeblendet ist: dann steht unter den Feldern sonst nur die
-    Stueckzahl. Bewertet wird zum Jita-Sofortverkauf (Buy), also zu dem, was man
+    Stueckzahl. Bewertet wird zum Sofortverkauf (Buy), also zu dem, was man
     wirklich bekommt, und das ist auch die Bezugsgroesse im Rest von Canary.
+
+    WO das gilt, steht im Rueckgabewert und nicht fest im Text: ohne
+    prefer_esi liefert hub_prices den Durchschnitt der ganzen Region, mit ihm
+    das Orderbuch des Hub-Systems. Frueher stand hier immer "Jita" dran, auch
+    wenn der Regionsdurchschnitt drin war (Voll-Audit 02.09.2026).
 
     Bewusst EIN Aufruf fuer beide Seiten: die Namen ueberschneiden sich fast
     vollstaendig, getrennt bewertet waeren es zwei Preisabrufe fuer dieselbe
@@ -10364,7 +10424,11 @@ def cargo_wert(vorher, nachher):
 
     plus = {n: b.get(n, 0) - a.get(n, 0) for n in alle if b.get(n, 0) > a.get(n, 0)}
     minus = {n: a.get(n, 0) - b.get(n, 0) for n in alle if a.get(n, 0) > b.get(n, 0)}
-    return {"ok": True, "hub": "Jita",
+    # Erst NACH dem Abruf fragen: vorher stuende dort die Quelle vom
+    # letzten Mal.
+    ort = preis_ort("10000002")
+    return {"ok": True, "hub": ort["ort"], "quelle": ort["quelle"],
+            "genau": ort["genau"],
             "vorher": summe(a), "nachher": summe(b),
             "plus": summe(plus), "minus": summe(minus),
             # Je Posten, damit die Tabellen dieselbe Spalte fuellen koennen.
@@ -11344,7 +11408,10 @@ def query_kristalle():
     for e in out:
         e["isk"] = round(e["isk"])
         e["typen"].sort(key=lambda t: -t["n"])
-    return {"monate": out}
+    # Woher die Preise kamen, gehoert dazu: hub_prices_bg holt im Hintergrund
+    # die ESI, liefert beim ersten Aufruf aber den Zwischenspeicher, und der
+    # kann von Fuzzwork stammen (Regionsdurchschnitt statt Jita).
+    return {"monate": out, "preis_ort": preis_ort("10000002")}
 
 
 def query_loot_auswertung(char=None):
@@ -11445,7 +11512,8 @@ def query_loot_auswertung(char=None):
         k["loot"] = round(k["loot"])
         k["salv"] = round(k["salv"])
     return {"zeitraeume": zr, "gegenstaende": liste[:40],
-            "mit_loot": len(rows), "gesamt": gesamt}
+            "mit_loot": len(rows), "gesamt": gesamt,
+            "preis_ort": preis_ort("10000002")}
 
 
 def query_loot_tage(tage=30):
@@ -13158,12 +13226,15 @@ def query_jobs():
     # Dein Schnitt: Einheiten je Erzsorte an aktiven Mining-Tagen der letzten
     # 30 Tage. Aktiv heisst: an dem Tag kam ueberhaupt Erz herein.
     with DB_LOCK:
+        # Dasselbe Fenster wie ueberall sonst: mit ">=" waeren es 31 Tage
+        # gewesen, und der Nenner unten waere um einen Tag zu gross.
+        grenze30 = tagesgrenze(30)
         rate_rows = DB.execute(
             "SELECT key, SUM(value) FROM daily WHERE kind='ore' "
-            "AND day >= date('now','-30 day') GROUP BY key").fetchall()
+            "AND day > ? GROUP BY key", (grenze30,)).fetchall()
         aktive_tage = DB.execute(
             "SELECT COUNT(DISTINCT day) FROM daily WHERE kind='ore' "
-            "AND day >= date('now','-30 day')").fetchone()[0] or 0
+            "AND day > ?", (grenze30,)).fetchone()[0] or 0
         topf_rows = DB.execute(
             "SELECT job_id, MIN(ts), MAX(ts) FROM job_topf "
             "WHERE ts > ? GROUP BY job_id",
@@ -17806,7 +17877,7 @@ function kristallCard(k){
  return `<div class="card" style="grid-column:1/-1">
   <div class="sect">${en6?'💎 Shattered mining crystals':'💎 Zerbrochene Mining-Kristalle'}</div>
   <div style="overflow-x:auto"><table>
-  <tr><th>${en6?'Month':'Monat'}</th><th class="r">${en6?'Crystals':'Kristalle'}</th><th class="r">≈ ISK (Jita)</th><th>${en6?'By type':'Je Typ'}</th></tr>`
+  <tr><th>${en6?'Month':'Monat'}</th><th class="r">${en6?'Crystals':'Kristalle'}</th><th class="r" title="${preisHinweis(k)}">≈ ISK (${esc(preisOrtName(k))})</th><th>${en6?'By type':'Je Typ'}</th></tr>`
   +k.monate.map(m=>`<tr><td>${esc(m.monat)}</td><td class="r">${m.n}</td><td class="r isk">${m.isk?fmtM(m.isk):'<span style="color:var(--dim)">·</span>'}</td><td>${m.typen.map(t=>esc(t.typ)+' ×'+t.n).join(', ')}</td></tr>`).join('')
   +`</table></div>
   <div class="sub" style="margin-top:8px">${en6
@@ -20270,7 +20341,7 @@ function renderMissions(d){
    const inhalt=la.mit_loot
      ?`<div class="stats" style="grid-template-columns:repeat(3,1fr)">${kachel(en5?'Today':'Heute',zr.heute)}${kachel(en5?'7 days':'7 Tage',zr.d7)}${kachel(en5?'30 days':'30 Tage',zr.d30)}</div>
       <div style="overflow-x:auto"><table>
-      <tr><th>${en5?'Item':'Gegenstand'}</th><th>${en5?'Type':'Art'}</th><th class="r">${en5?'Units':'Stück'}</th><th class="r">≈ ISK (Jita)</th><th>${en5?'most of it came from':'meiste Beute in'}</th></tr>`
+      <tr><th>${en5?'Item':'Gegenstand'}</th><th>${en5?'Type':'Art'}</th><th class="r">${en5?'Units':'Stück'}</th><th class="r" title="${preisHinweis(la)}">≈ ISK (${esc(preisOrtName(la))})</th><th>${en5?'most of it came from':'meiste Beute in'}</th></tr>`
       +(la.gegenstaende||[]).slice(0,12).map(g=>{
         const alle=(g.wo||[]).map(w=>w[0]+': '+fmt(w[1])+(en5?' units':' Stk')).join('\\n');
         return `<tr><td>${itemZeile(g.tid,g.name)}</td><td>${g.art==='salvage'?(en5?'Salvage':'Salvage'):'Loot'}</td><td class="r">${fmt(g.menge)}</td>
@@ -20517,12 +20588,12 @@ async function doCalc(){
  const bestBuy=Math.max(...hubs.map(h=>h.buy));
  $('#calcOut').innerHTML=
   `<div class="stats" style="grid-template-columns:repeat(${hubs.length},1fr)">`+
-  hubs.map(h=>`<div class="stat"${h.buy===bestBuy?' style="border-color:var(--gold)"':''} title="Was dieser Handelsplatz gerade für deine ganze Ladung zahlt, wenn du sofort in die höchste Kauforder verkaufst. Live über die ESI geholt. Der Anflug dorthin kostet Zeit und Risiko, das steckt in keiner dieser Zahlen.">
+  hubs.map(h=>`<div class="stat"${h.buy===bestBuy?' style="border-color:var(--gold)"':''} title="Was deine ganze Ladung in dieser Region einbringt, wenn du sofort in die Kauforders verkaufst. Es ist der Durchschnitt der ganzen Region, nicht der Preis an genau dieser Station: für fünf Handelsplätze nacheinander das echte Orderbuch zu holen dauert zu lange. Der Anflug dorthin kostet außerdem Zeit und Risiko, das steckt in keiner dieser Zahlen.">
    <div class="l">${esc(h.name)}${h.buy===bestBuy?' ★':''}</div>
    <div class="v isk" style="font-size:20px">${fmtM(h.buy)}</div>
    <div class="l">Sofortverkauf · mit Sell-Order: ${fmtM(h.sell)}</div></div>`).join('')+`</div>
-  <div class="sub" style="margin-top:8px">${fmt(r.m3)} m³ gesamt · ★ = bester Sofortverkauf · Einzelwerte zu Jita-Buy-Preisen:</div>
-  <table><tr><th>Typ</th><th class="r">Menge</th><th class="r">m³</th><th class="r">ISK (Jita)</th></tr>`+
+  <div class="sub" style="margin-top:8px">${fmt(r.m3)} m³ gesamt · ★ = bester Sofortverkauf · Einzelwerte zum Ankauf in The Forge:</div>
+  <table><tr><th>Typ</th><th class="r">Menge</th><th class="r">m³</th><th class="r" title="Durchschnitt der Region The Forge, nicht der Preis an der Station in Jita. Bei den gängigen Erzen liegen die beiden 0,1 Prozent auseinander, bei seltenen Posten auch mal 5 Prozent.">ISK (The Forge)</th></tr>`+
   r.items.map(i=>`<tr><td>${esc(i.name)}</td><td class="r">${fmt(i.qty)}</td><td class="r">${fmt(i.m3)}</td><td class="r isk">${fmtM(i.isk)}</td></tr>`).join('')+'</table>'+
   (r.unknown&&r.unknown.length?`<div class="sub" style="margin-top:8px">Nicht erkannt: ${esc(r.unknown.join(' · '))}</div>`:'');
 }
@@ -20559,7 +20630,7 @@ function renderBeute(){
    </div>
   </div>
   <div class="btnrow" style="margin:10px 0 0"><button class="btn pri" id="diffGo">Vergleichen</button>
-   <button class="btn" id="diffMarkt" title="Bewertet BEIDE Kopien zum Jita-Sofortverkauf. Nötig, wenn im Frachtraum-Fenster die Spalte Wert nicht eingeblendet ist: dann steht in der Kopie kein einziger Preis.">💰 Marktwert holen</button>
+   <button class="btn" id="diffMarkt" title="Bewertet BEIDE Kopien zum Sofortverkauf, also zu dem, was du wirklich bekommst. Nötig, wenn im Frachtraum-Fenster die Spalte Wert nicht eingeblendet ist: dann steht in der Kopie kein einziger Preis. Unter dem Ergebnis steht, woher die Preise kamen: aus dem Orderbuch von Jita, oder als Durchschnitt der Region.">💰 Marktwert holen</button>
    <button class="btn" id="diffNext" title="Für den nächsten Durchgang: der Stand von rechts wandert nach links, rechts wird leer. Spart das doppelte Einfügen, wenn du mehrere Läufe hintereinander machst.">⬅ Nachher wird Vorher</button>
    <button class="btn" id="diffClr">Felder leeren</button>
    <span id="diffStat" style="font-size:12px;color:var(--dim);align-self:center"></span>
@@ -20626,6 +20697,31 @@ function renderBeute(){
 // die Wertspalte fehlt: dann steht in der Kopie kein einziger Preis, und unter
 // den Feldern koennte sonst nur die Stueckzahl stehen.
 let diffMarkt=null;          // zuletzt geholte Marktwerte, fuer die Anzeige
+// Wie die Preisquelle heisst, die der Server wirklich benutzt hat. Ein
+// Regionsdurchschnitt ist kein Sofortverkauf an einem Ort, deshalb zwei
+// Formulierungen statt eines festen "Jita" (Voll-Audit 02.09.2026).
+// Der Ortsname aus einer Antwort, die ihr preis_ort mitliefert. Faellt auf
+// Jita zurueck, solange eine aeltere Antwort im Zwischenspeicher liegt, die
+// das Feld noch nicht kennt.
+function preisOrtName(d){
+ const p=d&&d.preis_ort;
+ return (p&&p.ort)||'Jita';
+}
+function preisHinweis(d){
+ const p=d&&d.preis_ort, en=lang==='en';
+ if(p&&p.genau)
+  return en?'From the CCP order book, filtered to the trade hub itself.'
+          :'Aus dem CCP-Orderbuch, gefiltert auf das Handelszentrum selbst.';
+ return en?'Average across the whole region, not the price at the station itself. For common ores the two are about 0.1 percent apart, for rare items up to 5 percent.'
+         :'Durchschnitt der ganzen Region, nicht der Preis an der Station selbst. Bei gängigen Erzen liegen die beiden etwa 0,1 Prozent auseinander, bei seltenen Posten bis zu 5 Prozent.';
+}
+function preisOrt(r){
+ if(!r||!r.hub)return '';
+ const en=lang==='en';
+ return r.genau
+  ?(en?r.hub+' buy':r.hub+'-Sofortverkauf')
+  :(en?'average across '+r.hub:'Durchschnitt in '+r.hub);
+}
 async function diffMarktwert(){
  // Eigene Statuszeile: doDiff() raeumt seine eigene auf, und die Herkunft der
  // Preise soll stehen bleiben, wenn danach neu verglichen wird.
@@ -20641,7 +20737,7 @@ async function diffMarktwert(){
  knopf.disabled=false;
  if(!r||!r.ok){st.textContent=(r&&r.msg)||(en?'Price lookup failed.':'Preisabfrage fehlgeschlagen.');return;}
  diffMarkt=r;
- st.innerHTML=(en?'Valued at ':'Bewertet zu ')+esc(r.hub)+(en?' buy · ':'-Sofortverkauf · ')
+ st.innerHTML=(en?'Valued at ':'Bewertet zu ')+esc(preisOrt(r))+' · '
   +r.bewertet+'/'+r.gesamt+(en?' items priced':' Posten mit Preis')
   +(r.unbekannt.length?' <span style="opacity:.7">('+(en?'unknown: ':'unbekannt: ')
     +esc(r.unbekannt.slice(0,4).join(', '))+')</span>':'');
@@ -20766,7 +20862,7 @@ async function doDiff(){
   // Jita-Sofortverkauf sind zwei verschiedene Betraege, und wer nachrechnet,
   // muss wissen, welchen er vor sich hat.
   const quelle=marktQuelle
-   ? (en?'at '+esc(diffMarkt.hub)+' buy':esc(diffMarkt.hub)+'-Sofortverkauf')
+   ? esc(preisOrt(diffMarkt))
    : (en?'as valued by the game':'laut Frachtraum-Fenster');
   h+='<div class="stats" style="grid-template-columns:repeat(3,1fr)">'
    +'<div class="stat" title="'+(en

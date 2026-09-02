@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.74.0",
+  "d": "2026-09-02",
+  "de": [
+   "'JITA' STAND DRAN, DER DURCHSCHNITT DER GANZEN REGION WAR DRIN. Canary holt Preise auf zwei Wegen: aus dem CCP-Orderbuch, gefiltert auf das Handelszentrum selbst, oder aus einer fertigen Tabelle, die über die ganze Region mittelt. Der Frachtraum-Vergleich, der Beute-Rechner und die Handelsplatz-Tabelle nahmen den zweiten Weg, schrieben aber 'Jita' darüber. Die Schatzkammer nahm den ersten. Zwei Zahlen unter demselben Namen. Gemessen an denselben Gegenständen: Nocxium 700,00 gegen 662,60 ISK, also 5,3 Prozent, Isogen 3,1 Prozent, Tritanium und Veldspar gleich. Auf eine übliche Ladung gerechnet 0,1 Prozent. Jede Ansicht sagt jetzt, woher ihre Zahl kommt: 'Jita' wenn es das Orderbuch war, 'Durchschnitt in The Forge' wenn nicht.",
+   "Umgestellt wurde bewusst NICHT auf das Orderbuch: gemessen dauert das 5,15 Sekunden gegen 0,24, also das 21-fache, und das an einem Knopf, auf den du wartest. Lieber ehrlich beschriftet als langsam.",
+   "'30 TAGE' BEDEUTETE JE NACH ANSICHT 30 ODER 31 TAGE. Zwei Schreibweisen standen nebeneinander, einmal mit und einmal ohne den Grenztag. Der Unterschied steht im Nenner: die Job-Börse teilt deine Erzmenge durch die Zahl der aktiven Tage der letzten 30, und ein Tag mehr macht den Schnitt kleiner, während der 30-Tage-Schnitt im Monat-Tab mit dem anderen Fenster rechnete. Nachgemessen an 40 Tagen mit je einem Eintrag: 3,3 Prozent Unterschied bei derselben Menge. Jetzt liefert eine Stelle die Grenze, und alle benutzen sie."
+  ],
+  "en": [
+   "IT SAID 'JITA' AND CONTAINED THE AVERAGE OF THE WHOLE REGION. Canary fetches prices two ways: from the CCP order book filtered to the trade hub itself, or from a ready-made table averaging the whole region. The cargo comparison, the loot calculator and the hub table used the second and labelled it 'Jita'. The treasury used the first. Two numbers under one name. Measured on the same items: Nocxium 700.00 against 662.60 ISK, that is 5.3 percent, Isogen 3.1 percent, Tritanium and Veldspar identical. Across a typical load, 0.1 percent. Every view now says where its number comes from: 'Jita' when it was the order book, 'average across The Forge' when it was not.",
+   "It was deliberately NOT switched to the order book: measured, that takes 5.15 seconds against 0.24, so 21 times as long, on a button you wait for. Better labelled honestly than slow.",
+   "'30 DAYS' MEANT 30 OR 31 DAYS DEPENDING ON THE VIEW. Two spellings sat side by side, one including the boundary day and one not. The difference lands in the denominator: the job board divides your ore by the number of active days in the last 30, and one day more makes the average smaller, while the 30-day average in the month tab used the other window. Measured across 40 days with one entry each: 3.3 percent apart for the same amount. One place now supplies the boundary and everything uses it."
+  ]
+ },
+ {
   "v": "2.73.0",
   "d": "2026-09-02",
   "de": [
