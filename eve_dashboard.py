@@ -17,6 +17,7 @@ import os
 import re
 import shutil
 import socket
+import bisect
 import sqlite3
 import sys
 import threading
@@ -25,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.64.0"
+VERSION = "2.65.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -2267,6 +2268,13 @@ def abyss_bloecke_aufraeumen():
     Nur Eintraege OHNE eingetragenen Loot werden entfernt. Wer an so einem
     Block schon Beute hinterlegt hat, verliert sie sonst — dann bleibt er
     lieber stehen und faellt in der Liste als lange Dauer auf."""
+    # Wirklich einmalig. Frueher lief das bei jedem Start und brauchte bei
+    # 10.000 Missionen 27 Sekunden, waehrend das Dashboard leer dastand und
+    # noch kein Log gelesen wurde (Voll-Audit 02.09.2026). Neue Bloecke
+    # dieser Art koennen seit v2.5.1 gar nicht mehr entstehen, save_mission
+    # faengt sie beim Speichern ab.
+    if meta_get("abyss_bloecke_weg") == "1":
+        return 0
     weg = []
     try:
         with DB_LOCK:
@@ -2277,14 +2285,22 @@ def abyss_bloecke_aufraeumen():
         for r in rows:
             proChar.setdefault(str(r[1]), []).append(r)
         for cid, liste in proChar.items():
+            # Die Liste kommt nach Beginn sortiert aus der Datenbank. Damit
+            # laesst sich der Einstieg suchen, statt fuer jeden Eintrag die
+            # ganze Liste durchzugehen.
+            beginn = [(x[2] or 0) for x in liste]
             for mid, _c, a, b, dmg, loot_isk, loot_text, system, enemies_j in liste:
                 if not a or not b or b <= a or not dmg:
                     continue
                 if (loot_isk or 0) or (loot_text or "").strip():
                     continue
-                drin = [x for x in liste
-                        if x[0] != mid and x[2] and x[3]
-                        and x[2] >= a - 1 and x[3] <= b + 1]
+                drin = []
+                k = bisect.bisect_left(beginn, a - 1)
+                while k < len(liste) and beginn[k] <= b + 1:
+                    x = liste[k]
+                    k += 1
+                    if x[0] != mid and x[2] and x[3] and x[3] <= b + 1:
+                        drin.append(x)
                 if not drin:
                     continue
                 if abs(sum(x[4] or 0 for x in drin) - dmg) >= 1:
@@ -2305,6 +2321,10 @@ def abyss_bloecke_aufraeumen():
                 DB.commit()
             print(f"Aufgeraeumt: {len(weg)} Einsatz-Block(s) entfernt, die mehrere "
                   "Abyss-Durchgaenge umschlossen.", flush=True)
+        # Erst NACH dem Durchlauf merken. Bricht er mit einer Ausnahme ab,
+        # bleibt die Marke ungesetzt und der naechste Start versucht es
+        # erneut.
+        meta_set("abyss_bloecke_weg", "1")
     except Exception as e:
         log_error("CN-DB-01", "abyss_bloecke_aufraeumen", e)
     return len(weg)
@@ -6687,6 +6707,9 @@ class Esi(threading.Thread):
                     e["date"].replace("Z", "+00:00")).timestamp()
                 ctx = (e.get("context_id")
                        if e.get("context_id_type") == "system_id" else None)
+                # Der Missionen-Tab cacht seine Auswertung ueber dieses
+                # Journal. Jede neue Zeile macht den Cache ungueltig.
+                JOURNAL_STAND[0] += 1
                 DB.execute("INSERT OR IGNORE INTO journal VALUES(?,?,?,?,?,?,?)",
                            (e["id"], name, ts, e["ref_type"], e["amount"],
                             self.party_names.get(e.get("first_party_id"), ""), ctx))
@@ -12166,6 +12189,13 @@ def query_planeten():
             "total_rest_isk": total_rest_isk, "kosten": kosten, "products": products}
 
 
+# Zaehlt hoch, sobald eine Zeile ins Wallet-Journal geschrieben wird.
+# In einer Liste, damit ihn die Schreibstelle ohne global-Erklaerung erhoehen
+# kann. Der Missionen-Tab haengt seinen Cache daran.
+JOURNAL_STAND = [0]
+_MISSIONEN_CACHE = {}
+
+
 def query_missions(char=None):
     """Missions-Statistik aus dem Wallet-Journal: Tage, Quellen, Agenten, Chars.
     Bounties aus bekannten Mining-Systemen bleiben draussen (Belt-Ratten).
@@ -12181,6 +12211,21 @@ def query_missions(char=None):
         char = [char]
     mine_sys = CONFIG.get("mine_systems") or {}
     mine_ids = {i for i in mine_sys.values() if i}
+    # Gecacht, weil der Tab im 2-Sekunden-Takt fragt und diese Auswertung das
+    # GANZE Journal liest. Gemessen 1.406 ms bei 200.000 Zeilen, und der Abruf
+    # dauerte damit laenger als der Takt: die Anfragen stauten sich und der
+    # Log-Leser kam kaum noch an die Datenbank (Voll-Audit 02.09.2026).
+    #
+    # Der Schluessel enthaelt alles, was das Ergebnis beeinflusst: die
+    # Charakterauswahl, den Stand des Journals und die Mining-Systeme (sie
+    # filtern Guertel-Bounties heraus und sind in den Optionen aenderbar).
+    # Dazu der Kalendertag, damit "heute" um Mitternacht umspringt.
+    schluessel = (tuple(sorted(char)) if char else None, JOURNAL_STAND[0],
+                  tuple(sorted(mine_ids)),
+                  datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    fertig = _MISSIONEN_CACHE.get(schluessel)
+    if fertig is not None:
+        return fertig
     with DB_LOCK:
         rows = DB.execute(
             "SELECT char, ts, ref_type, amount, party, ctx FROM journal").fetchall()
@@ -12229,7 +12274,7 @@ def query_missions(char=None):
     jchars = list((CONFIG.get("esi") or {}).get("chars", {}).values())
     asofs = [c["journal_asof"] for c in jchars if c.get("journal_asof")]
     nexts = [c["journal_next"] for c in jchars if c.get("journal_next")]
-    return {
+    ergebnis = {
         "mine_systems": sorted(n for n, i in mine_sys.items() if i),
         "linked": bool((CONFIG.get("esi") or {}).get("chars")),
         "asof": int(min(asofs)) if asofs else None,
@@ -12245,6 +12290,11 @@ def query_missions(char=None):
                          key=lambda a: -a["isk"])[:10],
         "chars": sorted(({**c, "total": round(c["total"])} for c in chars.values()),
                         key=lambda c: -c["total"])}
+    # Nur den aktuellen Stand behalten: aeltere Schluessel koennen nicht mehr
+    # gefragt werden, sobald das Journal gewachsen ist oder der Tag wechselt.
+    _MISSIONEN_CACHE.clear()
+    _MISSIONEN_CACHE[schluessel] = ergebnis
+    return ergebnis
 
 
 def _csv_cell(s):
@@ -12399,8 +12449,20 @@ def abyss_gruppen(abyss_rows, i_start=0, i_ende=1, i_cid=2, i_sys=3):
                 and abs((a[i_start] or 0) - (b[i_start] or 0)) <= 90
                 and abs((a[i_ende] or 0) - (b[i_ende] or 0)) <= 90)
 
-    for i in range(len(abyss_rows)):
-        for j in range(i + 1, len(abyss_rows)):
+    # Nach Beginn sortiert durchlaufen und abbrechen, sobald der Abstand
+    # groesser als das Zeitfenster ist: weiter hinten wird er nur noch
+    # groesser. Ohne das war die Suche quadratisch und brauchte bei 6.000
+    # Durchgaengen acht Sekunden, im 2-Sekunden-Takt (Voll-Audit 02.09.2026).
+    # Die Zuordnungsregel selbst aendert sich dadurch NICHT.
+    reihe = sorted(range(len(abyss_rows)),
+                   key=lambda k: abyss_rows[k][i_start] or 0)
+    for a in range(len(reihe)):
+        i = reihe[a]
+        beginn = abyss_rows[i][i_start] or 0
+        for b in range(a + 1, len(reihe)):
+            j = reihe[b]
+            if (abyss_rows[j][i_start] or 0) - beginn > 90:
+                break
             if zusammen(abyss_rows[i], abyss_rows[j]):
                 wi, wj = wurzel(i), wurzel(j)
                 if wi != wj:

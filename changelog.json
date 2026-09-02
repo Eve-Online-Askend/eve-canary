@@ -1,5 +1,23 @@
 [
  {
+  "v": "2.65.0",
+  "d": "2026-09-02",
+  "de": [
+   "CANARY BLEIBT SCHNELL, AUCH NACH JAHREN. Drei Stellen wurden mit wachsendem Bestand immer langsamer, bis das Dashboard praktisch stand. Alle drei sind behoben, und alle drei liefern nachweislich GENAU DIESELBEN Zahlen wie vorher, nur eben zuegig.",
+   "Der Aufraeumlauf beim Start hiess in seinem eigenen Text 'einmalig', lief aber bei JEDEM Start und brauchte bei 10.000 Missionen 27 Sekunden, hochgerechnet vier Minuten bei 30.000. Er steht vor dem Start der Hintergrund-Arbeit: ein Vielflieger sah minutenlang ein leeres Dashboard, in dem kein Log eingelesen wurde. Das sah aus wie ein Absturz, war aber Aufraeumarbeit, die schon lange nichts mehr findet. Jetzt merkt sich Canary, dass er durch ist, und die Suche selbst ist von 27 Sekunden auf 30 Millisekunden gefallen.",
+   "Die Zuordnung 'wer flog zusammen' verglich jeden Durchgang mit jedem anderen. Bei 6.000 Laeufen waren das 7,4 Sekunden, und zwar im Zwei-Sekunden-Takt: wer im Abyss-Bereich auf 'alles' stellte, brachte das Dashboard zum Stehen. Jetzt werden nur noch die zeitlichen Nachbarn verglichen, was 539 mal schneller ist. Die Regel selbst ist unveraendert, geprueft an 300 Zufallsbestaenden und neun Randfaellen: kein einziges abweichendes Ergebnis.",
+   "Der Missionen-Tab las bei JEDEM Abruf das komplette Wallet-Journal, das bewusst unbegrenzt waechst. Bei 200.000 Zeilen dauerte ein Abruf 1,4 Sekunden, also laenger als der Takt selbst: die Anfragen stauten sich und der Log-Leser kam kaum noch an die Datenbank. Die Auswertung wird jetzt gemerkt und nur neu gerechnet, wenn wirklich neue Zeilen aus dem EVE-Login kommen, also hoechstens einmal pro Stunde. Eine Zeitgrenze waere der naheliegende Weg gewesen, haette aber die Charakter- und Agentensummen verkuerzt, die ueber die ganze Historie gehen. Deshalb dieser Weg: gleiche Zahlen, 0,09 statt 1.386 Millisekunden.",
+   "Dazu eine neue Pruefung, die beides festhaelt: dass es schnell bleibt UND dass dabei dasselbe herauskommt. Eine schnellere Rechnung, die etwas anderes liefert, waere kein Fortschritt."
+  ],
+  "en": [
+   "CANARY STAYS FAST, EVEN AFTER YEARS. Three places got slower as your data grew, until the dashboard practically stalled. All three are fixed, and all three demonstrably return EXACTLY THE SAME numbers as before, just quickly.",
+   "The cleanup at startup called itself 'one-off' in its own text but ran at EVERY start, taking 27 seconds at 10,000 runs and an extrapolated four minutes at 30,000. It sits before the background work starts: a heavy player saw an empty dashboard for minutes with no logs being read. It looked like a crash but was cleanup work that has found nothing for a long time. Canary now remembers it is done, and the search itself dropped from 27 seconds to 30 milliseconds.",
+   "The 'who flew together' matching compared every run with every other one. At 6,000 runs that was 7.4 seconds, on a two-second cycle: choosing 'all' in the abyss area brought the dashboard to a halt. Only neighbours in time are compared now, which is 539 times faster. The rule itself is unchanged, verified against 300 random sets and nine edge cases: not a single differing result.",
+   "The missions tab read the entire wallet journal on EVERY request, and that journal grows without limit by design. At 200,000 rows a request took 1.4 seconds, longer than the cycle itself: requests piled up and the log reader barely got to the database. The analysis is remembered now and only recalculated when new rows actually arrive from the EVE login, so at most once an hour. A time limit would have been the obvious route but would have truncated the character and agent totals, which span your whole history. Hence this route: same numbers, 0.09 instead of 1,386 milliseconds.",
+   "Plus a new check that pins down both: that it stays fast AND that the result is the same. A faster calculation that returns something different would be no progress."
+  ]
+ },
+ {
   "v": "2.64.0",
   "d": "2026-09-02",
   "de": [
