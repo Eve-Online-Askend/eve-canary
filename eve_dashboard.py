@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.67.0"
+VERSION = "2.68.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -390,6 +390,22 @@ ABYSS_ORT = "Abyssal Deadspace"
 _SYS_NAMES = None
 
 
+# Systeme, die es wirklich gibt, aber nicht in der mitgelieferten Karte
+# stehen. Die Karte kommt aus dem SDE und enthaelt nur K-Space; Wurmloecher
+# sind ueber ihr Namensmuster J###### abgedeckt. Thera ist die eine Ausnahme:
+# ein Wurmloch-System mit einem richtigen Namen. Ohne diesen Eintrag hielt
+# Canary jeden Aufenthalt dort fuer einen Abyss-Durchgang, samt mitlaufender
+# 20-Minuten-Uhr (Voll-Audit 02.09.2026).
+#
+# Kommt einmal ein weiteres dazu, meldet die Diagnose es: setz_ort merkt sich
+# jeden Namen, den es weder in der Karte noch hier findet.
+EXTRA_SYSTEME = {"Thera"}
+# Local-Namen, die weder in der Karte noch in EXTRA_SYSTEME stehen. Rein zur
+# Diagnose, damit ein kuenftiges neues System auffaellt statt still als Abyss
+# durchzugehen.
+UNBEKANNTE_ORTE = {}
+
+
 def sys_names():
     """Alle Systemnamen der mitgelieferten Karte, einmal geladen.
 
@@ -401,8 +417,14 @@ def sys_names():
     global _SYS_NAMES
     if _SYS_NAMES is None:
         m = load_json("eve_map.json", None) or {}
-        _SYS_NAMES = {v[0] for v in (m.get("systems") or {}).values()
-                      if isinstance(v, list) and v}
+        namen = {v[0] for v in (m.get("systems") or {}).values()
+                 if isinstance(v, list) and v}
+        # Eine leere Karte NICHT merken: die Datei wird beim ersten Start im
+        # Hintergrund nachgeladen, und bis dahin waere sonst jedes System der
+        # Abyss. Lieber beim naechsten Aufruf erneut versuchen.
+        if not namen:
+            return set()
+        _SYS_NAMES = namen | EXTRA_SYSTEME
     return _SYS_NAMES
 # Alle handelbaren Item-Namen -> typeID, fuer die Autovervollstaendigung der
 # Marktpreis-Suche. Liegt als Datei bei; der Server haelt sie im Speicher und
@@ -3417,6 +3439,12 @@ class CharSession:
         # Fernunterstuetzung: was ich gegeben und was ich bekommen habe, je Art
         # (cap/armor/shield/hull), dazu die Partner. Ein Logi-Pilot teilt keinen
         # Schaden aus und bekommt keine Bounty, seine ganze Leistung steckt hier.
+        # Uebertrag aus einem zurueckgeholten Einsatz. Die Datenbank kennt
+        # die Fernunterstuetzung nur als Summe, nicht je Art; damit die
+        # Live-Anzeige je Art sauber bleibt, wandert die alte Summe hierhin
+        # statt als erfundene Art in das Woerterbuch.
+        self.logi_uebertrag_out = 0.0
+        self.logi_uebertrag_in = 0.0
         self.logi_out = {}      # Art -> Menge gegeben
         self.logi_in = {}       # Art -> Menge bekommen
         self.logi_partner = {}  # Pilot -> {"out": Menge, "in": Menge, "ship": Typ}
@@ -3638,22 +3666,14 @@ class CharSession:
                 self.ore_amounts = {}
                 self.compressed = {}
                 self.fleet_compress = {}
-                self.weapons = {}
-                self.targets = {}
-                self.gegner_erst = {}
-                self.schnitte = []
-                self.letzter_out_ts = None
-                self.kristalle = {}
-                self.kristall_ts = None
-                self.attackers = {}
-                self.bounty = 0
-                self.kills = 0
-                self.dmg_out = self.dmg_in = 0
-                self.pvp_out = self.pvp_in = 0
-                self.hits_out = self.miss_out = self.miss_in = 0
-                self.ewar = {}
-                self.logi_out = {}
-                self.logi_in = {}
+                # Kampfzaehler ueber reset_combat, nicht von Hand. Hier
+                # stand frueher eine zweite, handgepflegte Liste derselben
+                # Sache, und die hatte die Abyss-Behaelter vergessen: wer aus
+                # dem Perimeter heraus andockte, speicherte denselben
+                # Behaelter ein zweites Mal, und der naechste gewoehnliche
+                # Einsatz bekam faelschlich einen Cache-Typ verpasst.
+                # Beim Voll-Audit am 02.09.2026 gefunden.
+                self.reset_combat(ev["ts"])
                 self.logi_partner = {}
                 self.logi_unklar = 0
                 self.logi_last = 0
@@ -4036,6 +4056,19 @@ class CharSession:
         self.caches = m.get("caches") or 0
         self.cache_typen = ({m["cache_typ"]: 1} if m.get("cache_typ") else {})
         self.cache_ts = None
+        # EWAR und Fernunterstuetzung gehoerten frueher zu dem, was beim
+        # Zuruecknehmen verlorenging: reset_combat nullte sie, hier wurden sie
+        # nicht zurueckgeholt, und der geloeschte Datenbankeintrag war die
+        # einzige Stelle, an der sie noch standen. Genau der Logi- und der
+        # EWAR-Pilot verloren damit ihre Leistung, sobald sie einmal zum
+        # Reparieren andockten (Voll-Audit 02.09.2026).
+        #
+        # EWAR steht je Art da und laesst sich exakt zurueckholen. Die
+        # Fernunterstuetzung kennt die Datenbank nur als Summe, die geht in
+        # den Uebertrag.
+        self.ewar = dict(m.get("ewar") or [])
+        self.logi_uebertrag_out = float(m.get("logi_out") or 0)
+        self.logi_uebertrag_in = float(m.get("logi_in") or 0)
         self.mission_system = m.get("system") or self.mission_system
         self.first_ts = m.get("start_ts") or self.first_ts
         self.dock_ts = None
@@ -4071,6 +4104,8 @@ class CharSession:
         self.ewar = {}
         self.logi_out = {}
         self.logi_in = {}
+        self.logi_uebertrag_out = 0.0
+        self.logi_uebertrag_in = 0.0
         self.mission_system = None
         self.first_ts = ts if ts is not None else time.time()
 
@@ -4082,7 +4117,8 @@ class CharSession:
         # trotzdem stundenlange Arbeit. Seit v1.71 hat die Tabelle Spalten
         # dafuer, vorher waere der Datensatz leer gewesen.
         if not (self.bounty or self.kills or self.dmg_out
-                or self.logi_out or self.logi_in):
+                or self.logi_out or self.logi_in
+                or self.logi_uebertrag_out or self.logi_uebertrag_in):
             return None
         gegner = sorted(self.targets.items(), key=lambda x: -x[1])[:30]
         namen = {g[0] for g in gegner}
@@ -4110,8 +4146,8 @@ class CharSession:
                                          if k in namen},
                                 "schnitte": [round(x) for x in self.schnitte]},
                 "ewar": sorted(self.ewar.items(), key=lambda x: -x[1]),
-                "logi_out": sum(self.logi_out.values()),
-                "logi_in": sum(self.logi_in.values()),
+                "logi_out": sum(self.logi_out.values()) + self.logi_uebertrag_out,
+                "logi_in": sum(self.logi_in.values()) + self.logi_uebertrag_in,
                 "caches": self.caches,
                 "cache_typ": (sorted(self.cache_typen,
                                      key=lambda k: -self.cache_typen[k])[0]
@@ -4843,7 +4879,14 @@ class ChatWatch(threading.Thread):
         nm = (roh or "").strip().rstrip("*").strip()
         if not nm:
             return
-        if nm in sys_names() or WH_SYS_RE.match(nm):
+        bekannt = sys_names()
+        if not bekannt:
+            # Die Karte ist noch nicht da (frische Installation, sie wird im
+            # Hintergrund nachgeladen). Ohne sie ist die Gegenprobe wertlos,
+            # und "jedes System ist der Abyss" waere die schlechteste aller
+            # Antworten. Also lieber gar nichts behaupten.
+            return
+        if nm in bekannt or WH_SYS_RE.match(nm):
             self.systems[cid] = nm
             # Rueckkehr aus dem Abyss: das ist das Ende des Durchgangs. Der Lauf
             # wird hier NICHT selbst abgeschlossen, sondern nur vorgemerkt. Grund
@@ -4887,9 +4930,26 @@ class ChatWatch(threading.Thread):
                         # Drei Tage reichen: so weit liest backfill zurueck.
                         grenze = time.time() - 3 * 86400
                         self.abyss_zeiten[cid] = [x for x in liste if x[1] >= grenze][-200:]
-                    if not self.im_backfill:
+                    # Nur melden, wenn der Ausstieg WIRKLICH gerade
+                    # passiert ist. "im_backfill" allein genuegte nicht: es
+                    # ist nur beim einmaligen Nachlesen zum Programmstart
+                    # gesetzt. Wird der Log-Ordner zur Laufzeit umgestellt
+                    # oder ist die neueste Local-Datei aelter als das
+                    # Nachlese-Fenster, las der Chat-Leser sie live und meldete
+                    # jeden Ausstieg darin als frisch. Der Log-Leser schloss
+                    # daraufhin den gerade laufenden Kampf als Abyss-Durchgang
+                    # ab, mit einem Zeitstempel von vor Tagen: so entstanden
+                    # bei Nirahse die Eintraege mit -82 und -107 Minuten.
+                    # Die Zeitspanne selbst wird oben trotzdem gemerkt, sie ist
+                    # die Wahrheit darueber, wann jemand im Abyss war.
+                    if not self.im_backfill and time.time() - raus <= self.ABYSS_FRISCH_S:
                         self.abyss_ende.append((cid, raus, eintritt))
             return
+        # Merken, welcher Name das war. Der Abyss-Platzhalter ist immer
+        # derselbe; taucht hier etwas anderes auf, hat CCP ein System
+        # hinzugefuegt, das die Karte noch nicht kennt. Ohne diese Notiz
+        # faellt so etwas nie auf, es sieht einfach nach einem Abyss aus.
+        UNBEKANNTE_ORTE[nm] = UNBEKANNTE_ORTE.get(nm, 0) + 1
         self.systems[cid] = ABYSS_ORT
         if cid not in self.abyss_seit:
             m = CHAT_TS_RE.match(line or "")
@@ -4901,6 +4961,12 @@ class ChatWatch(threading.Thread):
                     self.abyss_seit[cid] = time.time()
             else:
                 self.abyss_seit[cid] = time.time()
+
+    # Wie frisch muss ein Abyss-Ausstieg sein, damit er den laufenden Kampf
+    # abschliessen darf? Grosszuegig gewaehlt: ein Takt des Chat-Lesers dauert
+    # Sekunden, und auch ein kurz haengender Rechner soll die Rueckkehr noch
+    # verbuchen. Alles darueber ist mit Sicherheit eine alte Zeile.
+    ABYSS_FRISCH_S = 15 * 60
 
     # Harte Zeitgrenze im Abyss. Wer sie reisst, verliert das Schiff.
     ABYSS_LIMIT_MIN = 20
@@ -4928,6 +4994,26 @@ class ChatWatch(threading.Thread):
             items = list(self.npc.get(cid, ()))   # unter Lock kopieren, dann filtern
         return [txt for ts, txt in items
                 if ts >= (t0 or 0) and (t1 is None or ts <= t1)]
+
+    def neu_beginnen(self):
+        """Alles vergessen und den neuen Ordner einmal nachlesen.
+
+        Wird gebraucht, wenn der Nutzer den Log-Ordner zur Laufzeit umstellt:
+        Offsets, Orte und laufende Abyss-Uhren gehoeren zum alten Ordner. Das
+        Nachlesen laeuft mit gesetztem im_backfill, damit dabei kein einziger
+        Abyss-Abschluss gemeldet wird."""
+        with self.lock:
+            self.npc.clear()
+        self.offsets.clear()
+        self.systems.clear()
+        self.abyss_seit.clear()
+        self.abyss_ende.clear()
+        self.abyss_zeiten.clear()
+        self.speakers.clear()
+        try:
+            self.backfill()
+        except Exception as e:
+            log_error("CN-CHAT-01", "neu_beginnen", e)
 
     def chat_dir(self):
         if not CONFIG["log_dir"]:
@@ -5027,8 +5113,25 @@ class ChatWatch(threading.Thread):
                 # fertig geschriebenen Block mit ungerader Länge, nur die geraden
                 # Bytes konsumieren; das letzte Byte bleibt für den nächsten Tick.
                 usable = len(data) & ~1
-                self.offsets[f] = off + usable
-                for line in data[:usable].decode("utf-16-le", "replace").splitlines():
+                # NUR vollstaendige Zeilen verarbeiten. Der Log-Leser
+                # macht das seit jeher (er schneidet an der letzten
+                # Zeilenschaltung), der Chat-Leser schnitt bisher nur
+                # auf eine gerade Byte-Zahl. Eine halb geschriebene
+                # Local-Zeile ergab dadurch einen abgeschnittenen
+                # Systemnamen, und der steht in keiner Karte: Canary
+                # meldete einen Abyss-Eintritt, der nie stattfand, und
+                # schrieb den laufenden Kampf als Durchgang weg.
+                # Beim Voll-Audit am 02.09.2026 gefunden.
+                text = data[:usable].decode("utf-16-le", "replace")
+                schnitt = text.rfind("\n")
+                if schnitt < 0:
+                    continue          # noch keine ganze Zeile da
+                text = text[:schnitt + 1]
+                # Der Offset darf nur um die BYTES der fertigen Zeilen
+                # wachsen, sonst geht der Rest verloren. UTF-16-LE:
+                # zwei Bytes je Zeichen.
+                self.offsets[f] = off + len(text) * 2
+                for line in text.splitlines():
                     line = line.strip().lstrip("﻿").strip()
                     cm = CHAT_LINE_RE.match(line)
                     if not cm:
@@ -9235,6 +9338,14 @@ def diagnose_text():
         L.append(f"\nUnerkannte Meldungen ({len(UNKNOWN_NOTIFY)}, fuer Sprachunterstuetzung):")
         for t in list(UNKNOWN_NOTIFY)[-30:]:
             L.append(f"  · {t}")
+    # Local-Namen, die die Karte nicht kennt. Der Abyss-Platzhalter
+    # gehoert dazu und ist normal; steht dort etwas anderes, fehlt ein
+    # System in der Karte und wird faelschlich als Abyss gezaehlt.
+    fremd = sorted(UNBEKANNTE_ORTE.items(), key=lambda x: -x[1])[:8]
+    if fremd:
+        L.append("\nUnbekannte Local-Namen (als Abyss gezaehlt):")
+        for n, k in fremd:
+            L.append(f"  {n!r} x{k}")
     if not ERRORS:
         L.append("\nFehler   : keine")
     else:
@@ -13565,6 +13676,11 @@ class Handler(BaseHTTPRequestHandler):
             with ingest.lock:
                 ingest.filecache.clear()
                 ingest.last_scan = 0     # sofort neu einlesen statt aufs Intervall warten
+            # Der Chat-Leser haengt am selben Ordner (Chatlogs liegt daneben)
+            # und muss genauso von vorn anfangen. Ohne das las er die neueste
+            # Local-Datei des NEUEN Ordners ab Anfang und meldete jeden
+            # Abyss-Ausstieg darin als frisch.
+            chatwatch.neu_beginnen()
             save_config()
             self._send(json.dumps({"ok": True,
                                    "msg": f"{len(hits)} Gamelogs gefunden. Wird eingelesen …",
@@ -13618,7 +13734,10 @@ class Handler(BaseHTTPRequestHandler):
                 row = DB.execute(
                     "SELECT char_id,char,start_ts,system,dmg_out,dmg_in,kills,bounty,"
                     "hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,"
-                    "gegner_erst,salvage_isk,salvage_text,label,caches,cache_typ "
+                    "gegner_erst,salvage_isk,salvage_text,label,caches,cache_typ,"
+                    # EWAR und Fernunterstuetzung muessen mit zurueck, sonst
+                    # verliert der Logi- und der EWAR-Pilot seine Leistung.
+                    "ewar,logi_out,logi_in "
                     "FROM missions WHERE mid=?", (mid,)).fetchone()
             if not row:
                 self._send(json.dumps({"ok": False, "error": "Eintrag nicht gefunden"}))
@@ -13629,7 +13748,9 @@ class Handler(BaseHTTPRequestHandler):
                  "weapons": json.loads(row[11] or "[]"),
                  "enemies": json.loads(row[12] or "[]"),
                  "gegner_erst": json.loads(row[15] or "{}"),
-                 "caches": row[19], "cache_typ": row[20]}
+                 "caches": row[19], "cache_typ": row[20],
+                 "ewar": json.loads(row[21] or "[]"),
+                 "logi_out": row[22], "logi_in": row[23]}
             with ingest.lock:
                 s = ingest.sessions.get(str(row[0]))
                 if s:

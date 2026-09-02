@@ -1,5 +1,27 @@
 [
  {
+  "v": "2.68.0",
+  "d": "2026-09-02",
+  "de": [
+   "VIER FALSCHE ABYSS-MELDUNGEN, ALLE BEHOBEN. Canary erkennt den Abyss daran, dass der Local-Kanal dort keinen Systemnamen hat: steht der Name nicht in der mitgelieferten Sternenkarte, ist es der Abyss. Guter Gedanke, aber er hatte Luecken, und jede davon schrieb einen erfundenen Durchgang in deine Statistik.",
+   "THERA GALT ALS ABYSS. Es ist das einzige Wurmloch-System mit einem richtigen Namen statt J######, und es steht nicht in der Karte. Wer dorthin flog, stand in 'Abyssal Deadspace', bekam eine mitlaufende 20-Minuten-Uhr, und beim Verlassen wurde der laufende Kampf als Abyss-Durchgang weggeschrieben. Thera ist jetzt bekannt. Und falls CCP kuenftig ein System hinzufuegt, das die Karte noch nicht kennt, steht sein Name ab sofort in der Diagnose, statt still als Abyss durchzugehen.",
+   "EINE HALB GESCHRIEBENE CHATZEILE ERFAND EINEN ABYSS. Der Log-Leser schneidet seinen Puffer seit jeher an der letzten Zeilenschaltung ab, damit eine angefangene Zeile beim naechsten Takt vollstaendig ankommt. Der Chat-Leser tat das nicht. Erwischte er eine Zeile mitten im Wort, wurde aus 'Amarr' ein 'Ama', und das steht in keiner Karte. Jetzt schneiden beide gleich.",
+   "EIN ORDNERWECHSEL LAS ALTE CHATLOGS ALS LIVE. Wer den Log-Ordner in den Optionen umstellt, setzte damit nur den Log-Leser zurueck. Der Chat-Leser las die neueste Datei des neuen Ordners von vorn und meldete jeden Abyss-Ausstieg darin als frisch, worauf der laufende Kampf mit einem Zeitstempel von vor Tagen abgeschlossen wurde. Er faengt jetzt richtig von vorn an. Zusaetzlich als Netz darunter: ein Ausstieg, der nicht gerade eben passiert ist, schliesst nie mehr einen laufenden Kampf ab.",
+   "BEHAELTER WURDEN DOPPELT GEZAEHLT. Beim Abdocken setzte Canary alle Kampfzaehler von Hand zurueck und hatte dabei die Abyss-Behaelter vergessen. Wer aus dem Stationsumfeld heraus andockte, speicherte denselben Behaelter ein zweites Mal, und der naechste ganz gewoehnliche Einsatz bekam faelschlich eine Behaeltersorte verpasst. Statt einer zweiten handgepflegten Liste benutzt das Abdocken jetzt dieselbe Funktion wie alle anderen Wege.",
+   "EWAR UND FERNUNTERSTUETZUNG UEBERLEBEN DEN ZWISCHENSTOPP. Wer zum Reparieren andockt und danach weiterkaempft, holt seinen Einsatz zurueck in die laufende Sitzung. Dabei kamen Schaden, Abschuesse, Waffen und Gegner zurueck, aber EWAR und Fernunterstuetzung nicht. Genau der Logi- und der EWAR-Pilot, fuer die es diese Spalten ueberhaupt gibt, verloren damit ihre Leistung. Jetzt kommt beides mit.",
+   "Dazu drei neue Pruefungen. Eine davon liest die Liste der zurueckzusetzenden Felder per Codeanalyse aus dem Programm selbst: kommt kuenftig eines dazu und ein Weg vergisst es, faellt das sofort auf statt erst in der Statistik."
+  ],
+  "en": [
+   "FOUR FALSE ABYSS REPORTS, ALL FIXED. Canary detects the abyss by the fact that the local channel there carries no system name: if the name is not in the bundled star map, it is the abyss. A good idea, but it had gaps, and each of them wrote an invented run into your statistics.",
+   "THERA COUNTED AS ABYSS. It is the only wormhole system with a real name instead of J######, and it is not in the map. Flying there put you in 'Abyssal Deadspace' with a running 20-minute clock, and leaving wrote your ongoing fight away as an abyssal run. Thera is known now. And should CCP add a system the map does not yet know, its name goes into the diagnosis from now on instead of quietly passing as the abyss.",
+   "A HALF-WRITTEN CHAT LINE INVENTED AN ABYSS. The log reader has always cut its buffer at the last line break so an unfinished line arrives complete on the next pass. The chat reader did not. Catching a line mid-word turned 'Amarr' into 'Ama', and that is in no map. Both cut the same way now.",
+   "CHANGING THE FOLDER READ OLD CHAT LOGS AS LIVE. Changing the log folder in the options only reset the log reader. The chat reader read the newest file of the new folder from the start and reported every abyssal exit in it as fresh, which closed the ongoing fight with a timestamp days old. It now properly starts over. Plus a safety net underneath: an exit that did not just happen never closes an ongoing fight again.",
+   "CACHES WERE COUNTED TWICE. On undocking, Canary reset all combat counters by hand and had forgotten the abyssal caches. Docking from the station perimeter saved the same cache a second time, and the next perfectly ordinary run was falsely given a cache type. Instead of a second hand-maintained list, undocking now uses the same function as every other path.",
+   "EWAR AND REMOTE ASSISTANCE SURVIVE A PIT STOP. Docking to repair and then fighting on pulls your run back into the running session. Damage, kills, weapons and enemies came back, but EWAR and remote assistance did not. Exactly the logi and EWAR pilot these columns exist for lost their work. Both come back now.",
+   "Plus three new checks. One of them reads the list of fields to be reset out of the program itself by code analysis: if one is added in future and a path forgets it, that shows up at once instead of later in your statistics."
+  ]
+ },
+ {
   "v": "2.67.0",
   "d": "2026-09-02",
   "de": [
