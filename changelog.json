@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.66.0",
+  "d": "2026-09-02",
+  "de": [
+   "BITTE VERBINDE DEINE CHARAKTERE EINMAL NEU. Diese Fassung fragt EVE nach einer zusaetzlichen Berechtigung, und bestehende Anmeldungen tragen sie nicht. Damit das niemand uebersieht, steht jetzt oben auf der Seite ein Hinweis, der genau sagt welche Charaktere betroffen sind und was fehlt. Er verschwindet von selbst, sobald alle wieder vollstaendig verbunden sind, und laesst sich mit 'Verstanden' wegklicken. Kommt spaeter eine WEITERE Berechtigung dazu, meldet er sich trotzdem erneut: ein einmal weggeklickter Hinweis darf nicht jede kuenftige Aenderung mitverschlucken.",
+   "STRUKTURNAMEN STATT NUMMERN. Wer sein Erz in einer Athanor, Tatara, Raitaru oder Citadel lagert, sah in der Erz-Schatzkammer und im Wallet Buddy dauerhaft nur 'Struktur #1035…'. Der Grund war schlicht: der noetige Zugriff wurde nie angefordert, ESI antwortete mit einem Fehler, und der wurde stillschweigend geschluckt. Genau diese Berechtigung kommt jetzt dazu.",
+   "DIE AGENTEN-TABELLE FUELLT SICH ENDLICH. Sie war seit jeher leer, und zwar wegen eines Tippfehlers im Code: die Funktion, die Agentennamen aufloest, wurde unter einem Namen gerufen, den es an dieser Stelle gar nicht gibt. Der Fehler landete in einem stillen Auffangnetz. Ab jetzt stehen die Namen wieder dabei. Rueckwirkend geht es nicht, die alten Buchungen sind ohne Namen gespeichert.",
+   "BERGUNG ZAEHLT UEBERALL GLEICH. Seit die Bergung eine eigene Spalte hat, rechneten drei Auswertungen sie mit und zwei nicht. Der Gesamtwert einer Mission in der Liste liess sie weg, die Tagessumme darueber nahm sie mit: die Summe der Zeilen passte nicht zu der Zahl ueber ihnen, und nirgends stand warum. Jetzt zaehlt sie ueberall. Im Abyss gibt es keine Bergung, dort aendert sich nichts, ausser fuer den, der vor v2.63.0 versehentlich etwas eingetragen hat: dessen ISK gehen nicht verloren."
+  ],
+  "en": [
+   "PLEASE RECONNECT YOUR CHARACTERS ONCE. This version asks EVE for one more permission, and existing logins do not carry it. So nobody misses it, a notice now sits at the top of the page naming exactly which characters are affected and what is missing. It disappears by itself once everyone is fully connected again, and can be dismissed with 'Got it'. If a FURTHER permission is added later it speaks up again anyway: a dismissed notice must not swallow every future change.",
+   "STRUCTURE NAMES INSTEAD OF NUMBERS. Anyone storing ore in an Athanor, Tatara, Raitaru or Citadel saw a permanent 'Structure #1035…' in the ore vault and in Wallet Buddy. The reason was simple: the required access was never requested, ESI answered with an error, and that error was swallowed silently. That permission is now included.",
+   "THE AGENT TABLE FINALLY FILLS UP. It had always been empty because of a typo in the code: the function that resolves agent names was called under a name that does not exist at that spot. The error landed in a silent safety net. The names are back from now on. It cannot be applied retroactively, older entries are stored without a name.",
+   "SALVAGE COUNTS THE SAME EVERYWHERE. Since salvage got its own column, three analyses counted it and two did not. A mission's total in the list left it out while the daily total above included it: the sum of the rows did not match the number above them, and nowhere did it say why. It counts everywhere now. There is no salvage in the abyss so nothing changes there, except for anyone who entered some before v2.63.0 by mistake: that ISK is not lost."
+  ]
+ },
+ {
   "v": "2.65.0",
   "d": "2026-09-02",
   "de": [

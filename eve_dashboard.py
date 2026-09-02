@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.65.0"
+VERSION = "2.66.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -5648,7 +5648,12 @@ ESI_SCOPES = ("esi-assets.read_assets.v1 esi-location.read_ship_type.v1 "
               "esi-ui.open_window.v1 esi-skills.read_skills.v1 "
               "esi-industry.read_character_mining.v1 esi-planets.manage_planets.v1 "
               "esi-markets.read_character_orders.v1 "
-              "esi-industry.read_character_jobs.v1")
+              "esi-industry.read_character_jobs.v1 "
+              # Namen von Spieler-Strukturen (Athanor, Tatara, Raitaru,
+              # Citadel). Ohne diesen Scope antwortet ESI mit 403 und der
+              # Lagerort heisst dauerhaft "Struktur #1035…". Fehlte bis
+              # v2.65.0, beim Voll-Audit gefunden.
+              "esi-universe.read_structures.v1")
 # Wie lange ein begonnener SSO-Login einloesbar bleibt. Danach ist der state
 # wertlos und der Eintrag wird beim naechsten Login-Versuch weggeraeumt.
 SSO_PENDING_TTL = 600
@@ -5904,6 +5909,35 @@ class Esi(threading.Thread):
             return set(scp) if isinstance(scp, list) else set((scp or "").split())
         except Exception:
             return set()
+
+    def namen_holen(self, ids):
+        """{id: Name} fuer Charaktere, Corporations und Allianzen.
+
+        Hier stand frueher self._names(...), eine Methode, die es in dieser
+        Klasse nie gab (sie gehoert zu ThreatIntel). Der AttributeError lief
+        in ein except Exception: pass, und deshalb blieb die Agenten-Tabelle
+        im Missions-Tab seit jeher leer. Beim Voll-Audit am 02.09.2026 mit
+        einer AST-Messung gefunden.
+
+        Der Endpunkt braucht keinen Token und nimmt bis zu 1.000 IDs auf
+        einmal."""
+        out = {}
+        ids = [int(i) for i in ids if i]
+        for i in range(0, len(ids), 500):
+            teil = ids[i:i + 500]
+            try:
+                req = urllib.request.Request(
+                    ESI_BASE + "/universe/names/",
+                    data=json.dumps(teil).encode(),
+                    headers={"Content-Type": "application/json",
+                             "User-Agent": ESI_UA})
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    for e in json.loads(r.read()):
+                        if e.get("id") and e.get("name"):
+                            out[e["id"]] = e["name"]
+            except Exception as e:
+                log_error("CN-ESI-01", "namen_holen", e)
+        return out
 
     def char_health(self, name, c):
         """ESI-Gesundheit eines Chars: verbunden UND alle Scopes erteilt -> ok.
@@ -6698,7 +6732,7 @@ class Esi(threading.Thread):
                if str(e.get("ref_type", "")).startswith("agent_")}
         ids -= set(self.party_names)
         try:
-            self.party_names.update(self._names(list(ids)))
+            self.party_names.update(self.namen_holen(list(ids)))
         except Exception:
             pass
         with DB_LOCK:
@@ -10687,7 +10721,11 @@ def query_mission_history(limit=40, nur_mids=None):
             # Export, es kann also nicht auseinanderlaufen.
             "tier_name": abyss_tier_aus_name(label),
             "wetter": abyss_wetter_aus_name(label),
-            "total": round((bounty or 0) + (loot or 0) + (vreward or 0) + (vbonus or 0))})
+            # Bergung gehoert dazu. Fehlte sie hier, war die Tagessumme
+            # ueber der Liste hoeher als die Summe der Zeilen darunter, ohne
+            # dass irgendwo stand warum (Voll-Audit 02.09.2026).
+            "total": round((bounty or 0) + (loot or 0) + (salv_isk or 0)
+                           + (vreward or 0) + (vbonus or 0))})
     # Multiboxing: zwei Charaktere gleichzeitig im Abyss erzeugen je einen
     # Eintrag. Das ist richtig so, jeder hat seinen eigenen Schaden und sein
     # eigenes Log. In der Liste sah es trotzdem nach einer Dublette aus, weil
@@ -12591,7 +12629,9 @@ def query_abyss_ertrag(chars=None, tage=30):
     with DB_LOCK:
         rows = DB.execute(
             "SELECT start_ts,end_ts,char_id,system,label,loot_isk,enemies,char,"
-            "ship,ship_group FROM missions ORDER BY start_ts").fetchall()
+            # salvage_isk steht HINTEN, damit sich die Nummern der schon
+            # benutzten Spalten nicht verschieben.
+            "ship,ship_group,salvage_isk FROM missions ORDER BY start_ts").fetchall()
     seit = (time.time() - tage * 86400) if tage else 0
     ab = []
     for r in rows:
@@ -12614,7 +12654,12 @@ def query_abyss_ertrag(chars=None, tage=30):
     ges_runs = ges_schiffe = 0
     for idx in gruppen:
         teile = [ab[i] for i in idx]
-        loot = sum(float(t[0][5] or 0) for t in teile)
+        # Loot plus Bergung, damit dieselbe Zahl herauskommt wie in der
+        # Lauf-Liste (query_abyss rechnet seit jeher beides zusammen). Im
+        # Abyss gibt es keinen Salvage und die Spalte ist praktisch immer
+        # leer; sie wird nur mitgenommen, damit niemand verliert, was er vor
+        # v2.63.0 dort eingetragen hat.
+        loot = sum(float(t[0][5] or 0) + float(t[0][10] or 0) for t in teile)
         start = min(t[0][0] for t in teile if t[0][0])
         ende = max((t[0][1] or 0) for t in teile)
         minuten = max(0.0, (ende - start) / 60.0) if ende and start else 0.0
@@ -14289,6 +14334,18 @@ tr.lvl-yellow td{background:rgba(228,179,76,.07)}
 .jobico{width:32px;height:32px;flex:0 0 32px;border-radius:4px;
  background:var(--inset);border:1px solid var(--line);object-fit:contain}
 .jobprod{display:flex;align-items:center;gap:9px}
+/* Hinweis, dass Charaktere neu verbunden werden muessen. Steht ueber allem
+   anderen, weil die betroffenen Ansichten sonst nur stillschweigend weniger
+   zeigen. Kein Rot: das hier ist kein Fehler, sondern eine Bitte. */
+#esihinweis:empty{display:none}
+.esibox{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;
+ background:var(--inset);border:1px solid var(--gold);border-left:4px solid var(--gold);
+ border-radius:4px;padding:12px 15px;margin:0 0 10px}
+.esibox .txt{flex:1 1 320px;min-width:0;font-size:13px;line-height:1.5}
+.esibox b{color:var(--gold)}
+.esibox .wer{color:var(--dim);font-size:12px;margin-top:3px}
+.esibox .knoepfe{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
 /* Gegenstands-Symbol in den Beute-Listen. 22px passt zur Zeilenhoehe, ohne
    sie zu strecken. Feste Groesse, sonst springt die Zeile beim Nachladen.
    Schlaegt das Bild fehl, wird es UNSICHTBAR statt entfernt: sonst ruecken
@@ -15167,6 +15224,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  <span data-v="rechner">💰 ISKray</span>
  <span data-v="jobs">💼 Jobs</span>
 </nav>
+<div id="esihinweis"></div>
 <div id="viewinfo"></div>
 <div id="kopfHinweis" hidden>💡 <b>Neue Anordnung:</b> <span>Die Live-Steuerung steht jetzt direkt über den Karten, die Werkzeuge (Overlay, OBS, Stoppuhr, EVE-Einstellungen) stecken im Menü 🧰 oben rechts, der Handelsplatz ist ein Auswahlfeld, und die Sprache liegt als Flaggen ganz rechts außen.</span>
  <span class="pill" id="hinweisZu" style="margin-left:auto">Nicht mehr anzeigen</span></div>
@@ -15453,6 +15511,40 @@ const ESI_WAS={
 // Markierung an den Tabs auffrischen. Drei Zustaende: gebraucht und verbunden,
 // gebraucht und NICHT verbunden, gebraucht aber ein Char muss neu verbunden
 // werden (fehlender Scope, z.B. nach dem Industrie-Update).
+// Wer von den verbundenen Charakteren vermisst Berechtigungen? Die Antwort
+// steht schon in state.esi.chars (Feld "missing" je Charakter), sie wurde nur
+// nirgends im Grossen angezeigt.
+function esiHinweis(){
+ const kasten=$('#esihinweis');
+ if(!kasten)return;
+ const chars=((state&&state.esi&&state.esi.chars)||[]);
+ const verbunden=chars.filter(c=>c.status==='verbunden');
+ const fehlt=verbunden.filter(c=>(c.missing||[]).length);
+ if(!fehlt.length){kasten.innerHTML='';return;}
+ // Der Schluessel merkt sich, WELCHE Berechtigungen fehlten. Kommt spaeter
+ // eine weitere dazu, erscheint der Hinweis wieder.
+ const alle=[...new Set(fehlt.flatMap(c=>c.missing||[]))].sort();
+ const schluessel='esiHinweisWeg:'+alle.join(',');
+ if(localStorage.getItem(schluessel)==='1'){kasten.innerHTML='';return;}
+ const en=lang==='en';
+ const namen=fehlt.map(c=>c.name).join(', ');
+ kasten.innerHTML=`<div class="esibox">
+  <div class="txt">
+   <b>${en?'Please reconnect your characters once'
+          :'Bitte verbinde deine Charaktere einmal neu'}</b><br>
+   ${en
+    ? `This version asks EVE for one more permission (<code>${esc(alle.join(', '))}</code>). Existing logins do not carry it, so the affected views quietly show less until you reconnect. It takes one click per character under ⚙ Options, nothing is lost.`
+    : `Diese Fassung fragt EVE nach einer zusätzlichen Berechtigung (<code>${esc(alle.join(', '))}</code>). Bestehende Anmeldungen tragen sie nicht, deshalb zeigen die betroffenen Ansichten stillschweigend weniger, bis du neu verbindest. Das ist ein Klick je Charakter unter ⚙ Optionen, es geht nichts verloren.`}
+   <div class="wer">${en?'Affected':'Betroffen'}: ${esc(namen)}</div>
+  </div>
+  <div class="knoepfe">
+   <button class="btn" id="esiHinAuf">⚙ ${en?'Open options':'Optionen öffnen'}</button>
+   <button class="btn geist" id="esiHinWeg">${en?'Got it, hide this':'Verstanden, nicht mehr zeigen'}</button>
+  </div>
+ </div>`;
+ $('#esiHinAuf').onclick=()=>{const d=$('#setup'); if(d&&!d.open){d.showModal();syncOpts();}};
+ $('#esiHinWeg').onclick=()=>{localStorage.setItem(schluessel,'1');kasten.innerHTML='';};
+}
 function esiTabs(){
  const chars=((state&&state.esi&&state.esi.chars)||[]);
  const verbunden=chars.filter(c=>c.status==='verbunden');
@@ -21083,7 +21175,7 @@ async function tick(){
     neuladen=true; location.reload(); return;
    }
   }
-  state=d.state;esiTabs();regionPills();handleAlerts();updateBadge();updateBanner();serverBadge();bootScreen();renderViewInfo();
+  state=d.state;esiTabs();esiHinweis();regionPills();handleAlerts();updateBadge();updateBanner();serverBadge();bootScreen();renderViewInfo();
   if(state.log_ok===false){renderSetup();return;}
   if(!$('#setup').hidden){$('#setup').hidden=true;$('#setup').dataset.built='';}
   if(view!=='live'&&view!=='month'&&view!=='total'&&view!=='analyse')$('#empty').hidden=true;
