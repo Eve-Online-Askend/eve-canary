@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.72.0"
+VERSION = "2.73.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -6988,9 +6988,12 @@ class Esi(threading.Thread):
                 # Industrie-Auftraege (neuer Scope seit v2.53.0). Wie bei den
                 # Planeten: 403 heisst, der Char wurde noch nicht neu verbunden.
                 try:
+                    # Die Marke NUR setzen, wenn wirklich gefragt wurde. Steht
+                    # sie ausserhalb des if, meldet die Ruhepause nach einer
+                    # Absage den Scope als vorhanden: gefragt hat dann niemand.
                     if time.time() >= c.get("industry_next", 0):
                         self.sync_industry(name, c)
-                    c["industry_scope"] = True
+                        c["industry_scope"] = True
                 except urllib.error.HTTPError as e:
                     if self.scope_fehlt(e):
                         c["industry_scope"] = False
@@ -7002,9 +7005,10 @@ class Esi(threading.Thread):
                 # verbunden), kommt 403 -> als "neu verbinden" markieren, nicht
                 # dauernd nachfragen. Andere Fehler lassen die alten Daten stehen.
                 try:
+                    # Wie bei der Industrie: die Marke gehoert in das if.
                     if time.time() >= c.get("planets_next", 0):
                         self.sync_planets(name, c)
-                    c["planets_scope"] = True
+                        c["planets_scope"] = True
                 except urllib.error.HTTPError as e:
                     if self.scope_fehlt(e):
                         c["planets_scope"] = False
@@ -12213,6 +12217,26 @@ def abyss_beute(rows, stufen=None):
     return fil, rest
 
 
+def mchar_aus_pfad(pfad, erlaubt):
+    """Die Charakter-Auswahl aus der Adresse, gegen die bekannten Namen
+    geprueft.
+
+    Beide Ansichten, Missionen und Abyss, lesen denselben Parameter. Die
+    Missionsansicht verwarf unbekannte Namen still und zeigte dann wieder
+    alles, der Abyss-Zweig nicht: ein umbenannter Charakter oder ein alter
+    Lesezeichen-Link ergab dort eine leere Liste unter einer Kopfzeile, die
+    Durchgaenge zaehlt (Voll-Audit 02.09.2026). Jetzt urteilen beide gleich.
+
+    Mehrere Namen durch Komma getrennt. EVE-Namen enthalten keine Kommas
+    (nur Buchstaben, Ziffern, Leerzeichen, Bindestrich und Apostroph), das
+    Trennzeichen ist also eindeutig."""
+    if "mchar=" not in pfad:
+        return []
+    roh = urllib.parse.unquote(pfad.split("mchar=")[1].split("&")[0])
+    namen = [n.strip() for n in roh.split(",") if n.strip()]
+    return [n for n in namen if n in erlaubt]
+
+
 def query_abyss(chars=None, tage=30):
     """Alles fuer den Abyss-Bereich: Kennzahlen, Filament-Bilanz, Top-Beute
     und die beste Runde.
@@ -13459,11 +13483,6 @@ class Handler(BaseHTTPRequestHandler):
                 # Mehrere Namen, durch Komma getrennt. EVE-Namen enthalten
                 # keine Kommas (nur Buchstaben, Ziffern, Leerzeichen, Bindestrich
                 # und Apostroph), das Trennzeichen ist also eindeutig.
-                mgewaehlt = []
-                if "mchar=" in self.path:
-                    roh = urllib.parse.unquote(
-                        self.path.split("mchar=")[1].split("&")[0])
-                    mgewaehlt = [n.strip() for n in roh.split(",") if n.strip()]
                 # Aus BEIDEN Quellen: wer Missionen geflogen ist (missions)
                 # und wer Belohnungen kassiert hat (journal). Sonst fehlt ein
                 # Charakter als Knopf, dessen Zahlen oben trotzdem mitzaehlen.
@@ -13477,7 +13496,7 @@ class Handler(BaseHTTPRequestHandler):
                             "WHERE char IS NOT NULL AND char!=''")})
                 # Unbekannte Namen still verwerfen: bleibt nichts uebrig,
                 # wird wieder alles gezeigt statt einer leeren Seite.
-                mgewaehlt = [n for n in mgewaehlt if n in erlaubt]
+                mgewaehlt = mchar_aus_pfad(self.path, erlaubt)
                 wahl = mgewaehlt or None
                 data["missions"] = query_missions(wahl)
                 data["mission_log"], data["mission_offen"] = query_mission_history()
@@ -13497,11 +13516,15 @@ class Handler(BaseHTTPRequestHandler):
                 data["vault"] = query_vault()
                 data["vault"]["advisor"] = query_ore_advisor(CONFIG["region"])
             elif view == "abyss":
-                mgew = []
-                if "mchar=" in self.path:
-                    roh = urllib.parse.unquote(
-                        self.path.split("mchar=")[1].split("&")[0])
-                    mgew = [n.strip() for n in roh.split(",") if n.strip()]
+                # Die bekannten Namen ZUERST, denn die Auswahl wird dagegen
+                # geprueft. Frueher stand diese Abfrage unter der Auswahl und
+                # wurde deshalb nicht zum Pruefen benutzt.
+                with DB_LOCK:
+                    abyss_erlaubt = sorted({
+                        r[0] for r in DB.execute(
+                            "SELECT DISTINCT char FROM missions "
+                            "WHERE char IS NOT NULL AND char!=''")})
+                mgew = mchar_aus_pfad(self.path, abyss_erlaubt)
                 try:
                     atage = int(self.path.split("atage=")[1].split("&")[0])                         if "atage=" in self.path else 30
                 except ValueError:
@@ -13514,11 +13537,7 @@ class Handler(BaseHTTPRequestHandler):
                 # neun Durchgaenge zaehlte.
                 data["abyss"]["detail"] = query_mission_history(
                     nur_mids=[l["mid"] for l in data["abyss"]["laeufe"]])[0]
-                with DB_LOCK:
-                    data["mchars"] = sorted({
-                        r[0] for r in DB.execute(
-                            "SELECT DISTINCT char FROM missions "
-                            "WHERE char IS NOT NULL AND char!=''")})
+                data["mchars"] = abyss_erlaubt
                 data["mchar"] = mgew
             elif view == "industrie":
                 data["industrie"] = query_industrie()
@@ -16775,7 +16794,19 @@ $('#hinweisZu').onclick=()=>{localStorage.setItem('kopfHinweisWeg','1');$('#kopf
 // "Alle einklappen" im Planeten-Tab: die Live-Leiste ist dort versteckt,
 // der kleine Knopf in der Karte ruft denselben Handler.
 document.addEventListener('click',e=>{
- if(e.target&&e.target.id==='collapseAllPi'){e.stopPropagation();$('#collapseAll').onclick();}
+ if(!e.target)return;
+ if(e.target.id==='collapseAllPi'){e.stopPropagation();$('#collapseAll').onclick();}
+ // "Alle zeigen" aus dem Filter-Hinweis. Aus demselben Grund hier und nicht
+ // am Element: die Ansicht wird im Takt neu gebaut, ein direkt gesetzter
+ // Handler waere nach zwei Sekunden weg.
+ if(e.target.id==='filterWeg'){
+  e.stopPropagation();
+  localStorage.setItem('charFilter','');
+  const cf=document.getElementById('charFilter'); if(cf)cf.value='';
+  if(view==='industrie')renderIndustrie(lastIndustrie);
+  else if(view==='planeten')renderPlaneten(lastPlaneten);
+  else renderLiveView();
+ }
 });
 $('#collapseAll').onclick=()=>{
  const pi=view==='planeten';
@@ -16884,7 +16915,10 @@ document.querySelectorAll('.modesel').forEach(b=>b.onclick=()=>{
 syncModeSel();
 function syncCharFilter(chars){
  const sel=$('#charFilter');
- const names=chars.map(c=>c.name);
+ // Ohne Dubletten: der Abyss-Bereich reicht EINE Zeile je Durchgang herein,
+ // und derselbe Charakter stand dann so oft in der Liste, wie er geflogen
+ // ist (Voll-Audit 02.09.2026).
+ const names=[...new Set(chars.map(c=>c.name).filter(Boolean))];
  const want='Alle Charaktere|'+names.join('|');
  if(sel.dataset.opts!==want){
   // Auswahl aus localStorage wiederherstellen (beim ersten Render war value=''
@@ -19197,7 +19231,8 @@ function renderIndustrie(ind){
          :'Gerade laufen keine Industrie-Aufträge. Was du startest, steht hier binnen fünf Minuten.')
      :(en?'No characters connected yet. Connect them via ⚙ Options, then your production and research runtimes appear here.'
          :'Noch keine Charaktere verbunden. Über ⚙ Optionen verbinden, dann stehen hier deine Laufzeiten aus Produktion und Forschung.'));
-  $('#grid').innerHTML=`<div class="card" style="grid-column:1/-1"><b>🏭 ${en?'Industry':'Industrie'}</b>
+  $('#grid').innerHTML=filterHinweis()
+   +`<div class="card" style="grid-column:1/-1"><b>🏭 ${en?'Industry':'Industrie'}</b>
    <div class="sub" style="margin-top:6px">${msg}</div></div>`;
   return;
  }
@@ -19235,7 +19270,7 @@ function renderIndustrie(ind){
  const pausiert=J.filter(j=>j.status==='paused');
  const fertig=J.filter(j=>j.status==='ready');
  const laufend=J.filter(j=>j.status!=='ready'&&j.status!=='paused');
- $('#grid').innerHTML=`
+ $('#grid').innerHTML=filterHinweis()+`
   <div class="card" style="grid-column:1/-1">
    <div class="chead"><span class="char">🏭 ${en?'Industry':'Industrie'}</span>
     <span class="sub">· ${asof} · ${en?'ESI refreshes every 5 min':'ESI liefert alle 5 min neu'}</span></div>
@@ -19341,7 +19376,7 @@ function renderPlaneten(pl){
   html+=`</div>`;});
  if((pl.reconnect||[]).length)html+=`<div class="sub" style="padding:8px 0 0">· ${pl.reconnect.length} ${en?'char(s) not connected for planets yet':'Chars noch nicht für Planeten verbunden'}</div>`;
  html+=`</div>`;
- $('#grid').innerHTML=html;
+ $('#grid').innerHTML=filterHinweis()+html;
  document.querySelectorAll('.pihead').forEach(h=>h.onclick=()=>{
   const n=h.dataset.pi;
   if(collapsed.has(n))collapsed.delete(n);else collapsed.add(n);
@@ -19496,7 +19531,9 @@ function laufHandler(){
   else if(missChars.includes(w))missChars=missChars.filter(x=>x!==w);
   else missChars=missChars.concat([w]);
   localStorage.setItem('missChars',JSON.stringify(missChars));
-  seiteRuns=0; seiteTage=0;
+  // Alle drei Listen auf Seite 1: eine andere Auswahl heisst andere Zeilen,
+  // und eine gemerkte Seite 4 zeigt dann ins Leere.
+  seiteRuns=0; seiteTage=0; seiteAbyss=0;
   tick();
  });
  document.querySelectorAll('.mloottoggle').forEach(t=>t.onclick=()=>{
@@ -19810,7 +19847,7 @@ function renderAbyss(a){
    <div class="sect">${t}</div><table><tr>${spalten.map(c=>`<th${c[2]?' class="r"':''}>${c[0]}</th>`).join('')}</tr>
    ${rows.map(r=>`<tr>${spalten.map(c=>`<td${c[2]?' class="r"':''}>${c[1](r)}</td>`).join('')}</tr>`).join('')}
    </table></div>`:'';
- $('#grid').innerHTML=`
+ $('#grid').innerHTML=charWahlKarte(a.mchars)+`
   <div class="card" style="grid-column:1/-1">
    <div class="sect" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <span>🌀 ${en?'Abyssal runs':'Abyss-Durchgänge'}</span>
@@ -20041,6 +20078,42 @@ function laufZeile(x){
     </div>
    </div>`;
 }
+// Die Charakter-Auswahl. EINE Vorlage fuer die Missions- und die
+// Abyss-Ansicht: beide schicken denselben Parameter an den Server, also darf
+// die Bedienung nicht in der einen stehen und in der anderen fehlen. Der
+// Abyss-Bereich hatte gar keine, obwohl die Auswahl dort wirkt
+// (Voll-Audit 02.09.2026).
+// Sagt an, dass ein Charakter-Filter aktiv ist, und bietet an, ihn hier
+// aufzuheben. Gebraucht in Industrie und Planeten: dort WIRKT der Filter,
+// aber sein Auswahlfeld liegt in der Live-Leiste und ist versteckt. Wer auf
+// Live einen Charakter gewaehlt hatte, sah hier eine unvollstaendige oder
+// leere Liste, ohne Hinweis und ohne Ausweg (Voll-Audit 02.09.2026).
+function filterHinweis(){
+ const f=localStorage.getItem('charFilter')||'';
+ if(!f)return '';
+ const en=lang==='en';
+ return `<div class="card" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+  <span class="sub">${en?'Filtered to':'Gefiltert auf'} <b>${esc(f)}</b>. ${en
+    ?'Other characters are hidden here too.'
+    :'Andere Charaktere sind auch hier ausgeblendet.'}</span>
+  <span class="pill" id="filterWeg" style="cursor:pointer;margin-left:auto">${en?'Show all':'Alle zeigen'}</span>
+ </div>`;
+}
+function charWahlKarte(namen){
+ namen=namen||[];
+ if(namen.length<2)return '';
+ const an=w=>w?missChars.includes(w):!missChars.length;
+ const knopf=(w,l)=>`<span class="pill mchar${an(w)?' on':''}" data-mc="${esc(w)}">${esc(l)}</span>`;
+ const hinweis=missChars.length>1
+   ?`<span class="sub" style="color:var(--gold)">${lang==='en'
+      ?'flying together: joint abyss runs count as one'
+      :'fliegen zusammen: gemeinsame Abyss-Läufe zählen als ein Durchgang'}</span>`:'';
+ return `<div class="card" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+  <span class="sub" style="letter-spacing:1px;text-transform:uppercase;font-size:10px">${lang==='en'?'Character':'Charakter'}</span>
+  ${knopf('',lang==='en'?'All':'Alle')}${namen.map(n=>knopf(n,n)).join('')}
+  ${hinweis}
+ </div>`;
+}
 function renderMissions(d){
  letzteMissionen = d;
  lastMissionD=d;                         // fuer die lokale Simulation merken
@@ -20098,20 +20171,7 @@ function renderMissions(d){
  // also auch ueber den Verdienst-Kacheln (Nirahse, 29.08.2026). Sie wird
  // immer gebaut, auch wenn der gewaehlte Charakter nichts vorzuweisen hat:
  // sonst landet man auf einer leeren Seite ohne die Auswahl.
- const charWahl=(()=>{
-   const namen=d.mchars||[];
-   if(namen.length<2)return '';
-   const an=w=>w?missChars.includes(w):!missChars.length;
-   const knopf=(w,l)=>`<span class="pill mchar${an(w)?' on':''}" data-mc="${esc(w)}">${esc(l)}</span>`;
-   const hinweis=missChars.length>1
-     ?`<span class="sub" style="color:var(--gold)">${lang==='en'
-        ?'flying together: joint abyss runs count as one'
-        :'fliegen zusammen: gemeinsame Abyss-Läufe zählen als ein Durchgang'}</span>`:'';
-   return `<div class="card" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-    <span class="sub" style="letter-spacing:1px;text-transform:uppercase;font-size:10px">${lang==='en'?'Character':'Charakter'}</span>
-    ${knopf('',lang==='en'?'All':'Alle')}${namen.map(n=>knopf(n,n)).join('')}
-    ${hinweis}
-   </div>`;})();
+ const charWahl=charWahlKarte(d.mchars);
  $('#hero').innerHTML=charWahl+heroTiles('🎯 Verdient heute',tag(0).isk,tag(1).isk,wIsk,
   (t.missions||0)+' Missionen',wMis+' Missionen · Ø '+fmtM(wIsk/7)+'/Tag');
  $('#grid').innerHTML=`
@@ -21556,9 +21616,16 @@ async function tick(){
  try{
   // Der Wallet-Bereich hat einen eigenen Zeitraum (7/30/alles), der Server
   // rechnet die Bilanz danach. Bei allen anderen Ansichten bleibt die URL wie sie war.
+  // Der Abyss-Bereich braucht DIESELBEN Zusaetze wie die Missionsseite: er
+  // war frueher ein Teil davon und ist eine eigene Ansicht geworden, die
+  // Adresse hat den Umzug nicht mitgemacht. Im Browser mitgeschnitten war es
+  // schlicht "/data?view=abyss", und damit blieb der Zeitraum-Knopf ohne
+  // Wirkung: er sprang um, der Server sah es nie und antwortete immer mit
+  // 30 Tagen (Voll-Audit 02.09.2026).
+  const mitZeitraum=(reqView==='missionen'||reqView==='abyss');
   const zusatz=(reqView==='wallet')
     ?('&days='+walletTage+(walletChar?'&wchar='+encodeURIComponent(walletChar):''))
-    :((reqView==='missionen')
+    :(mitZeitraum
         ?('&atage='+abyssTage
           +(missChars.length?('&mchar='+encodeURIComponent(missChars.join(','))):''))
         :'');
@@ -21603,7 +21670,12 @@ async function tick(){
    else if(view==='analyse')renderAnalyse(d.analyse);
    else if(view==='intel')renderIntel(d.intel_auto,d.blutspur);
    else if(view==='vault')renderVault(d.vault);
-   else if(view==='abyss')renderAbyss(d.abyss);
+   else if(view==='abyss'){
+    // mchars steht auf oberster Ebene der Antwort, renderAbyss bekommt aber
+    // nur das abyss-Objekt. Mitgeben statt eine zweite Quelle aufzumachen.
+    if(d.abyss)d.abyss.mchars=d.mchars||[];
+    renderAbyss(d.abyss);
+   }
    else if(view==='industrie')renderIndustrie(d.industrie);
    else if(view==='planeten')renderPlaneten(d.planeten);
    else if(view==='timeline')renderTimeline(d.timeline);

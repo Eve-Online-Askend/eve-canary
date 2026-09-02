@@ -1,5 +1,25 @@
 [
  {
+  "v": "2.73.0",
+  "d": "2026-09-02",
+  "de": [
+   "DIE ZEITRAUM-KNÖPFE IM ABYSS-BEREICH WAREN TOT. 30 Tage, 90 Tage, alles: der Knopf sprang um, der gewählte Wert wurde sogar gespeichert, beim Server kam er nie an. Im Browser mitgeschnitten war die Anfrage schlicht '/data?view=abyss', ohne jeden Zusatz. Der Abyss-Bereich war früher ein Teil der Missionsseite und ist eine eigene Ansicht geworden, die Adresse hat den Umzug nicht mitgemacht. Gegenprobe am Server mit drei Läufen vor 1, 50 und 200 Tagen: 30 Tage ergibt 1 Durchgang, 90 Tage 2, alles 3. Unterscheiden konnte er also immer, gefragt wurde er nur nie.",
+   "DER ABYSS-BEREICH HAT JETZT EINE CHARAKTER-AUSWAHL. Der Server nimmt sie seit jeher entgegen, gezeichnet wurde sie nur in der Missionsansicht. Wer mehrere Charaktere fliegt, kann die Zahlen jetzt dort trennen, wo sie stehen. Die Knöpfe kommen aus derselben Vorlage wie in den Missionen, damit beide Ansichten nicht wieder auseinander laufen.",
+   "EIN CHARAKTER, DEN ES NICHT MEHR GIBT, ZEIGTE IM ABYSS EINE LEERE LISTE. Die Missionsansicht verwirft unbekannte Namen und zeigt dann wieder alles, der Abyss-Bereich tat das nicht: nach einer Umbenennung oder über einen alten Link stand dort nichts, unter einer Kopfzeile, die Durchgänge zählt. Beide urteilen jetzt gleich.",
+   "DER CHARAKTER-FILTER WIRKTE IN INDUSTRIE UND PLANETEN UNSICHTBAR. Sein Auswahlfeld liegt in der Live-Leiste, und die ist in diesen Ansichten ausgeblendet. Wer auf Live 'nur Nakhira' eingestellt hatte, sah dort eine unvollständige oder ganz leere Liste, ohne Hinweis warum und ohne Möglichkeit, es zu ändern. Jetzt steht dort eine Zeile 'Gefiltert auf X' mit einem Knopf 'Alle zeigen'.",
+   "DIE 30-MINUTEN-PAUSE NACH EINER ESI-ABSAGE VERMERKTE DIE BERECHTIGUNG ALS VORHANDEN. Sagt CCP 'diesen Scope hast du nicht', legt Canary eine halbe Stunde Ruhe ein, damit es nicht alle zwei Minuten dieselbe Absage holt. Im nächsten Durchlauf wurde der Aufruf übersprungen, die Marke aber trotzdem gesetzt: gefragt hatte niemand. Der Hinweis 'einmal neu verbinden' verschwand dadurch nach zwei Minuten wieder. Betraf Industrie und Planeten gleichermaßen.",
+   "Derselbe Charakter stand im Auswahlfeld so oft, wie er Abyss-Läufe hat. Jetzt einmal."
+  ],
+  "en": [
+   "THE PERIOD BUTTONS IN THE ABYSS SECTION WERE DEAD. 30 days, 90 days, all: the button switched, the choice was even saved, but it never reached the server. Captured in the browser, the request was simply '/data?view=abyss' with no extras. The abyss section used to be part of the missions page and became a view of its own; the request URL never made the move. Checked against the server with three runs 1, 50 and 200 days old: 30 days gives 1 run, 90 days 2, all 3. It could always tell them apart, it was simply never asked.",
+   "THE ABYSS SECTION NOW HAS A CHARACTER SELECTOR. The server has always accepted one, it was just only drawn on the missions page. If you fly several characters you can now separate the numbers where they are shown. The buttons come from the same template as the ones in missions, so the two views cannot drift apart again.",
+   "A CHARACTER THAT NO LONGER EXISTS SHOWED AN EMPTY ABYSS LIST. The missions view discards unknown names and shows everything again; the abyss section did not, so after a rename or via an old link it showed nothing, underneath a header counting runs. Both now judge the same way.",
+   "THE CHARACTER FILTER WORKED INVISIBLY IN INDUSTRY AND PLANETS. Its selector lives in the live bar, which is hidden in those views. If you had set 'only Nakhira' on Live, you saw an incomplete or entirely empty list there, with no hint why and no way to change it. There is now a line saying 'Filtered to X' with a 'Show all' button.",
+   "THE 30-MINUTE PAUSE AFTER AN ESI REFUSAL MARKED THE PERMISSION AS PRESENT. When CCP says 'you do not have this scope', Canary waits half an hour so it does not fetch the same refusal every two minutes. On the next pass the call was skipped but the mark was set anyway: nobody had asked. The 'reconnect once' hint therefore disappeared again after two minutes. This affected industry and planets alike.",
+   "The same character appeared in the selector once per abyss run. Now once."
+  ]
+ },
+ {
   "v": "2.72.0",
   "d": "2026-09-02",
   "de": [
