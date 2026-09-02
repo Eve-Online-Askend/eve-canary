@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.71.0"
+VERSION = "2.72.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -3353,7 +3353,17 @@ class CharSession:
     def __init__(self, char_id, name, file):
         self.char_id, self.name, self.file = char_id, name, file
         self.start = time.time()
+        # ZWEI Zeitpunkte, weil es zwei verschiedene Dinge sind:
+        #   first_ts  Beginn des EINSATZES. Endet eine Mission, faengt der
+        #             naechste Einsatz an, also setzt reset_combat ihn neu.
+        #   trip_ts   Abdocken. Der Trip laeuft weiter, wenn ein Kampf endet.
+        # Alles, was aus der Erzmenge gerechnet wird, haengt an trip_ts. Solange
+        # beides an first_ts hing, sprang die Foerderrate bei jedem
+        # Missionsende um ein Vielfaches nach oben, weil der Zaehler blieb und
+        # der Nenner schrumpfte: 60 min wurden zu 10, gemessen am echten
+        # Objekt (Voll-Audit 02.09.2026).
         self.first_ts = None
+        self.trip_ts = None
         self.trips = 0  # Anzahl Station-Stopps (Abdocken) in dieser Session
         self.mining = {}
         self.compressed = {}
@@ -3460,6 +3470,8 @@ class CharSession:
         now = time.time()
         if self.first_ts is None or ev["ts"] < self.first_ts:
             self.first_ts = ev["ts"]
+        if self.trip_ts is None or ev["ts"] < self.trip_ts:
+            self.trip_ts = ev["ts"]
         if self.last_event_ts is None or ev["ts"] > self.last_event_ts:
             self.last_event_ts = ev["ts"]
         k = ev["kind"]
@@ -3685,6 +3697,7 @@ class CharSession:
                 self._lost_ts = None
                 self.start = time.time()
                 self.first_ts = ev["ts"]
+                self.trip_ts = ev["ts"]  # ein Undock beginnt BEIDE neu
                 if ev.get("system"):     # Ziel des Undocks = aktueller Ort
                     self.system = ev["system"]
         elif k == "depleted":
@@ -4658,7 +4671,9 @@ class Ingest(threading.Thread):
                                                  for o, u in sess.mining.items())
                                         if m3 > 0:
                                             top_ore = max(sess.mining, key=sess.mining.get)
-                                            mins = max(1, round((ev["ts"] - (sess.first_ts or ev["ts"])) / 60))
+                                            # Trip-Beginn, nicht Einsatz-Beginn: die
+                                            # Erzmenge stammt aus dem ganzen Trip.
+                                            mins = max(1, round((ev["ts"] - (sess.trip_ts or sess.first_ts or ev["ts"])) / 60))
                                             mine_done.append((sess.char_id, cname, ev["ts"],
                                                               {"ores": dict(sess.mining), "m3": round(m3),
                                                                "min": mins, "top": top_ore,
@@ -9429,6 +9444,19 @@ def sitzungsdauer(s, mindestens=60.0):
     return max(time.time() - (getattr(s, "first_ts", None) or s.start), mindestens)
 
 
+def tripdauer(s, mindestens=60.0):
+    """Wie lange laeuft dieser TRIP schon, in Sekunden.
+
+    Gerechnet ab dem Abdocken, nicht ab dem Beginn des laufenden Einsatzes.
+    Fuer alles, was aus s.mining kommt: die Erzmenge sammelt sich ueber den
+    ganzen Trip, also muss der Nenner das auch tun. Wer hier sitzungsdauer
+    nimmt, bekommt nach jedem Missionsende eine Rate, die um ein Vielfaches
+    zu hoch ist (gemessen: 60 min wurden zu 10, Voll-Audit 02.09.2026)."""
+    grund = (getattr(s, "trip_ts", None) or getattr(s, "first_ts", None)
+             or s.start)
+    return max(time.time() - grund, mindestens)
+
+
 def snapshot_live():
     pm = prices.get(CONFIG["region"])
     chars = []
@@ -9514,7 +9542,10 @@ def snapshot_live():
             hold_prices = "none"
         else:
             hold_prices = "partial"
-        mins = sitzungsdauer(s) / 60.0
+        # Trip-Dauer, nicht Einsatz-Dauer: session_min, m3h und isk_h werden
+        # alle drei aus der ueber den ganzen Trip gesammelten Erzmenge
+        # gerechnet. Die Unterzeile sagt selbst "seit Abdocken".
+        mins = tripdauer(s) / 60.0
         hw_cfg = (CONFIG.get("heavy_water") or {}).get(s.name)
         hw = None
         if hw_cfg:
@@ -11551,7 +11582,10 @@ def query_timelines():
             # abgeschlossenen Episoden kommen erst beim Andocken/Missionsende).
             if not (s.last_event_ts and now - s.last_event_ts < 300):
                 continue
+            # Zwei Dauern, weil zwei Dinge: die Mining-Zeile zaehlt seit dem
+            # Abdocken, die Kampf-Zeile seit dem Beginn des Einsatzes.
             mins = max(1, round((now - (s.first_ts or now)) / 60))
+            trip_mins = max(1, round((now - (s.trip_ts or s.first_ts or now)) / 60))
             # Mining zuerst: ein Miner mit Flotten-Bounty (kills>0, aber dmg_out=0)
             # ist KEIN Kampf. Kampf nur bei echtem ausgeteiltem Schaden.
             if s.mining:
@@ -11565,7 +11599,7 @@ def query_timelines():
                         top_u, top_ore = u, ore
                 if vm3 > 0:
                     add(s.name, {"ts": nowi, "kind": "live", "sub": "mine",
-                                 "m3": round(vm3), "isk": round(visk), "min": mins,
+                                 "m3": round(vm3), "isk": round(visk), "min": trip_mins,
                                  "ore": top_ore, "sys": s.system or "?"})
             elif s.dmg_out > 0:
                 add(s.name, {"ts": nowi, "kind": "live", "sub": "combat",
@@ -13139,7 +13173,7 @@ def query_jobs():
         # DIESELBE Dauer wie die Live-Karte. Frueher stand hier s.start,
         # also der Programmstart, und die Job-Boerse zeigte nach einem
         # Neustart eine vielfach zu hohe Stundenleistung.
-        stunden = sitzungsdauer(s, 600.0) / 3600.0
+        stunden = tripdauer(s, 600.0) / 3600.0
         for erz, einheiten in dict(s.mining).items():
             live[erz] = live.get(erz, 0) + einheiten / stunden
 
@@ -20507,6 +20541,13 @@ function renderBeute(){
   if(!b.value.trim()){sagen('Im Feld Nachher steht noch nichts.');return;}
   a.value=b.value; b.value='';
   localStorage.setItem('diffA',a.value); localStorage.removeItem('diffB');
+  // Die geholten Marktwerte muessen MITWANDERN. Sonst zeigt das linke Feld
+  // weiter den Wert seines alten Inhalts, waehrend Positionen und Stueckzahl
+  // schon zum neuen passen: halb richtig, und deshalb faellt es niemandem
+  // auf. Im Browser gemessen: 11.180 ISK unter einer Ladung, die 492.580
+  // wert ist (Voll-Audit 02.09.2026).
+  if(diffMarkt)diffMarkt={...diffMarkt, vorher:diffMarkt.nachher, nachher:null,
+                          plus:null, minus:null};
   diffSumme('diffA');diffSumme('diffB');
   sagen('Nachher ist jetzt Vorher. Das Ergebnis darunter bleibt stehen.');
   b.focus();
@@ -20562,7 +20603,14 @@ const diffWerte={};
 function diffFeldWert(id){
  const s=diffWerte[id];
  if(s&&s.hat_isk)return s.isk;
- if(diffMarkt)return (id==='diffA')?diffMarkt.vorher:diffMarkt.nachher;
+ // Nur, solange in dem Feld ueberhaupt etwas steht. Ein Betrag unter einem
+ // leeren Feld waere eine Erfindung.
+ const feld=$('#'+id);
+ if(feld&&!feld.value.trim())return null;
+ if(diffMarkt){
+  const w=(id==='diffA')?diffMarkt.vorher:diffMarkt.nachher;
+  if(w!=null)return w;
+ }
  return null;
 }
 async function diffSumme(id,neuzeichnen){

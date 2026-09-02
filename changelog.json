@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.72.0",
+  "d": "2026-09-02",
+  "de": [
+   "DIE FÖRDERRATE SPRANG UM DAS SECHSFACHE, SOBALD MITTEN IM TRIP EIN KAMPF ENDETE. Am eigenen Objekt nachgemessen: eine Stunde fördern, 120.000 Einheiten Veldspar, das sind 12.000 m³/h. Dann endet eine Mission, und ohne dass ein einziges Erz dazukam standen dort 72.000 m³/h und eine Sitzungsdauer von 10 statt 60 Minuten. Ursache war, dass ein einziger Zeitpunkt zwei Dinge bedeuten musste. Der Beginn des Einsatzes wird beim Missionsende zu Recht neu gesetzt, nur wurde daraus auch die Trip-Dauer gerechnet, und der Trip läuft weiter, wenn ein Kampf endet. Der Zähler blieb, der Nenner schrumpfte. Jetzt gibt es zwei Zeitpunkte: das Abdocken für alles, was aus der Erzmenge kommt, und den Einsatzbeginn für alles, was aus dem Kampf kommt. Betroffen waren m³/h, ISK/h, die Sitzungsdauer auf der Karte, die Mining-Zeile im Verlauf und die Förderrate der Job-Börse.",
+   "'NACHHER WIRD VORHER' LIESS DEN ALTEN MARKTWERT STEHEN. Im Browser gemessen: links eine Ladung für 11.180 ISK, rechts eine für 492.580. Ein Klick schiebt den rechten Inhalt nach links, und darunter stand '2 Positionen · 1.200 Stück · 11.180 ISK'. Positionen und Stückzahl gehörten zum neuen Inhalt, die ISK zum alten. Genau deshalb fiel es niemandem auf: halb richtig sieht nicht kaputt aus. Wer mehrere Läufe hintereinander macht, wofür der Knopf ja da ist, trug den falschen Wert in sein Loot-Feld ein. Der Wert wandert jetzt mit, und unter dem leeren rechten Feld steht kein Betrag mehr."
+  ],
+  "en": [
+   "THE MINING RATE JUMPED SIXFOLD WHENEVER A FIGHT ENDED MID-TRIP. Measured on the real object: mine for an hour, 120,000 units of Veldspar, which is 12,000 m³/h. Then a mission ends, and without a single extra unit of ore the display read 72,000 m³/h and a session time of 10 minutes instead of 60. The cause was one timestamp having to mean two things. The start of a run is rightly reset when a mission ends, but the trip duration was computed from it too, and the trip keeps going when a fight ends. The numerator stayed, the denominator shrank. There are now two timestamps: undocking for everything derived from ore, and run start for everything derived from combat. This affected m³/h, ISK/h, the session time on the card, the mining line in the timeline and the mining rate on the job board.",
+   "'AFTER BECOMES BEFORE' LEFT THE OLD MARKET VALUE IN PLACE. Measured in the browser: a load worth 11,180 ISK on the left, one worth 492,580 on the right. One click moves the right side over to the left, and underneath it read '2 positions · 1,200 units · 11,180 ISK'. Positions and unit count belonged to the new content, the ISK to the old. That is exactly why nobody noticed: half right does not look broken. Anyone doing several runs in a row, which is what the button is for, entered the wrong value in their loot field. The value now moves along, and there is no amount under the empty right-hand field any more."
+  ]
+ },
+ {
   "v": "2.71.0",
   "d": "2026-09-02",
   "de": [
