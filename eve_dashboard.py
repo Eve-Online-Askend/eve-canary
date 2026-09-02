@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.63.0"
+VERSION = "2.64.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -79,6 +79,7 @@ ERROR_HELP = {
     "CN-DB-01": "Datenbankfehler",
     "CN-DB-02": "Einsatz mit unmoeglicher Dauer verworfen",
     "CN-DB-03": "Einsatz umschloss mehrere Abyss-Durchgaenge, verworfen",
+    "CN-DB-04": "Spalte liess sich nicht anlegen, beim naechsten Start wird es erneut versucht",
     "CN-NET-01": "Marktpreise nicht abrufbar",
     "CN-NET-02": "EVE-Serverstatus nicht abrufbar",
     "CN-NET-03": "System-Gefahrenlage nicht abrufbar",
@@ -1815,66 +1816,96 @@ CREATE TABLE IF NOT EXISTS missions(mid TEXT PRIMARY KEY, char_id TEXT, char TEX
 CREATE INDEX IF NOT EXISTS ix_missions_start ON missions(start_ts);
 """)
 DB.commit()
-try:  # v1.5.1: System-Kontext je Journal-Eintrag (filtert Belt-Bounties aus der Missions-Statistik)
-    DB.execute("ALTER TABLE journal ADD COLUMN ctx INTEGER")
-    DB.commit()
-except sqlite3.OperationalError:
-    pass
-try:  # v1.21: NPC-Funk je Mission (fuer Erkennung + Anzeige)
-    DB.execute("ALTER TABLE missions ADD COLUMN dialog TEXT")
-    DB.commit()
-except sqlite3.OperationalError:
-    pass
-try:  # v1.50: EWAR-Profil je Mission (Scram/Web/Jam/Neut … gegen dich)
-    DB.execute("ALTER TABLE missions ADD COLUMN ewar TEXT")
-    DB.commit()
-except sqlite3.OperationalError:
-    pass
-try:  # v1.95: selbst vergebener Missionsname. Grundlage des Gegner-Fingerabdrucks:
-      # einmal benannt, erkennt Canary jeden weiteren Lauf derselben Mission an
-      # der Gegner-Zusammenstellung. Bleibt rein lokal.
-    DB.execute("ALTER TABLE missions ADD COLUMN label TEXT")
-    DB.commit()
-except sqlite3.OperationalError:
-    pass
-try:  # v2.39: Erstkontakt-Zeit je Gegner + Kampfabschnitte (Savox76). Eine
-      # ERFOLGREICHE Tor-Aktivierung schreibt keine Logzeile (an den blacy-
-      # und Nirahse-Bestaenden geprueft, nur Fehlerfaelle wie "too far away"
-      # tauchen auf), deshalb ehrliche Abschnitte aus Schadenspausen statt
-      # behaupteter Taschen. JSON: {"erst": {Gegner: ts}, "schnitte": [ts]}.
-    DB.execute("ALTER TABLE missions ADD COLUMN gegner_erst TEXT")
-    DB.commit()
-except sqlite3.OperationalError:
-    pass
-try:  # v2.57: geflogenes Schiff je Einsatz (Nirahse: nach Cruiser, Zerstoerer
-      # oder Fregatte aufschluesseln). Das eigene Schiff steht in KEINER
-      # Logzeile, an 400 Dateien geprueft: jeder Schiffsname dort gehoert
-      # einem NPC oder einem anderen Spieler. Einzige Quelle ist ESI, und die
-      # kennt nur das AKTUELLE Schiff, deshalb wird es beim Abschluss des
-      # Einsatzes mitgeschrieben. Rueckwirkend geht es nicht.
-    DB.execute("ALTER TABLE missions ADD COLUMN ship TEXT")
-    DB.execute("ALTER TABLE missions ADD COLUMN ship_group INTEGER")
-    DB.commit()
-except sqlite3.OperationalError:
-    pass
-try:  # v2.61: Abyss-Behaelter. Wie viele der drei Taschen wurden geplündert?
-      # Nur fuer Laeufe ab dieser Fassung: rueckwirkend gibt es die Zahl
-      # nicht, weil sie beim Verarbeiten der Logzeilen entsteht. Alte Laeufe
-      # bleiben leer und werden als "nicht erfasst" ausgewiesen, statt eine
-      # Null zu behaupten, die wie "nichts aufgemacht" aussaehe.
-    DB.execute("ALTER TABLE missions ADD COLUMN caches INTEGER")
-    DB.execute("ALTER TABLE missions ADD COLUMN cache_typ TEXT")
-    DB.commit()
-except sqlite3.OperationalError:
-    pass
-try:  # v2.42: Salvage getrennt vom Loot (MelvinMafia). Eigene Spalten statt
-      # Vermischung: Salvage ist Marktware und darf NIE in die Missions-
-      # Erkennung laufen (loot_namen liest weiterhin nur loot_text).
-    DB.execute("ALTER TABLE missions ADD COLUMN salvage_text TEXT")
-    DB.execute("ALTER TABLE missions ADD COLUMN salvage_isk REAL")
-    DB.commit()
-except sqlite3.OperationalError:
-    pass
+# --- Nachtraeglich dazugekommene Spalten ---------------------------------
+#
+# Frueher stand hier je Fassung ein try-Block mit einem oder ZWEI ALTER und
+# einem gemeinsamen except OperationalError. Das war eine Falle, die einen
+# Zustand erzeugen konnte, aus dem sich Canary nicht mehr selbst befreit:
+# ALTER TABLE schreibt in SQLite sofort fest, auch ohne commit (nachgemessen:
+# nach dem ALTER ist in_transaction bereits False). Starb das Programm
+# zwischen zwei ALTER desselben Blocks, existierte die erste Spalte und die
+# zweite nicht. Beim naechsten Start warf schon das erste ALTER "duplicate
+# column name", der except schluckte es, und die zweite Spalte wurde NIE
+# MEHR angelegt. Ab diesem Moment scheiterte jedes Speichern eines Einsatzes,
+# ohne sichtbare Meldung: Missionsliste, Abyss-Bereich und Loot-Auswertung
+# blieben fuer immer leer. Beim Voll-Audit am 02.09.2026 gefunden.
+#
+# Deshalb wird jetzt nicht mehr auf eine Ausnahme gebaut, sondern vorher
+# nachgesehen, welche Spalten die Tabelle wirklich hat. Jede fehlende wird
+# einzeln angelegt und einzeln festgeschrieben. Der Ablauf ist damit
+# wiederaufsetzbar: egal, wo er abbricht, der naechste Start macht genau
+# dort weiter.
+#
+# Die Reihenfolge ist die historische, damit eine frisch angelegte Datenbank
+# dieselbe Spaltenfolge bekommt wie eine gewachsene.
+NACHTRAG = [
+    # (Tabelle, Spalte, Typ, seit welcher Fassung und wofuer)
+    ("journal", "ctx", "INTEGER",
+     "v1.5.1: System je Journal-Eintrag, filtert Guertel-Bounties heraus"),
+    ("missions", "dialog", "TEXT",
+     "v1.21: NPC-Funk je Mission, fuer Erkennung und Anzeige"),
+    ("missions", "ewar", "TEXT",
+     "v1.50: EWAR gegen dich (Scram, Web, Jam, Neut)"),
+    ("missions", "label", "TEXT",
+     "v1.95: selbst vergebener Name. Grundlage des Gegner-Fingerabdrucks: "
+     "einmal benannt, erkennt Canary jeden weiteren Lauf derselben Mission "
+     "an der Gegner-Zusammenstellung. Bleibt rein lokal."),
+    ("missions", "gegner_erst", "TEXT",
+     "v2.39: Erstkontakt je Gegner und Kampfabschnitte (Savox76). Eine "
+     "ERFOLGREICHE Tor-Aktivierung schreibt keine Logzeile (an den blacy- "
+     "und Nirahse-Bestaenden geprueft), deshalb ehrliche Abschnitte aus "
+     "Schadenspausen statt behaupteter Taschen."),
+    ("missions", "ship", "TEXT",
+     "v2.57: geflogenes Schiff (Nirahse). Steht in KEINER Logzeile, an 400 "
+     "Dateien geprueft. Einzige Quelle ist ESI, und die kennt nur das "
+     "AKTUELLE Schiff, deshalb beim Abschluss mitgeschrieben."),
+    ("missions", "ship_group", "INTEGER",
+     "v2.57: ESI-Gruppe des Schiffs, daraus wird die Schiffsklasse"),
+    ("missions", "caches", "INTEGER",
+     "v2.61: aufgemachte Abyss-Behaelter. Rueckwirkend gibt es die Zahl "
+     "nicht, alte Laeufe bleiben leer und heissen 'nicht erfasst', statt "
+     "eine Null zu behaupten, die wie 'keinen aufgemacht' aussaehe."),
+    ("missions", "cache_typ", "TEXT",
+     "v2.61: Sorte der Behaelter, Bioadaptive oder Biocombinative"),
+    ("missions", "salvage_text", "TEXT",
+     "v2.42: Salvage getrennt vom Loot (MelvinMafia). Eigene Spalte statt "
+     "Vermischung: Salvage ist Marktware und darf NIE in die Missions-"
+     "Erkennung laufen."),
+    ("missions", "salvage_isk", "REAL", "v2.42: Wert des Salvage"),
+    ("missions", "logi_out", "REAL",
+     "v1.71: geleistete Fernunterstuetzung. Ohne diese Spalte ist die "
+     "Arbeit eines Logi-Piloten nach dem Andocken fuer immer weg."),
+    ("missions", "logi_in", "REAL", "v1.71: empfangene Fernunterstuetzung"),
+]
+
+
+def _spalten_nachtragen():
+    """Fehlende Spalten anlegen, jede einzeln und einzeln festgeschrieben.
+
+    Gibt die Namen der wirklich angelegten Spalten zurueck. Schlaegt eine
+    fehl, bricht der Start NICHT ab: die uebrigen werden trotzdem versucht,
+    und der Fehler landet in der Diagnose. Ein halb migrierter Zustand
+    repariert sich beim naechsten Start von selbst."""
+    neu = []
+    for tabelle, spalte, typ, _wofuer in NACHTRAG:
+        try:
+            da = {r[1] for r in DB.execute("PRAGMA table_info(%s)" % tabelle)}
+        except sqlite3.OperationalError:
+            continue                      # Tabelle gibt es (noch) nicht
+        if spalte in da:
+            continue
+        try:
+            DB.execute("ALTER TABLE %s ADD COLUMN %s %s" % (tabelle, spalte, typ))
+            DB.commit()
+            neu.append("%s.%s" % (tabelle, spalte))
+        except sqlite3.OperationalError as e:
+            log_error("CN-DB-04", "Spalte %s.%s" % (tabelle, spalte), e)
+    return neu
+
+
+_neue_spalten = _spalten_nachtragen()
+if _neue_spalten:
+    print("Datenbank erweitert: " + ", ".join(_neue_spalten))
 # v2.43: zerstoerte Mining-Kristalle (Ramone). Der Schluessel dedupliziert
 # beim Neueinlesen: dieselbe Logzeile ergibt denselben Eintrag. Zerspringen
 # zwei gleiche Kristalle in derselben Sekunde, geht einer unter; das ist
@@ -1888,13 +1919,6 @@ DB.execute("""CREATE TABLE IF NOT EXISTS kristalle(
 DB.execute("""CREATE TABLE IF NOT EXISTS verluste(
     kid TEXT PRIMARY KEY, char_id TEXT, ts REAL, isk REAL)""")
 DB.commit()
-try:  # v1.71: Fernunterstuetzung je Einsatz. Ohne diese Spalten ist die
-      # Leistung eines Logi-Piloten nach dem Andocken fuer immer weg.
-    DB.execute("ALTER TABLE missions ADD COLUMN logi_out REAL")
-    DB.execute("ALTER TABLE missions ADD COLUMN logi_in REAL")
-    DB.commit()
-except sqlite3.OperationalError:
-    pass
 # v2.5.1: Einsaetze wegraeumen, die vor ihrem Beginn enden. Bei Nirahse standen
 # zwei davon in der Liste (-82 und -107 Minuten), beides Dubletten schon
 # gespeicherter Abyss-Laeufe. Seit save_mission das abfaengt, entstehen keine
@@ -2405,6 +2429,16 @@ def _gegner_erst_verbinden(a, b):
     return {"erst": erst, "schnitte": schnitte}
 
 
+# Von Hand eingetragene Felder eines Einsatzes, dessen Zeile gerade
+# zurueckgenommen wurde. Wird beim naechsten Abschluss desselben Einsatzes
+# wieder eingesetzt. Klein und kurzlebig: ein Eintrag lebt vom Zuruecknehmen
+# bis zum naechsten Abschluss, meist ein paar Minuten. Die Grenze schuetzt
+# gegen den Fall, dass ein Einsatz nie wieder abgeschlossen wird (Absturz,
+# Spielende), damit hier nichts unbegrenzt waechst.
+HANDARBEIT = {}
+HANDARBEIT_MAX = 200
+
+
 def save_mission(m):
     """Abgeschlossene Mission speichern (mid=char:start). Bei erneutem Einlesen
     werden die Kampf- und Ort-Felder aktualisiert, der vom Nutzer eingefügte
@@ -2453,6 +2487,10 @@ def save_mission(m):
 
 
 def _save_mission_sql(mid, m):
+    # Gerettete Handarbeit eines zurueckgenommenen Einsatzes wieder einsetzen.
+    # Nur hier, an der einen Stelle, die wirklich schreibt: dann gilt es fuer
+    # jeden Weg, der einen Einsatz abschliesst.
+    hand = HANDARBEIT.pop(mid, None)
     DB.execute("""INSERT INTO missions
         (mid,char_id,char,start_ts,end_ts,system,dmg_out,dmg_in,kills,bounty,
          hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,dialog,ewar,
@@ -2480,13 +2518,26 @@ def _save_mission_sql(mid, m):
         (mid, m["char_id"], m["char"], m["start_ts"], m["end_ts"], m["system"],
          m["dmg_out"], m["dmg_in"], m["kills"], m["bounty"], m["hits"],
          m["miss_out"], m["miss_in"], json.dumps(m["weapons"], ensure_ascii=False),
-         json.dumps(m["enemies"], ensure_ascii=False), None, None, m.get("dialog"),
+         json.dumps(m["enemies"], ensure_ascii=False),
+         (hand or {}).get("loot_isk"), (hand or {}).get("loot_text"),
+         m.get("dialog"),
          json.dumps(m.get("ewar") or [], ensure_ascii=False),
          m.get("logi_out") or 0, m.get("logi_in") or 0,
          json.dumps(m.get("gegner_erst") or {}, ensure_ascii=False),
          m.get("ship"),
          (esi.type_group(m["ship_type_id"]) if m.get("ship_type_id") else None),
          m.get("caches"), m.get("cache_typ")))
+    if hand:
+        # label, Salvage und der Loot-Text gehoeren dem Menschen, nicht dem
+        # Log. Sie werden hier gesetzt, nachdem die Zeile steht.
+        DB.execute(
+            "UPDATE missions SET loot_isk=COALESCE(?,loot_isk), "
+            "loot_text=COALESCE(?,loot_text), salvage_isk=COALESCE(?,salvage_isk), "
+            "salvage_text=COALESCE(?,salvage_text), label=COALESCE(?,label) "
+            "WHERE mid=?",
+            (hand.get("loot_isk"), hand.get("loot_text"),
+             hand.get("salvage_isk"), hand.get("salvage_text"),
+             hand.get("label"), mid))
 
 
 def do_backup():
@@ -4597,7 +4648,30 @@ class Ingest(threading.Thread):
                         # Erst die zurueckgenommenen loeschen, dann speichern:
                         # sonst schriebe ein spaeterer Abschluss denselben
                         # Eintrag neu und der geloeschte waere wieder da.
+                        # Von Hand Eingetragenes retten, BEVOR die Zeile
+                        # faellt. Wer andockt, seine Beute eintraegt und dann
+                        # weiterschiesst, verlor sie sonst spurlos: der Einsatz
+                        # kam zurueck, die Zeile wurde geloescht, und beim
+                        # naechsten Andocken stand er mit leerem Loot-Feld da.
+                        # Beim Voll-Audit am 02.09.2026 gefunden. Die mid
+                        # bleibt dieselbe (wieder_aufnehmen setzt first_ts auf
+                        # den alten Beginn), deshalb findet der naechste
+                        # Abschluss die geretteten Felder wieder.
                         for mid_weg in drop_mid:
+                            alt = DB.execute(
+                                "SELECT loot_isk, loot_text, salvage_isk, "
+                                "salvage_text, label FROM missions WHERE mid=?",
+                                (mid_weg,)).fetchone()
+                            if alt and any(x not in (None, "", 0) for x in alt):
+                                if len(HANDARBEIT) >= HANDARBEIT_MAX:
+                                    # Aeltesten Eintrag opfern. Passiert nur,
+                                    # wenn Einsaetze zurueckgenommen und nie
+                                    # wieder abgeschlossen werden.
+                                    HANDARBEIT.pop(next(iter(HANDARBEIT)), None)
+                                HANDARBEIT[mid_weg] = {
+                                    "loot_isk": alt[0], "loot_text": alt[1],
+                                    "salvage_isk": alt[2], "salvage_text": alt[3],
+                                    "label": alt[4]}
                             DB.execute("DELETE FROM missions WHERE mid=?", (mid_weg,))
                         for md in missions_done:
                             save_mission(md)
@@ -9021,21 +9095,49 @@ def diagnose_text():
     Log-Ordners — nur was zur Fehlersuche noetig ist."""
     ok, n = log_dir_status()
 
-    def ohne_namen(p):
-        """Den Kontonamen aus einem Pfad nehmen. Der Log-Ordner steht in der
-        Diagnose, weil er bei fast jedem Problem die erste Frage ist. Er
-        enthaelt aber den Windows- oder Mac-Kontonamen, und die Diagnose ist
-        ausdruecklich zum Verschicken gedacht: wer sie in ein Issue stellt,
-        veroeffentlichte damit bisher seinen Klarnamen. Beim Audit gefunden."""
+    def ohne_namen(p, leer="(nicht gesetzt)"):
+        """Den Kontonamen aus einem Text nehmen, an JEDER Stelle.
+
+        Der Log-Ordner steht in der Diagnose, weil er bei fast jedem Problem
+        die erste Frage ist. Er enthaelt aber den Windows- oder Mac-Kontonamen,
+        und die Diagnose ist ausdruecklich zum Verschicken gedacht: wer sie in
+        ein Issue stellt, veroeffentlichte damit bisher seinen Klarnamen.
+
+        Frueher wurde nur der ANFANG eines Pfades ersetzt, und nur beim
+        Log-Ordner. Fehlermeldungen tragen den Pfad aber mittendrin
+        ("No such file or directory: 'C:/Users/...'"), und die gingen roh in
+        die Diagnose. Beim Voll-Audit am 02.09.2026 mit einer echten
+        OSError-Meldung nachgewiesen. Deshalb wird jetzt ueberall ersetzt,
+        beide Schraegstrich-Schreibweisen, und zusaetzlich der blosse
+        Kontoname."""
         p = str(p or "")
         if not p:
-            return "(nicht gesetzt)"
+            return leer
         try:
             heim = str(Path.home())
-            if heim and p.lower().startswith(heim.lower()):
-                return "~" + p[len(heim):]
         except Exception:
-            pass
+            return p
+        for form in (heim, heim.replace("\\", "/")):
+            if not form:
+                continue
+            # Ohne Ruecksicht auf Gross- und Kleinschreibung suchen, Windows
+            # schreibt denselben Pfad mal so und mal so.
+            tief = p.lower()
+            ziel = form.lower()
+            stueck, i = [], 0
+            while True:
+                j = tief.find(ziel, i)
+                if j < 0:
+                    stueck.append(p[i:])
+                    break
+                stueck.append(p[i:j])
+                stueck.append("~")
+                i = j + len(form)
+            p = "".join(stueck)
+        # Der blosse Kontoname, falls er ohne Pfad auftaucht.
+        konto = Path.home().name
+        if konto and len(konto) > 2:
+            p = re.sub(re.escape(konto), "<konto>", p, flags=re.I)
         return p
 
     L = [f"EVE Canary Diagnose v{VERSION}",
@@ -9083,8 +9185,12 @@ def diagnose_text():
         for e in list(ERRORS)[-25:]:
             when = datetime.fromtimestamp(e["ts"]).strftime("%d.%m. %H:%M:%S")
             times = f" x{e['n']}" if e["n"] > 1 else ""
-            L.append(f"  [{e['code']}]{times} {when} {e['where']}")
-            L.append(f"      {ERROR_HELP.get(e['code'], '?')}: {e['msg']}")
+            # Beide Zeilen maskieren: "where" traegt gelegentlich einen
+            # Dateinamen, "msg" bei jedem OSError den vollen Pfad.
+            L.append(f"  [{e['code']}]{times} {when} "
+                     f"{ohne_namen(e['where'], '')}")
+            L.append(f"      {ERROR_HELP.get(e['code'], '?')}: "
+                     f"{ohne_namen(e['msg'], '')}")
     return "\n".join(L)
 
 
@@ -9691,6 +9797,11 @@ def resolve_item_ids(names):
     for i in range(0, len(missing), 500):   # ESI nimmt bis 1000, wir bleiben moderat
         batch = missing[i:i + 500]
         found = {}
+        # Hat ESI ueberhaupt geantwortet? Nur dann darf ein fehlender Name als
+        # "kennt ESI nicht" festgeschrieben werden. Ohne diese Unterscheidung
+        # machte ein einziger Netzfehler die Gegenstaende dieses Stapels
+        # dauerhaft wertlos (Voll-Audit 02.09.2026).
+        geantwortet = False
         try:
             req = urllib.request.Request(
                 ESI_BASE + "/universe/ids/", data=json.dumps(batch).encode(),
@@ -9701,16 +9812,22 @@ def resolve_item_ids(names):
             # ("Tritanium"), der Nutzer tippt evtl. "tritanium" -> sonst wird 0
             # gecacht und das Item gilt dauerhaft als unbekannt.
             found = {t["name"].lower(): t["id"] for t in data.get("inventory_types", [])}
+            geantwortet = True
         except Exception as e:
             log_error("CN-NET-01", "resolve_item_ids", e)
         with DB_LOCK:
             for n in batch:
                 tid = found.get(n.lower())
-                # auch 0/NULL merken, damit ein unbekannter Name nicht bei jedem
-                # Einfügen erneut ESI belastet
-                DB.execute("INSERT OR REPLACE INTO item_ids VALUES(?,?)", (n, tid or 0))
                 if tid:
+                    DB.execute("INSERT OR REPLACE INTO item_ids VALUES(?,?)", (n, tid))
                     out[n] = tid
+                elif geantwortet:
+                    # ESI hat geantwortet und kennt den Namen nicht: als 0
+                    # merken, damit derselbe Tippfehler nicht bei jedem
+                    # Einfuegen erneut nachgefragt wird.
+                    DB.execute("INSERT OR REPLACE INTO item_ids VALUES(?,?)", (n, 0))
+                # Kam keine Antwort, bleibt der Name UNGEMERKT und wird beim
+                # naechsten Mal wieder gefragt.
             DB.commit()
     return out
 
@@ -11787,29 +11904,23 @@ def abyss_beute(rows, stufen=None):
     items = {}
     for i, txt in enumerate(rows):
         stufe = (stufen[i] if stufen and i < len(stufen) else None)
-        gesehen = set()
-        for zeile in (txt or "").splitlines():
-            if TAB not in zeile:
-                continue
-            teile = zeile.split(TAB)
-            name = teile[0].strip()
-            if not name:
-                continue
-            try:
-                menge = int(re.sub(r"[^0-9]", "", teile[1]) or 0)
-            except (ValueError, IndexError):
-                menge = 0
+        # DERSELBE Leser wie ueberall sonst. Frueher stand hier eine eigene
+        # Regel ("alle Ziffern der zweiten Spalte"), die aus "0,30 m3" eine
+        # Menge von 303 machte und aus einer Wertspalte zwoelf Millionen
+        # Stueck. Beim Voll-Audit am 02.09.2026 gemessen. parse_inventar_text
+        # prueft, ob Spalte zwei ueberhaupt eine reine Zahl ist, kennt die
+        # leere Mengenspalte (ein Stueck) und die Meta-Level-Falle, und er
+        # summiert gleiche Namen innerhalb EINES Laufs schon selbst.
+        for name, menge in parse_inventar_text(txt).items():
             e = items.setdefault(name, {"name": name, "menge": 0, "laeufe": 0,
                                         "je_stufe": {}})
-            e["menge"] += max(1, menge)
-            # Je Lauf hoechstens EINMAL zaehlen: ein Gegenstand, der in zwei
-            # Zeilen desselben Laufs steht, ist trotzdem in nur einem Lauf
-            # gefallen. Sonst waere die Drop-Rate ueber 100%.
-            if name not in gesehen:
-                e["laeufe"] += 1
-                gesehen.add(name)
-                if stufe:
-                    e["je_stufe"][stufe] = e["je_stufe"].get(stufe, 0) + 1
+            e["menge"] += menge
+            # Je Lauf zaehlt ein Gegenstand hoechstens EINMAL, sonst kaeme
+            # eine Drop-Rate ueber 100% heraus. Weil parse_inventar_text je
+            # Text ein Wort nur einmal liefert, genuegt hier eine Zeile.
+            e["laeufe"] += 1
+            if stufe:
+                e["je_stufe"][stufe] = e["je_stufe"].get(stufe, 0) + 1
     if not items:
         return [], []
     ids = resolve_item_ids(sorted(items))
@@ -13329,7 +13440,8 @@ class Handler(BaseHTTPRequestHandler):
                 row = DB.execute(
                     "SELECT char_id,char,start_ts,system,dmg_out,dmg_in,kills,bounty,"
                     "hits,miss_out,miss_in,weapons,enemies,loot_isk,loot_text,"
-                    "gegner_erst FROM missions WHERE mid=?", (mid,)).fetchone()
+                    "gegner_erst,salvage_isk,salvage_text,label,caches,cache_typ "
+                    "FROM missions WHERE mid=?", (mid,)).fetchone()
             if not row:
                 self._send(json.dumps({"ok": False, "error": "Eintrag nicht gefunden"}))
                 return
@@ -13338,20 +13450,32 @@ class Handler(BaseHTTPRequestHandler):
                  "hits": row[8], "miss_out": row[9], "miss_in": row[10],
                  "weapons": json.loads(row[11] or "[]"),
                  "enemies": json.loads(row[12] or "[]"),
-                 "gegner_erst": json.loads(row[15] or "{}")}
+                 "gegner_erst": json.loads(row[15] or "{}"),
+                 "caches": row[19], "cache_typ": row[20]}
             with ingest.lock:
                 s = ingest.sessions.get(str(row[0]))
                 if s:
                     s.wieder_aufnehmen(m)
                     s.zuletzt_zu = None
+            # Von Hand Eingetragenes retten, genau wie es die Automatik tut.
+            # Frueher ging es hier verloren und die Oberflaeche warnte nur
+            # davor; seit dem Voll-Audit vom 02.09.2026 machen beide Wege
+            # dasselbe, und niemand muss mehr gewarnt werden.
+            hand = {"loot_isk": row[13], "loot_text": row[14],
+                    "salvage_isk": row[16], "salvage_text": row[17],
+                    "label": row[18]}
+            gerettet = any(v not in (None, "", 0) for v in hand.values())
             with DB_LOCK:
+                if gerettet:
+                    if len(HANDARBEIT) >= HANDARBEIT_MAX:
+                        HANDARBEIT.pop(next(iter(HANDARBEIT)), None)
+                    HANDARBEIT[mid] = hand
                 DB.execute("DELETE FROM missions WHERE mid=?", (mid,))
                 DB.commit()
-            # Ob die Sitzung noch laeuft, entscheidet ob die Werte wirklich
-            # weitergezaehlt werden. Eingetragener Loot geht verloren, denn der
-            # Eintrag entsteht spaeter neu: beides gehoert in die Rueckmeldung.
+            # Ob die Sitzung noch laeuft, entscheidet, ob die Werte wirklich
+            # weitergezaehlt werden. Das gehoert in die Rueckmeldung.
             self._send(json.dumps({"ok": True, "sitzung_aktiv": bool(s),
-                                   "loot_war_da": bool(row[13] or row[14])}))
+                                   "loot_gerettet": gerettet}))
             return
         elif action == "mission_verbinden":
             self._send(json.dumps(mission_verbinden(str(body.get("mid") or ""))))
@@ -19544,12 +19668,12 @@ function renderMissions(d){
  });
  document.querySelectorAll('.mreopen').forEach(t=>t.onclick=async()=>{
   const en3=lang==='en';
-  // Vorher fragen: der Eintrag verschwindet aus der Liste, und ein bereits
-  // eingetragener Loot geht mit. Das ist keine Kleinigkeit, die man
-  // versehentlich anklickt.
+  // Vorher fragen: der Eintrag verschwindet voruebergehend aus der Liste.
+  // Seit dem Voll-Audit vom 02.09.2026 bleibt eingetragener Loot dabei
+  // erhalten, er wird beim naechsten Abschluss wieder eingesetzt.
   if(!confirm(en3
-   ?'Take this run back into the current session? The entry disappears from the list and reappears when the run really ends. Loot you already entered is lost.'
-   :'Diesen Einsatz zurück in die laufende Sitzung holen? Der Eintrag verschwindet aus der Liste und entsteht neu, wenn der Einsatz wirklich endet. Bereits eingetragener Loot geht dabei verloren.'))return;
+   ?'Take this run back into the current session? The entry disappears from the list and reappears when the run really ends. Loot, salvage and the name you entered are kept.'
+   :'Diesen Einsatz zurück in die laufende Sitzung holen? Der Eintrag verschwindet aus der Liste und entsteht neu, wenn der Einsatz wirklich endet. Eingetragener Loot, Salvage und der Name bleiben erhalten.'))return;
   t.textContent=en3?'Taking back …':'Hole zurück …';
   let r;try{r=await post({action:'mission_reopen',mid:t.dataset.mid});}catch(e){r=null;}
   if(r&&r.ok){

@@ -1,5 +1,27 @@
 [
  {
+  "v": "2.64.0",
+  "d": "2026-09-02",
+  "de": [
+   "GROSSER PRUEFLAUF, ERSTE FUENF BEHOBEN. Neun Pruefer haben Canary vorne bis hinten durchgesehen und 177 Punkte notiert. Diese Fassung behebt die fuenf, die still Daten kosten oder falsche Zahlen zeigen, ohne dass man es merken kann. Was haelt, steht auch fest: die Sperren zwischen den Threads sind sauber, und die Abwehr des lokalen Servers hat alle 45 geprueften Angriffsvarianten abgewiesen.",
+   "DIE DATENBANK REPARIERT SICH JETZT SELBST. Bisher legten vier Bloecke je zwei Spalten in einem Rutsch an. Ging Canary genau dazwischen aus, existierte die erste Spalte und die zweite nie mehr, und ab diesem Moment wurde KEIN Einsatz mehr gespeichert, fuer immer und ohne jede Meldung: Missionsliste, Abyss-Bereich und Loot-Auswertung blieben leer. Jetzt wird vor jedem Schritt nachgesehen, was wirklich fehlt, und jede Spalte einzeln angelegt. Egal in welchem Zustand deine Datenbank ist, der naechste Start bringt sie in Ordnung.",
+   "EINGETRAGENER LOOT GEHT NICHT MEHR VERLOREN. Wer andockt, in Ruhe seine Beute eintraegt und dann weiterschiesst, holte den Einsatz damit zurueck in die laufende Sitzung. Dabei wurde die Zeile geloescht, und Loot, Salvage und der selbst vergebene Name gingen mit. Genau der Ablauf, fuer den der Sofort-Abschluss gebaut wurde. Beides, der automatische Weg und der Knopf 'Laeuft doch noch', bewahrt die Handarbeit jetzt auf und setzt sie beim naechsten Abschluss wieder ein.",
+   "EIN NETZAUSFALL ENTWERTET KEINE GEGENSTAENDE MEHR. Wer Loot eintrug, waehrend gerade kein Netz da war, bekam fuer diese Gegenstaende NIE WIEDER einen Preis, auch fuer Tritanium nicht: Canary merkte sich jeden Namen des Stapels als unbekannt und fragte nie wieder nach. Eine Null wird jetzt nur noch gemerkt, wenn ESI wirklich geantwortet hat.",
+   "DIESELBE ZEILE, DIESELBE MENGE. Der Abyss-Bereich las die Menge als 'alle Ziffern der zweiten Spalte'. Aus einem Volumen von 0,30 m3 wurden dadurch 303 Stueck, aus einer Wertspalte zwoelf Millionen. Drei Leser derselben Frachtraum-Zeile lieferten drei verschiedene Zahlen. Jetzt benutzen alle denselben Leser, der die Mengenspalte an ihrer Form erkennt und auch die leere Mengenspalte eines einzelnen Moduls richtig als ein Stueck liest. Das aendert Drop-Raten, Top-Beute und Filament-Bilanz zum Richtigen hin.",
+   "DIE DIAGNOSE VERRAET DEINEN KONTONAMEN NICHT MEHR. Sie ist zum Verschicken gebaut, maskierte den Windows-Kontonamen aber nur im Log-Ordner. Jede Dateifehler-Meldung trug den vollen Pfad und damit den Klarnamen hinein. Jetzt wird ueberall maskiert, die Meldung bleibt trotzdem lesbar.",
+   "Dazu drei neue Pruefungen, die genau diese Faelle festhalten, darunter eine, die eine halb angelegte Datenbank nachstellt und verlangt, dass ein Start sie repariert. Gegen die vorige Fassung schlaegt sie fehl, gegen diese laeuft sie durch."
+  ],
+  "en": [
+   "BIG AUDIT, FIRST FIVE FIXED. Nine reviewers went through Canary front to back and noted 177 points. This release fixes the five that silently cost data or show wrong numbers without any way to notice. What holds is settled too: the locks between the threads are clean, and the local server's defence rejected all 45 attack variants tested.",
+   "THE DATABASE NOW REPAIRS ITSELF. Four blocks used to add two columns in one go. If Canary died exactly in between, the first column existed and the second never would again, and from that moment on NO run was saved, forever and without any message: the mission list, the abyss area and the loot analysis stayed empty. Now it checks what is actually missing before each step and adds every column on its own. Whatever state your database is in, the next start puts it right.",
+   "ENTERED LOOT IS NO LONGER LOST. Docking, entering your loot in peace and then firing again pulled the run back into the running session. That deleted the row, and loot, salvage and the name you gave it went with it. Exactly the sequence the instant close was built for. Both the automatic path and the button now keep your handiwork and put it back at the next close.",
+   "A NETWORK OUTAGE NO LONGER DEVALUES ITEMS. Entering loot while the network was down meant those items NEVER got a price again, not even Tritanium: Canary remembered every name in the batch as unknown and never asked again. A zero is now only remembered when ESI actually answered.",
+   "SAME LINE, SAME QUANTITY. The abyss area read the quantity as 'all digits in the second column'. A volume of 0.30 m3 became 303 units, a value column twelve million. Three readers of the same cargo line gave three different numbers. They all use the same reader now, which recognises the quantity column by its shape and also reads a single module's empty quantity column correctly as one. This moves drop rates, top loot and the filament balance towards the truth.",
+   "THE DIAGNOSIS NO LONGER REVEALS YOUR ACCOUNT NAME. It is built to be sent, but masked the Windows account name only in the log folder. Every file error message carried the full path and with it the real name. It is masked everywhere now, and the message stays readable.",
+   "Plus three new checks that pin these cases down, including one that recreates a half-built database and demands that a start repairs it. Against the previous release it fails, against this one it passes."
+  ]
+ },
+ {
   "v": "2.63.0",
   "d": "2026-09-01",
   "de": [
