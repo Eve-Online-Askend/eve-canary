@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.68.0"
+VERSION = "2.68.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -15520,7 +15520,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  </div>
 
  <div class="optgroup">
-  <div class="sect esi">🔑 EVE-Account verbinden</div>
+  <div class="sect esi" id="esiAbschnitt">🔑 EVE-Account verbinden</div>
   <div class="esinudge" id="esiNudge" hidden>✨ Verbinde deinen EVE-Account, dann zeigt Canary automatisch Portrait,
    aktuelles Schiff, Wallet-Stand, Heavy Water und Missions-Einnahmen. Kein Setup nötig, einfach einloggen.</div>
   <div id="esiChars"></div>
@@ -15734,7 +15734,22 @@ function esiHinweis(){
    <button class="btn geist" id="esiHinWeg">${en?'Got it, hide this':'Verstanden, nicht mehr zeigen'}</button>
   </div>
  </div>`;
- $('#esiHinAuf').onclick=()=>{const d=$('#setup'); if(d&&!d.open){d.showModal();syncOpts();}};
+ // Genau derselbe Weg wie der Zahnrad-Knopf oben. Hier stand zuerst
+ // #setup, das ist aber der Einrichtungs-Bildschirm des ersten Starts und
+ // ein gewoehnliches div ohne showModal: der Knopf tat schlicht nichts.
+ $('#esiHinAuf').onclick=()=>{
+  syncOpts();$('#opts').showModal();
+  // Direkt zum EVE-Login springen. Der Dialog ist lang (rund 2.400 Pixel bei
+  // 525 sichtbaren), und ein Knopf, der einen irgendwo abliefert, hilft
+  // niemandem: der Abschnitt liegt ganz unten im vierten Block.
+  // Die Scrollposition direkt setzen statt scrollIntoView: der Dialog ist
+  // selbst der scrollende Behaelter, und scrollIntoView greift darin nicht
+  // zuverlaessig (gemessen: der Abschnitt blieb 1.251 Pixel entfernt).
+  const d=$('#opts'), z=$('#esiAbschnitt');
+  if(z)setTimeout(()=>{
+   d.scrollTop += z.getBoundingClientRect().top - d.getBoundingClientRect().top - 12;
+  },60);
+ };
  $('#esiHinWeg').onclick=()=>{localStorage.setItem(schluessel,'1');kasten.innerHTML='';};
 }
 function esiTabs(){

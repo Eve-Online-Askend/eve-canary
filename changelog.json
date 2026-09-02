@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.68.1",
+  "d": "2026-09-02",
+  "de": [
+   "Der Knopf 'Optionen oeffnen' im Hinweis zum Neuverbinden tat nichts (gemeldet von Askend, wenige Minuten nach der Auslieferung). Er zeigte auf den Einrichtungs-Bildschirm des ersten Starts statt auf den Optionsdialog: beide gibt es, aber nur einer laesst sich oeffnen. Jetzt oeffnet er den richtigen UND springt gleich zum Abschnitt 'EVE-Account verbinden'. Der Dialog ist rund 2.400 Pixel lang bei 525 sichtbaren, ein Knopf der einen irgendwo abliefert haette nicht viel geholfen.",
+   "Dazu eine neue Pruefung, die genau diese Art Fehler kuenftig findet: jede ID, die das Seiten-JavaScript anfasst, muss im HTML stehen, und ein Dialog darf nur auf einem Element geoeffnet werden, das wirklich ein Dialog ist. Auch dann, wenn es vorher einer Variablen zugewiesen wurde, denn genau so sah dieser Fehler aus."
+  ],
+  "en": [
+   "The 'Open options' button in the reconnect notice did nothing (reported by Askend minutes after release). It pointed at the first-run setup screen instead of the options dialog: both exist, but only one can be opened. It now opens the right one AND jumps straight to the 'Connect EVE account' section. The dialog is around 2,400 pixels long with 525 visible, so a button that drops you somewhere would not have helped much.",
+   "Plus a new check that finds this kind of fault in future: every id the page's JavaScript touches must exist in the HTML, and a dialog may only be opened on an element that really is a dialog. Including when it was assigned to a variable first, because that is exactly what this fault looked like."
+  ]
+ },
+ {
   "v": "2.68.0",
   "d": "2026-09-02",
   "de": [
