@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.69.0"
+VERSION = "2.70.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -8932,11 +8932,18 @@ function kaesten(chars) {
   const a = nachArt(chars);
   const namen = {mining: 'MINING', pve: 'PVE', pvp: 'PVP'};
   const teile = [];
-  let summe = 0, rate = 0;
+  // Die GESAMT-Zahl ist die Summe der ganzen FLOTTE, nicht nur der
+  // Charaktere mit erkannter Taetigkeit. Frueher wurde ueber die Kaesten
+  // aufaddiert, und wer gerade flog, andockte oder transportierte, fiel
+  // heraus: gemessen 230 statt 270 Millionen, waehrend die Zeile darunter
+  // trotzdem alle zaehlte. Der Modus "je Charakter" hat es immer richtig
+  // gemacht, jetzt zeigen beide dieselbe Summe (Voll-Audit 02.09.2026).
+  let summe = 0, rate = 0, zugeordnet = 0;
+  for (const c of chars) { summe += gesamtIsk(c); rate += iskH(c) || 0; }
   for (const k of ['mining', 'pve', 'pvp']) {
     const d = a[k];
     if (!d.n) continue;                       // leere Kaesten sind nur Hoehe
-    summe += d.isk; rate += d.rate;
+    zugeordnet += d.n;
     const unten = [d.n + (d.n === 1 ? ' Pilot' : ' Piloten')];
     if (k === 'mining' && d.m3h) unten.push(fmt(d.m3h) + ' m³/h');
     if (k !== 'mining' && d.schaden) unten.push(fmtC(d.schaden) + ' Schaden');
@@ -8953,7 +8960,12 @@ function kaesten(chars) {
   if (teile.length > 1 && ZEIG.sum)
     teile.push('<div class="tk"><span><div class="kopf" style="color:#9fb0c4">GESAMT</div>'
       + '<div class="unter">' + chars.length
-      + (chars.length === 1 ? ' Charakter' : ' Charaktere') + '</div></span>'
+      + (chars.length === 1 ? ' Charakter' : ' Charaktere')
+      // Wenn nicht jeder einer Taetigkeit zugeordnet ist, gehoert das dazu:
+      // sonst zaehlt man die Piloten in den Kaesten darueber zusammen und
+      // kommt auf eine andere Zahl als hier.
+      + (zugeordnet < chars.length ? ', ' + zugeordnet + ' in den Kästen' : '')
+      + '</div></span>'
       + '<span class="zahl">' + fmtM(summe)
       + (rate ? '<small>' + fmtM(rate) + '/h</small>' : '') + '</span></div>');
   return teile.join('');
@@ -13290,11 +13302,31 @@ class Handler(BaseHTTPRequestHandler):
     # Offene Keep-Alive-Verbindungen sollen keinen Thread dauerhaft binden.
     timeout = 30
 
+    def _rahmen_sperren(self):
+        """Verbieten, dass eine fremde Seite Canary in einen Rahmen legt.
+
+        Die Host-, Origin- und Content-Type-Pruefungen halten alles ab, was
+        von aussen KOMMT. Sie helfen aber nicht, wenn eine fremde Seite das
+        Dashboard einfach in einen unsichtbaren Rahmen legt: was darin laeuft,
+        ist dann selbst localhost:8765, seine Aufrufe sind gleicher Herkunft
+        und laufen an allen drei Sperren vorbei. Der Angreifer sieht nichts,
+        kann den Nutzer aber auf einen bestimmten Punkt klicken lassen.
+        Beim Voll-Audit am 02.09.2026 gefunden.
+
+        SAMEORIGIN, nicht DENY: das Dashboard laedt die Overlay-Seite /obs in
+        einen EIGENEN Rahmen, damit man beim Einrichten von OBS sieht, was
+        herauskommt. DENY haette genau diese Vorschau schwarz gelassen.
+        SAMEORIGIN erlaubt das und sperrt trotzdem jede fremde Seite aus.
+        Beide Koepfe, weil aeltere Browser nur den ersten kennen."""
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Content-Security-Policy", "frame-ancestors 'self'")
+
     def _send(self, body, ctype="application/json", download=None):
         if isinstance(body, str):
             body = body.encode()
         self.send_response(200)
         self.send_header("Content-Type", ctype)
+        self._rahmen_sperren()
         # Nie cachen: sonst serviert der Browser bei einem Reload alte /data-
         # Antworten (z.B. alte Standort-Namen), obwohl der Server längst neue liefert.
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
@@ -13307,6 +13339,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _deny(self, code=403):
         self.send_response(code)
+        self._rahmen_sperren()
         self.send_header("Content-Length", "0")
         self.end_headers()
 
@@ -13342,6 +13375,7 @@ class Handler(BaseHTTPRequestHandler):
             body = OBS_PAGE.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self._rahmen_sperren()
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
@@ -16939,7 +16973,7 @@ function mfpTier(m){
 function mfpRaenge(){
  const dlg=$('#mfpDlg'); if(!dlg)return;
  const en=lang==='en';
- const v=mfpValues(lastChars||[]);
+ const v=mfpValues(mfpChars||lastChars||[]);
  const akt=v.miners.length?v.tier.n:null;
  const rows=MFP_RAENGE.map(([ab,n,c],i)=>{
   const bereich=ab>0
@@ -17012,7 +17046,13 @@ function mfpValues(chars){
  return {miners,m3min,ver,mined,avgBonus,tier:mfpTier(m3min),iskmin,stillSeit,
          fullVer:ver.length>0&&ver.length===miners.length,owner};
 }
+// Die Liste, mit der die Karte wirklich gerechnet hat. Teilen-Bild und
+// Raenge-Dialog sitzen IN dieser Karte, griffen aber auf lastChars zu,
+// also auf die UNGEFILTERTE Flotte: daneben standen zwei Zahlen und zwei
+// Raenge fuer dieselbe Sache (Voll-Audit 02.09.2026).
+let mfpChars=null;
 function fleetPowerCard(chars){
+ mfpChars=chars;
  const v=mfpValues(chars);
  if(!v.miners.length)return '';
  const t=v.tier, n=v.miners.length;
@@ -17056,7 +17096,7 @@ function fleetPowerCard(chars){
 // die Zwischenablage. Nichts Externes, alles per Canvas.
 const MFP_COLOR={gold:'--gold',cyan:'--cyan',green:'--green',dim:'--dim'};
 function shareMfp(btn){
- const v=mfpValues(lastChars||[]);
+ const v=mfpValues(mfpChars||lastChars||[]);
  if(!v.miners.length)return;
  const en=(lang==='en');
  const cs=getComputedStyle(document.documentElement);
@@ -20112,7 +20152,11 @@ function renderMissions(d){
 }
 // Aufklapp-Zustand der Job-Boerse ueberlebt den 2-Sekunden-Neuaufbau und den
 // Neustart: ohne das schnappte jede geoeffnete Erzsorte beim naechsten Tick zu.
-let jobsAuf=new Set(JSON.parse(localStorage.getItem('jobsauf')||'[]'));
+// Ueber lsGet, nicht roh: ein kaputter Eintrag im Browser-Speicher
+// (abgebrochener Schreibvorgang, von Hand veraendert) haette hier den
+// GANZEN Skriptblock sterben lassen und das Dashboard bliebe leer.
+// Die Nachbarstelle macht es seit jeher richtig.
+let jobsAuf=new Set(lsGet('jobsauf',[]));
 let lastJobs=null;
 function jobsToggle(k){
  if(jobsAuf.has(k))jobsAuf.delete(k);else jobsAuf.add(k);

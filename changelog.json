@@ -1,5 +1,23 @@
 [
  {
+  "v": "2.70.0",
+  "d": "2026-09-02",
+  "de": [
+   "DIE GESAMT-SUMME IM STREAMER-OVERLAY WAR ZU KLEIN. In der Aufteilung 'je Taetigkeit' zaehlte der GESAMT-Kasten nur die Kaesten darueber zusammen, und wer gerade flog, andockte oder Erz transportierte, hatte keinen Kasten. Dessen ISK fielen heraus. Gemessen an drei Charakteren: 230 statt 270 Millionen, waehrend die Zeile darunter trotzdem alle drei zaehlte. Die Aufteilung 'je Charakter' zeigte die ganze Zeit die richtige Zahl, die beiden widersprachen sich also im laufenden Stream. Jetzt summiert der GESAMT-Kasten immer die ganze Flotte, und wenn nicht jeder einer Taetigkeit zugeordnet ist, steht das dabei: '3 Charaktere, 2 in den Kaesten'.",
+   "DAS DASHBOARD LAESST SICH NICHT MEHR IN EINE FREMDE SEITE EINBETTEN. Jede Antwort traegt jetzt X-Frame-Options und eine Content-Security-Policy, die nur die eigene Seite als Rahmen zulaesst. Ohne das haette eine beliebige Seite im Browser das lokale Dashboard unsichtbar laden und Klicks darauf abfangen koennen. Die Overlay-Vorschau in den Optionen laedt weiterhin, sie ist ja die eigene Seite.",
+   "DIE FLOTTENZAHL IN DER MINING-KARTE BLIEB BEIM AUFKLAPPEN STEHEN. Die Karte merkte sich die Charaktere nicht, mit denen sie gezeichnet wurde, und griff beim Nachrechnen auf einen Stand von vorher zurueck.",
+   "GEOEFFNETE JOB-KARTEN UEBERLEBEN EINEN NEUSTART. Welche Auftraege man aufgeklappt hatte, wurde beim Speichern anders gelesen als beim Laden, und war nach jedem Neustart weg.",
+   "Die zwei Skripte, die Testdaten in den Pruefstand einspielen, sagen jetzt sauber, dass keine Pruef-Datenbank da ist, statt eine leere anzulegen und danach an einer fehlenden Tabelle zu scheitern."
+  ],
+  "en": [
+   "THE TOTAL IN THE STREAMER OVERLAY WAS TOO LOW. In the 'by activity' layout the TOTAL box only added up the boxes above it, and anyone flying, docking or hauling ore had no box. Their ISK dropped out. Measured across three characters: 230 instead of 270 million, while the line underneath still counted all three. The 'by character' layout had the right number all along, so the two contradicted each other live on stream. The TOTAL box now always sums the whole fleet, and when not everyone has an activity it says so: '3 characters, 2 in the boxes'.",
+   "THE DASHBOARD CAN NO LONGER BE EMBEDDED IN A FOREIGN PAGE. Every response now carries X-Frame-Options and a Content Security Policy that only allows the dashboard's own page as a frame. Without it any page in your browser could have loaded the local dashboard invisibly and intercepted clicks on it. The overlay preview in the options still loads, since that is the dashboard's own page.",
+   "THE FLEET FIGURE IN THE MINING CARD WENT STALE WHEN EXPANDED. The card did not remember which characters it was drawn with and fell back to an earlier set when recalculating.",
+   "EXPANDED JOB CARDS SURVIVE A RESTART. Which jobs you had unfolded was written in one format and read back in another, so it was gone after every restart.",
+   "The two scripts that feed test data into the test bench now say plainly that there is no test database, instead of creating an empty one and then failing on a missing table."
+  ]
+ },
+ {
   "v": "2.69.0",
   "d": "2026-09-02",
   "de": [
