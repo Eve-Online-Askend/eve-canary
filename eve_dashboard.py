@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.70.0"
+VERSION = "2.71.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -6070,6 +6070,18 @@ class Esi(threading.Thread):
             save_config()
             return c["access"]
 
+    @staticmethod
+    def scope_fehlt(e):
+        """Sagt dieser HTTP-Fehler, dass der Token den Scope nicht abdeckt?
+
+        CCP antwortet darauf mal mit 403, mal mit 401. Am echten Konto
+        gemessen (02.09.2026): /industry/jobs/ gibt 401, /planets/ mit
+        demselben Token gibt Daten. Der Token ist hier immer frisch, weil
+        _access ihn vorher erneuert, ein 401 kann also nicht heissen
+        "abgelaufen". Wer nur 403 abfaengt, verliert den Charakter still.
+        """
+        return getattr(e, "code", None) in (401, 403)
+
     def _get(self, c, path, params=None):
         url = ESI_BASE + path + ("?" + urllib.parse.urlencode(params) if params else "")
         req = urllib.request.Request(url, headers={
@@ -6965,7 +6977,7 @@ class Esi(threading.Thread):
                         self.sync_industry(name, c)
                     c["industry_scope"] = True
                 except urllib.error.HTTPError as e:
-                    if e.code == 403:
+                    if self.scope_fehlt(e):
                         c["industry_scope"] = False
                         c.pop("industry", None)
                         c["industry_next"] = time.time() + 1800
@@ -6979,7 +6991,7 @@ class Esi(threading.Thread):
                         self.sync_planets(name, c)
                     c["planets_scope"] = True
                 except urllib.error.HTTPError as e:
-                    if e.code == 403:
+                    if self.scope_fehlt(e):
                         c["planets_scope"] = False
                         c.pop("planets", None)
                         c["planets_next"] = time.time() + 1800
@@ -12072,10 +12084,15 @@ def query_industrie():
     jobs, reconnect, chars = [], [], []
     stale = None
     for nm, c in ((CONFIG.get("esi") or {}).get("chars", {})).items():
-        if c.get("industry_scope") is False:
+        ind = c.get("industry")
+        # Kein "True" heisst: entweder hat CCP den Scope abgelehnt, oder wir
+        # haben noch nie eine Antwort bekommen. Beides gehoert in die Liste
+        # "einmal neu verbinden". Frueher zaehlte nur das ausdrueckliche
+        # False, und ein Charakter ohne jede Marke fiel aus BEIDEN Listen
+        # heraus: er stand weder bei den Auftraegen noch bei den Wartenden.
+        if c.get("industry_scope") is not True and not ind:
             reconnect.append(nm)
             continue
-        ind = c.get("industry")
         if not ind:
             continue
         stale = ind.get("as_of") if stale is None else min(stale, ind.get("as_of") or stale)
@@ -16776,12 +16793,12 @@ $('#beltGo').onclick=async()=>{
  const h=Math.floor(dauer/60), m=Math.round(dauer%60);
  $('#beltOut').innerHTML=`
   <div class="stats" style="grid-template-columns:repeat(4,1fr)">
-   <div class="stat"><div class="l">${en?'Volume, raw':'Volumen roh'}</div><div class="v">${fmtC(r.m3)} m³</div></div>
-   <div class="stat"><div class="l">${en?'Volume, compressed':'Volumen komprimiert'}</div><div class="v">${fmtC(r.cm3)} m³</div>
+   <div class="stat" title="${en?`Total ore from the survey window you pasted, as it sits in the asteroid. This is the volume your hold would need if you haul it uncompressed.`:`Summe des Erzes aus dem eingefügten Vermesser-Fenster, so wie es im Asteroiden liegt. Das ist das Volumen, das dein Laderaum fassen müsste, wenn du es ungepresst wegfliegst.`}"><div class="l">${en?'Volume, raw':'Volumen roh'}</div><div class="v">${fmtC(r.m3)} m³</div></div>
+   <div class="stat" title="${en?`The same ore after compression, using the game's fixed conversion factors, not an estimate. Anything that cannot be compressed is counted at its raw volume.`:`Dasselbe Erz nach dem Pressen. Gerechnet mit den festen Umrechnungsfaktoren des Spiels, nicht geschätzt. Was sich nicht pressen lässt, steht mit seinem Rohvolumen drin.`}"><div class="l">${en?'Volume, compressed':'Volumen komprimiert'}</div><div class="v">${fmtC(r.cm3)} m³</div>
     ${schrumpf>1.5?`<div class="sub">${en?'fits in':'passt in'} 1/${Math.round(schrumpf)}</div>`:''}</div>
-   <div class="stat"><div class="l">${en?'Worth (Jita, instant sell)':'Wert (Jita, Sofortverkauf)'}</div><div class="v isk">${fmtM(gesCISK)}</div>
+   <div class="stat" title="${en?`What you would get selling straight into the highest buy order in Jita. Valued compressed, since that almost always sells better. Your own sell order gets more, but you wait for it.`:`Was du bekämst, wenn du es sofort in die höchste Kauforder in Jita verkaufst. Der Wert des komprimierten Erzes, weil sich das fast immer besser verkauft. Mit eigener Verkaufsorder liegt mehr drin, dafür wartest du.`}"><div class="l">${en?'Worth (Jita, instant sell)':'Wert (Jita, Sofortverkauf)'}</div><div class="v isk">${fmtM(gesCISK)}</div>
     ${Math.abs(gesCISK-gesISK)>gesISK*0.005?`<div class="sub">${en?'raw':'roh'}: ${fmtM(gesISK)}</div>`:''}</div>
-   <div class="stat"><div class="l">${en?'Ore types':'Erzsorten'}</div><div class="v">${rows.length}</div></div>
+   <div class="stat" title="${en?`How many different ores are in the pasted window. Recognised by name, including the contaminated and ice variants.`:`Wie viele verschiedene Erze im eingefügten Fenster stehen. Erkannt wird über den Namen, auch die verunreinigten und die Eis-Varianten.`}"><div class="l">${en?'Ore types':'Erzsorten'}</div><div class="v">${rows.length}</div></div>
   </div>
   ${rate>0?`<div class="sub" style="margin-top:6px">${en
     ? `At ${fmt(Math.round(rate))} m³/min from ${miner.length} active mining ${miner.length===1?'character':'characters'}
@@ -17221,7 +17238,31 @@ function renderLive(chars,summary){
  if(!showOff)chars=chars.filter(c=>c.active);
  $('#hero').innerHTML=fleetPowerCard(chars)+fleetCard(chars)+heroBar(summary);
  if(!chars.length){$('#empty').hidden=false;
-  $('#empty').textContent=!showOff?'Gerade ist kein Charakter eingeloggt. Mit „💤 Offline zeigen" siehst du auch die abgemeldeten.':(rf?'Kein Charakter mit dieser Rolle. Tippe auf einer Karte auf das Rollen-Symbol, um sie zuzuweisen.':'Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern" aktivieren.)');
+  // Welcher Satz hilft, haengt an der LAGE, nicht am Schalter "Offline
+  // zeigen". Frueher entschied allein dieser Schalter, und weil er beim
+  // ersten Start aus ist, empfahl ein frisch installiertes Canary ohne einen
+  // einzigen Gamelog genau diesen Schalter, der dann nichts freilegte. Der
+  // Satz, der weiterhilft, war fuer neue Nutzer unerreichbar
+  // (Voll-Audit 02.09.2026).
+  const en=lang==='en';
+  let txt;
+  if(!lastChars.length)
+   // Gar nichts gelesen. Kein Filter, kein Schalter aendert daran etwas.
+   txt=en?'Waiting for game log data … (Is the EVE client running? Enable „Save game log“ in the client settings.)'
+         :'Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern“ aktivieren.)';
+  else if(f&&!lastChars.some(c=>c.name===f&&(showOff||c.active)))
+   txt=en?`The filter is set to „${f}“ and that character is not showing right now. Switch it back to „All characters“ above.`
+         :`Der Filter steht auf „${f}“, und dieser Charakter ist gerade nicht dabei. Oben wieder auf „Alle Charaktere“ stellen.`;
+  else if(rf)
+   txt=en?'No character with this role. Tap the role symbol on a card to assign one.'
+         :'Kein Charakter mit dieser Rolle. Tippe auf einer Karte auf das Rollen-Symbol, um sie zuzuweisen.';
+  else if(!showOff)
+   txt=en?'No character logged in right now. Turn on „💤 Show offline“ to see the logged-out ones too.'
+         :'Gerade ist kein Charakter eingeloggt. Mit „💤 Offline zeigen“ siehst du auch die abgemeldeten.';
+  else
+   txt=en?'Waiting for game log data … (Is the EVE client running? Enable „Save game log“ in the client settings.)'
+         :'Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern“ aktivieren.)';
+  $('#empty').textContent=txt;
   $('#grid').innerHTML='';return;}
  $('#empty').hidden=true;
  $('#grid').innerHTML=safeCards(chars);
@@ -17341,16 +17382,16 @@ function miningCardHtml(c){
     ${(c.bonus&&c.bonus.n>0)?`<div class="stat" title="Lieferungen mit vervielfachtem Ertrag. Canary erkennt sie daran, dass die Menge ein exaktes Vielfaches deiner Normallieferung ist. Gezeigt wird nur der Teil, der über die Normalmenge hinausging.">
      <div class="l">Bonus-Erträge (${c.bonus.n} von ${c.bonus.von} · ${c.bonus.quote}%)</div>
      <div class="v isk">${fmtM(c.bonus.isk)}<span class="sub" style="display:block;font-weight:400">${fmt(c.bonus.m3)} m³ extra</span></div></div>`:''}
-    <div class="stat"><div class="l">Laderaum ≈ ${fmt(c.hold_m3)} m³ · ${state.regions[state.region]}</div><div class="v isk">${
+    <div class="stat" title="${lang==='en'?`What is actually in your cargo hold right now, read through the EVE login and valued at instant-sell prices in the selected region. Without the EVE login this stays empty: the game logs do not reveal your hold.`:`Was gerade wirklich im Frachtraum liegt, über den EVE-Login ausgelesen und zu Sofortverkaufspreisen der eingestellten Region bewertet. Ohne EVE-Login bleibt die Kachel leer, denn die Gamelogs verraten den Laderaum nicht.`}"><div class="l">Laderaum ≈ ${fmt(c.hold_m3)} m³ · ${state.regions[state.region]}</div><div class="v isk">${
       c.hold_prices==='none'
        ?'<span style="color:var(--dim);font-size:12px;font-weight:400">keine Preisdaten</span>'
        :'~'+fmtM(c.hold_isk)+(c.hold_prices==='partial'?' <span style="color:var(--dim)" title="Für einzelne Erztypen fehlen Preisdaten">±</span>':'')
     }</div></div>
-    ${c.heavy_water||!c.esi_linked?`<div class="stat"><div class="l">Heavy Water${c.heavy_water?' · '+c.heavy_water.core.toUpperCase():''}${c.heavy_water&&c.heavy_water.esi?' · ESI':''} ${c.heavy_water&&c.heavy_water.esi?'':`<span class="hwset" data-char="${esc(c.name)}" data-core="${c.heavy_water?c.heavy_water.core:''}" data-fill="${c.heavy_water&&c.heavy_water.fill?c.heavy_water.fill:''}" title="Bestand im Laderaum setzen">⛽</span>`}</div><div class="v ${c.heavy_water&&c.heavy_water.on&&!c.heavy_water.refill&&c.heavy_water.min_left<30?'in':''}" title="${esc(hwUsedTitle(c.heavy_water))}">${c.heavy_water?(c.heavy_water.refill?'?':fmt(c.heavy_water.units)):'—'}</div><div class="l">${hwLine(c.heavy_water)}</div></div>`:''}
-    <div class="stat"><div class="l">Bounties</div><div class="v grn">${fmtM(c.bounty)}</div></div>
-    ${c.wallet!=null?`<div class="stat"><div class="l">Wallet (ESI)</div><div class="v grn">${fmtM(c.wallet)}</div></div>`:''}
-    <div class="stat"><div class="l">Schaden raus/rein</div><div class="v"><span class="out">${fmtM(c.dmg_out)}</span> / <span class="in">${fmtM(c.dmg_in)}</span></div></div>
-    <div class="stat"><div class="l">DPS raus/rein</div><div class="v"><span class="out">${c.dps_out}</span> / <span class="in">${c.dps_in}</span></div></div>
+    ${c.heavy_water||!c.esi_linked?`<div class="stat" title="${lang==='en'?`Heavy Water left for the industrial core. EVE never logs whether the core is running; the only hard evidence is a compression, which could not happen without an active core. With the EVE login the consumption is measured, without it counted against the amount you entered.`:`Bestand an Heavy Water für den Industriekern. EVE protokolliert nirgends, ob der Kern läuft; der einzige harte Beleg ist eine Kompression, die ohne aktiven Kern gar nicht zustande käme. Mit EVE-Login ist der Verbrauch gemessen, ohne ihn gegen den selbst gesetzten Bestand gerechnet.`}"><div class="l">Heavy Water${c.heavy_water?' · '+c.heavy_water.core.toUpperCase():''}${c.heavy_water&&c.heavy_water.esi?' · ESI':''} ${c.heavy_water&&c.heavy_water.esi?'':`<span class="hwset" data-char="${esc(c.name)}" data-core="${c.heavy_water?c.heavy_water.core:''}" data-fill="${c.heavy_water&&c.heavy_water.fill?c.heavy_water.fill:''}" title="Bestand im Laderaum setzen">⛽</span>`}</div><div class="v ${c.heavy_water&&c.heavy_water.on&&!c.heavy_water.refill&&c.heavy_water.min_left<30?'in':''}" title="${esc(hwUsedTitle(c.heavy_water))}">${c.heavy_water?(c.heavy_water.refill?'?':fmt(c.heavy_water.units)):'—'}</div><div class="l">${hwLine(c.heavy_water)}</div></div>`:''}
+    <div class="stat" title="${lang==='en'?`Bounty for NPC kills, counted from the game logs where it appears as its own line, so this is measured and not estimated. Mission rats often pay no bounty at all, so a low number does not mean a bad run.`:`Kopfgeld für abgeschossene NPCs, aus den Gamelogs gezählt. Es steht dort als eigene Zeile, ist also gemessen und nicht geschätzt. Missionsgegner zahlen oft gar keine Bounty, dann bleibt die Zahl klein, obwohl der Einsatz sich gelohnt hat.`}"><div class="l">Bounties</div><div class="v grn">${fmtM(c.bounty)}</div></div>
+    ${c.wallet!=null?`<div class="stat" title="${lang==='en'?`Your real wallet balance from the EVE login, not this session's earnings. It also moves with purchases, sales and taxes, so it says nothing about what this session brought in.`:`Der echte Kontostand aus dem EVE-Login, nicht der Sitzungsertrag. Er ändert sich auch durch Käufe, Verkäufe und Steuern, hat also nichts mit dem zu tun, was diese Sitzung eingebracht hat.`}"><div class="l">Wallet (ESI)</div><div class="v grn">${fmtM(c.wallet)}</div></div>`:''}
+    <div class="stat" title="${lang==='en'?`Total damage this session: dealt on the left, taken on the right. Both as it landed after resistances, drones included. Counted from the combat log, not extrapolated.`:`Gesamtschaden dieser Sitzung, links ausgeteilt, rechts eingesteckt. Beides so, wie es nach den Widerständen ankam, Drohnen zählen mit. Gezählt aus dem Kampflog, nicht hochgerechnet.`}"><div class="l">Schaden raus/rein</div><div class="v"><span class="out">${fmtM(c.dmg_out)}</span> / <span class="in">${fmtM(c.dmg_in)}</span></div></div>
+    <div class="stat" title="${lang==='en'?`Damage per second averaged over the last 60 seconds. Always lower than the fitting window figure, which assumes 0 percent resistance. Reloading, switching targets and approaching all drag it down.`:`Schaden je Sekunde im Schnitt der letzten 60 Sekunden. Liegt immer unter der Zahl im Fitting-Fenster, denn die rechnet gegen 0 Prozent Widerstand. Nachladen, Zielwechsel und Anflug ziehen die Zahl mit herunter.`}"><div class="l">DPS raus/rein</div><div class="v"><span class="out">${c.dps_out}</span> / <span class="in">${c.dps_in}</span></div></div>
     ${(c.pvp_kills||c.verluste)?`<div class="stat"><div class="l" title="${lang==='en'
        ?'From the killmail feed (zKillboard values), lags a few minutes. EVE does not log player kills locally.'
        :'Aus dem Killmail-Feed (zKillboard-Werte), ein paar Minuten verzögert. EVE loggt Spieler-Abschüsse nicht lokal.'}">PvP ${lang==='en'?'kills/losses':'Kills/Verluste'}</div>
@@ -17508,12 +17549,33 @@ function renderCombat(chars,summary){
  const tL=chars.reduce((s,c)=>s+((c.cargo&&c.cargo.buy)||0),0);
  const tK=chars.reduce((s,c)=>s+(c.kills||0),0);
  $('#hero').innerHTML=`<div class="card" style="grid-column:1/-1"><div class="stats" style="grid-template-columns:repeat(3,1fr);margin:0">
-   <div class="stat"><div class="l">⚔ Bounty (Session)</div><div class="v grn" style="font-size:24px">${fmtM(tB)}</div><div class="l">${tK} Kills</div></div>
-   <div class="stat"><div class="l">Loot / Cargo</div><div class="v isk" style="font-size:24px">${fmtM(tL)}</div><div class="l">aus EVE-Login</div></div>
-   <div class="stat"><div class="l">Session gesamt</div><div class="v isk" style="font-size:24px">${fmtM(tB+tL)}</div><div class="l">Bounty + Loot</div></div>
+   <div class="stat" title="${lang==='en'?`Bounty across all displayed characters, counted from the game logs. Anyone logged out or filtered away is not included.`:`Kopfgeld aller gezeigten Charaktere zusammen, aus den Gamelogs gezählt. Wer abgemeldet oder weggefiltert ist, zählt nicht mit.`}"><div class="l">⚔ Bounty (Session)</div><div class="v grn" style="font-size:24px">${fmtM(tB)}</div><div class="l">${tK} Kills</div></div>
+   <div class="stat" title="${lang==='en'?`Value of what is currently in the cargo holds, read through the EVE login. This is a stock, not a yield: anything you sold or dropped off in between is no longer in it.`:`Wert dessen, was gerade in den Frachträumen liegt, über den EVE-Login ausgelesen. Das ist ein Bestand, kein Ertrag: was du zwischendurch verkauft oder abgeladen hast, steht nicht mehr drin.`}"><div class="l">Loot / Cargo</div><div class="v isk" style="font-size:24px">${fmtM(tL)}</div><div class="l">aus EVE-Login</div></div>
+   <div class="stat" title="${lang==='en'?`Bounty plus the value in the hold. Shown separately on purpose: one is earned and paid out, the other is still sitting in your hold and has to get home in one piece.`:`Bounty plus der Wert im Frachtraum. Bewusst getrennt gezeigt, denn das eine ist verdient und ausgezahlt, das andere liegt erst im Laderaum und muss noch heil nach Hause.`}"><div class="l">Session gesamt</div><div class="v isk" style="font-size:24px">${fmtM(tB+tL)}</div><div class="l">Bounty + Loot</div></div>
   </div></div>`;
  if(!chars.length){$('#empty').hidden=false;
-  $('#empty').textContent=!showOff?'Gerade ist kein Charakter eingeloggt. Mit „💤 Offline zeigen" siehst du auch die abgemeldeten.':'Kein Charakter mit dieser Rolle.';
+  // Wie in renderLive: der Satz haengt an der Lage, nicht am Schalter
+  // "Offline zeigen". Diese Kopie war sogar noch schlechter, sie behauptete
+  // mit eingeschaltetem Schalter immer "Kein Charakter mit dieser Rolle",
+  // auch ohne gesetzten Rollen-Filter (Voll-Audit 02.09.2026).
+  const en=lang==='en';
+  let txt;
+  if(!lastChars.length)
+   txt=en?'Waiting for game log data … (Is the EVE client running? Enable „Save game log“ in the client settings.)'
+         :'Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern“ aktivieren.)';
+  else if(f&&!lastChars.some(c=>c.name===f&&(showOff||c.active)))
+   txt=en?`The filter is set to „${f}“ and that character is not showing right now. Switch it back to „All characters“ above.`
+         :`Der Filter steht auf „${f}“, und dieser Charakter ist gerade nicht dabei. Oben wieder auf „Alle Charaktere“ stellen.`;
+  else if(rf)
+   txt=en?'No character with this role. Tap the role symbol on a card to assign one.'
+         :'Kein Charakter mit dieser Rolle. Tippe auf einer Karte auf das Rollen-Symbol, um sie zuzuweisen.';
+  else if(!showOff)
+   txt=en?'No character logged in right now. Turn on „💤 Show offline“ to see the logged-out ones too.'
+         :'Gerade ist kein Charakter eingeloggt. Mit „💤 Offline zeigen“ siehst du auch die abgemeldeten.';
+  else
+   txt=en?'Waiting for game log data … (Is the EVE client running? Enable „Save game log“ in the client settings.)'
+         :'Warte auf Gamelog-Daten … (EVE-Client an? Im Client „Spielprotokoll speichern“ aktivieren.)';
+  $('#empty').textContent=txt;
   $('#grid').innerHTML='';return;}
  $('#empty').hidden=true;
  $('#grid').innerHTML=safeCards(chars);
@@ -17545,9 +17607,9 @@ function combatCardHtml(c){
    </div>
    <div class="cbody">
     <div class="stats">
-     <div class="stat"><div class="l">Bounty</div><div class="v grn">${fmtM(c.bounty||0)}</div></div>
-     <div class="stat"><div class="l">Loot / Cargo</div><div class="v isk">${c.cargo?fmtM(c.cargo.buy):'—'}</div>${cargoLine(c.cargo)}</div>
-     <div class="stat"><div class="l">Session gesamt</div><div class="v isk">${fmtM(sessISK)}</div></div>
+     <div class="stat" title="${lang==='en'?`This character's bounty this session, counted from the game log. Mission rats often pay none, so a low number does not mean the mission was worthless.`:`Kopfgeld dieses Charakters in dieser Sitzung, aus dem Gamelog gezählt. Missionsgegner zahlen oft keine, dann bleibt die Zahl klein, obwohl die Mission etwas eingebracht hat.`}"><div class="l">Bounty</div><div class="v grn">${fmtM(c.bounty||0)}</div></div>
+     <div class="stat" title="${lang==='en'?`Value of the cargo hold, read through the EVE login and valued at instant-sell prices. Without the EVE login you see a dash: EVE does not log looting.`:`Wert des Frachtraums, über den EVE-Login ausgelesen und zu Sofortverkaufspreisen bewertet. Ohne EVE-Login steht hier ein Strich, denn EVE protokolliert das Plündern nicht.`}"><div class="l">Loot / Cargo</div><div class="v isk">${c.cargo?fmtM(c.cargo.buy):'—'}</div>${cargoLine(c.cargo)}</div>
+     <div class="stat" title="${lang==='en'?`This character's bounty plus cargo value. One is paid out, the other is still in the hold.`:`Bounty plus Frachtraumwert dieses Charakters. Das eine ist ausgezahlt, das andere liegt noch im Laderaum.`}"><div class="l">Session gesamt</div><div class="v isk">${fmtM(sessISK)}</div></div>
     </div>
     ${c.mission
       ?`<div class="mtag" style="margin-top:8px">${missionHtml(c.mission)}${c.site?' '+siteHtml(c.site):''}</div>`
@@ -17567,8 +17629,8 @@ function combatCardHtml(c){
      <div class="stat" title="Schaden je Sekunde im Schnitt der letzten 60 Sekunden, nach den Widerständen des Gegners und inklusive Drohnen. Liegt deshalb immer unter der Zahl im Fitting-Fenster, die gegen 0 Prozent Widerstand rechnet. Nachladen, Zielwechsel und Anflug ziehen sie mit herunter."><div class="l">DPS</div><div class="v out">${c.dps_out}</div></div>
      <div class="stat" title="Anteil deiner Schüsse, die getroffen haben. Fehlschüsse stehen als eigene Zeile im Kampflog, deshalb ist die Quote gezählt und nicht geschätzt."><div class="l">Trefferquote</div><div class="v">${hit==null?'—':hit+'%'}</div><div class="l">${shots?c.hits_out+' / '+shots:''}</div></div>
      ${c.kills>0
-       ?`<div class="stat"><div class="l">Kills</div><div class="v">${c.kills}</div></div>`
-       :`<div class="stat"><div class="l">Gegner bekämpft</div><div class="v">${c.enemy_types||0}</div><div class="l" title="EVE protokolliert keine NPC-Tode. Ohne Bounty ist die Zahl der bekämpften Gegnertypen der einzige gesicherte Wert.">Typen · aus Log</div></div>`}
+       ?`<div class="stat" title="${lang==='en'?`Enemies with a bounty payout in the log. EVE does not log NPC deaths, and the bounty line is the only hard evidence. Anything that pays no bounty never shows up here, even when it died.`:`Gegner, für die eine Bounty im Log steht. EVE protokolliert keine NPC-Tode, die Bounty-Zeile ist der einzige harte Beleg. Wer keine Bounty zahlt, taucht hier nicht auf, auch wenn er gestorben ist.`}"><div class="l">Kills</div><div class="v">${c.kills}</div></div>`
+       :`<div class="stat" title="${lang==='en'?`How many different enemy types shot at you or were shot by you. This stands in for the kill count when no bounty is paid: EVE does not log NPC deaths, so counted types are the only solid figure.`:`Wie viele verschiedene Gegnertypen dich beschossen haben oder von dir beschossen wurden. Ersatz für die Kill-Zahl, wenn keine Bounty gezahlt wird: EVE protokolliert keine NPC-Tode, gezählte Typen sind dann der einzige gesicherte Wert.`}"><div class="l">Gegner bekämpft</div><div class="v">${c.enemy_types||0}</div><div class="l" title="EVE protokolliert keine NPC-Tode. Ohne Bounty ist die Zahl der bekämpften Gegnertypen der einzige gesicherte Wert.">Typen · aus Log</div></div>`}
     </div>
     ${noBountyData?`<div class="cardnote">ℹ️ Für diese Mission stehen keine Bounty-Zahlungen im Log. Das ist bei Missionsgegnern normal, viele zahlen gar keine Bounty, an deinen Einstellungen liegt es nicht. Die echte Belohnung kommt bei EVE-Login aus dem Wallet.</div>`:''}
     ${c.weapons.length?`<div class="sect">Waffen</div><table>`+c.weapons.map(w=>
@@ -17577,9 +17639,9 @@ function combatCardHtml(c){
       `<tr><td>${esc(t[0])}</td><td class="r">${fmt(t[1])}</td></tr>`).join('')+`</table>`:''}
     <div class="sect">🛡 Defense</div>
     <div class="stats">
-     <div class="stat"><div class="l">Schaden rein</div><div class="v in">${fmt(c.dmg_in||0)}</div></div>
-     <div class="stat"><div class="l">DPS rein</div><div class="v in">${c.dps_in}</div></div>
-     <div class="stat"><div class="l">Gegner daneben</div><div class="v">${c.miss_in||0}</div></div>
+     <div class="stat" title="${lang==='en'?`What actually landed on you, after your resistances. Whatever shield or armour soaked up is included: the log reports the hit, not the repair afterwards.`:`Was bei dir angekommen ist, nach deinen Widerständen. Was der Schild oder die Panzerung abgefangen hat, steht mit drin: das Log meldet den Treffer, nicht die Reparatur danach.`}"><div class="l">Schaden rein</div><div class="v in">${fmt(c.dmg_in||0)}</div></div>
+     <div class="stat" title="${lang==='en'?`Incoming damage per second averaged over the last 60 seconds. A sudden jump means new enemies arrived or something switched onto you.`:`Eingehender Schaden je Sekunde im Schnitt der letzten 60 Sekunden. Steigt die Zahl plötzlich, ist neuer Gegner dazugekommen oder ein Ziel ist auf dich umgeschwenkt.`}"><div class="l">DPS rein</div><div class="v in">${c.dps_in}</div></div>
+     <div class="stat" title="${lang==='en'?`How often the enemy missed. Misses appear as their own line in the combat log, so this is counted. A high number usually means you are fast or small enough to be hard to hit.`:`Wie oft der Gegner danebengeschossen hat. Fehlschüsse stehen als eigene Zeile im Kampflog, also gezählt. Eine hohe Zahl heißt meist, dass du schnell genug oder klein genug bist, um schwer getroffen zu werden.`}"><div class="l">Gegner daneben</div><div class="v">${c.miss_in||0}</div></div>
     </div>
     ${c.ewar&&c.ewar.length?`<div class="cardwarn drone">⚠ EWAR gegen dich: `+c.ewar.map(e=>(EWAR_LABEL[e[0]]||e[0])+' ×'+e[1]).join(' · ')+`</div>`:''}
     ${c.top_attackers.length?`<div class="sect">Top-Angreifer</div><table>`+c.top_attackers.map(t=>
@@ -18804,7 +18866,10 @@ function renderWallet(w){
    +`</span></div></div>`;
  }
  const g=w.gruppen||{};
- const kachel=(l,v,cls)=>`<div class="stat"><div class="l">${l}</div><div class="v ${cls||''}">${v}</div></div>`;
+ // Der vierte Wert ist der Hinweistext. Ohne ihn stand hier eine nackte
+ // Zahl, und gerade bei Saldo und Marge ist der Unterschied zwischen
+ // "gebucht" und "geparkt" nicht zu erraten (Voll-Audit 02.09.2026).
+ const kachel=(l,v,cls,tip)=>`<div class="stat"${tip?` title="${tip}"`:''}><div class="l">${l}</div><div class="v ${cls||''}">${v}</div></div>`;
  const vz=n=>(n>=0?'grn':'in');
  // Namen der Buchungs-Kategorien an EINER Stelle, damit Bilanz und die alte
  // Herkunfts-Tabelle nie auseinanderlaufen.
@@ -18830,9 +18895,15 @@ function renderWallet(w){
     <span class="char">⚖️ ${en?'Income and spending':'Einnahmen und Ausgaben'}</span>
     <span class="sub">· ${B.von?new Date(B.von*1000).toLocaleDateString():''} ${en?'to':'bis'} ${B.bis?new Date(B.bis*1000).toLocaleDateString():''}</span></div>
    <div class="stats" style="grid-template-columns:repeat(3,1fr)">
-    ${kachel(en?'Income':'Einnahmen',fmtM(B.ein)+' ISK','grn')}
-    ${kachel(en?'Spending':'Ausgaben','-'+fmtM(B.aus)+' ISK','in')}
-    ${kachel(en?'Balance':'Saldo',fmtM(B.saldo)+' ISK',vz(B.saldo))}
+    ${kachel(en?'Income':'Einnahmen',fmtM(B.ein)+' ISK','grn',en
+      ?'Everything booked into your wallet in this period, from the wallet journal via the EVE login.'
+      :'Alles, was in diesem Zeitraum auf dein Konto gebucht wurde, aus dem Wallet-Journal über den EVE-Login.')}
+    ${kachel(en?'Spending':'Ausgaben','-'+fmtM(B.aus)+' ISK','in',en
+      ?'Everything booked out again. Purchases come from your transactions, not the journal: EVE books a buy order as escrow the moment you place it, and that money comes back if you cancel.'
+      :'Alles, was wieder abgebucht wurde. Käufe kommen aus deinen Transaktionen, nicht aus dem Journal: EVE bucht eine Kauforder schon beim Aufgeben als Treuhand, und das Geld kommt beim Abbrechen zurück.')}
+    ${kachel(en?'Balance':'Saldo',fmtM(B.saldo)+' ISK',vz(B.saldo),en
+      ?'Income minus spending. ISK parked in open buy orders is in neither figure, since it is not spent yet.'
+      :'Einnahmen minus Ausgaben. ISK, die in offenen Kauforders geparkt sind, stecken in keiner der beiden Zahlen, denn ausgegeben sind sie noch nicht.')}
    </div>
    <div class="advrow" style="margin-top:10px">
     <div style="flex:1"><div class="l" style="margin-bottom:4px">${en?'Income by category':'Einnahmen nach Kategorie'}</div>
@@ -18871,10 +18942,18 @@ function renderWallet(w){
  let h=`<div class="card" style="grid-column:1/-1"><div class="chead"><span class="char">🧾 ${en?'Trading result':'Handelsergebnis'}</span>
    <span class="sub">· ${w.tage?((en?'last ':'letzte ')+w.tage+(en?' days':' Tage')):(en?'all data':'alle Daten')} · ${w.trades} ${en?'executions':'Ausführungen'}</span></div>
   ${(w.tops&&w.tops.rund_n)?`<div class="stats" style="grid-template-columns:repeat(4,1fr)">
-   ${kachel(en?'Gross margin':'Brutto-Marge',fmtM(w.brutto)+' ISK',vz(w.brutto))}
-   ${kachel(en?'Fees & tax':'Gebühren & Steuer','-'+fmtM(w.gebuehren)+' ISK','in')}
-   ${kachel(en?'Net':'Netto',fmtM(w.netto)+' ISK',vz(w.netto))}
-   ${kachel(en?'Turnover':'Umsatz',fmtM(w.verkauf)+' ISK')}
+   ${kachel(en?'Gross margin':'Brutto-Marge',fmtM(w.brutto)+' ISK',vz(w.brutto),en
+     ?'Sales minus what those exact items cost you, matched oldest purchase first. Before fees and tax.'
+     :'Verkäufe minus das, was genau diese Gegenstände dich gekostet haben, älteste Einkäufe zuerst zugeordnet. Vor Gebühren und Steuer.')}
+   ${kachel(en?'Fees & tax':'Gebühren & Steuer','-'+fmtM(w.gebuehren)+' ISK','in',en
+     ?'Broker fee and sales tax as actually booked, not the rate from the market window.'
+     :'Maklergebühr und Verkaufssteuer, so wie sie wirklich gebucht wurden, nicht der Satz aus dem Marktfenster.')}
+   ${kachel(en?'Net':'Netto',fmtM(w.netto)+' ISK',vz(w.netto),en
+     ?'What is left after fees and tax. This is the figure that decides whether the trade was worth it.'
+     :'Was nach Gebühren und Steuer übrig bleibt. An dieser Zahl entscheidet sich, ob sich das Geschäft gelohnt hat.')}
+   ${kachel(en?'Turnover':'Umsatz',fmtM(w.verkauf)+' ISK',null,en
+     ?'Everything you sold, before any deduction. A big turnover with a thin margin means a lot of clicking for little profit.'
+     :'Alles, was du verkauft hast, vor jedem Abzug. Viel Umsatz bei dünner Marge heißt viel Klickerei für wenig Gewinn.')}
   </div>`:''}
   <div class="sub" style="margin-top:8px">${!(w.tops&&w.tops.rund_n)
     // Kein einziger Rundlauf: vier Nullen nebeneinander sehen aus wie ein
@@ -19077,8 +19156,8 @@ function renderIndustrie(ind){
  if(!(ind.jobs||[]).length){
   // Leer heisst dreierlei, und die drei brauchen verschiedene Antworten.
   const msg=(ind.reconnect||[]).length
-   ?(en?`Reconnect your characters in ⚙ Options: industry jobs need a new read-only permission that did not exist before. ${ind.reconnect.length} character(s) waiting.`
-       :`Verbinde deine Charaktere in ⚙ Optionen einmal neu: für Industrie-Aufträge braucht Canary eine neue Nur-Lese-Berechtigung, die es vorher nicht gab. ${ind.reconnect.length} Charakter(e) warten darauf.`)
+   ?(en?`Reconnect your characters in ⚙ Options: industry jobs need a new read-only permission that did not exist before. ${ind.reconnect.length} ${ind.reconnect.length===1?'character is':'characters are'} waiting.`
+       :`Verbinde deine Charaktere in ⚙ Optionen einmal neu: für Industrie-Aufträge braucht Canary eine neue Nur-Lese-Berechtigung, die es vorher nicht gab. ${ind.reconnect.length===1?'Ein Charakter wartet':ind.reconnect.length+' Charaktere warten'} darauf.`)
    :((ind.chars||[]).length||ind.as_of
      ?(en?'No industry jobs running right now. Anything you start shows up here within five minutes.'
          :'Gerade laufen keine Industrie-Aufträge. Was du startest, steht hier binnen fünf Minuten.')
@@ -19703,10 +19782,10 @@ function renderAbyss(a){
     <span>🌀 ${en?'Abyssal runs':'Abyss-Durchgänge'}</span>
     <span style="margin-left:auto;display:flex;gap:6px">${zeitKnoepfe()}</span></div>
    <div class="stats" style="grid-template-columns:repeat(4,1fr)">
-    <div class="stat"><div class="l">${en?'Runs':'Durchgänge'}</div><div class="v">${A.runs||0}</div></div>
-    <div class="stat"><div class="l">${en?'ISK per run':'ISK je Durchgang'}</div><div class="v isk">${fmtM(A.isk_run||0)}</div></div>
-    <div class="stat"><div class="l">ISK/min</div><div class="v isk">${fmtM(A.isk_min||0)}</div></div>
-    <div class="stat"><div class="l">${en?'Ø duration':'Ø Dauer'}</div><div class="v out">${A.min||0} min</div></div>
+    <div class="stat" title="${en?`Completed runs in the selected period. A run you flew together as a group counts as ONE, not as three.`:`Abgeschlossene Durchgänge im gewählten Zeitraum. Ein Durchgang, den ihr zu mehreren geflogen seid, zählt als EINER, nicht als drei.`}"><div class="l">${en?'Runs':'Durchgänge'}</div><div class="v">${A.runs||0}</div></div>
+    <div class="stat" title="${en?`Average loot per run at Jita instant-sell prices. Only counts what you entered: EVE does not log looting, so a run without an entry is missing from this figure.`:`Beute je Durchgang im Schnitt, zu Jita-Sofortverkaufspreisen. Gerechnet wird nur mit dem, was du eingetragen hast: EVE protokolliert das Plündern nicht, ohne Eintrag fehlt der Lauf in dieser Zahl.`}"><div class="l">${en?'ISK per run':'ISK je Durchgang'}</div><div class="v isk">${fmtM(A.isk_run||0)}</div></div>
+    <div class="stat" title="${en?`Loot divided by the time actually spent inside. That time comes from the chat log, from the Local channel vanishing and returning, so it is measured. The gap between two runs is not counted.`:`Beute geteilt durch die tatsächlich im Abyss verbrachte Zeit. Die Zeit stammt aus dem Chatlog, nämlich aus dem Verschwinden und Wiederauftauchen des Local-Kanals, ist also gemessen. Die Pause zwischen zwei Läufen zählt nicht mit.`}"><div class="l">ISK/min</div><div class="v isk">${fmtM(A.isk_min||0)}</div></div>
+    <div class="stat" title="${en?`Average length of a run, measured from the chat log. The hard in-game limit is 20 minutes; staying well under it means more runs per hour.`:`Wie lange ein Durchgang im Schnitt gedauert hat, aus dem Chatlog gemessen. Die harte Grenze im Spiel liegt bei 20 Minuten; wer deutlich darunter bleibt, schafft mehr Läufe pro Stunde.`}"><div class="l">${en?'Ø duration':'Ø Dauer'}</div><div class="v out">${A.min||0} min</div></div>
    </div>
    ${a.mit_loot<a.n?`<div class="sub" style="margin-top:8px">${en
      ? `${a.n-a.mit_loot} of ${a.n} runs have no loot entered yet. Everything below is based on the ${a.mit_loot} that do.`
@@ -19719,18 +19798,18 @@ function renderAbyss(a){
      <div class="l">${en?'Used':'Verbraucht'}</div><div class="v in">${B.verbraucht||0}</div></div>
     <div class="stat" title="${en?'Filaments that dropped as loot. They fund your next run.':'Filamente, die als Beute gefallen sind. Sie finanzieren deinen nächsten Lauf.'}">
      <div class="l">${en?'Looted':'Erbeutet'}</div><div class="v grn">${B.erbeutet||0}</div></div>
-    <div class="stat"><div class="l">${en?'Net':'Netto'}</div>
+    <div class="stat" title="${en?`Filaments looted minus filaments used. Above zero your abyss pays for itself, below it you are buying in. Only runs with entered loot are counted.`:`Erbeutete minus verbrauchte Filamente. Über null trägt sich dein Abyss selbst, darunter kaufst du zu. Gezählt werden nur Läufe mit eingetragener Beute.`}"><div class="l">${en?'Net':'Netto'}</div>
      <div class="v ${(B.netto||0)>=0?'grn':'in'}">${(B.netto||0)>0?'+':''}${B.netto||0}</div></div>
-    <div class="stat"><div class="l">${en?'Value of them':'Ihr Wert'}</div>
+    <div class="stat" title="${en?`What the looted filaments are worth at Jita instant-sell. When you are in the red, this is what buying them back costs you.`:`Was die erbeuteten Filamente an Jita-Sofortverkauf wert sind. Bei einem Minus steht hier, was dich das Nachkaufen kostet.`}"><div class="l">${en?'Value of them':'Ihr Wert'}</div>
      <div class="v isk">${B.isk?fmtM(B.isk)+' ISK':'—'}</div></div>
    </div>
    ${A.einsatz?`<div class="stats" style="grid-template-columns:repeat(4,1fr);margin-top:10px">
     <div class="stat" title="${en?'Jita price of the filaments used, one per ship.':'Jita-Preis der verbrauchten Filamente, eines je Schiff.'}">
      <div class="l">${en?'Stake':'Einsatz'}</div><div class="v in">${fmtM(A.einsatz)}</div></div>
-    <div class="stat"><div class="l">${en?'Loot':'Beute'}</div><div class="v isk">${fmtM(A.isk||0)}</div></div>
-    <div class="stat"><div class="l">${en?'Net ISK':'Netto ISK'}</div>
+    <div class="stat" title="${en?`Value of all entered loot in the period, at Jita instant-sell. The abyss has no salvage, so this is only what was in the caches.`:`Wert der gesamten eingetragenen Beute im Zeitraum, zu Jita-Sofortverkauf. Abyss hat keine Bergung, es zählt nur, was in den Behältern lag.`}"><div class="l">${en?'Loot':'Beute'}</div><div class="v isk">${fmtM(A.isk||0)}</div></div>
+    <div class="stat" title="${en?`Loot minus stake. Only the runs where both tier and weather are known, because only both together name a filament with a price.`:`Beute minus Einsatz. Nur die Durchgänge, bei denen Stufe UND Wetter feststehen, denn erst beide zusammen ergeben ein Filament mit einem Preis.`}"><div class="l">${en?'Net ISK':'Netto ISK'}</div>
      <div class="v ${(A.netto||0)>=0?'grn':'in'}">${A.netto!=null?((A.netto>0?'+':'')+fmtM(A.netto)):'—'}</div></div>
-    <div class="stat"><div class="l">${en?'Net per run':'Netto je Durchgang'}</div>
+    <div class="stat" title="${en?`What is left per run after the filament is paid for. This is the number that decides whether a tier is worth it for you.`:`Was nach Abzug des Filaments je Durchgang übrig bleibt. Das ist die Zahl, an der sich entscheidet, ob eine Stufe sich für dich lohnt.`}"><div class="l">${en?'Net per run':'Netto je Durchgang'}</div>
      <div class="v ${(A.netto_run||0)>=0?'grn':'in'}">${A.netto_run!=null?fmtM(A.netto_run):'—'}</div></div>
    </div>`:''}
    <div class="sub" style="margin-top:8px">${en
@@ -19743,10 +19822,10 @@ function renderAbyss(a){
   ${b?`<div class="card" style="grid-column:1/-1">
    <div class="sect">🏆 ${en?'Best run':'Beste Runde'}</div>
    <div class="stats" style="grid-template-columns:repeat(4,1fr)">
-    <div class="stat"><div class="l">ISK/min</div><div class="v isk">${fmtM(b.isk_min)}</div></div>
-    <div class="stat"><div class="l">${en?'Yield':'Ertrag'}</div><div class="v isk">${fmtM(b.isk)}</div></div>
-    <div class="stat"><div class="l">${en?'Duration':'Dauer'}</div><div class="v out">${b.min} min</div></div>
-    <div class="stat"><div class="l">Filament</div><div class="v">${esc(nam(b))}</div></div>
+    <div class="stat" title="${en?`The yardstick for the best run: loot per minute across the whole run. Not the total, because a long run with a lot of loot is not automatically the best.`:`Der Maßstab für die beste Runde: Beute je Minute über den ganzen Durchgang. Nicht der Gesamtwert, denn ein langer Lauf mit viel Beute ist nicht automatisch der beste.`}"><div class="l">ISK/min</div><div class="v isk">${fmtM(b.isk_min)}</div></div>
+    <div class="stat" title="${en?`The entire loot from this one run, at Jita instant-sell.`:`Die gesamte Beute dieses einen Durchgangs, zu Jita-Sofortverkauf.`}"><div class="l">${en?'Yield':'Ertrag'}</div><div class="v isk">${fmtM(b.isk)}</div></div>
+    <div class="stat" title="${en?`How long this run took, measured from the chat log.`:`Wie lange dieser Durchgang gedauert hat, aus dem Chatlog gemessen.`}"><div class="l">${en?'Duration':'Dauer'}</div><div class="v out">${b.min} min</div></div>
+    <div class="stat" title="${en?`Tier and weather of this run. Canary works both out from the enemies in the combat log; neither is written down anywhere in a log file.`:`Stufe und Wetter dieses Durchgangs. Beides erkennt Canary an den Gegnern im Kampflog, es steht nirgends ausdrücklich in einer Logdatei.`}"><div class="l">Filament</div><div class="v">${esc(nam(b))}</div></div>
    </div>
    <div class="sub" style="margin-top:6px">${new Date(b.start*1000).toLocaleString()} · ${esc((b.chars&&b.chars.length?b.chars:[b.char||'']).join(', '))}${(b.chars&&b.chars.length>1)?` <span class="grn">(${en?'flown together':'zusammen geflogen'})</span>`:''}${b.schiff?' · '+esc(b.schiff):''}${b.klasse?' ('+esc(b.klasse)+')':''} · ${en
      ?'measured by ISK per minute over the whole run, not by total yield: a long run with a lot of loot is not automatically the best. A multibox run counts as ONE run, exactly as it does in the header above.'
@@ -19756,13 +19835,13 @@ function renderAbyss(a){
    return `<div class="card" style="grid-column:1/-1">
    <div class="sect">📦 ${en?'Caches opened':'Geöffnete Behälter'}</div>
    <div class="stats" style="grid-template-columns:repeat(4,1fr)">
-    <div class="stat"><div class="l">${en?'Ø per run':'Ø je Durchgang'}</div>
+    <div class="stat" title="${en?`How many of the three caches you opened on average. Counted from the loot lines you entered. Regularly below 3 means you are losing loot to the clock.`:`Wie viele der drei Behälter du im Schnitt geöffnet hast. Gezählt an den Beute-Zeilen, die du eingetragen hast. Wer regelmäßig unter 3 liegt, verliert Beute an die Zeit.`}"><div class="l">${en?'Ø per run':'Ø je Durchgang'}</div>
      <div class="v">${H.schnitt} <span class="sub">/ 3</span></div></div>
-    <div class="stat"><div class="l">${en?'All three opened':'Alle drei geöffnet'}</div>
+    <div class="stat" title="${en?`Share of runs where all three caches were emptied. Based only on runs with entered loot.`:`Anteil der Durchgänge, in denen alle drei Behälter leergeräumt wurden. Bezogen nur auf die Läufe mit eingetragener Beute.`}"><div class="l">${en?'All three opened':'Alle drei geöffnet'}</div>
      <div class="v ${H.voll_quote>=90?'grn':''}">${H.voll_quote}%</div></div>
-    <div class="stat"><div class="l">${en?'Caches total':'Behälter gesamt'}</div>
+    <div class="stat" title="${en?`All opened caches in the period added up.`:`Alle geöffneten Behälter im Zeitraum zusammengezählt.`}"><div class="l">${en?'Caches total':'Behälter gesamt'}</div>
      <div class="v">${fmt(H.summe)}</div></div>
-    <div class="stat"><div class="l">${en?'Runs recorded':'Erfasste Durchgänge'}</div>
+    <div class="stat" title="${en?`How many of your runs have any loot entered at all. The figure behind it is the total. Only the first part feeds the cache numbers.`:`Wie viele deiner Durchgänge überhaupt eine eingetragene Beute haben. Die Zahl dahinter ist die Gesamtzahl. Nur der erste Teil geht in die Behälter-Zahlen ein.`}"><div class="l">${en?'Runs recorded':'Erfasste Durchgänge'}</div>
      <div class="v out">${H.erfasst} <span class="sub">/ ${H.gesamt}</span></div></div>
    </div>
    ${H.typen.length?`<div class="sub" style="margin-top:8px">${en?'Type':'Sorte'}: ${H.typen.map(t=>`${t[0]==='bioadaptive'?'Bioadaptive':'Biocombinative'} ${t[1]}x`).join(' · ')}</div>`:''}
@@ -20024,11 +20103,11 @@ function renderMissions(d){
     const hl=(d.loot_tage||[]).filter(x=>x.tag===heute);
     const lootHeute=hl.reduce((s2,x)=>s2+(x.loot||0)+(x.salv||0),0);
     return `<div class="stats" style="margin-top:10px;grid-template-columns:repeat(5,1fr)">
-   <div class="stat"><div class="l">Missionen erledigt</div><div class="v out">${t.missions||0}</div></div>
-   <div class="stat"><div class="l">Bounties</div><div class="v grn">${fmtM(t.bounty||0)}</div></div>
+   <div class="stat" title="${lang==='en'?`Runs completed today. A run counts as finished once the fighting stops and you dock or change system. EVE writes no mission-complete line into the log.`:`Heute abgeschlossene Einsätze. Ein Einsatz gilt als beendet, wenn der Kampf ruht und du andockst oder das System wechselst. EVE schreibt kein Missionsende ins Log.`}"><div class="l">Missionen erledigt</div><div class="v out">${t.missions||0}</div></div>
+   <div class="stat" title="${lang==='en'?`Bounty from today's runs, counted from the game logs. Bounty from your mining systems is left out: those are belt rats.`:`Kopfgeld aus den heutigen Einsätzen, aus den Gamelogs gezählt. Bounties aus deinen Mining-Systemen bleiben draußen, das sind Belt-Ratten.`}"><div class="l">Bounties</div><div class="v grn">${fmtM(t.bounty||0)}</div></div>
    <div class="stat" title="Loot und Bergung, die du an deinen Missionen eingetragen hast. Steht in keiner Logdatei, EVE protokolliert weder Plündern noch Bergung."><div class="l">Loot</div><div class="v isk">${fmtM(lootHeute)}</div></div>
-   <div class="stat"><div class="l">Belohnungen</div><div class="v isk">${fmtM(t.reward||0)}</div></div>
-   <div class="stat"><div class="l">Zeitboni</div><div class="v isk">${fmtM(t.bonus||0)}</div></div>
+   <div class="stat" title="${lang==='en'?`The mission reward as paid out, taken from the wallet journal via the EVE login. Without the login this stays empty: the reward is not in the game log.`:`Die ausgezahlte Missionsbelohnung aus dem Wallet-Journal, also über den EVE-Login. Ohne Login bleibt die Kachel leer, denn im Gamelog steht die Belohnung nicht.`}"><div class="l">Belohnungen</div><div class="v isk">${fmtM(t.reward||0)}</div></div>
+   <div class="stat" title="${lang==='en'?`The bonus for handing in on time, also from the wallet journal. EVE books it separately, so it gets its own figure here.`:`Der Bonus fürs rechtzeitige Abliefern, ebenfalls aus dem Wallet-Journal. Er wird getrennt gebucht und ist deshalb hier eine eigene Zahl.`}"><div class="l">Zeitboni</div><div class="v isk">${fmtM(t.bonus||0)}</div></div>
   </div>`;})()}
   ${(m.mine_systems&&m.mine_systems.length)?`<div class="sub" style="margin-top:8px">Bounties aus deinen Mining-Systemen (${m.mine_systems.join(', ')}) zählen hier nicht mit, das sind Belt-Ratten.</div>`:''}
   ${m.linked?'':'<div class="cardwarn" style="margin-top:10px">⚠ Kein EVE-Login verbunden. Belohnungen und Boni kommen aus dem Wallet-Journal (ESI), einzurichten unter ⚙ Optionen.</div>'}
@@ -20093,7 +20172,7 @@ function renderMissions(d){
  </div>
  ${(()=>{const la=d.loot_auswertung; if(!la)return '';
    const en5=lang==='en', zr=la.zeitraeume||{};
-   const kachel=(t,z)=>`<div class="stat"><div class="l">${t}</div><div class="v isk">${z&&z.n?fmtM(z.isk):'·'}</div><div class="l">${z&&z.n?(z.n+(en5?(z.n===1?' mission':' missions'):(z.n===1?' Mission':' Missionen'))+' · Ø '+fmtM(z.schnitt)+(z.salv?(en5?' · salvage ':' · Salvage ')+fmtM(z.salv):'')):(en5?'nothing entered':'nichts eingetragen')}</div></div>`;
+   const kachel=(t,z)=>`<div class="stat" title="${en5?`Value of the loot you entered on your runs in this period, at Jita instant-sell. This is in no log file: EVE logs neither looting nor salvaging. Runs without an entry are missing from this figure.`:`Wert der Beute, die du in diesem Zeitraum an deinen Einsätzen eingetragen hast, zu Jita-Sofortverkauf. Steht in keiner Logdatei: EVE protokolliert weder Plündern noch Bergung. Einsätze ohne Eintrag fehlen in dieser Zahl.`}"><div class="l">${t}</div><div class="v isk">${z&&z.n?fmtM(z.isk):'·'}</div><div class="l">${z&&z.n?(z.n+(en5?(z.n===1?' mission':' missions'):(z.n===1?' Mission':' Missionen'))+' · Ø '+fmtM(z.schnitt)+(z.salv?(en5?' · salvage ':' · Salvage ')+fmtM(z.salv):'')):(en5?'nothing entered':'nichts eingetragen')}</div></div>`;
    const inhalt=la.mit_loot
      ?`<div class="stats" style="grid-template-columns:repeat(3,1fr)">${kachel(en5?'Today':'Heute',zr.heute)}${kachel(en5?'7 days':'7 Tage',zr.d7)}${kachel(en5?'30 days':'30 Tage',zr.d30)}</div>
       <div style="overflow-x:auto"><table>
@@ -20344,7 +20423,7 @@ async function doCalc(){
  const bestBuy=Math.max(...hubs.map(h=>h.buy));
  $('#calcOut').innerHTML=
   `<div class="stats" style="grid-template-columns:repeat(${hubs.length},1fr)">`+
-  hubs.map(h=>`<div class="stat"${h.buy===bestBuy?' style="border-color:var(--gold)"':''}>
+  hubs.map(h=>`<div class="stat"${h.buy===bestBuy?' style="border-color:var(--gold)"':''} title="Was dieser Handelsplatz gerade für deine ganze Ladung zahlt, wenn du sofort in die höchste Kauforder verkaufst. Live über die ESI geholt. Der Anflug dorthin kostet Zeit und Risiko, das steckt in keiner dieser Zahlen.">
    <div class="l">${esc(h.name)}${h.buy===bestBuy?' ★':''}</div>
    <div class="v isk" style="font-size:20px">${fmtM(h.buy)}</div>
    <div class="l">Sofortverkauf · mit Sell-Order: ${fmtM(h.sell)}</div></div>`).join('')+`</div>
@@ -20582,15 +20661,21 @@ async function doDiff(){
    ? (en?'at '+esc(diffMarkt.hub)+' buy':esc(diffMarkt.hub)+'-Sofortverkauf')
    : (en?'as valued by the game':'laut Frachtraum-Fenster');
   h+='<div class="stats" style="grid-template-columns:repeat(3,1fr)">'
-   +'<div class="stat"><div class="l">'+(en?'Added':'Dazugekommen')+'</div>'
+   +'<div class="stat" title="'+(en
+     ?'Everything that is in the hold now and was not in the earlier snapshot. Ore, loot, anything.'
+     :'Alles, was jetzt im Frachtraum liegt und im früheren Stand noch nicht drin war. Erz, Beute, alles.')+'"><div class="l">'+(en?'Added':'Dazugekommen')+'</div>'
    +'<div class="v isk">'+fmtM(pIsk||0)+' ISK</div>'
    +'<div class="sub" style="margin:2px 0 0">'+r.plus.length+' '
    +(en?(r.plus.length===1?'position':'positions'):(r.plus.length===1?'Position':'Positionen'))+'</div></div>'
-   +'<div class="stat"><div class="l">'+(en?'Used up':'Verbraucht')+'</div>'
+   +'<div class="stat" title="'+(en
+     ?'Everything that has become less or disappeared: ammo, crystals, drones, charges, or cargo you dropped off.'
+     :'Alles, was weniger geworden oder verschwunden ist: Munition, Kristalle, Drohnen, Ladungen, oder Fracht, die du abgeladen hast.')+'"><div class="l">'+(en?'Used up':'Verbraucht')+'</div>'
    +'<div class="v in">-'+fmtM(mIsk||0)+' ISK</div>'
    +'<div class="sub" style="margin:2px 0 0">'+r.minus.length+' '
    +(en?(r.minus.length===1?'position':'positions'):(r.minus.length===1?'Position':'Positionen'))+'</div></div>'
-   +'<div class="stat"><div class="l">'+(en?'Bottom line':'Unterm Strich')+'</div>'
+   +'<div class="stat" title="'+(en
+     ?'Added minus used up. Where the value comes from is written under the number, because the game estimate and the Jita instant-sell price are two different amounts.'
+     :'Dazugekommen minus Verbraucht. Woher der Wert stammt, steht unter der Zahl, denn die Schätzung des Spiels und der Jita-Sofortverkauf sind zwei verschiedene Beträge.')+'"><div class="l">'+(en?'Bottom line':'Unterm Strich')+'</div>'
    +'<div class="v '+(netto>=0?'isk':'in')+'">'+(netto<0?'-':'')+fmtM(Math.abs(netto))+' ISK</div>'
    +'<div class="sub" style="margin:2px 0 0">'+quelle+'</div></div></div>';
  }
