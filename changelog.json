@@ -1,5 +1,23 @@
 [
  {
+  "v": "2.67.0",
+  "d": "2026-09-02",
+  "de": [
+   "DREI ZAHLEN, DIE NICHT ZUSAMMENPASSTEN, PASSEN JETZT ZUSAMMEN. Alle drei sind derselbe Fehlertyp: zwei Stellen rechnen dasselbe und kommen auf Verschiedenes.",
+   "DIE FOERDERRATE DER JOB-BOERSE WAR NACH EINEM NEUSTART BIS ZUM 18-FACHEN ZU HOCH. Sie teilte die geforderte Menge durch die Zeit seit dem PROGRAMMSTART, die Live-Karte dagegen durch die Zeit seit der ersten Logzeile. Nach einem Neustart steckt in der Menge aber alles, was Canary gerade aus den letzten Stunden nachgelesen hat. Gemessen: 1.080.000 statt 60.000 Einheiten je Stunde. Genau nach dieser Zahl entscheidet man, ob ein Auftrag sich lohnt. Beide Stellen benutzen jetzt dieselbe Funktion.",
+   "EIN PREISAUSFALL SIEHT NICHT MEHR AUS WIE EIN ERTRAG VON NULL. Antwortete weder CCP noch Fuzzwork fuer einen Gegenstand, wurde eine Null als Preis gemerkt und galt volle 15 Minuten. Die Live-Karten, die Ertragsleiste, Monat, Gesamt und die Schatzkammer zeigten dann 0 ISK bei richtigen m3-Werten, und die Oberflaeche meldete dazu 'Preise geladen'. Kein Preis ist etwas anderes als ein Preis von null: solche Gegenstaende kommen gar nicht erst in den Zwischenspeicher, der naechste Versuch fragt erneut. Und 'Preise geladen' heisst jetzt, dass wirklich ein Preis groesser null da ist.",
+   "ISK JE MINUTE STAND IM ABYSS-BEREICH DREIMAL AUF EINEM BILDSCHIRM UND WURDE NACH ZWEI REGELN GERECHNET. Kopfzeile und Ertragstabelle rechneten ueber den ganzen Durchgang, die 'beste Runde' ueber eine einzelne Zeile. Bei einer Multibox-Flotte kamen so 98k und 130k nebeneinander heraus. Ein Durchgang ist im Abyss-Bereich ueberall die Gruppe, drei Fregatten desselben Spielers sind EIN Durchgang; die beste Runde war die einzige Stelle, die das anders sah. Sie nennt jetzt auch alle, die mitgeflogen sind.",
+   "Dazu eine neue Pruefung mit 18 Faellen, die genau diese drei Stellen gegeneinander haelt."
+  ],
+  "en": [
+   "THREE NUMBERS THAT DID NOT ADD UP NOW DO. All three are the same kind of fault: two places compute the same thing and arrive at different answers.",
+   "THE JOB BOARD'S MINING RATE WAS UP TO 18 TIMES TOO HIGH AFTER A RESTART. It divided the mined amount by the time since the PROGRAM started, while the live card divided by the time since the first log line. After a restart, though, that amount contains everything Canary just read back from the last few hours. Measured: 1,080,000 instead of 60,000 units per hour. That is exactly the number you judge a contract by. Both places now use the same function.",
+   "A PRICE OUTAGE NO LONGER LOOKS LIKE ZERO EARNINGS. If neither CCP nor Fuzzwork answered for an item, a zero was remembered as its price and stood for a full 15 minutes. The live cards, the earnings bar, month, total and the vault then showed 0 ISK against correct m3 figures, and the interface reported 'prices loaded'. No price is not the same as a price of zero: such items no longer enter the cache at all, and the next attempt asks again. And 'prices loaded' now means a real price above zero is actually there.",
+   "ISK PER MINUTE APPEARED THREE TIMES ON ONE SCREEN IN THE ABYSS AREA AND WAS COMPUTED BY TWO RULES. The header and the yield table counted the whole run, the 'best run' a single row. With a multibox fleet that put 98k and 130k side by side. A run in the abyss area is the group everywhere, three frigates of the same player are ONE run; the best run was the only place that saw it differently. It now also names everyone who flew it.",
+   "Plus a new check with 18 cases that holds exactly these three places against each other."
+  ]
+ },
+ {
   "v": "2.66.0",
   "d": "2026-09-02",
   "de": [

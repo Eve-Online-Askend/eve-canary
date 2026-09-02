@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.66.0"
+VERSION = "2.67.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -9278,6 +9278,22 @@ def spark_minuten(s):
     return werte
 
 
+def sitzungsdauer(s, mindestens=60.0):
+    """Wie lange laeuft diese Sitzung wirklich, in Sekunden.
+
+    Gezaehlt ab der ERSTEN Logzeile, nicht ab dem Programmstart. Der
+    Unterschied ist nach einem Neustart gewaltig: s.mining enthaelt dann auch
+    alles, was beim Nachlesen der letzten Stunden aus den Logs kam, waehrend
+    s.start gerade eben gesetzt wurde. Wer damit teilt, bekommt eine
+    Stundenleistung, die um ein Vielfaches zu hoch ist (gemessen: 1.080.000
+    statt 60.000 Einheiten je Stunde, Voll-Audit 02.09.2026).
+
+    Diese Funktion gibt es, damit nicht zwei Stellen dieselbe Sache
+    verschieden rechnen. mindestens verhindert eine Division durch fast null
+    in den ersten Sekunden."""
+    return max(time.time() - (getattr(s, "first_ts", None) or s.start), mindestens)
+
+
 def snapshot_live():
     pm = prices.get(CONFIG["region"])
     chars = []
@@ -9363,7 +9379,7 @@ def snapshot_live():
             hold_prices = "none"
         else:
             hold_prices = "partial"
-        mins = max((time.time() - (s.first_ts or s.start)) / 60, 1)
+        mins = sitzungsdauer(s) / 60.0
         hw_cfg = (CONFIG.get("heavy_water") or {}).get(s.name)
         hw = None
         if hw_cfg:
@@ -9676,7 +9692,11 @@ def hub_prices(region, ids, prefer_esi=False):
     (schnelle Sammelabfrage, z.B. fuer den Mehr-Hub-Vergleich im Rechner)."""
     with CALC_LOCK:
         e = CALC_CACHE.get(region)
-        if e and time.time() - e["ts"] < PRICE_REFRESH and ids <= set(e["prices"]):
+        # "leer" sind Typen, fuer die beide Quellen nichts hatten. Sie zaehlen
+        # als beantwortet (sonst fragt jeder Aufruf erneut nach), aber es
+        # steht kein Preis fuer sie im Cache.
+        bekannt = set(e["prices"]) | set(e.get("leer") or ()) if e else set()
+        if e and time.time() - e["ts"] < PRICE_REFRESH and ids <= bekannt:
             # Der Cache merkt sich JE TYP, woher der Preis stammt. Ohne das bekam
             # ein Aufruf mit prefer_esi stillschweigend Fuzzwork-Werte, sobald ein
             # frueherer Aufruf denselben Typ ohne prefer_esi geholt hatte. Das ist
@@ -9712,6 +9732,12 @@ def hub_prices(region, ids, prefer_esi=False):
         except Exception:
             if not result:
                 raise
+    # Ein Typ, fuer den WEDER ESI noch Fuzzwork etwas geliefert hat, hat
+    # keinen Preis von null, sondern gar keinen. Wuerde er als (0,0) gemerkt,
+    # gaelte diese Null volle 15 Minuten und der Nutzer saehe einen Ertrag
+    # von 0 ISK bei richtigen m3-Werten (Voll-Audit 02.09.2026). Solche Typen
+    # bleiben deshalb aus dem Cache, der naechste Aufruf fragt erneut.
+    result = {t: (b, sl) for t, (b, sl) in result.items() if b or sl}
     with CALC_LOCK:
         alt = CALC_CACHE.get(region, {})
         merged = alt.get("prices", {})
@@ -9723,7 +9749,11 @@ def hub_prices(region, ids, prefer_esi=False):
         for t in result:
             eb, es = fetched.get(t, (0.0, 0.0))
             quellen[t] = "esi" if (eb and es) else "fuzzwork"
-        CALC_CACHE[region] = {"ts": time.time(), "prices": merged, "src": quellen}
+        leer = set(alt.get("leer") or ())
+        leer -= set(result)                       # jetzt doch ein Preis da
+        leer |= {t for t in ids if t not in merged}
+        CALC_CACHE[region] = {"ts": time.time(), "prices": merged,
+                              "src": quellen, "leer": leer}
         return dict(merged)
 
 
@@ -10531,7 +10561,10 @@ def state_info():
             # Wert, damit im Stream nicht zwei verschiedene Zeiten stehen.
             "uhr": uhr_json(),
             "ingesting": not ingest.started_full,
-            "progress": ingest.progress, "prices_loaded": bool(prices.get(CONFIG["region"])),
+            "progress": ingest.progress, # Nicht "das Dict ist nicht leer", sondern "es steht ein echter Preis
+            # darin". Sonst meldet die Oberflaeche bei einem Ausfall "Preise
+            # geladen", waehrend ueberall 0 ISK steht.
+            "prices_loaded": any((prices.get(CONFIG["region"]) or {}).values()),
             "price_src": PRICE_SOURCE.get(str(CONFIG["region"]), "fuzzwork"),
             "watchlist": CONFIG.get("watchlist", []), "goal": CONFIG.get("goal"),
             "esi": {"client_id": (CONFIG.get("esi") or {}).get("client_id", ""),
@@ -12038,6 +12071,10 @@ def query_abyss(chars=None, tage=30):
         wert = float(r[6] or 0) + float(r[8] or 0)
         laeufe.append({
             "mid": r[0], "char": r[1], "start": int(r[2] or 0),
+            # Der Ort gehoert mit in den Datensatz: die Gruppierung
+            # "wer flog zusammen" braucht ihn, und ohne ihn stuende hier
+            # ein KeyError statt einer Gruppe.
+            "system": r[4],
             "min": round(dauer, 1), "label": r[5], "isk": round(wert),
             "isk_min": round(wert / dauer) if dauer > 0 else 0,
             "stufe": abyss_tier_aus_name(r[5] or "") or abyss_tier_aus_gegnern(gg),
@@ -12062,8 +12099,39 @@ def query_abyss(chars=None, tage=30):
     fil_isk = sum(f["isk"] or 0 for f in fil)
     # Bester Lauf: hoechste ISK je Minute, nicht hoechster Gesamtwert. Ein
     # langer Lauf mit viel Beute ist nicht automatisch der beste.
-    best = max((l for l in laeufe if l["min"] > 0),
-               key=lambda l: l["isk_min"], default=None)
+    #
+    # Gerechnet wird ueber die GRUPPE, nicht ueber die einzelne Zeile. Ein
+    # Durchgang ist im Abyss-Bereich ueberall die Gruppe: drei Fregatten
+    # desselben Spielers sind EIN Durchgang, so zaehlt die Kopfzeile, so
+    # rechnet die Filament-Bilanz, so gruppiert der Export. Die beste Runde
+    # war die einzige Stelle, die eine einzelne Zeile meinte, und zeigte
+    # deshalb neben 98k ISK/min in der Kopfzeile ploetzlich 130k
+    # (Voll-Audit 02.09.2026). Es gilt dieselbe Regel und dieselbe Funktion.
+    best = None
+    if laeufe:
+        kurz = [(l["start"], l["start"] + l["min"] * 60.0, l["char"], l["system"])
+                for l in laeufe]
+        for idx in abyss_gruppen(kurz):
+            teil = [laeufe[i] for i in idx]
+            von = min(l["start"] for l in teil)
+            bis = max(l["start"] + l["min"] * 60.0 for l in teil)
+            minuten = (bis - von) / 60.0
+            if minuten <= 0:
+                continue
+            wert = sum(l["isk"] for l in teil)
+            kandidat = dict(teil[0])
+            kandidat.update({
+                "isk": round(wert), "min": round(minuten, 1),
+                "isk_min": round(wert / minuten),
+                # Bei einer Multibox-Gruppe gehoert dazu, WER mitgeflogen ist.
+                # Sonst steht dort ein Charakter und eine Summe, die drei
+                # Charakteren gehoert.
+                "chars": sorted({l["char"] for l in teil}),
+                # Schiff und Klasse vom ersten, der ueberhaupt eines hat.
+                "schiff": next((l["schiff"] for l in teil if l.get("schiff")), None),
+                "klasse": next((l["klasse"] for l in teil if l.get("klasse")), None)})
+            if best is None or kandidat["isk_min"] > best["isk_min"]:
+                best = kandidat
     # ---- Drop-Raten ------------------------------------------------------
     # Wie oft faellt ein Gegenstand ueberhaupt? Bezugsgroesse sind NUR die
     # Laeufe mit eingetragenem Loot, alles andere waere geschoent. Die
@@ -12928,7 +12996,10 @@ def query_jobs():
     for s in list(ingest.sessions.values()):
         if not s.last_ore_ts or jetzt - s.last_ore_ts > 1800:
             continue
-        stunden = max(jetzt - s.start, 600) / 3600.0
+        # DIESELBE Dauer wie die Live-Karte. Frueher stand hier s.start,
+        # also der Programmstart, und die Job-Boerse zeigte nach einem
+        # Neustart eine vielfach zu hohe Stundenleistung.
+        stunden = sitzungsdauer(s, 600.0) / 3600.0
         for erz, einheiten in dict(s.mining).items():
             live[erz] = live.get(erz, 0) + einheiten / stunden
 
@@ -19420,9 +19491,9 @@ function renderAbyss(a){
     <div class="stat"><div class="l">${en?'Duration':'Dauer'}</div><div class="v out">${b.min} min</div></div>
     <div class="stat"><div class="l">Filament</div><div class="v">${esc(nam(b))}</div></div>
    </div>
-   <div class="sub" style="margin-top:6px">${new Date(b.start*1000).toLocaleString()} · ${esc(b.char||'')}${b.schiff?' · '+esc(b.schiff):''}${b.klasse?' ('+esc(b.klasse)+')':''} · ${en
-     ?'measured by ISK per minute, not by total yield: a long run with a lot of loot is not automatically the best.'
-     :'gemessen an ISK je Minute, nicht am Gesamtwert: ein langer Lauf mit viel Beute ist nicht automatisch der beste.'}</div>
+   <div class="sub" style="margin-top:6px">${new Date(b.start*1000).toLocaleString()} · ${esc((b.chars&&b.chars.length?b.chars:[b.char||'']).join(', '))}${(b.chars&&b.chars.length>1)?` <span class="grn">(${en?'flown together':'zusammen geflogen'})</span>`:''}${b.schiff?' · '+esc(b.schiff):''}${b.klasse?' ('+esc(b.klasse)+')':''} · ${en
+     ?'measured by ISK per minute over the whole run, not by total yield: a long run with a lot of loot is not automatically the best. A multibox run counts as ONE run, exactly as it does in the header above.'
+     :'gemessen an ISK je Minute über den ganzen Durchgang, nicht am Gesamtwert: ein langer Lauf mit viel Beute ist nicht automatisch der beste. Ein Multibox-Durchgang zählt als EIN Durchgang, genau wie in der Kopfzeile darüber.'}</div>
   </div>`:''}
   ${(a.behaelter&&a.behaelter.erfasst)?(()=>{const H=a.behaelter;
    return `<div class="card" style="grid-column:1/-1">
