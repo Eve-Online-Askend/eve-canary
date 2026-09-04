@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.79.0",
+  "d": "2026-09-04",
+  "de": [
+   "KOMPRIMIERT PRO CHARAKTER WAR EINE ENDLOSE, SCHMALE LISTE. Gemeldet von Askend: die Karte stand in einer schmalen Spalte und zeigte eine Zeile je Charakter UND Erzsorte. Bei drei Charakteren mit zehn bis achtzehn Erzsorten waren das über vierzig Zeilen, jede wegen der schmalen Spalte auf drei Zeilen umgebrochen, und auf jeder stand der Charaktername noch einmal. Jetzt nimmt die Karte die volle Breite und ist nach Charakter gruppiert und zugeklappt: drei Zeilen mit Erzsorten, Menge, Volumen und Wert, aufklappen was interessiert. Gemessen: aus 41 dreizeiligen Zeilen wurden 3 Zeilen und 190 Pixel Höhe, und 'Compressed Veldspar II-Grade' passt wieder in eine Zeile.",
+   "Der Analyse-Tab macht das seit jeher richtig, diese Karte war die alte flache Fassung. Welche Charaktere du aufgeklappt hast, bleibt gemerkt."
+  ],
+  "en": [
+   "COMPRESSED PER CHARACTER WAS AN ENDLESS, NARROW LIST. Reported by Askend: the card sat in a narrow column and showed one row per character AND ore type. With three characters and ten to eighteen ore types that was over forty rows, each wrapped onto three lines by the narrow column, and every one repeated the character name. The card now takes the full width and is grouped per character and collapsed: three rows with ore types, units, volume and value, expand whichever you care about. Measured: 41 three-line rows became 3 rows and 190 pixels tall, and 'Compressed Veldspar II-Grade' fits on one line again.",
+   "The analysis tab has always done this properly; this card was the old flat version. Which characters you expanded is remembered."
+  ]
+ },
+ {
   "v": "2.78.0",
   "d": "2026-09-04",
   "de": [

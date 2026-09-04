@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.78.0"
+VERSION = "2.79.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -17296,6 +17296,14 @@ document.addEventListener('click',e=>{
  // "Alle zeigen" aus dem Filter-Hinweis. Aus demselben Grund hier und nicht
  // am Element: die Ansicht wird im Takt neu gebaut, ein direkt gesetzter
  // Handler waere nach zwei Sekunden weg.
+ {const kk=e.target.closest&&e.target.closest('.kompkopf');
+  if(kk){
+   const n=kk.dataset.kk;
+   if(kompAuf.has(n))kompAuf.delete(n); else kompAuf.add(n);
+   localStorage.setItem('kompauf',JSON.stringify([...kompAuf]));
+   if(lastTotal)renderTotal(lastTotal);
+   return;
+  }}
  if(e.target.id==='besucheKopie'){
   e.stopPropagation();
   const b=(lastTotal&&lastTotal.besuche)||{};
@@ -18358,14 +18366,58 @@ function renderTotal(t){
   <div class="card"><div class="char">Pro Charakter</div><table>
    <thead><tr><th>Charakter</th><th class="r">Erz</th><th class="r">Bounties</th><th class="r">ISK gesamt</th></tr></thead>${Object.entries(t.chars).map(([n,c])=>
    `<tr><td>${esc(n)}</td><td class="r">${fmt(c.m3)} m³</td><td class="r grn">${fmtM(c.bounty)}</td><td class="r isk">${fmtM(c.ore_isk+c.bounty)}</td></tr>`).join('')}</table></div>
-  <div class="card"><div class="char">Komprimiert pro Charakter</div>
-   <div class="sub">Alles, was über die Schiffs-Kompression gelaufen ist</div>
-   <div style="overflow-x:auto"><table>
-   <thead><tr><th>Charakter</th><th>Typ</th><th class="r">Menge</th><th class="r">Volumen</th><th class="r">Wert</th></tr></thead>${t.compressed.length?t.compressed.map(k=>
-   `<tr><td style="white-space:nowrap">${esc(k.char)}</td><td>${esc(k.type)}</td><td class="r">${fmt(k.units)} Stk</td><td class="r">${fmt(k.m3)} m³</td><td class="r isk">${fmtM(k.isk)}</td></tr>`).join(''):'<tr><td>Noch nichts komprimiert</td></tr>'}</table></div></div>`
+  ${komprimiertCard(t.compressed)}`
   +besucheCard(t.besuche);
 }
 
+// Komprimiert pro Charakter. Frueher eine flache Liste mit einer Zeile je
+// Charakter UND Erzsorte, in einer schmalen Spalte: bei drei Charakteren
+// ueber vierzig Zeilen, jede dreizeilig umgebrochen, und auf jeder stand der
+// Charaktername noch einmal (gemeldet von Askend, 04.09.2026).
+//
+// Jetzt volle Breite und nach Charakter gruppiert, zugeklappt. Wer nur wissen
+// will, wer wieviel komprimiert hat, sieht drei Zeilen. Wer es genau wissen
+// will, klappt auf. Dieselbe Bauweise wie die Kompressions-Karte im
+// Analyse-Tab, die es laengst so macht.
+let kompAuf=new Set(lsGet('kompauf',[]));
+function komprimiertCard(liste){
+ const en=lang==='en';
+ liste=liste||[];
+ if(!liste.length)return `<div class="card" style="grid-column:1/-1">
+   <div class="char">${en?'Compressed per character':'Komprimiert pro Charakter'}</div>
+   <div class="sub">${en?'Nothing compressed yet.':'Noch nichts komprimiert.'}</div></div>`;
+ // Nach Charakter buendeln, groesster Wert zuerst.
+ const je={};
+ for(const k of liste){
+  const c=je[k.char]||(je[k.char]={name:k.char,units:0,m3:0,isk:0,typen:[]});
+  c.units+=k.units||0; c.m3+=k.m3||0; c.isk+=k.isk||0; c.typen.push(k);
+ }
+ const chars=Object.values(je).sort((a,b)=>b.isk-a.isk);
+ const summe=chars.reduce((s,c)=>({units:s.units+c.units,m3:s.m3+c.m3,isk:s.isk+c.isk}),
+                          {units:0,m3:0,isk:0});
+ const zeile=c=>{
+  const auf=kompAuf.has(c.name);
+  return `<div class="chead kompkopf" data-kk="${esc(c.name)}" style="padding:6px 0;border-top:1px solid var(--line);cursor:pointer">
+    <span class="arr" style="${auf?'':'transform:rotate(-90deg)'}">▼</span>
+    <span style="font-size:13px;font-weight:600;color:var(--white)">${esc(c.name)}</span>
+    <span class="mini">${c.typen.length} ${en?'ore types':'Erzsorten'} · ${fmt(c.units)} ${en?'units':'Stk'} · ${fmt(c.m3)} m³ · <span class="isk">${fmtM(c.isk)} ISK</span></span>
+   </div>`
+   +(auf?`<div style="overflow-x:auto"><table style="margin:0 0 8px 18px">
+     <thead><tr><th>${en?'Type':'Typ'}</th><th class="r">${en?'Units':'Menge'}</th>
+      <th class="r">${en?'Volume':'Volumen'}</th><th class="r">${en?'Value':'Wert'}</th></tr></thead>`
+     +c.typen.map(k=>`<tr><td style="white-space:nowrap">${esc(k.type)}</td>`
+       +`<td class="r">${fmt(k.units)} ${en?'units':'Stk'}</td>`
+       +`<td class="r">${fmt(k.m3)} m³</td>`
+       +`<td class="r isk">${fmtM(k.isk)}</td></tr>`).join('')
+     +`</table></div>`:'');
+ };
+ return `<div class="card" style="grid-column:1/-1">
+   <div class="chead" style="cursor:default"><span class="char">${en?'Compressed per character':'Komprimiert pro Charakter'}</span></div>
+   <div class="sub">${en?'Everything that went through ship compression. The volume is that of the compressed blocks, not of the raw ore.':'Alles, was über die Schiffs-Kompression gelaufen ist. Das Volumen ist das der komprimierten Blöcke, nicht das des Roherzes.'}</div>
+   <div class="sub">${en?'Total':'Gesamt'}: ${fmt(summe.units)} ${en?'units':'Stk'} · ${fmt(summe.m3)} m³ · <span class="isk">${fmtM(summe.isk)} ISK</span></div>
+   ${chars.map(zeile).join('')}
+  </div>`;
+}
 // Flugschreiber: alle je besuchten Systeme. Es gibt dafuer KEINE andere
 // Quelle. Die ESI kennt nur den aktuellen Ort und fuehrt keine Historie, und
 // eine solche Liste zu bekommen war ein Wunsch aus dem offiziellen Forum
