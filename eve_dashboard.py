@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.77.0"
+VERSION = "2.78.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -9415,56 +9415,114 @@ def log_dir_status():
     return c["ok"], n
 
 
+def sprache_fehlt():
+    """Sieht die Client-Sprache aus, als waere sie noch nicht abgedeckt?
+
+    Ein einzelnes nicht greifendes Muster sagt wenig: wer nie handelt, loest
+    das Handels-Muster nie aus. Aussagekraeftig ist, dass KEINES gegriffen
+    hat, obwohl unerkannte Meldungen aufgelaufen sind."""
+    return bool(UNKNOWN_NOTIFY) and not any(LOG_TEXT_HITS.values())
+
+
+def sprachbeitrag():
+    """Die unerkannten Meldungen als fertiger, geschwaerzter Beitrag.
+
+    Geschwaerzt wird zweierlei: der Kontoname im Pfad (steckt in
+    Fehlermeldungen) und die Namen der eigenen Charaktere, die in vielen
+    notify-Zeilen vorkommen ("X compressed 45 Veldspar using your compression
+    services"). Beides gehoert niemandem ausser dem Nutzer."""
+    namen = set()
+    try:
+        namen = {s.name for s in ingest.sessions.values() if s.name}
+    except Exception:
+        pass
+    namen |= set((CONFIG.get("esi") or {}).get("chars", {}))
+    # Lang zuerst ersetzen, sonst zerlegt ein kurzer Name einen langen.
+    namen = sorted((n for n in namen if n and len(n) >= 3), key=len, reverse=True)
+
+    def schwaerzen(t):
+        # Erst der Kontoname aus Pfaden. Fehlermeldungen tragen ihn mitten im
+        # Text ("No such file or directory: 'C:/Users/...'"), und genau so
+        # ist er hier zuerst durchgerutscht. Von der Pruefung gefangen.
+        t = ohne_kontoname(t, leer="")
+        for n in namen:
+            t = t.replace(n, "<Charakter>")
+        return t
+
+    zeilen, gesehen = [], set()
+    for t in list(UNKNOWN_NOTIFY):
+        t = schwaerzen(t).strip()
+        if t and t not in gesehen:
+            gesehen.add(t)
+            zeilen.append(t)
+    hits = ", ".join("%s=%d" % (k, v) for k, v in sorted(LOG_TEXT_HITS.items()))
+    L = ["Canary %s" % VERSION,
+         "Client-Sprache laut Log: unbekannt (die Zeilen unten sagen es)",
+         "Muster-Treffer bisher: %s" % hits,
+         "",
+         "Unerkannte Meldungen (%d verschiedene, Namen ersetzt):" % len(zeilen)]
+    L += ["  " + z for z in zeilen[:60]]
+    return chr(10).join(L)
+
+
+def ohne_kontoname(p, leer="(nicht gesetzt)"):
+    """Den Kontonamen aus einem Text nehmen, an JEDER Stelle.
+
+    Modulweit, weil ZWEI Berichte zum Verschicken gedacht sind: die
+    Diagnose und der Sprachbeitrag. Der zweite hat den Kontonamen
+    zuerst durchgelassen, und die Pruefung hat es gefangen.
+
+    Der Log-Ordner steht in der Diagnose, weil er bei fast jedem Problem
+    die erste Frage ist. Er enthaelt aber den Windows- oder Mac-Kontonamen,
+    und die Diagnose ist ausdruecklich zum Verschicken gedacht: wer sie in
+    ein Issue stellt, veroeffentlichte damit bisher seinen Klarnamen.
+
+    Frueher wurde nur der ANFANG eines Pfades ersetzt, und nur beim
+    Log-Ordner. Fehlermeldungen tragen den Pfad aber mittendrin
+    ("No such file or directory: 'C:/Users/...'"), und die gingen roh in
+    die Diagnose. Beim Voll-Audit am 02.09.2026 mit einer echten
+    OSError-Meldung nachgewiesen. Deshalb wird jetzt ueberall ersetzt,
+    beide Schraegstrich-Schreibweisen, und zusaetzlich der blosse
+    Kontoname."""
+    p = str(p or "")
+    if not p:
+        return leer
+    try:
+        heim = str(Path.home())
+    except Exception:
+        return p
+    for form in (heim, heim.replace("\\", "/")):
+        if not form:
+            continue
+        # Ohne Ruecksicht auf Gross- und Kleinschreibung suchen, Windows
+        # schreibt denselben Pfad mal so und mal so.
+        tief = p.lower()
+        ziel = form.lower()
+        stueck, i = [], 0
+        while True:
+            j = tief.find(ziel, i)
+            if j < 0:
+                stueck.append(p[i:])
+                break
+            stueck.append(p[i:j])
+            stueck.append("~")
+            i = j + len(form)
+        p = "".join(stueck)
+    # Der blosse Kontoname, falls er ohne Pfad auftaucht.
+    konto = Path.home().name
+    if konto and len(konto) > 2:
+        p = re.sub(re.escape(konto), "<konto>", p, flags=re.I)
+    return p
+
+
 def diagnose_text():
     """Kompakter Bericht zum Kopieren und Verschicken. Bewusst OHNE
     Charakternamen, Tokens oder Pfade mit Klarnamen-Anteil ausserhalb des
     Log-Ordners — nur was zur Fehlersuche noetig ist."""
     ok, n = log_dir_status()
 
-    def ohne_namen(p, leer="(nicht gesetzt)"):
-        """Den Kontonamen aus einem Text nehmen, an JEDER Stelle.
+    ohne_namen = ohne_kontoname
 
-        Der Log-Ordner steht in der Diagnose, weil er bei fast jedem Problem
-        die erste Frage ist. Er enthaelt aber den Windows- oder Mac-Kontonamen,
-        und die Diagnose ist ausdruecklich zum Verschicken gedacht: wer sie in
-        ein Issue stellt, veroeffentlichte damit bisher seinen Klarnamen.
-
-        Frueher wurde nur der ANFANG eines Pfades ersetzt, und nur beim
-        Log-Ordner. Fehlermeldungen tragen den Pfad aber mittendrin
-        ("No such file or directory: 'C:/Users/...'"), und die gingen roh in
-        die Diagnose. Beim Voll-Audit am 02.09.2026 mit einer echten
-        OSError-Meldung nachgewiesen. Deshalb wird jetzt ueberall ersetzt,
-        beide Schraegstrich-Schreibweisen, und zusaetzlich der blosse
-        Kontoname."""
-        p = str(p or "")
-        if not p:
-            return leer
-        try:
-            heim = str(Path.home())
-        except Exception:
-            return p
-        for form in (heim, heim.replace("\\", "/")):
-            if not form:
-                continue
-            # Ohne Ruecksicht auf Gross- und Kleinschreibung suchen, Windows
-            # schreibt denselben Pfad mal so und mal so.
-            tief = p.lower()
-            ziel = form.lower()
-            stueck, i = [], 0
-            while True:
-                j = tief.find(ziel, i)
-                if j < 0:
-                    stueck.append(p[i:])
-                    break
-                stueck.append(p[i:j])
-                stueck.append("~")
-                i = j + len(form)
-            p = "".join(stueck)
-        # Der blosse Kontoname, falls er ohne Pfad auftaucht.
-        konto = Path.home().name
-        if konto and len(konto) > 2:
-            p = re.sub(re.escape(konto), "<konto>", p, flags=re.I)
-        return p
 
     L = [f"EVE Canary Diagnose v{VERSION}",
          f"System   : {sys.platform} / {os.name} / Python {sys.version.split()[0]}",
@@ -11027,6 +11085,10 @@ def state_info():
             "progress": ingest.progress, # Nicht "das Dict ist nicht leer", sondern "es steht ein echter Preis
             # darin". Sonst meldet die Oberflaeche bei einem Ausfall "Preise
             # geladen", waehrend ueberall 0 ISK steht.
+            # Sagt die Oberflaeche, dass die Client-Sprache noch nicht
+            # abgedeckt ist. Ohne diesen Hinweis merkt es niemand: die Muster
+            # greifen still nicht, es gibt keine Fehlermeldung.
+            "sprache_fehlt": sprache_fehlt(),
             "prices_loaded": any((prices.get(CONFIG["region"]) or {}).values()),
             "price_src": PRICE_SOURCE.get(str(CONFIG["region"]), "fuzzwork"),
             "watchlist": CONFIG.get("watchlist", []), "goal": CONFIG.get("goal"),
@@ -13950,6 +14012,8 @@ class Handler(BaseHTTPRequestHandler):
                        + "</h2><p>" + (err or "Du kannst dieses Fenster schließen. "
                        "Canary gleicht Laderaum und Wallet ab jetzt automatisch ab.")
                        + "</p></body></html>", "text/html; charset=utf-8")
+        elif p == "/sprachbeitrag.txt":
+            self._send(sprachbeitrag(), "text/plain; charset=utf-8")
         elif p == "/diagnose.txt":
             self._send(diagnose_text(), "text/plain; charset=utf-8")
         elif p == "/abyss.tsv":
@@ -16020,9 +16084,11 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
    <button class="btn" id="doUpd" hidden>Update installieren</button>
    <button class="btn" id="backup">Backup erstellen</button>
    <button class="btn" id="diagBtn">🩺 Diagnose kopieren</button>
+   <button class="btn" id="sprachBtn">🌍 Sprache beitragen</button>
    <a class="btn" href="/export.csv" style="text-decoration:none">Export CSV</a>
    <a class="btn" href="/export.json" style="text-decoration:none">Export JSON</a>
   </div>
+  <div class="hint" id="sprachHin" hidden></div>
   <div class="hint" id="diagStat"></div>
   <textarea id="diagOut" rows="10" hidden readonly style="width:100%;margin-top:6px;font-family:monospace;font-size:11px"></textarea>
   <div class="hint" id="errBox"></div>
@@ -16511,6 +16577,52 @@ $('#diagBtn').onclick=async()=>{
                        :'Kopieren ging nicht, Text ist markiert: Strg+C drücken.';
   st.style.color='var(--green)';
  }catch(e){st.textContent=(lang==='en'?'Could not build the diagnosis: ':'Diagnose konnte nicht erstellt werden: ')+e;st.style.color='var(--red)';}
+};
+// Sprache beitragen. Canary erkennt eine Handvoll Meldungen an ihrem
+// Wortlaut, weil sie als reiner Fliesstext im Log stehen. Fuer alles andere
+// braucht es keine Sprache. Wessen Client eine noch nicht abgedeckte Sprache
+// spricht, bekommt diese Warnungen STILL nicht, und Canary sammelt die
+// unerkannten Saetze laengst. Bisher fuehrte der Weg von dort zu uns ueber
+// "Diagnose kopieren und jemanden finden". Das tut fast niemand.
+$('#sprachBtn').onclick=async()=>{
+ const st=$('#sprachHin'), en=lang==='en';
+ st.hidden=false;
+ st.style.color='var(--dim)';
+ st.textContent=en?'Collecting …':'Sammle …';
+ let txt='';
+ try{ txt=await (await fetch('/sprachbeitrag.txt')).text(); }
+ catch(e){
+  st.style.color='var(--red)';
+  st.textContent=(en?'Could not build the report: ':'Bericht ging nicht: ')+e;
+  return;
+ }
+ const zeilen=(txt.match(/^  \\S/gm)||[]).length;
+ if(!zeilen){
+  st.style.color='var(--green)';
+  st.textContent=en
+   ?'Nothing to contribute: Canary understands every message your client writes. That is the good case.'
+   :'Nichts beizutragen: Canary versteht jede Meldung, die dein Client schreibt. Das ist der gute Fall.';
+  return;
+ }
+ // Erst ZEIGEN, dann schicken lassen. Niemand soll etwas abschicken, das er
+ // nicht gelesen hat, auch wenn Namen und Pfade geschwaerzt sind.
+ $('#diagOut').value=txt; $('#diagOut').hidden=false;
+ const titel=en?'Log messages in an unsupported client language'
+               :'Log-Meldungen in einer noch nicht abgedeckten Client-Sprache';
+ // GitHub nimmt den Text in der Adresse. Lang genug fuer 60 Zeilen, aber
+ // nicht unbegrenzt: bei ueber 6000 Zeichen lehnen manche Browser ab.
+ const koerper=txt.length>5800?txt.slice(0,5800)+'\\n…':txt;
+ const url='https://github.com/Eve-Online-Askend/eve-canary/issues/new'
+   +'?title='+encodeURIComponent(titel)
+   +'&body='+encodeURIComponent('```\\n'+koerper+'\\n```');
+ st.style.color='var(--green)';
+ st.innerHTML=(en
+   ?zeilen+' message(s) collected and shown below. Names and paths are replaced. '
+   :zeilen+' Meldung(en) gesammelt und unten angezeigt. Namen und Pfade sind ersetzt. ')
+   +'<a href="'+url+'" target="_blank" rel="noopener">'
+   +(en?'Send them in':'Damit melden')+'</a>'
+   +(en?' — you can read and edit everything before submitting.'
+       :' — du siehst und änderst alles, bevor du abschickst.');
 };
 $('#saveGoal').onclick=async()=>{await post({action:'goal',isk:Number($('#goalIsk').value)||null,deadline:$('#goalDate').value});syncOpts();};
 $('#clearGoal').onclick=async()=>{await post({action:'goal',isk:null});$('#goalIsk').value='';syncOpts();};

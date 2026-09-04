@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.78.0",
+  "d": "2026-09-04",
+  "de": [
+   "NEU: 🌍 SPRACHE BEITRAGEN. Canary erkennt eine Handvoll Meldungen an ihrem Wortlaut, weil sie als reiner Fließtext im Log stehen: Frachtraum voll, Drohnen abladen, Abdocken, Handel, Bergung, Andockanflug, Warp. Alles andere hängt an Zahlen, Farben und nie übersetzten Modulnamen und ist sprachunabhängig. Abgedeckt waren Deutsch und Englisch. Wer auf Französisch, Russisch, Japanisch, Koreanisch, Chinesisch oder Spanisch spielt, bekam diese Warnungen STILL nicht: das Muster greift nicht, und es gibt keine Fehlermeldung. Canary sammelt die unerkannten Sätze längst, aber der Weg von dort zu mir führte über 'Diagnose kopieren und jemanden finden'. Jetzt ist es ein Knopf unter ⚙ Optionen.",
+   "Der Beitrag ist geschwärzt, bevor du ihn siehst: Charakternamen werden durch <Charakter> ersetzt, der Windows-Kontoname aus Pfaden entfernt. Du bekommst den fertigen Text angezeigt und schickst ihn selbst ab, oder eben nicht. Ist deine Sprache schon abgedeckt, sagt der Knopf genau das und tut nichts.",
+   "Beim Bau hat die Prüfung ein Leck gefangen: der Kontoname stand noch in Pfaden von Fehlermeldungen. Die Diagnose entfernt ihn seit dem Audit, der neue Bericht tat es nicht. Beide benutzen jetzt denselben Helfer."
+  ],
+  "en": [
+   "NEW: 🌍 CONTRIBUTE YOUR LANGUAGE. Canary recognises a handful of messages by their wording, because they sit in the log as plain prose: cargo hold full, drones need unloading, undocking, trade, salvaging, docking approach, warp. Everything else rides on numbers, colours and never-translated module names and is language independent. German and English were covered. If you play in French, Russian, Japanese, Korean, Chinese or Spanish, you SILENTLY did not get those warnings: the pattern does not match and there is no error message. Canary has been collecting the unrecognised sentences all along, but the path from there to me went through 'copy the diagnostics and find someone'. Now it is one button under ⚙ Options.",
+   "The report is redacted before you see it: character names become <Character>, the Windows account name is stripped from paths. You get the finished text shown to you and send it yourself, or not. If your language is already covered, the button says exactly that and does nothing.",
+   "While building it the test caught a leak: the account name was still present in paths inside error messages. The diagnostics have stripped it since the audit, the new report did not. Both use the same helper now."
+  ]
+ },
+ {
   "v": "2.77.0",
   "d": "2026-09-04",
   "de": [
