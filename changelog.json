@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.77.0",
+  "d": "2026-09-04",
+  "de": [
+   "NEU: WO DU ÜBERALL WARST. Unter Gesamt steht jetzt eine Liste aller Systeme, in denen du je warst, mit Ankünften, letzter Station und letztem Besuch, zum Kopieren. Für diese Liste gibt es keine andere Quelle: die ESI kennt nur deinen aktuellen Ort und führt keine Historie. Im offiziellen EVE-Forum wurde genau das im März 2024 gewünscht, der Thread wurde ungelöst geschlossen. Aus deinen Gamelogs fällt es ab. Beim ersten Start trägt Canary die Historie einmalig aus den vorhandenen Logdateien nach, im Hintergrund: hier waren das 1.123 Navigationszeilen aus 117 Dateien in 0,7 Sekunden, daraus 209 Systeme über vier Charaktere, zurück bis Juli.",
+   "CANARY WARF DIE HALBE NAVIGATIONSZEILE WEG. Im Gamelog steht 'Jumping from Tintoh to Santola', gelesen wurde nur Santola. Und beim Abdocken steht der volle Stationsname da, benutzt wurde nur das System. Beides bleibt jetzt erhalten. Damit kennt Canary erstmals deine Route und nicht nur deinen Aufenthaltsort, und zwar auf Stationsebene: der Local-Chat sagt nur 'Jita', nie an welcher Station du lagst.",
+   "Der Navigationskanal ist außerdem unabhängig vom Local-Chat. Das ist bewusst so gewählt: es gibt einen Vorstoß im offiziellen Forum, Drittanbieter-Werkzeugen den Local-Chat zu verzögern. Was aus dem Gamelog kommt, wäre davon nicht betroffen.",
+   "Ehrliche Grenze, gemessen: nur 38 Prozent aller Sitzungen enthalten überhaupt eine Navigationszeile. Eine reine Mining-Sitzung ohne Ortswechsel steuert nichts bei, und einen Startpunkt gibt es nicht, nur Übergänge."
+  ],
+  "en": [
+   "NEW: EVERYWHERE YOU HAVE BEEN. The Total view now lists every system you have ever visited, with arrivals, last station and last visit, ready to copy. There is no other source for this list: ESI only knows where you are right now and keeps no history. Exactly this was requested on the official EVE forum in March 2024 and the thread was closed unresolved. It falls out of your game logs. On first start Canary fills the history once from the log files already on disk, in the background: here that was 1,123 navigation lines from 117 files in 0.7 seconds, giving 209 systems across four characters, going back to July.",
+   "CANARY WAS THROWING HALF THE NAVIGATION LINE AWAY. The game log says 'Jumping from Tintoh to Santola' and only Santola was read. And on undocking the full station name is right there, but only the system was used. Both are kept now. Canary therefore knows your route for the first time, not just your whereabouts, and at station level: the local chat only ever says 'Jita', never which station you were at.",
+   "The navigation channel is also independent of the local chat. That is deliberate: there is a push on the official forum to delay local chat for third-party tools. Anything coming from the game log would be unaffected.",
+   "An honest limit, measured: only 38 percent of all sessions contain a navigation line at all. A pure mining session without a change of location contributes nothing, and there is no starting point, only transitions."
+  ]
+ },
+ {
   "v": "2.76.0",
   "d": "2026-09-02",
   "de": [

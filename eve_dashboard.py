@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.76.0"
+VERSION = "2.77.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1608,13 +1608,23 @@ def parse_line(raw):
             # "Abdocken von … zum Sonnensystem <System>" mitnehmen (aktueller Ort).
             us = re.search(r"\bto ([^.]+?) solar system", text) \
                 or re.search(r"Sonnensystem ([^.]+)", text)
+            # Und den STATIONSNAMEN. Der stand hier immer schon in der Zeile und
+            # wurde weggeworfen. Er ist die einzige Quelle dafuer, WO genau man
+            # lag: der Local-Chat sagt nur "Jita", nie an welcher Station.
+            st = re.search(r"(?:Undocking from|Abdocken von)\s+(.+?)"
+                           r"(?:\s+to\s+[^.]+?\s+solar system|\s+zum Sonnensystem)",
+                           text)
             return {**base, "kind": "hold_reset", "key": "dock", "value": 1,
-                    "system": us.group(1).strip() if us else None}
+                    "system": us.group(1).strip() if us else None,
+                    "station": st.group(1).strip("* .") if st else None}
         # Sprung: "Jumping from X to Y" / "Springt von X nach Y" -> aktueller Ort = Y
-        jm = re.search(r"Jumping from .+? to (.+)$", text) \
-            or re.search(r"(?:Springt|Springe) von .+? nach (.+)$", text)
+        # Die HERKUNFT wird mitgenommen: erst mit ihr ergibt die Folge der
+        # Spruenge eine Route und nicht nur eine Kette von Zielen.
+        jm = re.search(r"Jumping from (.+?) to (.+)$", text) \
+            or re.search(r"(?:Springt|Springe) von (.+?) nach (.+)$", text)
         if jm:
-            return {**base, "kind": "jump", "key": jm.group(1).strip("* ."), "value": 1}
+            return {**base, "kind": "jump", "key": jm.group(2).strip("* ."),
+                    "von": jm.group(1).strip("* ."), "value": 1}
         ev = classify_rest(base, tag, text)
         if ev:
             return ev
@@ -1845,6 +1855,12 @@ CREATE TABLE IF NOT EXISTS missions(mid TEXT PRIMARY KEY, char_id TEXT, char TEX
 -- statt die Tabelle am Stueck zu lesen. Bei kurzen Zeitraeumen halfen sie
 -- zwar (35 -> 17 ms), aber "alles" ist der Fall, der weh tut.
 CREATE INDEX IF NOT EXISTS ix_missions_start ON missions(start_ts);
+-- Flugschreiber: jedes je besuchte System, je Charakter. Faellt aus dem
+-- Gamelog-Kanal (None) ab, den Canary ohnehin liest. Eine Liste der besuchten
+-- Systeme zu exportieren war ein Wunsch aus dem offiziellen Forum (03/2024),
+-- der Thread wurde ungeloest geschlossen: ueber die ESI geht es gar nicht.
+CREATE TABLE IF NOT EXISTS besuche(system TEXT, char TEXT, erst_ts REAL,
+  letzt_ts REAL, n INTEGER, station TEXT, PRIMARY KEY(system, char));
 """)
 DB.commit()
 # --- Nachtraeglich dazugekommene Spalten ---------------------------------
@@ -3372,6 +3388,11 @@ class CharSession:
         # Objekt (Voll-Audit 02.09.2026).
         self.first_ts = None
         self.trip_ts = None
+        # Flugschreiber: die Route dieser Sitzung, Stationsebene. Kommt aus
+        # dem Gamelog-Kanal (None), unabhaengig vom Local-Chat. Gedeckelt,
+        # damit eine lange Reise den Speicher nicht aufblaeht.
+        self.route = deque(maxlen=200)
+        self.station = None       # wo zuletzt angedockt war, aus dem Abdocken
         self.trips = 0  # Anzahl Station-Stopps (Abdocken) in dieser Session
         self.mining = {}
         self.compressed = {}
@@ -3572,7 +3593,19 @@ class CharSession:
             self.kristalle[ev["key"]] = self.kristalle.get(ev["key"], 0) + 1
             self.kristall_ts = ev["ts"]
         elif k == "jump":
+            # Die HERKUNFT steht in derselben Zeile. Ohne sie ist die Route
+            # nur eine Kette von Zielen und man sieht nicht, ob eine Luecke
+            # dazwischen liegt (Logout, Wurmloch, Filament).
+            self.route.append({"ts": ev["ts"], "art": "sprung",
+                               "von": ortsname(ev.get("von")),
+                               "nach": ortsname(ev["key"])})
+            # AUCH beim Nachlesen alter Dateien: sonst entstuende die
+            # Historie erst ab dem Einbau, obwohl die Logs Monate zurueck
+            # reichen. Spruenge sind rund ein Prozent der Zeilen, das
+            # zusaetzliche Schreiben faellt nicht ins Gewicht.
+            besuch_merken(ev["key"], self.name, ev["ts"])
             self.system = ev["key"]      # aktueller Ort aus dem Gamelog
+            self.station = None          # unterwegs, nicht mehr angedockt
             self.system_status = None    # neues System, alter Zustand weg
         elif k == "dmg_out":
             self.dmg_out += ev["value"]
@@ -3706,6 +3739,15 @@ class CharSession:
                 self.start = time.time()
                 self.first_ts = ev["ts"]
                 self.trip_ts = ev["ts"]  # ein Undock beginnt BEIDE neu
+                # Die Station steht in derselben Zeile. Sie ist die einzige
+                # Quelle dafuer, WO genau man lag: der Local-Chat sagt nur
+                # "Jita", nie an welcher Station.
+                self.station = ev.get("station")
+                self.route.append({"ts": ev["ts"], "art": "abdocken",
+                                   "von": ortsname(ev.get("station")),
+                                   "nach": ortsname(ev.get("system"))})
+                besuch_merken(ev.get("system"), self.name, ev["ts"],
+                              ev.get("station"))
                 if ev.get("system"):     # Ziel des Undocks = aktueller Ort
                     self.system = ev["system"]
         elif k == "depleted":
@@ -9513,6 +9555,100 @@ def spark_minuten(s):
     return werte
 
 
+def ortsname(t):
+    """Ein Orts- oder Stationsname ohne EVEs Lokalisierungsmarke.
+
+    Der Client haengt an uebersetzbare Namen ein Sternchen. Ohne das
+    Abschneiden zaehlen "Gisleres" und "Gisleres*" getrennt, und zwar genau
+    dann, wenn ein Charakter mal auf Deutsch und mal auf Englisch geflogen
+    ist. Beim ersten Nachtrag genau so passiert: 42 und 20 statt 62."""
+    return (t or "").strip().rstrip("*").strip()
+
+
+def besuch_merken(system, char, ts, station=None):
+    """Ein besuchtes System festhalten. Dauerhaft, ueber Sitzungen hinweg.
+
+    Die ESI kennt nur den AKTUELLEN Ort und keine Historie. Wer wissen will,
+    wo er in drei Jahren EVE ueberall war, hat dafuer keine Quelle. Aus dem
+    Gamelog faellt es ab, weil Canary den Navigationskanal ohnehin liest."""
+    # Das Sternchen ist EVEs Lokalisierungsmarke, kein Namensbestandteil.
+    # Ohne das Abschneiden zaehlen "Gisleres" und "Gisleres*" getrennt, und
+    # zwar genau dann, wenn ein Charakter mal auf Deutsch und mal auf
+    # Englisch geflogen ist. Beim ersten Nachtrag genau so passiert.
+    system = ortsname(system)
+    station = ortsname(station) or None
+    if not system or not char:
+        return
+    try:
+        with DB_LOCK:
+            DB.execute(
+                "INSERT INTO besuche(system,char,erst_ts,letzt_ts,n,station) "
+                "VALUES(?,?,?,?,1,?) "
+                "ON CONFLICT(system,char) DO UPDATE SET "
+                "  letzt_ts=max(letzt_ts,excluded.letzt_ts), n=n+1, "
+                # Eine spaeter bekannt gewordene Station nicht mit NULL
+                # ueberschreiben: sie kommt nur beim Abdocken vorbei.
+                "  station=COALESCE(excluded.station, station)",
+                (system, char, ts, ts, station))
+            DB.commit()
+    except Exception as e:
+        log_error("CN-DB-05", "besuch_merken", e)
+
+
+def besuche_nachtragen():
+    """Die Besuchsliste einmalig aus den vorhandenen Gamelogs fuellen.
+
+    Laeuft genau einmal, gemerkt in meta. Danach traegt der laufende Betrieb
+    jeden neuen Sprung selbst ein.
+
+    Gelesen wird mit parse_line, also mit dem ECHTEN Parser. Ein Nachbau
+    haette hier nur bewiesen, dass der Nachbau stimmt, und wuerde bei jeder
+    Aenderung an den Navigationsmustern auseinanderlaufen. Die Vorfilterung
+    auf "(None)" spart die Arbeit trotzdem: dieser Kanal ist rund ein Prozent
+    der Zeilen."""
+    if meta_get("besuche_nachtrag") == "1":
+        return 0
+    # log_dir ist eine METHODE am Ingest-Objekt, keine freie Funktion. Der
+    # Aufruf als log_dir() warf einen NameError, den der Hintergrund-Thread
+    # stumm verschluckt hat: der Nachtrag lief nie, und niemand merkte es.
+    d = ingest.log_dir()
+    if not d or not d.exists():
+        return 0
+    n_zeilen = n_dateien = 0
+    t0 = time.time()
+    for p in sorted(d.glob("*.txt")):
+        if not CHAR_FILE_RE.match(p.name):
+            continue
+        name = None
+        try:
+            with open(p, encoding="utf-8", errors="ignore") as f:
+                for z in f:
+                    if name is None:
+                        if "Listener:" in z or "Empfänger:" in z:
+                            name = z.split(":", 1)[1].strip()
+                        continue
+                    if "(None)" not in z:
+                        continue
+                    ev = parse_line(z)
+                    if not ev:
+                        continue
+                    if ev.get("kind") == "jump":
+                        besuch_merken(ev.get("key"), name, ev["ts"])
+                        n_zeilen += 1
+                    elif ev.get("kind") == "hold_reset" and ev.get("system"):
+                        besuch_merken(ev["system"], name, ev["ts"],
+                                      ev.get("station"))
+                        n_zeilen += 1
+            n_dateien += 1
+        except OSError:
+            continue
+    meta_set("besuche_nachtrag", "1")
+    if n_zeilen:
+        print("Flugschreiber: %d Navigationszeilen aus %d Dateien nachgetragen "
+              "(%.1f s)" % (n_zeilen, n_dateien, time.time() - t0))
+    return n_zeilen
+
+
 def sitzungsdauer(s, mindestens=60.0):
     """Wie lange laeuft diese Sitzung wirklich, in Sekunden.
 
@@ -9744,6 +9880,10 @@ def snapshot_live():
             "mine_idle": round(time.time() - s.last_ore_ts) if s.last_ore_ts else None,
             "idle_thr": round(s.idle_threshold(int(CONFIG.get("idle_warn", 240) or 0))),
             "name": s.name, "session_min": round(mins),
+            # Flugschreiber: wo genau, und wie er dorthin kam.
+            "station": s.station,
+            "route": list(s.route)[-12:],
+            "route_n": len(s.route),
             "system": s.system or chatwatch.systems.get(s.char_id, "?"),
             # Abyss laeuft gegen eine harte Zeitgrenze von 20 Minuten. Steht
             # hier eine Zahl, ist der Charakter gerade drin.
@@ -10656,7 +10796,33 @@ def query_total():
             "depleted": round(t["depleted"]),
             "best_day": {"day": best[0], "isk": round(best[1])}, "ores": ores,
             "compressed": comp_list,
-            "chars": {k: {kk: round(vv) for kk, vv in v.items()} for k, v in t["chars"].items()}}
+            "chars": {k: {kk: round(vv) for kk, vv in v.items()} for k, v in t["chars"].items()},
+            "besuche": query_besuche()}
+
+
+def query_besuche():
+    """Alle je besuchten Systeme, je Charakter zusammengefasst.
+
+    Es gibt dafuer keine andere Quelle. Die ESI kennt nur den AKTUELLEN Ort
+    und fuehrt keine Historie; eine Liste der besuchten Systeme zu bekommen
+    war ein Wunsch aus dem offiziellen Forum (03/2024), der Thread wurde
+    ungeloest geschlossen. Aus dem Gamelog faellt es ab."""
+    with DB_LOCK:
+        rows = DB.execute(
+            "SELECT system, SUM(n), MIN(erst_ts), MAX(letzt_ts), "
+            "       COUNT(DISTINCT char), MAX(station) "
+            "FROM besuche GROUP BY system ORDER BY SUM(n) DESC").fetchall()
+        je_char = DB.execute(
+            "SELECT char, COUNT(DISTINCT system), SUM(n) FROM besuche "
+            "GROUP BY char ORDER BY COUNT(DISTINCT system) DESC").fetchall()
+    liste = [{"system": r[0], "n": r[1], "erst": int(r[2] or 0),
+              "letzt": int(r[3] or 0), "chars": r[4], "station": r[5]}
+             for r in rows]
+    return {"systeme": liste[:400], "n": len(liste),
+            "besuche": sum(r["n"] for r in liste),
+            "chars": [{"name": c[0], "systeme": c[1], "besuche": c[2]}
+                      for c in je_char],
+            "seit": min((r["erst"] for r in liste), default=0)}
 
 
 def compression_periods():
@@ -17018,6 +17184,27 @@ document.addEventListener('click',e=>{
  // "Alle zeigen" aus dem Filter-Hinweis. Aus demselben Grund hier und nicht
  // am Element: die Ansicht wird im Takt neu gebaut, ein direkt gesetzter
  // Handler waere nach zwei Sekunden weg.
+ if(e.target.id==='besucheKopie'){
+  e.stopPropagation();
+  const b=(lastTotal&&lastTotal.besuche)||{};
+  const en=lang==='en';
+  const txt=(b.systeme||[]).map(x=>[x.system,x.n,x.chars,x.station||'',
+    x.letzt?new Date(x.letzt*1000).toISOString().slice(0,10):''].join('\\t')).join('\\n');
+  const kopf=(en?'System\\tArrivals\\tChars\\tLast station\\tLast seen'
+               :'System\\tAnkünfte\\tChars\\tZuletzt Station\\tZuletzt')+'\\n';
+  const zurueck=()=>setTimeout(()=>{
+   e.target.textContent=en?'Copy list':'Liste kopieren';},2200);
+  navigator.clipboard.writeText(kopf+txt).then(()=>{
+   e.target.textContent=en?'✓ Copied':'✓ Kopiert'; zurueck();
+  }).catch(()=>{
+   // Kein Zugriff auf die Zwischenablage (Browser-Einstellung, kein Fokus):
+   // NICHT schweigen. Ein Knopf, der nichts tut und nichts sagt, ist
+   // schlimmer als einer, der die Lage erklaert.
+   e.target.textContent=en?'Clipboard blocked by the browser'
+                          :'Browser lässt das Kopieren nicht zu';
+   zurueck();
+  });
+ }
  if(e.target.id==='filterWeg'){
   e.stopPropagation();
   localStorage.setItem('charFilter','');
@@ -18035,6 +18222,7 @@ function kristallCard(k){
 }
 
 function renderTotal(t){
+ lastTotal=t;
  $('#empty').hidden=true;
  const maxOre=Math.max(1,...t.ores.map(o=>o.isk));
  $('#grid').innerHTML=`<div class="card">
@@ -18062,9 +18250,45 @@ function renderTotal(t){
    <div class="sub">Alles, was über die Schiffs-Kompression gelaufen ist</div>
    <div style="overflow-x:auto"><table>
    <thead><tr><th>Charakter</th><th>Typ</th><th class="r">Menge</th><th class="r">Volumen</th><th class="r">Wert</th></tr></thead>${t.compressed.length?t.compressed.map(k=>
-   `<tr><td style="white-space:nowrap">${esc(k.char)}</td><td>${esc(k.type)}</td><td class="r">${fmt(k.units)} Stk</td><td class="r">${fmt(k.m3)} m³</td><td class="r isk">${fmtM(k.isk)}</td></tr>`).join(''):'<tr><td>Noch nichts komprimiert</td></tr>'}</table></div></div>`;
+   `<tr><td style="white-space:nowrap">${esc(k.char)}</td><td>${esc(k.type)}</td><td class="r">${fmt(k.units)} Stk</td><td class="r">${fmt(k.m3)} m³</td><td class="r isk">${fmtM(k.isk)}</td></tr>`).join(''):'<tr><td>Noch nichts komprimiert</td></tr>'}</table></div></div>`
+  +besucheCard(t.besuche);
 }
 
+// Flugschreiber: alle je besuchten Systeme. Es gibt dafuer KEINE andere
+// Quelle. Die ESI kennt nur den aktuellen Ort und fuehrt keine Historie, und
+// eine solche Liste zu bekommen war ein Wunsch aus dem offiziellen Forum
+// (03/2024), dessen Thread ungeloest geschlossen wurde. Aus dem Gamelog-Kanal
+// (None) faellt sie ab, den Canary ohnehin liest.
+function besucheCard(b){
+ if(!b||!b.n)return '';
+ const en=lang==='en';
+ const seit=b.seit?new Date(b.seit*1000).toLocaleDateString():'';
+ const zeilen=(b.systeme||[]).slice(0,80).map(x=>
+   `<tr><td>${esc(x.system)}</td><td class="r">${fmt(x.n)}</td><td class="r">${x.chars}</td>`
+   +`<td class="sub">${x.station?esc(x.station):''}</td>`
+   +`<td class="sub" style="white-space:nowrap">${x.letzt?new Date(x.letzt*1000).toLocaleDateString():''}</td></tr>`).join('');
+ return `<div class="card" style="grid-column:1/-1"><div class="chead" style="cursor:default">
+   <span class="char">🧭 ${en?'Systems you have visited':'Wo du überall warst'}</span>
+   <span class="mini" style="margin-left:auto">
+     <span class="pill" id="besucheKopie" style="cursor:pointer">${en?'Copy list':'Liste kopieren'}</span></span></div>
+  <div class="sub">${b.n} ${en?'systems':'Systeme'} · ${fmt(b.besuche)} ${en?'arrivals':'Ankünfte'}${seit?(en?' · since ':' · seit ')+seit:''}</div>
+  <div class="sub" style="margin-bottom:8px">${en
+    ? 'Built from the navigation lines in your game logs. There is no other source for this: ESI only knows where you are right now, never where you have been. Only systems you jumped into or undocked in are counted, so a session without a change of location adds nothing.'
+    : 'Gebaut aus den Navigationszeilen deiner Gamelogs. Eine andere Quelle dafür gibt es nicht: die ESI kennt nur deinen aktuellen Ort, nie den zurückgelegten Weg. Gezählt wird, wo du eingesprungen oder abgedockt bist, eine Sitzung ohne Ortswechsel steuert also nichts bei.'}</div>
+  <div class="sub">${(b.chars||[]).map(c=>esc(c.name)+': '+c.systeme).join(' · ')}</div>
+  <div style="overflow-x:auto;max-height:420px"><table>
+   <tr><th>${en?'System':'System'}</th><th class="r">${en?'Arrivals':'Ankünfte'}</th>
+       <th class="r">${en?'Chars':'Chars'}</th><th>${en?'Last station':'Zuletzt Station'}</th>
+       <th>${en?'Last seen':'Zuletzt'}</th></tr>
+   ${zeilen}</table></div>
+  ${b.n>80?`<div class="sub" style="margin-top:6px">${en?'Showing the 80 most visited. The copy button gives you all of them.':'Gezeigt sind die 80 meistbesuchten. Der Kopier-Knopf gibt dir alle.'}</div>`:''}
+ </div>`;
+}
+
+// Die zuletzt gezeichnete Gesamt-Ansicht, fuer den Kopier-Knopf der
+// Besuchsliste: sie haelt bis zu 400 Systeme, die nicht alle in der
+// Tabelle stehen.
+let lastTotal=null;
 let compPeriod=localStorage.getItem('compPeriod')||'today';
 let lastAnalyse=null;
 const PERIODS={today:'Heute',week:'7 Tage',month:'30 Tage',year:'12 Monate'};
@@ -22072,6 +22296,18 @@ if __name__ == "__main__":
     rebuild_if_needed()   # nach Parser-Update einmal alle Logs frisch neu einlesen
     abyss_bloecke_aufraeumen()   # Altlasten: Bloecke aus mehreren Durchgaengen
     munition_aus_kristallen()    # Altlasten: Laser-Munition in der Kristall-Tabelle
+    # Flugschreiber: die Besuchsliste einmalig aus den vorhandenen Logs
+    # fuellen. Ohne das entstuende sie erst ab dem Einbau, obwohl im
+    # Log-Ordner Monate liegen.
+    def _nachtrag():
+        # Ohne diesen Mantel stirbt der Thread lautlos. Genau das ist beim
+        # Bau passiert: ein NameError, und der Nachtrag lief nie.
+        try:
+            besuche_nachtragen()
+        except Exception as e:
+            log_error("CN-DB-06", "besuche_nachtragen", e)
+    threading.Thread(target=_nachtrag, daemon=True,
+                     name="BesucheNachtrag").start()
     for _name, _t in (("Ingest", ingest), ("ChatWatch", chatwatch),
                       ("Prices", prices), ("Esi", esi), ("ThreatIntel", threat),
                       ("ClipWatch", clipwatch), ("ServerStatus", serverstatus),
