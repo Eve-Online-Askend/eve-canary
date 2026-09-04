@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.74.0"
+VERSION = "2.75.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -6817,7 +6817,13 @@ class Esi(threading.Thread):
                 c["vault"] = {"as_of": int(asof), "next": int(nxt),
                               "total_m3": 0, "total_isk": 0, "locs": []}
             return
-        pm = hub_prices("10000002", set(it["type_id"] for it in ore_items), prefer_esi=True)
+        # Auch die komprimierten Varianten abfragen: ore_value vergleicht
+        # beide Ankaufsgebote, und ohne den zweiten Preis waere es wieder die
+        # alte Regel. Die Preisliste wird auf Buy-Preise flachgezogen, so wie
+        # ore_value sie erwartet.
+        _namen = {ORE_BY_TID[it["type_id"]][0] for it in ore_items}
+        _tupel = hub_prices("10000002", erz_und_komprimiert(_namen), prefer_esi=True)
+        pm = {t: p[0] for t, p in _tupel.items()}
         locs = {}
         for it in ore_items:
             loc = it.get("location_id"); seen = set()
@@ -6830,8 +6836,12 @@ class Esi(threading.Thread):
             orelist, lm3, lisk = [], 0.0, 0.0
             for tid, units in ores.items():
                 oname, vol = ORE_BY_TID[tid]
+                # Dieselbe Regel wie auf der Live-Karte: das bessere der
+                # beiden Ankaufsgebote. Frueher stand hier der Preis des
+                # eigenen Typs, und derselbe Haufen Erz war in zwei Ansichten
+                # verschieden viel wert (Voll-Audit 02.09.2026).
+                isk, _ = ore_value(oname, units, pm)
                 m3 = units * vol
-                isk = units * pm.get(tid, (0, 0))[0]
                 lm3 += m3; lisk += isk
                 orelist.append({"ore": oname, "units": units,
                                 "m3": round(m3), "isk": round(isk)})
@@ -9128,6 +9138,21 @@ tick();
 setInterval(tick, 2000);
 </script></body></html>"""
 
+def erz_und_komprimiert(namen):
+    """Die Typ-IDs dieser Erze UND ihrer komprimierten Varianten.
+
+    ore_value vergleicht beide Ankaufsgebote. Wer nur die IDs der eigenen
+    Typen abfragt, bekommt fuer die andere Seite keinen Preis und damit
+    stillschweigend wieder die alte Regel."""
+    ids = set()
+    for n in namen:
+        for kandidat in (n, "Compressed " + n):
+            t = ORE_TYPES.get(kandidat)
+            if t:
+                ids.add(t["typeID"])
+    return ids
+
+
 def ore_value(ore, units, pm):
     """ISK und Volumen eines Erz-Postens. Bewertet wird zum BESSEREN der
     beiden Buy-Preise (roh oder komprimiert, Komprimieren ist 1:1 in Stueck):
@@ -9535,10 +9560,12 @@ def snapshot_live():
                  "quote": round(100 * b_n / b_alle, 1) if b_alle else 0}
         comp = []
         for ctype, units in sorted(s.compressed.items(), key=lambda x: -x[1]):
-            t = ORE_TYPES.get(ctype, {})
+            # Ueber ore_value wie alles andere. Bei einem schon komprimierten
+            # Typ gibt es keine zweite Variante zum Vergleichen, das Ergebnis
+            # ist dasselbe. Es geht darum, dass es EINE Regel gibt.
+            cisk, cm3 = ore_value(ctype, units, pm)
             comp.append({"type": ctype, "units": units,
-                         "m3": round(units * t.get("volume", 0.0)),
-                         "isk": round(units * pm.get(t.get("typeID"), 0.0))})
+                         "m3": round(cm3), "isk": round(cisk)})
         comp.sort(key=lambda k: -k["isk"])
         # Flotten-Kompression: was ueber den Kompressionsdienst dieses (Booster-)
         # Schiffs lief, je Pilot aggregiert (auch fremde Flottenmitglieder). Wert
@@ -9559,12 +9586,17 @@ def snapshot_live():
                 continue
             hold_types += 1
             t = ORE_TYPES.get(tname, {})
-            price = pm.get(t.get("typeID"))
-            if price is None:
+            # Fehlt fuer BEIDE Varianten ein Preis, ist der Posten unbewertet.
+            # Das muss weiter gezaehlt werden, sonst meldet die Zeile "Preise
+            # geladen", obwohl sie null rechnet.
+            comp_t = ORE_TYPES.get("Compressed " + tname)
+            if (pm.get(t.get("typeID")) is None
+                    and (comp_t is None or pm.get(comp_t["typeID"]) is None)):
                 hold_missing += 1
-                price = 0.0
-            hold_isk += units * price
-            hold_m3 += units * t.get("volume", 0.0)
+            # Und bewertet wird nach derselben Regel wie ueberall sonst.
+            hisk, hm3 = ore_value(tname, units, pm)
+            hold_isk += hisk
+            hold_m3 += hm3
         if hold_types == 0 or hold_missing == 0:
             hold_prices = "ok"
         elif hold_missing == hold_types:
@@ -11015,12 +11047,25 @@ def query_mission_history(limit=40, nur_mids=None):
     for i, a in enumerate(out):
         a["hat_vorher"] = any(b["char"] == a["char"] and b["start"] < a["start"]
                               for b in out[i + 1:])
+    # Wer zusammen geflogen ist, entscheidet abyss_gruppen, und zwar UEBER DIE
+    # VERBINDUNG. Hier stand frueher ein eigener, nur PAARWEISER Vergleich:
+    # bei drei Charakteren in einer Kette (0 s, 80 s, 160 s) sah damit jeder
+    # aussen Stehende nur den mittleren, nicht die ganze Crew
+    # (Voll-Audit 02.09.2026).
+    kurz = [(a["start"], a["end"], a["char"], a["system"] or "?") for a in out]
+    for gruppe in abyss_gruppen(kurz):
+        namen = sorted({out[i]["char"] for i in gruppe})
+        for i in gruppe:
+            a = out[i]
+            a["zusammen"] = [n for n in namen if n != a["char"]]
     for a in out:
-        a["zusammen"] = sorted({b["char"] for b in out
-                                if b["mid"] != a["mid"] and b["char"] != a["char"]
-                                and (b["system"] or "?") == (a["system"] or "?")
-                                and abs(b["start"] - a["start"]) <= 90
-                                and abs(b["end"] - a["end"]) <= 90})
+        a.setdefault("zusammen", [])
+    # Und die Abyss-Markierung ueber die Gruppe erweitern. Ein Logistiker hat
+    # keine Gegnerliste und wurde deshalb nicht als Abyss-Lauf erkannt, obwohl
+    # er nachweislich mitgeflogen ist (Meldung Nirahse, 02.09.2026). Dieselbe
+    # Regel wie in der Abyss-Ansicht, damit beide dasselbe zeigen.
+    for i, m in enumerate(abyss_maske(kurz, [a["abyss"] for a in out])):
+        out[i]["abyss"] = m
     return out, {"liste": ohne_mission, "summe": ohne_summe, "n": len(offen)}
 
 
@@ -12323,15 +12368,26 @@ def query_abyss(chars=None, tage=30):
             "SELECT mid,char,start_ts,end_ts,system,label,loot_isk,loot_text,"
             "salvage_isk,enemies,ship,ship_group,caches,cache_typ FROM missions "
             "WHERE start_ts>=? ORDER BY start_ts DESC", (seit,)).fetchall()
-    laeufe = []
+    # Erst je Zeile fragen, dann ueber die Gruppe erweitern: ein Logistiker
+    # hat keine Gegnerliste und faellt sonst aus seinem eigenen Durchgang
+    # heraus (Meldung Nirahse, 02.09.2026). Die Erweiterung laeuft ueber ALLE
+    # Zeilen des Zeitraums, nicht nur die erkannten, sonst waere er gar nicht
+    # erst im Topf.
+    _gg = []
     for r in rows:
+        try:
+            _gg.append(json.loads(r[9] or "[]"))
+        except Exception:
+            _gg.append([])
+    _maske = abyss_maske(
+        [((r[2] or 0), (r[3] or 0), r[1], r[4] or "?") for r in rows],
+        [ist_abyss(r[4], g) for r, g in zip(rows, _gg)])
+    laeufe = []
+    for _i, r in enumerate(rows):
         if nur and r[1] not in nur:
             continue
-        try:
-            gg = json.loads(r[9] or "[]")
-        except Exception:
-            gg = []
-        if not ist_abyss(r[4], gg):
+        gg = _gg[_i]
+        if not _maske[_i]:
             continue
         dauer = ((r[3] or 0) - (r[2] or 0)) / 60.0
         wert = float(r[6] or 0) + float(r[8] or 0)
@@ -12373,11 +12429,19 @@ def query_abyss(chars=None, tage=30):
     # war die einzige Stelle, die eine einzelne Zeile meinte, und zeigte
     # deshalb neben 98k ISK/min in der Kopfzeile ploetzlich 130k
     # (Voll-Audit 02.09.2026). Es gilt dieselbe Regel und dieselbe Funktion.
-    best = None
+    # Die Gruppierung EINMAL bilden. Sie beantwortet zwei Fragen: welche
+    # Zeilen zu EINEM Durchgang gehoeren (fuer die Kopfzahlen) und welche
+    # Gruppe die beste Runde war. Zwei getrennte Rechnungen dafuer waren der
+    # Grund, dass die Kachel "1 Durchgang" sagte und der Satz darunter
+    # "2 von 3" (Voll-Audit 02.09.2026).
+    gruppen_alle = []
     if laeufe:
         kurz = [(l["start"], l["start"] + l["min"] * 60.0, l["char"], l["system"])
                 for l in laeufe]
-        for idx in abyss_gruppen(kurz):
+        gruppen_alle = abyss_gruppen(kurz)
+    best = None
+    if laeufe:
+        for idx in gruppen_alle:
             teil = [laeufe[i] for i in idx]
             von = min(l["start"] for l in teil)
             bis = max(l["start"] + l["min"] * 60.0 for l in teil)
@@ -12449,12 +12513,21 @@ def query_abyss(chars=None, tage=30):
     return {"ertrag": ertrag, "tage": tage, "behaelter": behaelter,
             "drops": drops[:25], "drop_basis": basis,
             "drop_stufen": sorted(je_stufe_basis.items()),
-            "laeufe": laeufe[:200], "n": len(laeufe),
+            # "n" und "mit_loot" zaehlen DURCHGAENGE, nicht Zeilen. Ein
+            # Multibox-Lauf steht mit einer Zeile je Charakter in der
+            # Datenbank; wer die zaehlt, bekommt fuer eine Dreier-Flotte drei.
+            # Frueher sagte die Kachel darueber "1 Durchgang" und der Satz
+            # darunter im selben Kasten "bei 2 von 3 Durchgaengen fehlt der
+            # Loot" (Voll-Audit 02.09.2026). Die Zeilenzahl steht als
+            # "zeilen" daneben, die Liste zeigt ja wirklich Zeilen.
+            "laeufe": laeufe[:200], "n": len(gruppen_alle),
+            "zeilen": len(laeufe),
             "filamente": fil[:12], "beute": rest[:10],
             "bilanz": {"verbraucht": verbraucht, "erbeutet": erbeutet,
                        "netto": erbeutet - verbraucht, "isk": fil_isk},
             "best": best,
-            "mit_loot": sum(1 for l in laeufe if l["loot_text"].strip())}
+            "mit_loot": sum(1 for g in gruppen_alle
+                            if any(laeufe[i]["loot_text"].strip() for i in g))}
 
 
 def query_planeten():
@@ -12768,6 +12841,36 @@ def ist_abyss(system, enemies):
     return bool(detect_site(enemies))
 
 
+def abyss_maske(zeilen, direkt):
+    """Welche Zeilen gehoeren zu einem Abyss-Durchgang?
+
+    zeilen: je Zeile (start, ende, char, system), wie fuer abyss_gruppen.
+    direkt: je Zeile True, wenn sie FUER SICH als Abyss erkannt wurde
+            (Ort im Chatlog oder eindeutige Abyss-Gegner).
+
+    Zurueck kommt eine Liste von Wahrheitswerten: zusaetzlich True fuer jede
+    Zeile, die mit einer erkannten im selben Durchgang liegt.
+
+    Warum: ein Logistiker schiesst nicht, hat also keine Gegnerliste. Konnte
+    der Chatlog den Ort nicht liefern, fiel er aus jeder Abyss-Auswertung
+    heraus, obwohl er nachweislich dabei war. Nirahse hat das am 02.09.2026
+    gemeldet: von drei Mitfliegern wurden zwei erkannt, der Logistiker nicht,
+    und die Benennung des Laufs erreichte ihn deshalb auch nicht.
+
+    Der Beleg, den es stattdessen gibt, ist derselbe, mit dem Canary sonst
+    entscheidet, ob zwei Charaktere denselben Durchgang geflogen sind:
+    gleiches System, rein UND raus innerhalb von 90 Sekunden. Wer in einem
+    Abyss-Durchgang steckt, war im Abyss."""
+    maske = list(direkt)
+    if not any(maske) or all(maske):
+        return maske
+    for gruppe in abyss_gruppen(zeilen):
+        if any(maske[i] for i in gruppe):
+            for i in gruppe:
+                maske[i] = True
+    return maske
+
+
 _ABYSS_N = {"ts": 0.0, "n": 0}
 
 
@@ -12877,14 +12980,13 @@ def abyss_mitflieger(mid):
             "SELECT mid,start_ts,end_ts,char_id,system,enemies FROM missions "
             "WHERE start_ts BETWEEN ? AND ? AND mid!=?",
             ((row[1] or 0) - 120, (row[1] or 0) + 120, mid)).fetchall()
-    zeilen = [row]
-    for r in umfeld:
-        try:
-            g2 = json.loads(r[5] or "[]")
-        except Exception:
-            g2 = []
-        if ist_abyss(r[4], g2):
-            zeilen.append(r)
+    # ALLE Nachbarn in den Topf, nicht nur die selbst erkannten. Ein
+    # Logistiker schiesst nicht, hat also keine Gegnerliste, und fiel damit
+    # aus der Benennung seines eigenen Durchgangs heraus: Nirahse musste den
+    # Namen bei ihm weiter von Hand eintragen (Meldung 02.09.2026). Die
+    # Gruppierung darunter entscheidet ohnehin ueber Zeit und Ort, und diese
+    # Zeile HIER ist nachweislich ein Abyss-Lauf.
+    zeilen = [row] + list(umfeld)
     if len(zeilen) < 2:
         return []
     # abyss_gruppen erwartet (start, ende, cid, system) an festen Stellen.
@@ -12967,16 +13069,18 @@ def query_abyss_ertrag(chars=None, tage=30):
             # benutzten Spalten nicht verschieben.
             "ship,ship_group,salvage_isk FROM missions ORDER BY start_ts").fetchall()
     seit = (time.time() - tage * 86400) if tage else 0
-    ab = []
-    for r in rows:
-        if seit and (r[0] or 0) < seit:
-            continue
+    # Wie in query_abyss: erst je Zeile, dann ueber die Gruppe erweitern.
+    _im_zeitraum = [r for r in rows if not (seit and (r[0] or 0) < seit)]
+    _gg = []
+    for r in _im_zeitraum:
         try:
-            gg = json.loads(r[6] or "[]")
+            _gg.append(json.loads(r[6] or "[]"))
         except Exception:
-            gg = []
-        if ist_abyss(r[3], gg):
-            ab.append((r, gg))
+            _gg.append([])
+    _maske = abyss_maske(
+        [((r[0] or 0), (r[1] or 0), r[2], r[3] or "?") for r in _im_zeitraum],
+        [ist_abyss(r[3], g) for r, g in zip(_im_zeitraum, _gg)])
+    ab = [(r, g) for r, g, m in zip(_im_zeitraum, _gg, _maske) if m]
     if chars:
         # Erst filtern, DANN gruppieren: sonst zieht ein nicht gewaehlter
         # Charakter seine Mitflieger in eine Gruppe, die es hier nicht gibt.
@@ -13139,51 +13243,34 @@ def abyss_export_tsv():
             "FROM missions ORDER BY start_ts").fetchall()
     # Erst alle Abyss-Zeilen sammeln, dann die Nachbarn bestimmen: fuer die
     # Spalte muss jede Zeile die anderen kennen.
-    abyss_rows = []
+    _gg = []
     for r in rows:
         try:
-            gg = json.loads(r[14] or "[]")
+            _gg.append(json.loads(r[14] or "[]"))
         except Exception:
-            gg = []
-        if ist_abyss(r[3], gg):
-            abyss_rows.append((r, gg))
-
-    def zusammen_mit(a, b):
-        """Dieselbe Regel wie in der Missions-Liste: anderer Charakter,
-        gleiches System, rein UND raus innerhalb von 90 Sekunden."""
-        return (a[2] != b[2] and (a[3] or "?") == (b[3] or "?")
-                and abs((a[0] or 0) - (b[0] or 0)) <= 90
-                and abs((a[1] or 0) - (b[1] or 0)) <= 90)
+            _gg.append([])
+    # Erst je Zeile, dann ueber die Gruppe erweitern (Meldung Nirahse,
+    # 02.09.2026): ein Logistiker ohne Gegnerliste gehoert in denselben
+    # Export wie der Rest seiner Flotte.
+    _maske = abyss_maske(
+        [((r[0] or 0), (r[1] or 0), r[2], r[3] or "?") for r in rows],
+        [ist_abyss(r[3], g) for r, g in zip(rows, _gg)])
+    abyss_rows = [(r, g) for r, g, m in zip(rows, _gg, _maske) if m]
 
     # Gruppen bilden: wer mit wem gleichzeitig unterwegs war, landet in
-    # derselben Gruppe. Ueber die Verbindung, nicht nur paarweise, denn bei drei
-    # Charakteren soll auch dann eine Gruppe herauskommen, wenn der erste und
-    # der letzte 100 s auseinanderliegen und beide nur den mittleren beruehren.
-    # Der Preis: eine Kette kann laenger als 90 s werden. Bei einem Durchgang
-    # von hoechstens 20 Minuten ist das unbedenklich, und die Alternative
-    # (nur echte Cliquen) wuerde eine Flotte willkuerlich zerschneiden.
-    eltern = list(range(len(abyss_rows)))
-
-    def wurzel(i):
-        while eltern[i] != i:
-            eltern[i] = eltern[eltern[i]]
-            i = eltern[i]
-        return i
-
-    for i in range(len(abyss_rows)):
-        for j in range(i + 1, len(abyss_rows)):
-            if zusammen_mit(abyss_rows[i][0], abyss_rows[j][0]):
-                wi, wj = wurzel(i), wurzel(j)
-                if wi != wj:
-                    eltern[wj] = wi
-    # Durchnummerieren in der Reihenfolge des ersten Auftretens, damit die
-    # Nummern beim Lesen von oben nach unten aufsteigen.
-    gruppen_nr, gruppe_von = {}, {}
-    for i in range(len(abyss_rows)):
-        w = wurzel(i)
-        if w not in gruppen_nr:
-            gruppen_nr[w] = len(gruppen_nr) + 1
-        gruppe_von[i] = gruppen_nr[w]
+    # derselben Gruppe. Hier stand frueher eine wortgleiche zweite Kopie von
+    # abyss_gruppen. Zwei Kopien derselben Regel driften irgendwann
+    # auseinander, und dann zaehlt der Export anders als die Ansicht
+    # (Voll-Audit 02.09.2026).
+    #
+    # abyss_gruppen erwartet je Zeile (start, ende, char, system). Die
+    # Reihenfolge der Gruppen ist die des ersten Auftretens, die Nummern
+    # steigen beim Lesen von oben nach unten also an.
+    kurz = [(r[0][0], r[0][1], r[0][2], r[0][3] or "?") for r in abyss_rows]
+    gruppe_von = {}
+    for nummer, gruppe in enumerate(abyss_gruppen(kurz), start=1):
+        for i in gruppe:
+            gruppe_von[i] = nummer
 
     for idx, ((start, ende, cid, system, label, dout, din, hits, mout, min_, kills,
          bounty, loot, ewar_j, enemies_j), enemies) in enumerate(abyss_rows):
@@ -13206,8 +13293,13 @@ def abyss_export_tsv():
             int(bounty or 0), int(loot or 0),
             " ".join(f"{k}x{v}" for k, v in ewar) if ewar else "",
             " ".join(f"{k} ({v} dmg)" for k, v in enemies[:8]).replace("\t", " "),
+            # Wer mitgeflogen ist, kommt aus DERSELBEN Gruppierung wie die
+            # Spalte "gruppe" daneben. Frueher stand hier ein eigener,
+            # paarweiser Vergleich: bei drei Charakteren in einer Kette
+            # fehlte dann der jeweils Entfernteste, obwohl alle drei
+            # dieselbe Gruppennummer trugen (Voll-Audit 02.09.2026).
             " ".join("Char " + str(nr(o[0][2])) for k, o in enumerate(abyss_rows)
-                     if k != idx and zusammen_mit(o[0], abyss_rows[idx][0])),
+                     if k != idx and gruppe_von.get(k) == gruppe_von.get(idx)),
             gruppe_von[idx],
         ]))
     if len(zeilen) == 1:
@@ -20010,7 +20102,10 @@ function renderAbyss(a){
      :'Abyss-Gegner zahlen keine Bounty, der eingetragene Loot ist deshalb der vollständige Ertrag eines Laufs. Stufe und Wetter kommen aus dem Namen, den du dem Lauf gibst, das Schiff aus dem EVE-Login.'}</div>
    </div>`:''}
   <div class="card" style="grid-column:1/-1">
-   <div class="sect">${en?'Every run':'Jeder Durchgang'} · ${a.n}</div>
+   <div class="sect">${en?'Every run':'Jeder Durchgang'} · ${a.n}${
+     (a.zeilen&&a.zeilen>a.n)?` <span class="sub" style="font-weight:400" title="${en
+       ?'Multiboxing writes one row per character. The list shows the rows, the count above shows the runs.'
+       :'Multiboxing schreibt eine Zeile je Charakter. Die Liste zeigt die Zeilen, die Zahl darüber die Durchgänge.'}">(${a.zeilen} ${en?'rows':'Zeilen'})</span>`:''}</div>
    <div class="sub">${en
      ? 'The same runs as in the missions list. Loot, name, tier and weather entered here go into the same record. Naming a run also names everyone who flew it with you.'
      : 'Dieselben Läufe wie in der Missions-Liste. Loot, Name, Stufe und Wetter, die du hier einträgst, landen im selben Datensatz. Ein Name gilt gleich für alle, die mitgeflogen sind.'}</div>
