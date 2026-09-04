@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.76.0",
+  "d": "2026-09-02",
+  "de": [
+   "DER ERKLÄRTEXT ZU DEN PLANETEN-LAGERSTÄNDEN WAR FALSCH. Er sagte: 'EVE rechnet eine Kolonie erst, wenn du sie im Client öffnest.' Eron Solette hat genau das getan, mehrfach über zwei Tage, und es änderte nichts. Er hatte recht. Am eigenen Konto nachgemessen, drei Kolonien: der Zeitstempel, den EVE liefert, ist auf die Sekunde genau der Zeitpunkt, an dem die Extraktoren gesetzt wurden. Das Feld sagt also, wann zuletzt etwas an der Kolonie GEÄNDERT wurde. Bloßes Ansehen zählt nicht, dafür ein neu gesetzter Extraktor oder eine umgelegte Leitung. Der Text sagt das jetzt.",
+   "EINE ALTE KOLONIE STEMPELTE DIE GANZE SEITE. Die Altersangabe war ein einziges Minimum über alle Kolonien aller Charaktere. Wer sechs Planeten frisch aufsetzt und irgendwo noch eine vergessene Kolonie stehen hat, las trotzdem '103,7 h alt', obwohl das für die sechs nicht stimmte. Jetzt steht bei jeder Kolonie ihr eigenes Alter, und die Kopfzeile sagt ehrlich 'ältester Lagerstand'. Über 48 Stunden wird in Tagen gezählt: '19 T' liest sich besser als '467,2 h'.",
+   "DER PUNKT BEDEUTETE AUF DERSELBEN SEITE ZWEIERLEI. Ebenfalls von Eron gemeldet: '8.101 ISK gelagert, was ist das für ein Wert?' Zu Recht gefragt. Bei 8.101 war der Punkt die Tausendertrennung, bei '1.5 M' war er das Komma. Die eine Zahl kam aus der Browsersprache, die andere aus einer festen Formatierung. Wer EVE auf Englisch spielt, liest '8.101' als acht Komma eins. Jetzt folgen alle Zahlen der in Canary GEWÄHLTEN Sprache, Nachkommastellen eingeschlossen: auf Deutsch '8.101' und '1,5 M', auf Englisch '8,101' und '1.5 M'. Und die Kürzel sind die aus dem Spiel: K, M, B statt 'Mrd'.",
+   "Beim Nachmessen fielen drei weitere Sachen auf. Negative Beträge wurden gar nicht abgekürzt: ein Verlust stand als '-2.500.000' neben einem Gewinn als '2.5 M', weil die Bedingung für negative Zahlen nie zutraf. 999.999.999 wurde zu '1000.0 M' statt '1,00 B'. Und das Streamer-Overlay hatte eigene Kopien der Zahlformatierer: von 15 Testwerten wurden 12 anders dargestellt als im Dashboard. Beide Seiten benutzen jetzt denselben Block, und eine Prüfung hält fest, dass er wortgleich bleibt."
+  ],
+  "en": [
+   "THE EXPLANATION FOR PLANETARY STOCK LEVELS WAS WRONG. It said: 'EVE only recalculates a colony when you open it in the client.' Eron Solette did exactly that, repeatedly over two days, and nothing changed. He was right. Measured on a real account, three colonies: the timestamp EVE supplies is, to the second, the moment the extractors were installed. So the field says when the colony was last CHANGED. Merely looking does not count; restarting an extractor or rerouting does. The text now says so.",
+   "ONE OLD COLONY STAMPED THE WHOLE PAGE. The age shown was a single minimum across every colony of every character. Set up six planets fresh while one forgotten colony sits somewhere, and you still read '103.7 h old', which was not true for the six. Each colony now shows its own age and the header honestly says 'oldest stock level'. Beyond 48 hours it counts in days: '19 d' reads better than '467.2 h'.",
+   "THE DOT MEANT TWO THINGS ON THE SAME PAGE. Also reported by Eron: '8.101 ISK stored, what kind of value is that?' A fair question. In 8.101 the dot was a thousands separator; in '1.5 M' it was the decimal point. One number came from the browser language, the other from a fixed format. If you play EVE in English you read '8.101' as eight point one. All numbers now follow the language CHOSEN in Canary, decimals included: German '8.101' and '1,5 M', English '8,101' and '1.5 M'. And the suffixes are the game's own: K, M, B.",
+   "Measuring turned up three more things. Negative amounts were not abbreviated at all: a loss showed as '-2,500,000' next to a gain as '2.5 M', because the condition never held for negative numbers. 999,999,999 became '1000.0 M' instead of '1.00 B'. And the streamer overlay carried its own copies of the number formatters: of 15 test values, 12 came out differently from the dashboard. Both pages now use the same block, and a test keeps it identical."
+  ]
+ },
+ {
   "v": "2.75.0",
   "d": "2026-09-02",
   "de": [

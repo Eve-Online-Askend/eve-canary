@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.75.0"
+VERSION = "2.76.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -6572,11 +6572,18 @@ class Esi(threading.Thread):
                 "upgrade": col.get("upgrade_level"),
                 "pins": col.get("num_pins"),
                 # Wann EVE diese Kolonie zuletzt wirklich gerechnet hat. NICHT
-                # dasselbe wie der Cache-Zeitstempel der ESI-Antwort: EVE
-                # simuliert eine Kolonie erst, wenn sie im Client geoeffnet
-                # wird. An echten Daten gemessen lag der Cache-Header bei
-                # 3 Minuten, waehrend die Lagerstaende 4,5 STUNDEN alt waren.
-                # Nur dieser Wert taugt als Altersangabe fuer Lager und Wert.
+                # dasselbe wie der Cache-Zeitstempel der ESI-Antwort: der lag
+                # an echten Daten bei 3 Minuten, waehrend die Lagerstaende
+                # 4,5 STUNDEN alt waren.
+                #
+                # Und NICHT "zuletzt im Client geoeffnet", wie hier lange
+                # stand. Am eigenen Konto nachgemessen (02.09.2026): bei allen
+                # drei Kolonien ist last_update auf die Sekunde genau die
+                # install_time der Extraktoren. Das Feld sagt, wann zuletzt
+                # etwas an der Kolonie GEAENDERT wurde. Eron Solette hat seine
+                # Kolonien mehrfach im Client geoeffnet und kontrolliert, ohne
+                # dass sich etwas ruehrte (Meldung 31.08.2026). Blosses
+                # Ansehen zaehlt nicht.
                 "updated": _ts(col.get("last_update")),
                 "factories": factories,
                 "products": products,
@@ -8708,14 +8715,38 @@ if (SKALA !== 1) document.body.style.zoom = SKALA;
 
 const esc = (t) => String(t == null ? '' : t).replace(/[&<>"]/g,
   (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const fmt = (n) => Math.round(n || 0).toLocaleString('de-DE');
-const fmtM = (n) => { n = n || 0; const a = Math.abs(n);
-  return a >= 1e9 ? (n / 1e9).toFixed(2) + ' Mrd'
-       : a >= 1e6 ? (n / 1e6).toFixed(1) + ' M'
-       : a >= 1e3 ? (n / 1e3).toFixed(1) + ' K' : String(Math.round(n)); };
-const fmtC = (n) => { n = n || 0;
-  return n >= 1e6 ? (n / 1e6).toFixed(2) + ' M' : n >= 1e3 ? (n / 1e3).toFixed(1) + ' K'
-       : String(Math.round(n)); };
+// --- Zahlen -------------------------------------------------------------
+// EINE Regel fuer Dashboard und Overlay, wortgleich in beiden. Vorher hatte
+// jede Seite ihre eigene Fassung, und 12 von 15 Testwerten kamen
+// verschieden heraus (Meldung Eron Solette, 31.08.2026).
+//
+// Zwei Dinge, die dabei falsch waren:
+//   - toLocaleString() ohne Sprachangabe nimmt die BROWSER-Sprache, nicht
+//     die gewaehlte. toFixed() setzt dagegen immer einen Punkt. Auf einer
+//     deutschen Seite stand deshalb "8.101" (Punkt = Tausender) direkt neben
+//     "1.5 M" (Punkt = Komma). Wer EVE auf Englisch spielt, liest das erste
+//     als acht Komma eins.
+//   - "n >= 1e6" ist fuer negative Zahlen nie wahr. Ein Verlust von
+//     2,5 Millionen stand als "-2.500.000" neben einem Gewinn als "2.5 M".
+//
+// Die Kuerzel sind die aus dem Spiel: K, M, B.
+function zahlSprache(){ return (typeof lang!=='undefined'&&lang==='en')?'en-US':'de-DE'; }
+const fmt=n=>Math.round(n||0).toLocaleString(zahlSprache());
+// Eine Zahl mit fester Nachkommastelle, in der gewaehlten Sprache.
+const nk=(n,stellen)=>(n||0).toLocaleString(zahlSprache(),
+  {minimumFractionDigits:stellen,maximumFractionDigits:stellen});
+const fmtM=n=>{n=n||0; const a=Math.abs(n);
+  // Die Grenze knapp unter 1e9, sonst wird 999.999.999 zu "1000,0 M".
+  return a>=999.95e6?nk(n/1e9,2)+' B':a>=1e6?nk(n/1e6,1)+' M':fmt(n);};
+// Wie fmtM, kuerzt aber auch Tausender mit K ab (fuer kompakte m3-Werte).
+const fmtC=n=>{n=n||0; const a=Math.abs(n);
+  return a>=1e6?fmtM(n):a>=1e3?nk(n/1e3,a>=1e4?0:1)+' K':fmt(n);};
+// Einzelpreis: bei grossen Werten wie fmtM, bei kleinen mit Nachkommastellen,
+// damit Cent-Preise (Erz ~4 ISK) nicht auf ganze Zahlen gerundet werden.
+const fmtP=n=>{n=n||0; const a=Math.abs(n);
+  return a>=1e6?fmtM(n):a>=1000?fmt(n)
+       :n.toLocaleString(zahlSprache(),{maximumFractionDigits:2});};
+// --- Ende Zahlen ---------------------------------------------------------
 
 // Rolle je Charakter. DAS SCHIFF ENTSCHEIDET (Askend, 24.08.2026): sitzt er in
 // einem Bergbauschiff, ist er Miner, sonst nicht. Vorher zaehlte allein, ob in
@@ -15912,13 +15943,38 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 
 <script>
 const $=s=>document.querySelector(s);
-const fmt=n=>Math.round(n).toLocaleString();
-const fmtM=n=>n>=1e9?(n/1e9).toFixed(2)+' Mrd':n>=1e6?(n/1e6).toFixed(1)+' M':fmt(n);
-// Wie fmtM, kuerzt aber auch Tausender mit K ab (fuer kompakte m³-Werte).
-const fmtC=n=>n>=1e6?fmtM(n):n>=1e3?(n/1e3).toFixed(n>=1e4?0:1)+' K':fmt(n);
+// --- Zahlen -------------------------------------------------------------
+// EINE Regel fuer Dashboard und Overlay, wortgleich in beiden. Vorher hatte
+// jede Seite ihre eigene Fassung, und 12 von 15 Testwerten kamen
+// verschieden heraus (Meldung Eron Solette, 31.08.2026).
+//
+// Zwei Dinge, die dabei falsch waren:
+//   - toLocaleString() ohne Sprachangabe nimmt die BROWSER-Sprache, nicht
+//     die gewaehlte. toFixed() setzt dagegen immer einen Punkt. Auf einer
+//     deutschen Seite stand deshalb "8.101" (Punkt = Tausender) direkt neben
+//     "1.5 M" (Punkt = Komma). Wer EVE auf Englisch spielt, liest das erste
+//     als acht Komma eins.
+//   - "n >= 1e6" ist fuer negative Zahlen nie wahr. Ein Verlust von
+//     2,5 Millionen stand als "-2.500.000" neben einem Gewinn als "2.5 M".
+//
+// Die Kuerzel sind die aus dem Spiel: K, M, B.
+function zahlSprache(){ return (typeof lang!=='undefined'&&lang==='en')?'en-US':'de-DE'; }
+const fmt=n=>Math.round(n||0).toLocaleString(zahlSprache());
+// Eine Zahl mit fester Nachkommastelle, in der gewaehlten Sprache.
+const nk=(n,stellen)=>(n||0).toLocaleString(zahlSprache(),
+  {minimumFractionDigits:stellen,maximumFractionDigits:stellen});
+const fmtM=n=>{n=n||0; const a=Math.abs(n);
+  // Die Grenze knapp unter 1e9, sonst wird 999.999.999 zu "1000,0 M".
+  return a>=999.95e6?nk(n/1e9,2)+' B':a>=1e6?nk(n/1e6,1)+' M':fmt(n);};
+// Wie fmtM, kuerzt aber auch Tausender mit K ab (fuer kompakte m3-Werte).
+const fmtC=n=>{n=n||0; const a=Math.abs(n);
+  return a>=1e6?fmtM(n):a>=1e3?nk(n/1e3,a>=1e4?0:1)+' K':fmt(n);};
 // Einzelpreis: bei grossen Werten wie fmtM, bei kleinen mit Nachkommastellen,
 // damit Cent-Preise (Erz ~4 ISK) nicht auf ganze Zahlen gerundet werden.
-const fmtP=n=>n>=1e6?fmtM(n):n>=1000?fmt(n):(n||0).toLocaleString(undefined,{maximumFractionDigits:2});
+const fmtP=n=>{n=n||0; const a=Math.abs(n);
+  return a>=1e6?fmtM(n):a>=1000?fmt(n)
+       :n.toLocaleString(zahlSprache(),{maximumFractionDigits:2});};
+// --- Ende Zahlen ---------------------------------------------------------
 // HTML-Escape: Spieler-/Corp-/Schiffsnamen aus Logs, ESI und zKillboard sind
 // fremdbestimmt und dürfen nie ungefiltert in innerHTML landen (XSS).
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -19466,6 +19522,15 @@ function renderIndustrie(ind){
    b.style.display='none';};
  });
 }
+// Alter in Worten, EINE Stelle fuer die Kopfzeile und fuer jede Kolonie.
+// Vorher rechnete die Kopfzeile es sich selbst aus, und die Kolonien hatten
+// gar keine Angabe.
+function piAlter(sek,en){
+ const h=sek/3600;
+ if(h<1)return Math.max(1,Math.round(h*60))+' min';
+ if(h<48){const t=h.toFixed(1);return (en?t:t.replace('.',','))+' h';}
+ return Math.round(h/24)+(en?' d':' T');
+}
 function renderPlaneten(pl){
  lastPlaneten=pl=pl||{chars:[],extractors:[],reconnect:[]};
  const en=lang==='en', now=Date.now()/1000;
@@ -19485,11 +19550,11 @@ function renderPlaneten(pl){
  // Programme kommen vom Server und sind sofort richtig. Lagerstaende friert
  // EVE ein, bis die Kolonie im Client geoeffnet wird: an echten Daten
  // gemessen war der Cache 3 Minuten alt und der Lagerstand 4,5 Stunden.
- const staleTxt=pl.stale?(()=>{const h=(now-pl.stale)/3600;
-   const t=h.toFixed(1);
-   return h<1?Math.max(1,Math.round(h*60))+' min':(en?t:t.replace('.',','))+' h';})():'';
+ const staleTxt=pl.stale?piAlter(now-pl.stale,en):'';
  const fresh=`🛰 ${[asof,nxt].filter(Boolean).join(' · ')}`
-  +(staleTxt?`<br><span class="pistale">${en?'Stock levels are '+staleTxt+' old: EVE only recalculates a colony when you open it in the client. Expiry times and programs come from the server and are always current.':'Lagerstände sind '+staleTxt+' alt: EVE rechnet eine Kolonie erst, wenn du sie im Client öffnest. Ablaufzeiten und Programme kommen vom Server und stimmen immer.'}</span>`:'');
+  +(staleTxt?`<br><span class="pistale">${en
+     ? 'Oldest stock level is '+staleTxt+' old. EVE only recalculates a colony when you CHANGE something there (restart an extractor, reroute). Just looking at it does not count. Expiry times and programs come from the server and are always current. Each colony below shows its own age.'
+     : 'Ältester Lagerstand ist '+staleTxt+' alt. EVE rechnet eine Kolonie erst neu, wenn du dort etwas ÄNDERST (Extraktor neu setzen, umleiten). Blosses Ansehen zählt nicht. Ablaufzeiten und Programme kommen vom Server und stimmen immer. Bei jeder Kolonie unten steht ihr eigenes Alter.'}</span>`:'');
  const stored=(pl.total_isk?` · <span class="isk">≈ ${fmtM(pl.total_isk)} ISK ${en?'stored':'gelagert'}</span>`:'')
    +(pl.total_rest_isk?` · <span class="sub" title="${en?'Remaining yield of the running programs, valued at Jita buy. Not the same as the stored value on the left.':'Restertrag der laufenden Programme, bewertet zu Jita-Ankauf. Nicht mit dem gelagerten Wert links verrechnen.'}">~${fmtM(pl.total_rest_isk)} ISK ${en?'still to come':'kommt noch'}</span>`:'');
  const urg=(pl.n_exp||pl.n_soon)
@@ -19530,7 +19595,14 @@ function renderPlaneten(pl){
   html+=`<div class="picol"><div class="chead pihead" data-pi="${esc(c.name)}" style="cursor:pointer">
     <span class="char">${isc?'▸':'▾'} ${esc(c.name)} <span class="sub">· ${c.cols.length} ${c.cols.length===1?(en?'colony':'Kolonie'):(en?'colonies':'Kolonien')}</span></span>${esiBadge(c.name)}${c.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(c.isk)} ISK</span>`:''}</div>`;
   if(!isc)c.cols.forEach(col=>{
-   let body=`<div class="picolhead"><b>${esc(col.planet)}</b> <span class="sub">${piTypeName(col.type,en)} · ${esc(col.system||'')} · ${en?'level':'Stufe'} ${col.upgrade||0} · ${col.pins||0} Pins${col.factories?' · '+col.factories+(en?' factories':' Fabriken'):''}</span>${col.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(col.isk)} ISK ${en?'stored':'gelagert'}</span>`:''}</div>`;
+   // Das Alter GEHOERT an die Kolonie, nicht nur in die Kopfzeile: dort
+   // stand bisher ein einziges Minimum ueber alle Kolonien aller
+   // Charaktere. Wer sechs Planeten frisch aufsetzt und irgendwo noch eine
+   // vergessene Kolonie stehen hat, las trotzdem "103,7 h alt"
+   // (Meldung Eron Solette, 31.08.2026).
+   const cAlter=col.updated?piAlter(now-col.updated,en):'';
+   let body=`<div class="picolhead"><b>${esc(col.planet)}</b> <span class="sub">${piTypeName(col.type,en)} · ${esc(col.system||'')} · ${en?'level':'Stufe'} ${col.upgrade||0} · ${col.pins||0} Pins${col.factories?' · '+col.factories+(en?' factories':' Fabriken'):''}</span>${col.isk?`<span class="isk" style="margin-left:auto">≈ ${fmtM(col.isk)} ISK ${en?'stored':'gelagert'}</span>`:''}</div>`
+    +(cAlter?`<div class="sub" title="${en?'When EVE last recalculated this colony. That happens when you change something there, not when you merely look at it.':'Wann EVE diese Kolonie zuletzt gerechnet hat. Das passiert, wenn du dort etwas änderst, nicht wenn du sie nur ansiehst.'}">🕒 ${en?'stock level':'Lagerstand'} ${cAlter} ${en?'old':'alt'}</div>`:'');
    if((col.products||[]).length)body+=`<div class="piprodline">🏭 <span class="sub">${en?'Produces':'Produziert'}:</span> ${piProdList(col.products)}</div>`;
    (col.extractors||[]).forEach(e=>{const L=piLeft(e.expiry,en);
     body+=`<div class="piexrow"><span class="pidot ${L.cls}"></span>${e.product_id?`<img class="piicon" src="https://images.evetech.net/types/${e.product_id}/icon?size=32" onerror="this.style.visibility='hidden'">`:`<span class="piicon"></span>`}<span class="piname">${esc(e.product||'?')}${piTierBadge(e.tier)} <span class="sub" title="${en?'Remaining yield from now until expiry. The full program would be ':'Restertrag ab jetzt bis zum Ablauf. Das ganze Programm ergäbe '}${e.total?fmtC(e.total):'?'}${en?' units.':' Stück.'}">· ${e.heads} ${en?'heads':'Köpfe'}${e.rest?' · '+(en?'still ':'noch ')+'~'+fmtC(e.rest)+(en?' units':' Stk'):''}</span></span><span class="piexp ${L.cls}">${L.txt}</span></div>`;});
