@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.81.0"
+VERSION = "2.82.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -11488,7 +11488,8 @@ def query_mission_history(limit=40, nur_mids=None):
     # aussen Stehende nur den mittleren, nicht die ganze Crew
     # (Voll-Audit 02.09.2026).
     kurz = [(a["start"], a["end"], a["char"], a["system"] or "?") for a in out]
-    for gruppe in abyss_gruppen(kurz):
+    gruppen = abyss_gruppen(kurz)
+    for gruppe in gruppen:
         namen = sorted({out[i]["char"] for i in gruppe})
         for i in gruppe:
             a = out[i]
@@ -11499,8 +11500,31 @@ def query_mission_history(limit=40, nur_mids=None):
     # keine Gegnerliste und wurde deshalb nicht als Abyss-Lauf erkannt, obwohl
     # er nachweislich mitgeflogen ist (Meldung Nirahse, 02.09.2026). Dieselbe
     # Regel wie in der Abyss-Ansicht, damit beide dasselbe zeigen.
-    for i, m in enumerate(abyss_maske(kurz, [a["abyss"] for a in out])):
+    direkt = [a["abyss"] for a in out]
+    for i, m in enumerate(abyss_maske(kurz, direkt)):
         out[i]["abyss"] = m
+    # Der ORT muss mit, nicht nur die Markierung.
+    #
+    # Nachtrag von Nirahse (05.09.2026): "Wenn man das Abyss verlaesst, die
+    # Mission noch nicht benannt hat, wird beim Logi immer noch nicht
+    # angezeigt, dass er im Abyss war." Gemessen und bestaetigt: seine Zeile
+    # hat abyss=True und die Mitflieger stehen dran, aber "site" bleibt leer,
+    # weil die aus der Gegnerliste kommt und ein Logistiker keine hat. Genau
+    # an "site" haengt aber der Chip in der Liste. Nach dem Benennen faellt es
+    # nicht auf, weil dann der Missionsname den Platz einnimmt.
+    #
+    # Der Ort wird deshalb innerhalb der Gruppe weitergereicht, aber eng:
+    # nur an Zeilen, die die Maske ohnehin als Abyss fuehrt, nur wenn sie
+    # selbst keinen Ort haben, und nur von einem Mitflieger, der ihn SELBST
+    # erkannt hat. Geraten wird damit nichts.
+    for gruppe in gruppen:
+        quelle = next((out[i]["site"] for i in gruppe
+                       if direkt[i] and out[i].get("site")), None)
+        if not quelle:
+            continue
+        for i in gruppe:
+            if out[i]["abyss"] and not out[i].get("site"):
+                out[i]["site"] = quelle
     return out, {"liste": ohne_mission, "summe": ohne_summe, "n": len(offen)}
 
 

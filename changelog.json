@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.82.0",
+  "d": "2026-09-05",
+  "de": [
+   "BEHOBEN: beim Logistiker fehlte in der Missionsliste weiterhin die Angabe, dass er im Abyss war, solange der Durchgang noch keinen Namen hatte. Nachtrag von Nirahse zur Meldung vom 02.09. Die Markierung selbst saß längst richtig, auch die Mitflieger standen dran. Woran es hing: der Chip in der Liste hängt am erkannten ORT, und der wird aus der Gegnerliste bestimmt. Ein Logistiker heilt nur und hat keine. Sobald der Durchgang benannt war, nahm der Missionsname den Platz ein, deshalb fiel es nur vorher auf. Der Ort wird jetzt innerhalb eines Durchgangs weitergereicht, und zwar eng: nur an Zeilen, die ohnehin als Abyss geführt sind, nur wenn sie selbst keinen Ort haben, und nur von einem Mitflieger, der ihn selbst erkannt hat. Geraten wird nichts.",
+   "Beim Nachbauen des Falls kam heraus, dass die Prüfung dazu bisher schwächer war, als sie aussah: der Logistiker im Testbestand hatte keine Reparaturwerte, deshalb warf ihn der Missionsfilter heraus, und die Zusicherung „alle drei Zeilen“ prüfte in Wahrheit nur zwei. Jetzt repariert er, steht in der Liste, und dazu läuft ein echter Gegenfall: ein Einsatz zur selben Zeit im Nachbarsystem darf weder als Abyss gelten noch den Ort erben."
+  ],
+  "en": [
+   "FIXED: the mission list still did not show that a logistics pilot had been in the abyss, as long as the run had no name yet. Follow-up from Nirahse to the report of 02.09. The marker itself had been right for a while, and the fleet mates were listed too. What was missing: the chip in the list hangs on the detected SITE, and that is derived from the enemy list. A logistics pilot only repairs and has none. Once the run was named, the mission name took that spot, which is why it only showed up beforehand. The site is now passed along inside a run, and narrowly so: only to rows already counted as abyss, only when they have no site of their own, and only from a fleet mate who detected it himself. Nothing is guessed.",
+   "Rebuilding the case showed the test for it was weaker than it looked: the logistics pilot in the fixture had no repair figures, so the mission filter dropped him, and the assertion „all three rows“ was in truth checking two. Now he repairs, appears in the list, and a real counter case runs alongside: a run at the same time in the neighbouring system must neither count as abyss nor inherit the site."
+  ]
+ },
+ {
   "v": "2.81.0",
   "d": "2026-09-05",
   "de": [
