@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.79.0"
+VERSION = "2.80.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -15968,6 +15968,24 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 </div>
 <div id="updBanner" hidden></div>
 <div id="alerts"></div>
+
+<!-- Beitrag zur Missionserkennung. Bewusst ein eigenes Fenster: der Hinweis
+     stand frueher im Statusfeld der Missionszeile, und die wird alle zwei
+     Sekunden neu gezeichnet. Der Link zum Meldeformular war deshalb weg,
+     bevor man ihn treffen konnte (Savox76, 05.09.2026). Ein Dialog haengt
+     nicht im Raster und ueberlebt jeden Takt. -->
+<dialog id="beitragDlg">
+ <h2>🎯 <span id="beitragTitel">Für alle beitragen</span></h2>
+ <div class="hint" id="beitragText"></div>
+ <textarea id="beitragBlock" rows="9" readonly
+   style="width:100%;margin-top:8px;font-family:monospace;font-size:11px"></textarea>
+ <div class="btnrow" style="margin-top:10px">
+  <a class="btn" id="beitragLink" href="#" target="_blank" rel="noopener"
+     style="text-decoration:none">📋 Meldeformular öffnen</a>
+  <button class="btn" id="beitragKopie">Nochmal kopieren</button>
+  <button class="btn" id="beitragZu">Schließen</button>
+ </div>
+</dialog>
 <div id="hero"></div>
 <div id="setup" hidden></div>
 <div id="grid"></div>
@@ -20245,15 +20263,42 @@ function laufHandler(){
   // danach weitermachen soll"). Deshalb hier gleich der Link zum Formular,
   // in einem neuen Tab, damit die Karte offen bleibt.
   const ziel='https://eve-online-askend.github.io/eve-canary/mission.html';
-  try{await navigator.clipboard.writeText(txt);
-      const s=finde('.mnamestat');
-      if(s)s.innerHTML=(en2?'✓ copied. Now open the ':'✓ kopiert. Jetzt das ')
-        +'<a href="'+ziel+'" target="_blank" rel="noopener">'
-        +(en2?'report form':'Meldeformular')+'</a>'
-        +(en2?' and paste it into the enemy list.'
-             :' öffnen und in die Gegnerliste einfügen.');}
-  catch(e){setzStatus(en2?'Clipboard blocked':'Zwischenablage blockiert');}
+  // Der Hinweis gehoert in ein eigenes Fenster, NICHT in die Missionszeile:
+  // die wird im Zwei-Sekunden-Takt neu gezeichnet, und der Link war weg,
+  // bevor man ihn treffen konnte (Savox76, 05.09.2026).
+  const zeigen=(kopiert)=>{
+   $('#beitragBlock').value=txt;
+   $('#beitragLink').href=ziel;
+   $('#beitragText').innerHTML=(kopiert
+     ?(en2?'✓ Copied to the clipboard. '
+          :'✓ In die Zwischenablage kopiert. ')
+     :(en2?'The clipboard was blocked, the text is below. '
+          :'Die Zwischenablage war gesperrt, der Text steht unten. '))
+     +(en2?'Open the report form, paste it into the enemy list and send it. '
+          +'Canary uploads nothing by itself.'
+          :'Öffne das Meldeformular, füge den Text in die Gegnerliste ein und '
+          +'schick ihn ab. Canary lädt von sich aus nichts hoch.');
+   const d=$('#beitragDlg'); if(!d.open)d.showModal();
+  };
+  try{await navigator.clipboard.writeText(txt); zeigen(true);}
+  catch(e){
+   // Auch ohne Zwischenablage soll der Weg offen bleiben: der Text steht dann
+   // im Fenster und laesst sich von Hand markieren.
+   zeigen(false);
+   const b2=$('#beitragBlock'); if(b2){b2.focus();b2.select();}
+  }
  });
+ // Das Fenster selbst. Die Knoepfe werden EINMAL verdrahtet, nicht im Takt:
+ // der Dialog liegt ausserhalb des Rasters und wird nie neu gebaut.
+ $('#beitragZu').onclick=()=>$('#beitragDlg').close();
+ $('#beitragKopie').onclick=async()=>{
+  const b2=$('#beitragBlock'), k=$('#beitragKopie'), en3=lang==='en';
+  try{await navigator.clipboard.writeText(b2.value);
+      k.textContent=en3?'✓ Copied':'✓ Kopiert';}
+  catch(e){b2.focus();b2.select();
+      k.textContent=en3?'selected, Ctrl+C':'markiert, Strg+C';}
+  setTimeout(()=>{k.textContent=en3?'Copy again':'Nochmal kopieren';},2000);
+ };
  document.querySelectorAll('.mnamego').forEach(b=>b.onclick=async()=>{
   // Gleiches Vorgehen wie beim Loot: Statusfeld jedes Mal frisch suchen, weil
   // die Ansicht sich nach dem Fokusverlust neu aufbauen darf.

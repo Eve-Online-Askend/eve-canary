@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.80.0",
+  "d": "2026-09-05",
+  "de": [
+   "BEHOBEN: der Knopf „Für alle beitragen“ bei den Missionen zeigte kurz einen Hinweis mit dem Link zum Meldeformular, und der war nach spätestens zwei Sekunden wieder weg. Gemeldet von Savox76. Der Hinweis stand im Statusfeld der Missionszeile, und die zeichnet Canary im Zwei-Sekunden-Takt neu. Man konnte den Link also sehen, aber nicht treffen. Jetzt öffnet sich ein eigenes Fenster mit dem fertigen Text, dem Link und einem Knopf zum Nochmal-Kopieren. Es hängt nicht im getakteten Raster und bleibt offen, bis du es schließt.",
+   "Savox76 hat außerdem gemeldet, dass der Knopf „An GitHub senden“ auf der Meldeseite ausgegraut ist. Das ist die Folge des ersten Fehlers: wer den Link nicht erwischt, kommt ohne eingefügten Text auf die Seite, und dann ist der Knopf zu Recht grau. Nachgeprüft am echten Formular: Canarys Block eingefügt, Knopf sofort frei, sieben Gegnernamen erkannt. Am Formular selbst war nichts kaputt.",
+   "Neu ist auch, dass der Weg offen bleibt, wenn der Browser die Zwischenablage sperrt. Dann steht der Text im Fenster zum Selbstmarkieren, statt dass gar nichts passiert."
+  ],
+  "en": [
+   "FIXED: the “Contribute for everyone” button on missions briefly showed a hint with the link to the report form, and it was gone again within two seconds. Reported by Savox76. The hint sat in the status field of the mission row, and Canary redraws that row every two seconds. You could see the link but not hit it. Now a separate window opens with the finished text, the link and a button to copy it again. It does not hang in the ticking grid and stays open until you close it.",
+   "Savox76 also reported that the “Send to GitHub” button on the report page is greyed out. That is a consequence of the first bug: if you never catch the link, you arrive on the page with nothing pasted, and then the button is greyed out for good reason. Verified on the real form: pasted Canary's block, button enabled immediately, seven enemy names recognised. Nothing was broken about the form itself.",
+   "The path also stays open now when the browser blocks the clipboard. The text is then shown in the window for you to select yourself, instead of nothing happening at all."
+  ]
+ },
+ {
   "v": "2.79.0",
   "d": "2026-09-04",
   "de": [
