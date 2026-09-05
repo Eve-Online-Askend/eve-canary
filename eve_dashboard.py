@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.80.0"
+VERSION = "2.81.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -5856,6 +5856,32 @@ CORE_TYPES = {62590: "t1", 62591: "t2",   # Medium Industrial Core I/II (Porpois
 # ist Fracht und verbraucht nichts.
 FRACHT_FLAGS = ("Cargo", "Fleet", "Ship", "Ore", "Specialized", "Corp", "Hangar")
 
+# Welche Faecher des aktiven Schiffs zaehlen zum "Frachtraum".
+#
+# Hier stand jahrelang nur "Cargo", und damit fiel bei JEDEM Bergbauschiff
+# das gesamte geerntete Erz heraus: das landet im Erzladeraum, nicht im
+# Frachtraum. Gemessen am 05.09.2026 an zwei Hulks und einer Orca: im
+# angezeigten Frachtraum-Wert standen Kristalle, Drohnen und Module, kein
+# Gramm Erz. Aufgefallen ist es erst bei Savox76s Frage nach einem
+# Fuellstandsbalken, gemeldet hatte es nie jemand.
+#
+# Die Namen sind nicht geraten, sie stehen so in der OpenAPI-Beschreibung
+# der ESI (nachgeschlagen am 05.09.2026).
+SHIP_HOLD_FLAGS = ("Cargo", "SpecializedOreHold", "SpecializedIceHold",
+                   "SpecializedGasHold", "SpecializedMineralHold",
+                   "SpecializedAmmoHold", "FleetHangar")
+# Die Teilmenge davon, in der ausschliesslich Erz-artige Ware liegt. Nur
+# fuer die zaehlen wir m³: bei diesen Typen ist das ESI-Volumen auch das
+# gepackte. Ein Modul im Frachtraum haette gepackt ein anderes, und eine
+# zu grosse Zahl waere schlimmer als gar keine.
+ERZ_FLAGS = ("SpecializedOreHold", "SpecializedIceHold",
+             "SpecializedGasHold", "SpecializedMineralHold")
+# Erzladeraum-Kapazitaet eines Schiffstyps: Dogma-Attribut 1556. Gemessen
+# am 05.09.2026: Venture 5.000, Hulk 11.500, Retriever 27.500, Orca
+# 150.000 m³. Ein Schiff ohne Erzladeraum (Punisher) hat das Attribut
+# nicht, das ist zugleich die Regel fuer "kein Fuellstandsbalken".
+ATTR_ERZLADERAUM = 1556
+
 
 def hw_kern(in_ship):
     """Welcher Industriekern ist EINGEBAUT? Sonst None.
@@ -5979,6 +6005,7 @@ class Esi(threading.Thread):
         self.schem_cache = {} # schematic_id -> Produktname (PI-Fabriken)
         self.group_cache = {} # type_id -> group_id (fuer den PI-Tier)
         self.group_miss = {}  # type_id -> ts des letzten Fehlschlags (Negativ-Cache)
+        self.cap_cache = {}   # type_id -> Erzladeraum in m³ (0 = hat keinen)
         self.tid_cache = {}   # Produktname -> type_id (fuer Icon/Tier der Fabrik-Produkte)
         self.pi_alerted = {}  # (char, planet_id) -> Ablauf-ts, fuer den PI-Ablauf-Alarm ohne Wiederholung
         self.job_alerted = {}  # (char, job_id, status) -> gemeldet, damit jede Meldung genau einmal kommt
@@ -6393,6 +6420,31 @@ class Esi(threading.Thread):
             self.group_miss[tid] = time.time()
         return g
 
+    def ore_capacity(self, tid):
+        """Erzladeraum eines Schiffstyps in m³. 0 = das Schiff hat keinen.
+
+        Oeffentlich, ohne Token, und die Antwort gilt bis zum naechsten Tag
+        (gemessen: Expires rund 21 Stunden voraus). Deshalb genuegt EIN
+        Aufruf je Schiffstyp fuer die ganze Laufzeit."""
+        if not tid:
+            return 0.0
+        if tid in self.cap_cache:
+            return self.cap_cache[tid]
+        cap = 0.0
+        try:
+            d = self._pub(f"/universe/types/{tid}/")
+            for a in d.get("dogma_attributes") or []:
+                if a.get("attribute_id") == ATTR_ERZLADERAUM:
+                    cap = float(a.get("value") or 0.0)
+                    break
+        except Exception:
+            # Kein Negativ-Eintrag bei einem Fehler: sonst gilt ein einzelner
+            # ESI-Aussetzer fuer den Rest der Laufzeit als "kein Erzladeraum"
+            # und der Balken bleibt bis zum Neustart weg.
+            return 0.0
+        self.cap_cache[tid] = cap
+        return cap
+
     def type_groups_bulk(self, tids):
         """Gruppen mehrerer Typen vorab aufloesen.
 
@@ -6779,8 +6831,13 @@ class Esi(threading.Thread):
 
     def value_cargo(self, name, c, items, ship_item_id, asof, nxt):
         """Frachtraum des aktiven Schiffs bewerten (Jita), fuer die Loot-Anzeige."""
-        cargo = [i for i in items if i.get("location_flag") == "Cargo"
+        cargo = [i for i in items
+                 if i.get("location_flag") in SHIP_HOLD_FLAGS
                  and i.get("location_id") == ship_item_id]
+        # Welcher Posten liegt in welchem Fach. Wird unten fuer den
+        # Erzladeraum gebraucht und fuer die Aufschluesselung im Tooltip.
+        fach = {i["item_id"]: i.get("location_flag")
+                for i in cargo if "item_id" in i}
         # Behaelter im Frachtraum mitnehmen. Ihr Inhalt haengt fuer ESI nicht
         # am Schiff, sondern am Behaelter, und fiel deshalb komplett raus: eine
         # randvolle Kiste sah aus wie leerer Laderaum. Gemeldet von Dune2Man,
@@ -6797,11 +6854,21 @@ class Esi(threading.Thread):
                    if i.get("location_id") in ids and i not in drin]
             if not neu:
                 break
+            for i in neu:
+                # Der Inhalt zaehlt zu dem Fach, in dem der Behaelter steht.
+                if "item_id" in i:
+                    fach[i["item_id"]] = fach.get(i.get("location_id"))
             cargo += neu
             drin = neu
         qty = {}
+        erz_m3 = 0.0
         for i in cargo:
             qty[i["type_id"]] = qty.get(i["type_id"], 0) + i["quantity"]
+            # m³ NUR fuer die Erzfaecher, siehe ERZ_FLAGS: dort ist das
+            # ESI-Volumen auch das gepackte. Fuer Module im Frachtraum waere
+            # es zu gross, und eine falsche Zahl ist schlimmer als keine.
+            if fach.get(i.get("item_id")) in ERZ_FLAGS:
+                erz_m3 += (i.get("quantity") or 0) * self.type_volume(i["type_id"])
         pm = hub_prices("10000002", set(qty), prefer_esi=True) if qty else {}
         rows = []
         for tid, q in qty.items():
@@ -6819,7 +6886,15 @@ class Esi(threading.Thread):
                 "buy": round(sum(q * pm.get(t, (0, 0))[0] for t, q in qty.items())),
                 "sell": round(sum(q * pm.get(t, (0, 0))[1] for t, q in qty.items())),
                 "as_of": int(asof), "next": int(nxt), "mission": fracht,
-                "n": len(cargo), "items": rows[:12]}
+                "n": len(cargo), "items": rows[:12],
+                "erz_m3": round(erz_m3)}
+            # Der Fuellstand des Erzladeraums, verankert am Log-Stand
+            # desselben Augenblicks. Die ESI-Messung ist bis zu eine Stunde
+            # alt (gemessen: Fenster exakt 3.600 s), die Logs sind
+            # sekundengenau. Wer beides zusammenlegt, bekommt einen Balken,
+            # der live mitlaeuft und sich stuendlich selbst geraderueckt.
+            c["ore_hold"] = {"m3": round(erz_m3), "as_of": int(asof),
+                             "next": int(nxt), "log_m3": log_hold_m3(name) or 0}
 
     def loc_info(self, c, loc_id):
         """Name + Typ-ID eines Lagerorts (Typ-ID fuer das Stations-Icon). NPC-Stationen
@@ -7022,6 +7097,11 @@ class Esi(threading.Thread):
                 c["ship"] = self.type_name(ship["ship_type_id"]) or c.get("ship") or "?"
                 if new_ship:
                     c["assets_next"] = 0  # Schiffswechsel -> Laderaum sofort neu abgleichen
+                # Erzladeraum des Schiffs. Kostet nur beim ERSTEN Schiff
+                # eines Typs einen oeffentlichen Aufruf (0,15 s gemessen),
+                # danach aus dem Cache. 0 heisst: Schiff ohne Erzladeraum,
+                # dann zeigt die Oberflaeche keinen Balken.
+                c["ore_cap"] = self.ore_capacity(ship["ship_type_id"])
                 if time.time() >= c.get("assets_next", 0):
                     self.sync_ship(name, c, ship)
                 # Online-Status (Scope esi-location.read_online.v1). Fehlt der Scope
@@ -8577,6 +8657,18 @@ body.quer .z{flex-direction:column;align-items:flex-start;gap:2px;min-width:150p
 .t-pvp{background:rgba(232,86,79,.24);color:#ff9a94}
 .wert{margin-left:auto;text-align:right;font-size:13px;font-weight:700;color:#e8c645;
  line-height:1.2;text-shadow:0 1px 3px rgba(0,0,0,.9)}
+/* Fuellstand des Erzladeraums, Wunsch von Savox76 (04.09.2026): ein Balken
+   am unteren Rand je Charakter, damit man beim Streamen sieht, wann sich
+   das Pressen lohnt. Eigene Klassennamen, nicht .ok/.warn/.bad: die sind
+   fuer den Statuspunkt und .bad blinkt. */
+.hold{position:relative;height:9px;margin-top:4px;border-radius:5px;
+ background:rgba(255,255,255,.12);overflow:hidden;min-width:90px}
+.holdf{position:absolute;left:0;top:0;bottom:0;border-radius:5px;
+ transition:width .4s ease}
+.hb-ok{background:#4fd47f}.hb-warn{background:#e8c645}.hb-bad{background:#e8564f}
+.holdt{position:absolute;left:0;right:0;top:-1px;text-align:center;
+ font-size:7.5px;font-weight:700;letter-spacing:.3px;color:#fff;
+ text-shadow:0 1px 2px rgba(0,0,0,.95);line-height:11px}
 body.quer .wert{margin-left:0;text-align:left}
 .wert small{display:block;font-size:9.5px;color:#9fb0c4;font-weight:600}
 .st{font-size:9px;color:#e8c645;font-weight:700;letter-spacing:.5px;\n text-shadow:0 1px 3px rgba(0,0,0,.95)}
@@ -8742,7 +8834,8 @@ const ZEIG = {
   status: an('status', true),
   sum:    an('sum', true),
   warn:   an('warn', true),\n  iskh:   an('iskh', true),
-  esi:    an('esi', true)
+  esi:    an('esi', true),
+  hold:   an('hold', true)
 };
 const MAX = parseInt(P.get('max') || '0', 10) || 99;
 // Zwei Ansichten: je Charakter (wie bisher) oder je Taetigkeit.
@@ -8788,6 +8881,38 @@ const fmtC=n=>{n=n||0; const a=Math.abs(n);
 const fmtP=n=>{n=n||0; const a=Math.abs(n);
   return a>=1e6?fmtM(n):a>=1000?fmt(n)
        :n.toLocaleString(zahlSprache(),{maximumFractionDigits:2});};
+// Fuellstand des Erzladeraums. Steht bewusst in DIESEM Block: Dashboard und
+// Overlay muessen denselben Balken zeigen, sonst faengt das Auseinanderlaufen
+// wieder von vorn an (siehe die Zahlen darueber).
+//
+// Zwei Quellen, weil keine allein reicht:
+//   - Die ESI kennt den Laderaum genau, ihr Fenster ist aber 3.600 s lang
+//     (gemessen an vier Charakteren). Waehrend eines Minenlaufs ist die Zahl
+//     also bis zu eine Stunde alt.
+//   - Die Gamelogs sind sekundengenau, sehen aber kein Abladen in eine Orca:
+//     in 5.769 gespendeten Logdateien kommt die Umlade-Meldung ZWEIMAL vor.
+//
+// Deshalb: der ESI-Stand plus alles, was das Log seitdem gemeldet hat. Faellt
+// der Log-Stand unter den von damals, wurde angedockt oder abgeladen, dann
+// zaehlt allein das Log. Wer in eine Orca ablaedt, sieht den Balken bis zur
+// naechsten ESI-Abfrage zu hoch. Das steht so im Tooltip, statt es zu
+// verschweigen.
+// Kurzform fuer den Fuellstandsbalken. fmtC waere hier zu grob: es rundet
+// ab 10.000 auf ganze Tausender, und ein Hulk mit 11.500 m³ Erzladeraum
+// stand dann als "12 K" da. Bei einem Balken, der genau diese Grenze zeigen
+// soll, ist das die falsche Stelle zum Runden.
+const m3kurz=n=>{n=Math.round(n||0); const a=Math.abs(n);
+ return a>=1e5?fmt(Math.round(n/1e3))+' K':a>=1e3?nk(n/1e3,1)+' K':fmt(n);};
+function erzFuellung(c){
+ const cap=(c&&c.ore_cap)||0;
+ if(!cap)return null;              // Schiff ohne Erzladeraum: kein Balken
+ const log=(c&&c.hold_m3)||0, oh=c&&c.ore_hold;
+ let m3=log, gemessen=0;
+ if(oh&&typeof oh.m3==='number'&&log>=(oh.log_m3||0)){
+  m3=oh.m3+(log-(oh.log_m3||0)); gemessen=oh.as_of||0;
+ }
+ return {m3:m3,cap:cap,pct:Math.max(0,Math.min(100,m3*100/cap)),gemessen:gemessen};
+}
 // --- Ende Zahlen ---------------------------------------------------------
 
 // Rolle je Charakter. DAS SCHIFF ENTSCHEIDET (Askend, 24.08.2026): sitzt er in
@@ -8901,6 +9026,26 @@ function rechts(c) {
     + '</span>';
 }
 
+function fuellBalken(c) {
+  // Kein Erzladeraum, kein Balken. Ein Punisher hat das Attribut nicht,
+  // und ein leerer grauer Streifen unter jedem Missionsflieger waere nur
+  // Platzverschwendung im Bild.
+  const f = erzFuellung(c);
+  if (!f) return '';
+  const cls = f.pct >= 95 ? 'hb-bad' : f.pct >= 80 ? 'hb-warn' : 'hb-ok';
+  const alt = f.gemessen
+    ? 'Zuletzt mit der EVE-Anmeldung abgeglichen vor '
+      + Math.round((Date.now() / 1000 - f.gemessen) / 60) + ' min. '
+    : 'Nur aus den Gamelogs geschätzt. ';
+  const tip = fmt(Math.round(f.m3)) + ' von ' + fmt(f.cap) + ' m³ ('
+    + Math.round(f.pct) + '%). ' + alt
+    + 'Wer in eine Orca ablädt, sieht hier zu viel: das steht in keinem Log.';
+  return '<div class="hold" title="' + esc(tip) + '">'
+    + '<div class="holdf ' + cls + '" style="width:' + f.pct.toFixed(1) + '%"></div>'
+    + '<span class="holdt">' + m3kurz(f.m3) + ' / ' + m3kurz(f.cap)
+    + ' m³ &middot; ' + Math.round(f.pct) + '%</span></div>';
+}
+
 function zustand(c) {
   if (c.dps_in > 0) {
     // Fuer Miner und PvP ist eingehender Schaden ein Notfall, ROT. Beim
@@ -8926,6 +9071,7 @@ if (!location.search) {
     ['modus', 'Aufteilung', 'wahl', [['', 'je Charakter'], ['art', 'je Tätigkeit']]],
     ['bg', 'Hintergrund', 'wahl', [['', 'halb durchsichtig'], ['clear', 'sehr dezent'], ['dark', 'voll']]],
     ['scale', 'Groesse', 'zahl', [1, 0.6, 3, 0.1]],
+    ['hold', 'Erzladeraum als Balken', 'ja', 1],
     ['kompakt', 'Kompakt (schmale Quelle)', 'ja', 0],
     ['max', 'Chars hoechstens', 'zahl', [0, 0, 20, 1]],
     ['status', 'Status PvE/PvP/Mining', 'ja', 1],
@@ -9003,10 +9149,10 @@ function downtime() {
 const DEMO = [
   { name: 'Darius Ward', active: true, system: 'J152827', ship: 'Hulk', esi_linked: true,
     m3: 297699, m3h: 294159, ore_isk: 159300000, total_isk: 159300000,
-    session_min: 62, dmg_out: 0 },
+    session_min: 62, dmg_out: 0, ore_cap: 11500, hold_m3: 9430 },
   { name: 'Jessedaika Law', active: true, system: 'J152827', ship: 'Hulk',
     m3: 241113, m3h: 241113, ore_isk: 131300000, total_isk: 131300000,
-    session_min: 62, dmg_out: 0 },
+    session_min: 62, dmg_out: 0, ore_cap: 11500, hold_m3: 11270 },
   // Foerdert und schiesst nebenbei Ratten weg. Muss MINING bleiben und die
   // Rate zeigen, nicht auf Schadenszahlen umspringen.
   { name: 'Lea o Connor', active: true, system: 'Vullat', ship: 'Covetor',
@@ -9179,6 +9325,7 @@ function zeichne(d) {
           + (c.esi_linked ? '\u2713' : '\u2717') + '</span>' : '') + '</div>'
       + (unten.length ? '<div class="sub">' + unten.join(' &middot; ') + '</div>' : '')
       + (ZEIG.warn && txt ? '<div class="st ' + (cls === 'bad' ? 'bad' : '') + '">' + txt + '</div>' : '')
+      + (ZEIG.hold ? fuellBalken(c) : '')
       + '</span>' + rechts(c) + '</div>';
   }).join('');
 
@@ -9244,6 +9391,29 @@ def ore_value(ore, units, pm):
     p_roh = pm.get(t.get("typeID"))
     price = max(p_komp or 0.0, p_roh or 0.0)
     return units * price, units * t.get("volume", 0.0)
+
+
+def log_hold_m3(name):
+    """Wie viel m³ Erz die Gamelogs gerade im Laderaum vermuten, live.
+
+    Gegenstueck zur ESI-Messung: die ist genau, aber bis zu eine Stunde alt,
+    diese hier ist sekundengenau, kennt aber kein Abladen in eine Orca (das
+    steht in keinem Log; nachgesehen in 5.769 gespendeten Dateien, die
+    Umlade-Meldung kommt darin zweimal vor). Zusammen ergeben sie den
+    Fuellstand: ESI-Stand plus das, was seitdem dazugekommen ist.
+
+    None heisst: fuer diesen Charakter laeuft gerade keine Sitzung."""
+    try:
+        s = next((x for x in ingest.sessions.values() if x.name == name), None)
+    except Exception:
+        return None
+    if s is None:
+        return None
+    m3 = 0.0
+    for tname, units in list(s.hold_raw.items()) + list(s.hold_comp.items()):
+        if units > 0:
+            m3 += ore_value(tname, units, {})[1]
+    return round(m3)
 
 
 def refine_value(ore, units, yield_frac, pm):
@@ -9916,6 +10086,12 @@ def snapshot_live():
             "command_ship": is_cmd,
             "wallet": (esi_char or {}).get("wallet"),
             "cargo": (esi_char or {}).get("cargo"),
+            # Fuellstand des Erzladeraums: Kapazitaet aus den Schiffsdaten,
+            # letzte ESI-Messung samt Log-Stand von damals. Den Rest rechnet
+            # die Oberflaeche, damit der Balken zwischen zwei ESI-Abfragen
+            # trotzdem live mitlaeuft.
+            "ore_cap": round((esi_char or {}).get("ore_cap") or 0),
+            "ore_hold": (esi_char or {}).get("ore_hold"),
             # ESI-verifizierte Mining-Daten (nur wenn neue Scopes erteilt)
             "esi_mining": bool((esi_char or {}).get("esi_mining")),
             "mined_30d": (esi_char or {}).get("mined_30d"),
@@ -16224,6 +16400,38 @@ const fmtC=n=>{n=n||0; const a=Math.abs(n);
 const fmtP=n=>{n=n||0; const a=Math.abs(n);
   return a>=1e6?fmtM(n):a>=1000?fmt(n)
        :n.toLocaleString(zahlSprache(),{maximumFractionDigits:2});};
+// Fuellstand des Erzladeraums. Steht bewusst in DIESEM Block: Dashboard und
+// Overlay muessen denselben Balken zeigen, sonst faengt das Auseinanderlaufen
+// wieder von vorn an (siehe die Zahlen darueber).
+//
+// Zwei Quellen, weil keine allein reicht:
+//   - Die ESI kennt den Laderaum genau, ihr Fenster ist aber 3.600 s lang
+//     (gemessen an vier Charakteren). Waehrend eines Minenlaufs ist die Zahl
+//     also bis zu eine Stunde alt.
+//   - Die Gamelogs sind sekundengenau, sehen aber kein Abladen in eine Orca:
+//     in 5.769 gespendeten Logdateien kommt die Umlade-Meldung ZWEIMAL vor.
+//
+// Deshalb: der ESI-Stand plus alles, was das Log seitdem gemeldet hat. Faellt
+// der Log-Stand unter den von damals, wurde angedockt oder abgeladen, dann
+// zaehlt allein das Log. Wer in eine Orca ablaedt, sieht den Balken bis zur
+// naechsten ESI-Abfrage zu hoch. Das steht so im Tooltip, statt es zu
+// verschweigen.
+// Kurzform fuer den Fuellstandsbalken. fmtC waere hier zu grob: es rundet
+// ab 10.000 auf ganze Tausender, und ein Hulk mit 11.500 m³ Erzladeraum
+// stand dann als "12 K" da. Bei einem Balken, der genau diese Grenze zeigen
+// soll, ist das die falsche Stelle zum Runden.
+const m3kurz=n=>{n=Math.round(n||0); const a=Math.abs(n);
+ return a>=1e5?fmt(Math.round(n/1e3))+' K':a>=1e3?nk(n/1e3,1)+' K':fmt(n);};
+function erzFuellung(c){
+ const cap=(c&&c.ore_cap)||0;
+ if(!cap)return null;              // Schiff ohne Erzladeraum: kein Balken
+ const log=(c&&c.hold_m3)||0, oh=c&&c.ore_hold;
+ let m3=log, gemessen=0;
+ if(oh&&typeof oh.m3==='number'&&log>=(oh.log_m3||0)){
+  m3=oh.m3+(log-(oh.log_m3||0)); gemessen=oh.as_of||0;
+ }
+ return {m3:m3,cap:cap,pct:Math.max(0,Math.min(100,m3*100/cap)),gemessen:gemessen};
+}
 // --- Ende Zahlen ---------------------------------------------------------
 // HTML-Escape: Spieler-/Corp-/Schiffsnamen aus Logs, ESI und zKillboard sind
 // fremdbestimmt und dürfen nie ungefiltert in innerHTML landen (XSS).
@@ -17939,6 +18147,30 @@ function gegnerAbschnitte(x){
 // erkanntem Nachfuellen (Kern laeuft weiter, obwohl der Tank rechnerisch
 // leer waere) wird keine falsche Restzahl behauptet, sondern auf die
 // naechste ESI-Basis verwiesen.
+// Fuellstand-Balken fuer die Laderaum-Kachel. Rechnet nichts selbst,
+// erzFuellung() oben ist die eine Regel fuer Dashboard und Overlay.
+function ladeBalken(c){
+ const f=erzFuellung(c);
+ if(!f)return '';
+ const en=lang==='en';
+ const farbe=f.pct>=95?'#e8564f':f.pct>=80?'#e8c645':'#4fd47f';
+ const alt=f.gemessen
+  ?(en?'Last checked against the EVE login ':'Zuletzt mit dem EVE-Login abgeglichen vor ')
+    +Math.round((Date.now()/1000-f.gemessen)/60)+(en?' min ago. ':' min. ')
+  :(en?'Estimated from the game logs only. ':'Nur aus den Gamelogs geschätzt. ');
+ const tip=fmt(Math.round(f.m3))+(en?' of ':' von ')+fmt(f.cap)+' m³ ('
+  +Math.round(f.pct)+'%). '+alt
+  +(en?'Unloading into an Orca shows too much here: no log records it.'
+      :'Abladen in eine Orca zeigt hier zu viel: das steht in keinem Log.');
+ return '<div title="'+esc(tip)+'" style="position:relative;height:10px;'
+  +'margin-top:6px;border-radius:5px;background:var(--line);overflow:hidden">'
+  +'<div style="position:absolute;left:0;top:0;bottom:0;border-radius:5px;'
+  +'transition:width .4s ease;width:'+f.pct.toFixed(1)+'%;background:'+farbe+'"></div>'
+  +'<span style="position:absolute;left:0;right:0;top:0;text-align:center;'
+  +'font-size:8px;font-weight:700;line-height:10px;color:#fff;'
+  +'text-shadow:0 1px 2px rgba(0,0,0,.95)">'+Math.round(f.pct)+'%</span></div>';
+}
+
 function hwLine(hw){
  if(!hw)return 'per ⛽ setzen';
  const basis=hw.asof?' · Basis '+new Date(hw.asof*1000).toLocaleTimeString().slice(0,5):'';
@@ -17994,11 +18226,11 @@ function miningCardHtml(c){
     ${(c.bonus&&c.bonus.n>0)?`<div class="stat" title="Lieferungen mit vervielfachtem Ertrag. Canary erkennt sie daran, dass die Menge ein exaktes Vielfaches deiner Normallieferung ist. Gezeigt wird nur der Teil, der über die Normalmenge hinausging.">
      <div class="l">Bonus-Erträge (${c.bonus.n} von ${c.bonus.von} · ${c.bonus.quote}%)</div>
      <div class="v isk">${fmtM(c.bonus.isk)}<span class="sub" style="display:block;font-weight:400">${fmt(c.bonus.m3)} m³ extra</span></div></div>`:''}
-    <div class="stat" title="${lang==='en'?`What is actually in your cargo hold right now, read through the EVE login and valued at instant-sell prices in the selected region. Without the EVE login this stays empty: the game logs do not reveal your hold.`:`Was gerade wirklich im Frachtraum liegt, über den EVE-Login ausgelesen und zu Sofortverkaufspreisen der eingestellten Region bewertet. Ohne EVE-Login bleibt die Kachel leer, denn die Gamelogs verraten den Laderaum nicht.`}"><div class="l">Laderaum ≈ ${fmt(c.hold_m3)} m³ · ${state.regions[state.region]}</div><div class="v isk">${
+    <div class="stat" title="${lang==='en'?`Ore counted from the game logs since you last docked, valued at instant-sell prices in the selected region. Counted, not read out: it rises with every mining cycle and resets when you dock. Unloading into an Orca leaves no trace in the log, so after that it reads too high until the next EVE login check.`:`Erz, das seit dem letzten Andocken aus den Gamelogs gezählt wurde, bewertet zu Sofortverkaufspreisen der eingestellten Region. Gezählt, nicht ausgelesen: die Zahl wächst mit jedem Förderzyklus und fällt beim Andocken auf null. Abladen in eine Orca hinterlässt keine Logzeile, danach steht hier bis zum nächsten Abgleich über den EVE-Login zu viel.`}"><div class="l">Laderaum ≈ ${fmt(c.hold_m3)} m³ · ${state.regions[state.region]}</div><div class="v isk">${
       c.hold_prices==='none'
        ?'<span style="color:var(--dim);font-size:12px;font-weight:400">keine Preisdaten</span>'
        :'~'+fmtM(c.hold_isk)+(c.hold_prices==='partial'?' <span style="color:var(--dim)" title="Für einzelne Erztypen fehlen Preisdaten">±</span>':'')
-    }</div></div>
+    }</div>${ladeBalken(c)}</div>
     ${c.heavy_water||!c.esi_linked?`<div class="stat" title="${lang==='en'?`Heavy Water left for the industrial core. EVE never logs whether the core is running; the only hard evidence is a compression, which could not happen without an active core. With the EVE login the consumption is measured, without it counted against the amount you entered.`:`Bestand an Heavy Water für den Industriekern. EVE protokolliert nirgends, ob der Kern läuft; der einzige harte Beleg ist eine Kompression, die ohne aktiven Kern gar nicht zustande käme. Mit EVE-Login ist der Verbrauch gemessen, ohne ihn gegen den selbst gesetzten Bestand gerechnet.`}"><div class="l">Heavy Water${c.heavy_water?' · '+c.heavy_water.core.toUpperCase():''}${c.heavy_water&&c.heavy_water.esi?' · ESI':''} ${c.heavy_water&&c.heavy_water.esi?'':`<span class="hwset" data-char="${esc(c.name)}" data-core="${c.heavy_water?c.heavy_water.core:''}" data-fill="${c.heavy_water&&c.heavy_water.fill?c.heavy_water.fill:''}" title="Bestand im Laderaum setzen">⛽</span>`}</div><div class="v ${c.heavy_water&&c.heavy_water.on&&!c.heavy_water.refill&&c.heavy_water.min_left<30?'in':''}" title="${esc(hwUsedTitle(c.heavy_water))}">${c.heavy_water?(c.heavy_water.refill?'?':fmt(c.heavy_water.units)):'—'}</div><div class="l">${hwLine(c.heavy_water)}</div></div>`:''}
     <div class="stat" title="${lang==='en'?`Bounty for NPC kills, counted from the game logs where it appears as its own line, so this is measured and not estimated. Mission rats often pay no bounty at all, so a low number does not mean a bad run.`:`Kopfgeld für abgeschossene NPCs, aus den Gamelogs gezählt. Es steht dort als eigene Zeile, ist also gemessen und nicht geschätzt. Missionsgegner zahlen oft gar keine Bounty, dann bleibt die Zahl klein, obwohl der Einsatz sich gelohnt hat.`}"><div class="l">Bounties</div><div class="v grn">${fmtM(c.bounty)}</div></div>
     ${c.wallet!=null?`<div class="stat" title="${lang==='en'?`Your real wallet balance from the EVE login, not this session's earnings. It also moves with purchases, sales and taxes, so it says nothing about what this session brought in.`:`Der echte Kontostand aus dem EVE-Login, nicht der Sitzungsertrag. Er ändert sich auch durch Käufe, Verkäufe und Steuern, hat also nichts mit dem zu tun, was diese Sitzung eingebracht hat.`}"><div class="l">Wallet (ESI)</div><div class="v grn">${fmtM(c.wallet)}</div></div>`:''}

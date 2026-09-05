@@ -1,5 +1,23 @@
 [
  {
+  "v": "2.81.0",
+  "d": "2026-09-05",
+  "de": [
+   "NEU: ⛏ FÜLLSTAND DES ERZLADERAUMS als Balken, im Overlay unter jedem Charakter und im Dashboard in der Laderaum-Kachel. Wunsch von Savox76: er hat beim Streamen das Overlay offen und wollte sehen, wann sich das Pressen lohnt, ohne in jedes Fenster zu klicken. Der Balken erscheint nur bei Schiffen, die einen Erzladeraum haben. Ein Punisher bekommt keinen, ein Hulk (11.500 m³), ein Retriever (27.500 m³) oder eine Orca (150.000 m³) schon. Im OBS-Einrichter gibt es dafür einen Schalter.",
+   "Savox76 hat gleich die richtige Frage gestellt, nämlich ob die ESI die Daten nicht zu spät liefert. Nachgemessen an vier Charakteren: das Frachtraum-Fenster der ESI ist exakt 3.600 Sekunden lang, ein Balken allein daraus hinkt also bis zu eine Stunde hinterher und wäre nutzlos. Deshalb kommen zwei Quellen zusammen: die genaue, aber alte ESI-Messung und der sekundengenaue Zählstand aus den Gamelogs. Angezeigt wird der ESI-Stand plus alles, was seitdem gefördert wurde. Beim Andocken fällt der Balken auf null.",
+   "Was der Balken NICHT sieht, steht auch im Tooltip: das Abladen in eine Orca hinterlässt keine Logzeile. Ich habe dafür 5.769 gespendete Logdateien durchsucht, die Umlade-Meldung kommt darin zweimal vor. Wer in eine Orca ablädt, sieht den Balken bis zum nächsten ESI-Abgleich zu hoch. Umgekehrt ist das Vollwerden bestens belegt: 1.086 mal „Frachtraum voll“ und rund 320 mal „Laser deaktiviert ohne Übergabe“ in denselben Dateien.",
+   "BEHOBEN, und das ist der eigentliche Fund: Canary hat den Erzladeraum überhaupt nie gelesen. Es filterte auf das Fach „Cargo“, geerntetes Erz liegt aber in „SpecializedOreHold“. Im angezeigten Frachtraum-Wert standen bei zwei echten Hulks deshalb nur Kristalle, Drohnen und Module, kein Gramm Erz. Das betraf jeden mit Barge, Exhumer oder Venture, und gemeldet hatte es nie jemand. Jetzt zählen alle Fächer des Schiffs mit, auch Eis, Gas und der Flottenhangar einer Orca. Bei der Orca im Test sprang der Wert dadurch von 10,1 auf 18,5 Millionen.",
+   "Korrigiert habe ich dabei auch einen falschen Tooltip: die Laderaum-Kachel behauptete, ihre Zahl käme über den EVE-Login. Sie wird aus den Gamelogs gezählt. Jetzt steht dort, was wirklich passiert, samt der Orca-Einschränkung."
+  ],
+  "en": [
+   "NEW: ⛏ ORE HOLD FILL LEVEL as a bar, in the overlay under each character and in the dashboard's cargo tile. Requested by Savox76: he keeps the overlay open while streaming and wanted to see when compressing pays off without clicking into every window. The bar only appears for ships that actually have an ore hold. A Punisher gets none, a Hulk (11,500 m³), a Retriever (27,500 m³) or an Orca (150,000 m³) does. There is a switch for it in the OBS setup.",
+   "Savox76 asked the right question straight away: whether ESI delivers the data too late. Measured across four characters: the ESI cargo window is exactly 3,600 seconds, so a bar built from ESI alone lags by up to an hour and would be useless. That is why two sources come together: the accurate but stale ESI reading and the second-by-second count from the game logs. Shown is the ESI reading plus everything mined since. Docking drops the bar to zero.",
+   "What the bar cannot see is written in the tooltip too: unloading into an Orca leaves no log line. I searched 5,769 donated log files for it, the transfer message appears twice. Anyone unloading into an Orca sees the bar read too high until the next ESI check. Filling up, on the other hand, is well covered: 1,086 times „cargo hold is full“ and roughly 320 times „laser deactivates without transferring“ in the same files.",
+   "FIXED, and this is the real find: Canary never read the ore hold at all. It filtered on the „Cargo“ compartment, but mined ore sits in „SpecializedOreHold“. On two real Hulks the displayed cargo value therefore held only crystals, drones and modules, not a gram of ore. This affected everyone flying a barge, exhumer or Venture, and nobody had ever reported it. Now every compartment of the ship counts, including ice, gas and an Orca's fleet hangar. On the Orca in the test the value jumped from 10.1 to 18.5 million.",
+   "While at it I corrected a wrong tooltip: the cargo tile claimed its number came through the EVE login. It is counted from the game logs. It now says what actually happens, including the Orca limitation."
+  ]
+ },
+ {
   "v": "2.80.0",
   "d": "2026-09-05",
   "de": [
