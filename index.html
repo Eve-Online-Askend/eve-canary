@@ -387,6 +387,13 @@ header.eng .missionCta{margin-left:auto}
     <p data-i18n="f15.p">Your day as a feed. Every mining trip, every fight and every reward shows
     up as its own entry, newest first, so you can scroll back through what actually happened
     instead of just totals.</p></div>
+  <div class="card"><div class="ico">🌀</div>
+    <h3 data-i18n="f16.t">Abyss advisor</h3>
+    <p data-i18n="f16.p">Which filament actually pays off, measured in ISK per minute
+    after the filaments you burned. Canary only names a winner when the data carries
+    it: enough runs, and a lead larger than the scatter between them. Otherwise it says
+    so instead of guessing. And because numbers do not know stress or price swings, you
+    can pin your own note to every filament.</p></div>
   <div class="card"><div class="ico">🔑</div>
     <h3 data-i18n="f8.t">EVE login (optional)</h3>
     <p data-i18n="f8.p">With the official EVE login Canary also shows ship, wallet, portrait
@@ -610,6 +617,8 @@ const LANGS = {
     'f13.p': 'Erkennt Gank-Rudel, bevor sie dich finden. Canary liest den öffentlichen Killmail-Strom, gruppiert, wer in deinen Regionen wiederholt gemeinsam tötet, und gibt jedem Rudel einen Score, ein Jagdgebiet und eine Zuletzt-gesehen-Zeit. Taucht ein bekanntes Rudel-Mitglied in deinem Local auf, gibt es sofort eine Sprachwarnung, bekannte Gank-Gruppen werden namentlich markiert. Nur öffentliche Daten, nichts verlässt deinen Rechner.',
     'f14.t': 'Steckbrief',
     'f14.p': 'Ein Steckbrief je Charakter: Portrait, Corp, Schiff und Vermögen auf einen Blick. Daneben zeigt ein Sechs-Achsen-Radar, worin dieser Charakter wirklich stark ist, Mining, Missionen, PvP, Kampfkraft, relativ zu deinem stärksten eigenen Charakter.',
+    'f16.t': 'Abyss-Berater',
+    'f16.p': 'Welches Filament sich wirklich lohnt, gemessen in ISK je Minute nach Abzug der verbrauchten Filamente. Canary nennt nur dann einen Sieger, wenn die Daten ihn hergeben: genug Durchgänge, und ein Vorsprung größer als die Streuung zwischen ihnen. Sonst sagt es das, statt zu raten. Und weil Zahlen weder Stress noch Preisschwankungen kennen, kannst du zu jedem Filament deine eigene Notiz hängen.',
     'f15.t': 'Verlauf',
     'f15.p': 'Dein Tag als Zeitstrahl. Jeder Mining-Trip, jeder Kampf und jede Belohnung steht als eigener Eintrag da, neueste zuerst, sodass du nachlesen kannst, was wirklich passiert ist, statt nur Summen zu sehen.',
     'h.compare': 'Warum Canary',
@@ -711,6 +720,8 @@ const LANGS = {
     'f13.p': 'Repère les meutes de gankers avant qu\'elles ne vous trouvent. Canary lit le flux public de killmails, regroupe ceux qui tuent ensemble de façon répétée dans vos régions et donne à chaque meute un score, un territoire de chasse et une heure de dernière observation. Si un membre connu d\'une meute apparaît dans votre local, une alerte vocale se déclenche aussitôt, les groupes de gankers connus sont signalés par leur nom. Données publiques uniquement, rien ne quitte votre machine.',
     'f14.t': 'Fiche perso',
     'f14.p': 'Une fiche par personnage : portrait, corp, vaisseau et fortune en un coup d\'oeil. À côté, un radar à six axes montre dans quoi ce personnage excelle vraiment, minage, missions, PvP, puissance de combat, comparé à votre personnage le plus fort.',
+    'f16.t': 'Conseiller Abyss',
+    'f16.p': 'Quel filament rapporte vraiment, mesuré en ISK par minute une fois déduits les filaments consommés. Canary ne désigne un gagnant que si les données le permettent : assez de passages, et une avance supérieure à la dispersion entre eux. Sinon il le dit, au lieu de deviner. Et comme les chiffres ignorent le stress et les variations de prix, tu peux attacher ta propre note à chaque filament.',
     'f15.t': 'Chronologie',
     'f15.p': 'Votre journée en flux. Chaque sortie de minage, chaque combat et chaque récompense apparaît comme une entrée à part, la plus récente en premier, pour retracer ce qui s\'est vraiment passé plutôt que de simples totaux.',
     'h.compare': 'Pourquoi Canary',
@@ -812,6 +823,8 @@ const LANGS = {
     'f13.p': 'Обнаруживает банды ганкеров до того, как они найдут вас. Canary читает открытый поток килмейлов, группирует тех, кто регулярно убивает вместе в ваших регионах, и присваивает каждой банде счёт, охотничью территорию и время последнего появления. Если известный участник банды появляется в вашем Local, срабатывает мгновенное голосовое предупреждение, известные группы ганкеров помечаются по названию. Только открытые данные, ничего не покидает ваш компьютер.',
     'f14.t': 'Профиль',
     'f14.p': 'Профиль для каждого персонажа: портрет, корпорация, корабль и состояние с первого взгляда. Рядом радар из шести осей показывает, в чём этот персонаж действительно силён: добыча, миссии, PvP, боевая мощь, относительно вашего самого сильного персонажа.',
+    'f16.t': 'Советник по Abyss',
+    'f16.p': 'Какой филамент действительно окупается, в ISK в минуту за вычетом потраченных филаментов. Canary называет победителя только тогда, когда данных достаточно: хватает забегов, а отрыв больше разброса между ними. Иначе он прямо говорит об этом, а не гадает. И поскольку числа не знают ни стресса, ни колебаний цен, к каждому филаменту можно прикрепить собственную заметку.',
     'f15.t': 'Хронология',
     'f15.p': 'Ваш день в виде ленты. Каждая добывающая вылазка, каждый бой и каждая награда становятся отдельной записью, сначала самые новые, чтобы можно было проследить, что произошло на самом деле, а не только итоговые суммы.',
     'h.compare': 'Почему Canary',
