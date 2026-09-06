@@ -1,5 +1,5 @@
 {
- "version": "2.89.0",
+ "version": "2.90.0",
  "files": [
   "eve_dashboard.py",
   "ore_types.json",
@@ -22,5 +22,5 @@
   "install.sh"
  ],
  "repo": "Eve-Online-Askend/eve-canary",
- "tag": "v2.89.0"
+ "tag": "v2.90.0"
 }

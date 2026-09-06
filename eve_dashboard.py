@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.89.0"
+VERSION = "2.90.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1732,6 +1732,18 @@ def load_config():
            "clip_watch": False, "roles": {}, "log_texts": {},
            "count_me": True, "ping": {}, "share_ore": False,
            "share_pve": False,
+           # Kopfbereich der Missionsseite: "klassisch" oder "kompakt".
+           #
+           # Bewusst in der Konfiguration und nicht nur im Browser, anders
+           # als die Skins: Askend wollte eine Fassung als STANDARD
+           # festlegen koennen (06.09.2026), und ein localStorage-Wert
+           # gilt nur fuer ein Browserprofil. So gilt die Wahl fuer die
+           # Installation, auch im zweiten Browser und im Overlay.
+           #
+           # Vorgabe bleibt "klassisch": niemandem wird die Seite unter
+           # den Fuessen weggezogen. Ein wegklickbarer Hinweis zeigt auf
+           # die neue Fassung.
+           "missionskopf": "klassisch",
            "update_url": "https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main"}
     if CONFIG_PATH.exists():
         try:
@@ -11430,6 +11442,9 @@ def state_info():
             "char_versteckt": list(CONFIG.get("char_versteckt") or []),
             "share_ore": bool(CONFIG.get("share_ore", False)),
             "share_pve": bool(CONFIG.get("share_pve", False)),
+            "missionskopf": ("kompakt"
+                             if CONFIG.get("missionskopf") == "kompakt"
+                             else "klassisch"),
             "autostart": AUTOSTART_OK and autostart_path().exists(),
             # Was diese Plattform kann — die Oberflaeche blendet den Rest aus,
             # damit auf Linux keine toten Schalter stehen.
@@ -15099,6 +15114,13 @@ class Handler(BaseHTTPRequestHandler):
             CONFIG["share_ore"] = bool(body.get("on"))
         elif action == "share_pve":
             CONFIG["share_pve"] = bool(body.get("on"))
+        elif action == "missionskopf":
+            # Nur die zwei bekannten Werte, sonst bliebe irgendein Text
+            # in der Konfiguration stehen und die Seite faende keinen
+            # Kopf mehr.
+            if body.get("wert") in ("klassisch", "kompakt"):
+                CONFIG["missionskopf"] = body["wert"]
+                save_config()
         elif action == "clip_watch":
             CONFIG["clip_watch"] = bool(body.get("on"))
         elif action == "calc":
@@ -15772,6 +15794,55 @@ nav span.on{color:var(--cyan);border-bottom:2px solid var(--cyan)}
 .alert.pack{border-color:var(--red);color:var(--red);font-weight:600}
 .alert.packinfo{border-color:var(--gold);color:var(--gold)}
 .alert.mission{border-color:var(--green);color:var(--green)}
+/* ---------- Kompakter Missions-Kopf (Nirahse, 06.09.2026) ----------------
+   Ein Kasten, drei Abschnitte. Der Abschnittsname steht NEBEN den Kacheln in
+   einer schmalen Spalte, nicht darueber: das spart je Abschnitt eine ganze
+   Zeile, und drei gesparte Zeilen sind der Unterschied zwischen einem Kopf,
+   der die Liste unter die Bildkante drueckt, und einem, der es nicht tut.
+   Kacheln haben bewusst keinen Rahmen und keinen eigenen Hintergrund. Getrennt
+   wird durch Haarlinien und ein gemeinsames Spaltenraster: das Auge bekommt
+   seine Ordnung aus der Ausrichtung. Jeder Rahmen kostet vier Pixel und gibt
+   nichts zurueck. */
+.kkkopf{padding:12px 14px}
+.kabs{display:flex;gap:14px;align-items:flex-start;padding:9px 0}
+.kabs+.kabs{border-top:1px solid rgba(255,255,255,.07)}
+.kabsn{flex:0 0 96px;font-size:10.5px;font-weight:700;letter-spacing:.09em;
+ color:var(--dim);padding-top:3px;line-height:1.5}
+.kabsn span{display:block;font-weight:400;letter-spacing:0;font-size:9.5px;
+ opacity:.75;text-transform:none}
+.kabsi{flex:1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px 12px}
+.kk{min-width:0}
+.kkl{font-size:10.5px;color:var(--dim);letter-spacing:.04em;white-space:nowrap;
+ overflow:hidden;text-overflow:ellipsis}
+.kkv{font-size:19px;font-weight:600;line-height:1.25;color:var(--white);
+ font-variant-numeric:tabular-nums;white-space:nowrap}
+/* Genau EINE grosse Zahl auf der Seite. Die Hierarchie entsteht nicht durch
+   das Vergroessern dieser einen, sondern durch das Verkleinern aller anderen. */
+.kkv.kkgross{font-size:30px;font-weight:600;letter-spacing:-.01em}
+.kkv.grn{color:var(--grn)}
+/* Eine Zahl, die eine Untergrenze ist, sieht anders aus als eine gemessene.
+   Das Zeichen davor sagt "mindestens", die Kleinzeile sagt "wovon". */
+.kkv.kkoffen{color:var(--gold)}
+.kku{font-size:10px;color:var(--dim);line-height:1.4;white-space:nowrap;
+ overflow:hidden;text-overflow:ellipsis}
+.kktab{grid-column:1/-1;margin-top:4px}
+.kktabkopf{display:flex;align-items:center;gap:7px;cursor:pointer;
+ font-size:11.5px;color:var(--dim);padding:3px 0;user-select:none}
+.kktabkopf .arr{display:inline-block;transition:transform .15s ease;font-size:9px}
+.kktabvor{margin-left:auto;opacity:.8;white-space:nowrap;overflow:hidden;
+ text-overflow:ellipsis}
+/* Die Warnzeile haengt am DATENSTAND, nicht an einem Wegklick-Knopf. Steigt
+   die Loot-Abdeckung ueber 90 Prozent, verschwindet sie von selbst. Eine
+   Warnung, die man wegklicken kann, obwohl die Ursache bleibt, ist keine
+   Warnung, sondern Dekoration. */
+.kkwarn{margin-top:8px;padding:5px 0 0 9px;border-left:2px solid var(--gold);
+ font-size:11px;color:var(--dim);line-height:1.45}
+.kkwmehr{margin-left:8px;color:var(--gold);cursor:help;white-space:nowrap}
+.cardhint{background:var(--inset);border:1px solid var(--line);border-radius:8px;
+ padding:10px 12px;font-size:12.5px}
+@media (max-width:900px){.kabsi{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:620px){.kabsi{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .kabs{flex-direction:column;gap:4px}.kabsn{flex:none}}
 .cardwarn{border:1px solid var(--gold);color:var(--gold);border-radius:7px;
 padding:7px 10px;font-size:12px;font-weight:600;margin-bottom:8px;overflow:hidden}
 .cardwarn.drone{border-color:var(--red);color:var(--red)}
@@ -16795,6 +16866,12 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   <label><input type="radio" name="skin" value=""> Klassisch (das gewohnte Canary-Design)</label>
   <label><input type="radio" name="skin" value="photon"> Photon (angelehnt ans EVE-Interface: dunkel, kantig, Gold-Akzente)</label>
   <label><input type="radio" name="skin" value="cockpit"> Cockpit (neu, in Erprobung: Seitenleiste statt Reiterzeile, größere Schrift, mehr Luft, höhere Kontraste)</label>
+  <div style="margin-top:10px"><b>Kopf der Missionsseite</b></div>
+  <label><input type="radio" name="misskopf" value="klassisch"> Klassisch (drei Kästen untereinander)</label>
+  <label><input type="radio" name="misskopf" value="kompakt"> Kompakt (ein Kasten, drei Abschnitte)</label>
+  <div class="hint">Der kompakte Kopf legt Verdienst, Quellen und Einsätze in einen Kasten und klappt die
+  Tabelle je Charakter weg. Gemessen: der Kopf schrumpft von 1.151 auf rund 480 Pixel, die Liste rückt
+  entsprechend nach oben. Diese Wahl gilt für die Installation, nicht nur für diesen Browser.</div>
   <div class="btnrow"><button class="btn" id="ovBtn">◱ Mini-Overlay öffnen/schließen</button></div>
   <div class="hint">Das Overlay ist ein schwebendes Always-on-top-Fenster mit Status und Alarmen,
   bleibt über dem EVE-Client (Fenstermodus/randlos). In Chrome und Edge klickbar, in Firefox als Bild. Start nur per Klick.</div>
@@ -17231,6 +17308,8 @@ $('#autoUpdate').onchange=()=>post({action:'auto_update',on:$('#autoUpdate').che
 $('#eigenWarn').onchange=()=>post({action:'eigenbeschuss',on:$('#eigenWarn').checked});
 $('#shareOre').onchange=()=>post({action:'share_ore',on:$('#shareOre').checked});
 $('#sharePve').onchange=()=>post({action:'share_pve',on:$('#sharePve').checked});
+document.querySelectorAll('#opts input[name=misskopf]').forEach(
+ r=>r.onchange=()=>missKopfSetzen(r.value));
 $('#saveLogDir').onclick=async()=>{
  const st=$('#logDirStat');st.textContent='Prüfe …';st.style.color='';
  const r=await post({action:'log_dir',path:$('#logDir').value});
@@ -17268,6 +17347,20 @@ if(![0,30,90,365].includes(abyssTage))abyssTage=30;
 // den Faktor 2,83, das Wetter nur um 1,35. Das Wetter zu trennen
 // zerbroeselt die Zeilen, ohne viel zu erklaeren.
 let abyssGrp=localStorage.getItem('abyssGrp')||'filament';
+// Kopfbereich der Missionsseite: 'klassisch' oder 'kompakt'.
+//
+// Die Wahrheit steht in der Konfiguration (state.missionskopf), damit
+// sie fuer die Installation gilt und nicht nur fuer ein Browserprofil.
+// Der Browser haelt eine Kopie, damit das Umschalten sofort wirkt und
+// nicht erst beim naechsten Takt.
+let missKopf=localStorage.getItem('missKopf')||'klassisch';
+function missKopfSetzen(wert,melden){
+ if(wert!=='kompakt')wert='klassisch';
+ missKopf=wert;
+ localStorage.setItem('missKopf',wert);
+ if(melden!==false)post({action:'missionskopf',wert:wert});
+ if(view==='missionen'&&lastMissionD)renderMissions(lastMissionD);
+}
 if(!['filament','klasse'].includes(abyssGrp))abyssGrp='filament';
 let missChars=(()=>{try{const r=JSON.parse(localStorage.getItem('missChars')||'[]');
   return Array.isArray(r)?r.filter(x=>typeof x==='string'):[];}catch(e){return [];}})();
@@ -17316,7 +17409,13 @@ const VIEW_INFO={
   q:'Daten: die öffentliche Auftragsliste von EVE, ohne Login. Marktpreise wie überall von ESI und Fuzzwork. Deine Förderzahlen bleiben auf diesem Rechner, für die Rechnung wird nichts über dich gesendet.'}};
 function renderViewInfo(){
  const box=$('#viewinfo');if(!box)return;
- const inf=VIEW_INFO[view],offen=lsGet('viewinfo',true),schl=view+'|'+offen;
+ // Vorgabe: offen in der klassischen Fassung, zugeklappt in der kompakten.
+ // Wer den kompakten Kopf waehlt, will Platz, und dieser Kasten wird
+ // genau einmal gelesen. Eine eigene Wahl schlaegt die Vorgabe weiterhin,
+ // der Schluessel bleibt derselbe.
+ const inf=VIEW_INFO[view],
+   offen=lsGet('viewinfo',!(view==='missionen'&&missKopf==='kompakt')),
+   schl=view+'|'+offen;
  if(box.dataset.k===schl)return;   // sonst baut der 2s-Takt den Kasten dauernd neu
  box.dataset.k=schl;
  if(!inf){box.innerHTML='';return;}
@@ -17380,10 +17479,26 @@ setInterval(()=>{
  const t=$('#loadtxt'), b=$('#loadbar');
  if((t&&!t.hidden)||(b&&!b.hidden))ladeAus();
 },2000);
+// Wohin man in einer Ansicht gescrollt hatte. Nirahse (06.09.2026):
+// "ich muss jedes mal scrollen wenn ich an den Loot-Knopf moechte, wenn
+// ich von der Beute-Seite zurueckkomme". Der kuerzere Kopf loest das
+// meiste, aber wer weiter unten in der Liste war, landet trotzdem wieder
+// oben. Die Position je Ansicht zu merken kostet nichts und trifft den
+// geschilderten Ablauf genauer als jede Layout-Aenderung.
+const scrollJeAnsicht={};
 document.querySelectorAll('nav span').forEach(el=>el.onclick=()=>{
  if(view===el.dataset.v)return;            // derselbe Tab, nichts zu tun
+ scrollJeAnsicht[view]=window.scrollY;
  document.querySelectorAll('nav span').forEach(x=>x.classList.remove('on'));
  el.classList.add('on');view=el.dataset.v;
+ // Erst nach dem Neuzeichnen zurueckspringen, vorher ist die Seite kurz.
+ // Zwei Anlaeufe: der erste faengt den schnellen Fall ab, der zweite den,
+ // bei dem die Abfrage noch lief.
+ const ziel=scrollJeAnsicht[el.dataset.v]||0;
+ if(ziel>0){
+  setTimeout(()=>window.scrollTo(0,Math.min(ziel,document.body.scrollHeight)),120);
+  setTimeout(()=>window.scrollTo(0,Math.min(ziel,document.body.scrollHeight)),600);
+ }
  ladeAn(el.textContent.trim());
  // Direkt umschalten: tick() faellt aus, solange noch eine Abfrage laeuft
  // (tickBusy), der Kasten haette sonst bis zu zwei Sekunden den alten Text.
@@ -17634,6 +17749,13 @@ function syncOpts(){
     tick();
    });}}
  $('#shareOre').checked=state.share_ore===true;
+ // Die Konfiguration ist die Wahrheit, der Browser nur eine Kopie.
+ if(state.missionskopf&&state.missionskopf!==missKopf){
+  missKopf=state.missionskopf;
+  localStorage.setItem('missKopf',missKopf);
+ }
+ document.querySelectorAll('#opts input[name=misskopf]').forEach(
+  r=>r.checked=r.value===missKopf);
  $('#sharePve').checked=state.share_pve===true;
  // Log-Ordner nur befüllen, solange niemand darin tippt
  if(document.activeElement!==$('#logDir'))$('#logDir').value=state.log_dir||'';
@@ -18232,6 +18354,25 @@ document.addEventListener('click',e=>{
  // "Alle zeigen" aus dem Filter-Hinweis. Aus demselben Grund hier und nicht
  // am Element: die Ansicht wird im Takt neu gebaut, ein direkt gesetzter
  // Handler waere nach zwei Sekunden weg.
+ // Kompakter Missions-Kopf: Tabelle auf- und zuklappen, Hinweis
+ // annehmen oder wegklicken. Ueber den Verteiler, weil die Ansicht im
+ // Zwei-Sekunden-Takt neu gebaut wird.
+ {const tk=e.target.closest&&e.target.closest('[data-kktab]');
+  if(tk){
+   localStorage.setItem('kkTab',JSON.stringify(!lsGet('kkTab',false)));
+   if(lastMissionD)renderMissions(lastMissionD);
+   return;
+  }}
+ if(e.target.id==='kkAn'){missKopfSetzen('kompakt');return;}
+ if(e.target.id==='kkWeg'){
+  localStorage.setItem('kkHinweisWeg','true');
+  if(lastMissionD)renderMissions(lastMissionD);
+  return;
+ }
+ if(e.target.classList&&e.target.classList.contains('mkopfpille')){
+  missKopfSetzen(e.target.dataset.mk);
+  return;
+ }
  // Abschnitt im Optionen-Fenster auf- oder zuklappen.
  {const kopf=e.target.closest&&e.target.closest('.optgroup[data-og] > .sect');
   // Nur die erste Zeile schaltet. In "Alarme & Wachen" steht weiter unten
@@ -21908,16 +22049,195 @@ function pveBilanz(p){
          :`Das Wallet-Journal kennt ${fmtM(s.j_bounty)} Kopfgeld, die Einsätze oben nur ${fmtM(s.bounty)}. Die Differenz sind Belt-Ratten außerhalb erkannter Einsätze. Zwei Messungen, kein Fehler.`)
      :(en?`The runs above hold ${fmtM(s.bounty)} of bounty, the wallet journal only ${fmtM(s.j_bounty)}. The journal is fetched through the EVE login and does not reach back as far as your game logs, so older runs are missing from it.`
          :`Die Einsätze oben halten ${fmtM(s.bounty)} Kopfgeld, das Wallet-Journal nur ${fmtM(s.j_bounty)}. Das Journal kommt über den EVE-Login und reicht nicht so weit zurück wie deine Gamelogs, ältere Einsätze fehlen dort also.`)}</div>`:''}
-  <div style="overflow-x:auto;margin-top:10px"><table>
+  ${pveTabelle(p, zeile)}
+ </div>`;
+}
+
+// Die Tabelle je Charakter. Steht als eigene Funktion da, weil sie in
+// BEIDEN Kopf-Fassungen vorkommt: in der klassischen offen, in der
+// kompakten hinter einem Aufklapper. Zwei Kopien waeren zwei Wahrheiten.
+function pveTabelle(p, zeile){
+ const en=lang==='en';
+ if(!p||!p.chars||!p.chars.length)return '';
+ // Ohne uebergebene Zeilenfunktion eine schlanke bauen (kompakter Kopf).
+ const z=zeile||(c=>{
+  const q=c.runs?Math.round(100*c.mit_loot/c.runs):0;
+  return `<tr><td style="white-space:nowrap">${esc(c.char)}</td>
+   <td class="r">${c.runs}</td>
+   <td class="r isk">${fmtM(c.bounty)}</td>
+   <td class="r isk">${fmtM(c.reward+c.bonus)}</td>
+   <td class="r ${q<50?'sub':'isk'}">${fmtM(c.loot)} <span class="sub">${q}%</span></td>
+   <td class="r">${fmt(c.kills)}</td>
+   <td class="r">${dauerMS(c.sek)} min</td>
+   <td class="r isk"><b>${fmtM(c.belegt_run)}</b></td>
+   <td class="r ${(c.lang&&c.lang_sek>c.sek*0.5)?'sub':'isk'}">${fmtM(c.belegt_h)}</td></tr>`;
+ });
+ return `<div style="overflow-x:auto;margin-top:10px"><table>
    <tr><th>${en?'Character':'Charakter'}</th><th class="r">${en?'Runs':'Einsätze'}</th>
     <th class="r">${en?'Bounty':'Kopfgeld'}</th><th class="r">${en?'Reward':'Belohnung'}</th>
     <th class="r">Loot</th><th class="r">${en?'Kills':'Gegner'}</th>
     <th class="r">${en?'Time':'Zeit'}</th>
-    <th class="r" title="${en?'Measured sources divided by the number of runs. Does not depend on the duration.':'Belegte Quellen geteilt durch die Zahl der Einsätze. Hängt nicht an der Dauer.'}">${en?'ISK/run':'ISK/Einsatz'}</th>
-    <th class="r" title="${en?'Measured sources divided by the counted time. Runs that were never closed properly stretch the time and push this down.':'Belegte Quellen geteilt durch die gezählte Zeit. Einsätze, die nie sauber abgeschlossen wurden, strecken die Zeit und drücken diese Zahl.'}">${en?'ISK/h':'ISK/h'}</th></tr>
-   ${p.chars.map(zeile).join('')}
-  </table></div>
+    <th class="r" title="${en?'Measured sources divided by the number of runs.':'Belegte Quellen geteilt durch die Zahl der Einsätze.'}">${en?'ISK/run':'ISK/Einsatz'}</th>
+    <th class="r" title="${en?'Measured sources divided by the counted time.':'Belegte Quellen geteilt durch die gezählte Zeit.'}">ISK/h</th></tr>
+   ${p.chars.map(z).join('')}
+  </table></div>`;
+}
+
+// ===========================================================================
+// Kompakter Kopf der Missionsseite (Wunsch Nirahse, 06.09.2026)
+// ===========================================================================
+//
+// Die Meldung: "Ich wuensche mir einen in der Hoehe deutlich reduzierten Kopf
+// der Mission-Seite. Grund: Die interaktive Liste ist zu weit unten und ich
+// muss jedes mal scrollen wenn ich an den Loot-Knopf moechte."
+//
+// Gemessen am 06.09.2026 im Browser: der Kopf war 1.151 px hoch, der erste
+// Loot-Knopf sass bei 1.268 px. Bei Full HD (937 px sichtbar) lag er damit
+// 340 px UNTER der Kante, war also nie ohne Scrollen erreichbar. Von den
+// 1.151 px waren 123 px reine Abstaende zwischen acht Bloecken und 350 px
+// Hinweise und Erklaertext, also gar keine Daten.
+//
+// Der Umbau folgt Nirahses eigenem Vorschlag: statt drei Kaesten mit drei
+// Raendern EIN Kasten mit drei Abschnitten, gegliedert nach Dimension.
+//   VERDIENST  ueber die Zeit     (heute, gestern, sieben Tage)
+//   QUELLEN    woher es kam       (Kopfgeld, Loot, Belohnung, Zeitbonus)
+//   EINSAETZE  woraus es entstand (Zahl, belegte ISK, je Einsatz, Gegner)
+//
+// Drei Entwurfsentscheidungen, die die Hoehe bringen:
+//
+//  1. Die Abschnittsnamen stehen NEBEN den Kacheln in einer schmalen linken
+//     Spalte, nicht darueber. Das spart je Abschnitt eine ganze Zeile.
+//  2. Kacheln haben keinen eigenen Rahmen und keinen Hintergrund. Getrennt
+//     wird durch Haarlinien und ein gemeinsames Spaltenraster: das Auge
+//     bekommt seine Ordnung aus der Ausrichtung, nicht aus Linien.
+//  3. Es gibt genau EINE grosse Zahl. Hierarchie entsteht nicht dadurch, dass
+//     man die wichtigste vergroessert, sondern dadurch, dass alle anderen
+//     klein werden.
+//
+// Was NICHT passiert: die klassische Fassung bleibt Zeichen fuer Zeichen
+// stehen und ist weiter die Vorgabe. Umgeschaltet wird ueber missKopf.
+function kompakterKopf(d, t, m, tag, wIsk, wMis, lootHeute){
+ const en=lang==='en';
+ const p=d.pve||{}, s=p.summe||{};
+ // Abdeckung des eingetragenen Loots. Sie entscheidet, ob eine Zahl eine
+ // Messung ist oder eine Untergrenze.
+ const abd=s.runs?Math.round(100*s.mit_loot/s.runs):0;
+ const ug=abd<90;
+ // Eine Kachel: Beschriftung, Wert, optionale Kleinzeile. Kein Rahmen.
+ const k=(l,v,unten,cls,tip)=>`<div class="kk" title="${esc(tip||'')}">
+   <div class="kkl">${l}</div><div class="kkv ${cls||''}">${v}</div>
+   ${unten?`<div class="kku">${unten}</div>`:''}</div>`;
+ // Ein Abschnitt: Name links, Kacheln rechts im gemeinsamen Raster.
+ const abschnitt=(name,unter,inhalt)=>`<div class="kabs">
+   <div class="kabsn">${name}${unter?`<span>${unter}</span>`:''}</div>
+   <div class="kabsi">${inhalt}</div></div>`;
+
+ // --- Abschnitt 1: Verdienst ueber die Zeit -----------------------------
+ const hh=tag(0), gg=tag(1);
+ const diff=gg.isk?Math.round(100*(hh.isk-gg.isk)/gg.isk):null;
+ const verdienst=
+   k(en?'Today':'Heute', fmtM(hh.isk),
+     (hh.runs||0)+(en?' runs':' Läufe')+(diff!==null?(' · '+(diff>=0?'+':'')+diff+'%'):''),
+     'kkgross',
+     en?'Everything today brought in, including the loot you entered. From the daily overview, not from the wallet journal.'
+       :'Was heute hereinkam, samt eingetragenem Loot. Aus der Tagesübersicht, nicht aus dem Wallet-Journal.')
+   +k(en?'Yesterday':'Gestern', fmtM(gg.isk), (gg.runs||0)+(en?' runs':' Läufe'))
+   +k(en?'7 days':'7 Tage', fmtM(wIsk), 'Ø '+fmtM(wIsk/7)+(en?'/day':'/Tag'))
+   +k(en?'Missions':'Missionen', fmt(t.missions||0), wMis+(en?' in 7 days':' in 7 Tagen'),
+     '', en?'Completed missions with a reward, from the wallet journal.'
+          :'Abgeschlossene Missionen mit Belohnung, aus dem Wallet-Journal.');
+
+ // --- Abschnitt 2: woher das Geld kam -----------------------------------
+ const quellen=
+   k(en?'Bounty':'Kopfgeld', fmtM(t.bounty||0), '', 'grn')
+   +k('Loot', (ug?'≥ ':'')+fmtM(lootHeute),
+     ug?(abd+'% '+(en?'entered':'eingetragen')):'',
+     ug?'kkoffen':'',
+     en?('Loot and salvage you entered yourself. EVE logs neither, so at '+abd+'% coverage this is a lower bound, not a measurement.')
+       :('Loot und Bergung, die du selbst eingetragen hast. EVE protokolliert beides nicht, bei '+abd+'% Abdeckung ist das eine Untergrenze, keine Messung.'))
+   +k(en?'Reward':'Belohnung', fmtM(t.reward||0), '', 'grn')
+   +k(en?'Time bonus':'Zeitbonus', fmtM(t.bonus||0), '', 'grn');
+
+ // --- Abschnitt 3: die Einsaetze ----------------------------------------
+ const einsaetze=s.runs?(
+   k(en?'Runs':'Einsätze', fmt(s.runs), s.abyss?(s.abyss+' Abyss'):'')
+   +k(en?'Measured':'Belegt', fmtM(s.belegt||0), '', 'grn',
+     en?'Bounty from the game logs plus reward and time bonus from the wallet journal. All three measured.'
+       :'Kopfgeld aus den Gamelogs plus Belohnung und Zeitbonus aus dem Wallet-Journal. Alle drei gemessen.')
+   +k(en?'Per run':'Je Einsatz', fmtM(s.belegt_run||0), '', 'grn',
+     en?'Measured ISK divided by the number of runs. Does not depend on the duration.'
+       :'Belegte ISK geteilt durch die Zahl der Einsätze. Hängt nicht an der Dauer.')
+   +k(en?'With loot':'Mit Loot', (ug?'≥ ':'')+fmtM(s.mit_loot_isk||0),
+     ug?(s.mit_loot+'/'+s.runs+' '+(en?'entered':'eingetragen')):'',
+     ug?'kkoffen':'')
+   +k(en?'Enemies':'Gegner', fmt(s.kills||0))
+ ):'';
+
+ // --- Die Tabelle je Charakter, zugeklappt ------------------------------
+ // Zugeklappt, aber nicht stumm: die Zeile ist selbst eine kleine Rangliste
+ // und sagt, was der Klick kostet.
+ const auf=lsGet('kkTab',false);
+ const chars=(p.chars||[]);
+ const tabelle=chars.length?`<div class="kktab">
+   <div class="kktabkopf" data-kktab="1">
+     <span class="arr" style="${auf?'':'transform:rotate(-90deg)'}">▾</span>
+     <span>${en?'Per character':'Je Charakter'} (${chars.length})</span>
+     <span class="kktabvor">${chars.slice(0,3).map(c=>esc(c.char)+' '+fmt(c.runs)).join(' · ')}${chars.length>3?(' · '+(en?'and':'und')+' '+(chars.length-3)+' '+(en?'more':'weitere')):''}</span>
+   </div>
+   ${auf?pveTabelle(p):''}</div>`:'';
+
+ // --- Die staerkste Warnung, und nur sie ---------------------------------
+ // Nie gestapelt: ein Warnsatz, der immer steht, ist keine Warnung mehr,
+ // sondern Tapete. Und die Zeile haengt am Datenstand, nicht an einem
+ // Wegklick-Knopf: steigt die Abdeckung ueber 90%, verschwindet sie selbst.
+ const wn=[];
+ if(ug&&s.runs)wn.push(en
+   ?('Loot entered in only '+s.mit_loot+' of '+s.runs+' runs ('+abd+'%). Figures marked ≥ are lower bounds.')
+   :('Loot nur in '+s.mit_loot+' von '+s.runs+' Läufen eingetragen ('+abd+'%). Mit ≥ markierte Zahlen sind Untergrenzen.'));
+ if(s.lang_anteil>=50)wn.push(en
+   ?(s.lang+' of '+s.runs+' runs ran longer than an hour and hold '+s.lang_anteil+'% of the counted time. Those are sessions that never closed, not fights.')
+   :(s.lang+' von '+s.runs+' Einsätzen liefen länger als eine Stunde und halten '+s.lang_anteil+'% der gezählten Zeit. Das sind Sitzungen, die nie abgeschlossen wurden.'));
+ if(s.bounty_luecke&&Math.abs(s.bounty_luecke)>1000000)wn.push(s.bounty_luecke>0
+   ?(en?('The wallet journal knows '+fmtM(s.j_bounty)+' of bounty, the runs only '+fmtM(s.bounty)+'. Belt ratting outside recognised runs.')
+       :('Das Wallet-Journal kennt '+fmtM(s.j_bounty)+' Kopfgeld, die Einsätze nur '+fmtM(s.bounty)+'. Belt-Ratten außerhalb erkannter Einsätze.'))
+   :(en?('The runs hold '+fmtM(s.bounty)+' of bounty, the journal only '+fmtM(s.j_bounty)+'. The journal does not reach as far back as your logs.')
+       :('Die Einsätze halten '+fmtM(s.bounty)+' Kopfgeld, das Journal nur '+fmtM(s.j_bounty)+'. Das Journal reicht nicht so weit zurück wie deine Logs.')));
+ const warn=wn.length?`<div class="kkwarn">${esc(wn[0])}${
+   wn.length>1?`<span class="kkwmehr" title="${esc(wn.slice(1).join(' — '))}">+${wn.length-1} ${en?'more':'weitere'}</span>`:''}</div>`:'';
+
+ const stand=m.asof?((en?'Journal, ':'Journal, vor ')+Math.max(0,Math.round((Date.now()/1000-m.asof)/60))+(en?' min old':' min')):'';
+ // Der Rueckweg gehoert an dieselbe Stelle wie die Sache selbst. Wer die
+ // kompakte Fassung ausprobiert, soll sie ohne Umweg ueber die Optionen
+ // wieder loswerden koennen.
+ return `<div class="card kkkopf" style="grid-column:1/-1">
+  <span class="pill mkopfpille" data-mk="klassisch"
+    style="float:right;margin-left:10px" title="${en
+     ?'Back to the three separate boxes. The choice is remembered for this installation.'
+     :'Zurück zu den drei einzelnen Kästen. Die Wahl merkt sich Canary für diese Installation.'
+    }">${en?'classic header':'klassischer Kopf'}</span>
+  ${abschnitt(en?'EARNED':'VERDIENST','',verdienst)}
+  ${abschnitt(en?'SOURCES':'QUELLEN',(en?'today':'heute')+(stand?('<br>'+stand):''),quellen)}
+  ${einsaetze?abschnitt(en?'RUNS':'EINSÄTZE',en?'measured':'gemessen',einsaetze+tabelle):''}
+  ${warn}
  </div>`;
+}
+
+// Der Hinweis auf die neue Fassung. Wegklickbar, und der Knopf schaltet
+// gleich um: ein Hinweis, der nur sagt "es gibt was Neues", ohne den Weg
+// dorthin zu zeigen, ist eine halbe Nachricht.
+function missKopfHinweis(){
+ if(missKopf==='kompakt')return '';
+ if(lsGet('kkHinweisWeg',false))return '';
+ const en=lang==='en';
+ return `<div class="cardhint kkhinweis" style="grid-column:1/-1">
+  <b>${en?'New: a compact header for this page':'Neu: ein kompakter Kopf für diese Seite'}</b>
+  <div class="sub" style="margin-top:4px">${en
+   ?'The three summary boxes fit into one, the per-character table folds away, and the list moves up by roughly 675 pixels. The classic view stays available and stays the default until you change it.'
+   :'Die drei Zusammenfassungen passen in eine, die Tabelle je Charakter klappt weg, und die Liste rückt rund 675 Pixel nach oben. Die klassische Ansicht bleibt erhalten und bleibt die Vorgabe, bis du sie umstellst.'}</div>
+  <div class="btnrow" style="margin-top:8px">
+   <button class="btn" id="kkAn">${en?'Try the compact header':'Kompakten Kopf ausprobieren'}</button>
+   <button class="btn" id="kkWeg">${en?'Not now':'Nicht jetzt'}</button>
+  </div></div>`;
 }
 
 function renderMissions(d){
@@ -21978,18 +22298,22 @@ function renderMissions(d){
  // immer gebaut, auch wenn der gewaehlte Charakter nichts vorzuweisen hat:
  // sonst landet man auf einer leeren Seite ohne die Auswahl.
  const charWahl=charWahlKarte(d.mchars);
- $('#hero').innerHTML=charWahl+heroTiles('🎯 Verdient heute',tag(0).isk,tag(1).isk,wIsk,
-  (t.missions||0)+' Missionen',wMis+' Missionen · Ø '+fmtM(wIsk/7)+'/Tag');
+ // In der kompakten Fassung stehen diese Kacheln im gemeinsamen Kasten,
+ // sonst staenden sie zweimal da. Der Charakter-Filter bleibt in beiden.
+ $('#hero').innerHTML=charWahl+(missKopf==='kompakt'?'':heroTiles('🎯 Verdient heute',tag(0).isk,tag(1).isk,wIsk,
+  (t.missions||0)+' Missionen',wMis+' Missionen · Ø '+fmtM(wIsk/7)+'/Tag'));
  $('#grid').innerHTML=`
- <div class="alphabanner" style="grid-column:1/-1">🧪 <b>${lang==='en'?'Alpha phase, module in development':'Alpha-Phase, Modul in Entwicklung'}</b> · ${lang==='en'?'faction tips and verified rewards are still being checked against real logs. Feedback welcome.':'Fraktions-Tipps und verifizierte Belohnungen werden noch an echten Logs geprüft. Rückmeldungen willkommen.'}</div>
+ ${missKopfHinweis()}
  ${state.sim?`<div style="grid-column:1/-1;display:flex;justify-content:flex-end;gap:8px;align-items:center">
    <span class="sub" style="color:var(--dim)">${lang==='en'?'Local demo (not shipped)':'Lokale Demo (nicht ausgeliefert)'}</span>
    <button class="btn${SIM.on?' simon':''}" onclick="toggleSim()">${SIM.on?(lang==='en'?'⏹ Stop simulation':'⏹ Simulation stoppen'):(lang==='en'?'▶ Start simulation':'▶ Simulation starten')}</button></div>`:''}
  ${renderMissionLive(d.chars)}
- ${pveBilanz(d.pve)}
- <div class="card" style="grid-column:1/-1">
-  <b>Heute im Detail (EVE-Zeit)</b>
-  ${(m.asof||m.next)?(()=>{const now=Date.now()/1000;const p=['Aus dem Wallet-Journal (ESI)'];
+ ${missKopf==='kompakt'?kompakterKopf(d,t,m,tag,wIsk,wMis,
+    (d.loot_tage||[]).filter(x=>x.tag===new Date().toISOString().slice(0,10))
+      .reduce((s2,x)=>s2+(x.loot||0)+(x.salv||0),0)):pveBilanz(d.pve)}
+ ${(missKopf==='kompakt'&&!live.length&&m.linked)?'':`<div class="card" style="grid-column:1/-1">
+  ${missKopf==='kompakt'?'':`<b>Heute im Detail (EVE-Zeit)</b>`}
+  ${missKopf==='kompakt'?'':`${(m.asof||m.next)?(()=>{const now=Date.now()/1000;const p=['Aus dem Wallet-Journal (ESI)'];
     if(m.asof)p.push('Stand: vor '+Math.max(0,Math.round((now-m.asof)/60))+' min');
     if(m.next){const nx=Math.round((m.next-now)/60);p.push(nx>0?'nächster Abgleich in '+nx+' min':'Abgleich läuft gerade');}
     return `<div class="sub">${p.join(' · ')}. Das In-Game-Wallet ist sofort aktuell, ESI hängt bis zu 1 Stunde nach.</div>`;})():''}
@@ -22010,7 +22334,7 @@ function renderMissions(d){
    <div class="stat" title="${lang==='en'?`The mission reward as paid out, taken from the wallet journal via the EVE login. Without the login this stays empty: the reward is not in the game log.`:`Die ausgezahlte Missionsbelohnung aus dem Wallet-Journal, also über den EVE-Login. Ohne Login bleibt die Kachel leer, denn im Gamelog steht die Belohnung nicht.`}"><div class="l">Belohnungen</div><div class="v isk">${fmtM(t.reward||0)}</div></div>
    <div class="stat" title="${lang==='en'?`The bonus for handing in on time, also from the wallet journal. EVE books it separately, so it gets its own figure here.`:`Der Bonus fürs rechtzeitige Abliefern, ebenfalls aus dem Wallet-Journal. Er wird getrennt gebucht und ist deshalb hier eine eigene Zahl.`}"><div class="l">Zeitboni</div><div class="v isk">${fmtM(t.bonus||0)}</div></div>
   </div>`;})()}
-  ${(m.mine_systems&&m.mine_systems.length)?`<div class="sub" style="margin-top:8px">Bounties aus deinen Mining-Systemen (${m.mine_systems.join(', ')}) zählen hier nicht mit, das sind Belt-Ratten.</div>`:''}
+  ${(m.mine_systems&&m.mine_systems.length)?`<div class="sub" style="margin-top:8px">Bounties aus deinen Mining-Systemen (${m.mine_systems.join(', ')}) zählen hier nicht mit, das sind Belt-Ratten.</div>`:''}`}
   ${m.linked?'':'<div class="cardwarn" style="margin-top:10px">⚠ Kein EVE-Login verbunden. Belohnungen und Boni kommen aus dem Wallet-Journal (ESI), einzurichten unter ⚙ Optionen.</div>'}
   ${live.length?'<div class="sect">Live-Session (aus den Gamelogs)</div>'+live.map(c=>
    // Knopf nach RECHTS, Laufzeit links daneben: dort sucht man ihn.
@@ -22020,7 +22344,7 @@ function renderMissions(d){
      <span class="sys">${lang==='en'?'running':'läuft seit'} ${c.session_min} min</span>
      <button class="btn mclose" data-char="${esc(c.name)}" title="${lang==='en'?'Close this mission now so you can enter the loot and empty your hold before undocking':'Mission jetzt abschließen, damit du den Loot eintragen und den Laderaum leeren kannst, bevor du abdockst'}">${lang==='en'?'Finish mission':'Mission abschließen'}</button>
     </div>`).join(''):''}
- </div>
+ </div>`}
  <div class="card" style="grid-column:1/-1">
   <div class="sect" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
    <span>Missionen einzeln (aus den Gamelogs)</span>

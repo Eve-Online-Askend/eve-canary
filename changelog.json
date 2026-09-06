@@ -1,5 +1,27 @@
 [
  {
+  "v": "2.90.0",
+  "d": "2026-09-06",
+  "de": [
+   "NEU: 📐 EIN KOMPAKTER KOPF FÜR DIE MISSIONSSEITE, umschaltbar, und die klassische Ansicht bleibt vorerst die Vorgabe. Wunsch von Nirahse: „Die interaktive Liste ist zu weit unten und ich muss jedes mal scrollen wenn ich an den Loot-Knopf möchte, wenn ich von der Beute-Seite zurückkomme.“",
+   "Vor dem Umbau nachgemessen, und das Ergebnis war schlimmer als die Meldung: der Kopf war 1.151 Pixel hoch, der erste Loot-Knopf saß bei 1.268. Auf einem Full-HD-Bildschirm lag er damit 340 Pixel UNTER der Bildkante, war also nie ohne Scrollen erreichbar, nicht nur manchmal. Von den 1.151 Pixeln waren 123 reine Abstände zwischen acht Blöcken und 350 Hinweise und Erklärtext, also gar keine Daten.",
+   "Der neue Kopf folgt Nirahses eigenem Vorschlag: statt drei Kästen mit drei Rändern ein Kasten mit drei Abschnitten, gegliedert nach Dimension. VERDIENST über die Zeit, QUELLEN woher es kam, EINSÄTZE woraus es entstand. Die Abschnittsnamen stehen neben den Kacheln statt darüber, das allein spart drei Zeilen. Kacheln haben keinen eigenen Rahmen, getrennt wird durch Haarlinien und ein gemeinsames Spaltenraster. Und es gibt genau eine große Zahl: Hierarchie entsteht nicht dadurch, dass man die wichtigste vergrößert, sondern dadurch, dass alle anderen klein werden.",
+   "Gemessen danach, gleicher Bildschirm, ruhiger Zustand: der erste Loot-Knopf steht bei 899 statt 1.292 Pixeln, also sichtbar statt 355 Pixel darunter. Die Tabelle je Charakter ist zugeklappt, ihre Zeile zeigt aber weiter die Rangfolge, damit sie kein leerer Griff ist.",
+   "Zahlen, die nicht gemessen sind, sehen jetzt auch nicht so aus: selbst eingetragener Loot trägt ein ≥ und die Abdeckung daneben. Die Warnzeile darunter hängt am Datenstand statt an einem Wegklick-Knopf. Steigt die Abdeckung über 90 Prozent, verschwindet sie von selbst, und es steht immer nur die stärkste Warnung da. Eine Warnung, die immer steht, ist keine Warnung mehr.",
+   "Umgeschaltet wird an drei Stellen: über den Hinweis auf der Seite, über eine Pille im kompakten Kopf zurück, und in ⚙ Optionen. Die Wahl liegt in der Konfiguration, nicht nur im Browser, gilt also für die Installation und nicht für ein Browserprofil.",
+   "Dazu zwei Kleinigkeiten aus derselben Meldung: der gelbe Alpha-Balken der Missionsseite ist weg (der der Blutspur bleibt, die ist wirklich noch in Erprobung), und Canary merkt sich jetzt je Ansicht, wohin du gescrollt hattest. Wer von der Beute-Seite zurückkommt, landet wieder dort, wo er war."
+  ],
+  "en": [
+   "NEW: 📐 A COMPACT HEADER FOR THE MISSION PAGE, switchable, with the classic view staying the default for now. Requested by Nirahse: „the interactive list is too far down and I have to scroll every time to reach the loot button when I come back from the loot page.“",
+   "Measured before rebuilding, and the result was worse than the report: the header was 1,151 pixels tall and the first loot button sat at 1,268. On a Full HD screen that puts it 340 pixels BELOW the fold, so it was never reachable without scrolling, not just sometimes. Of those 1,151 pixels, 123 were pure gaps between eight blocks and 350 were notices and explanatory text, so not data at all.",
+   "The new header follows Nirahse's own proposal: instead of three boxes with three borders, one box with three sections along different dimensions. EARNED over time, SOURCES where it came from, RUNS what produced it. Section names sit beside the tiles rather than above them, which alone saves three lines. Tiles have no border of their own; separation comes from hairlines and a shared column grid. And there is exactly one large number: hierarchy comes from making everything else small, not from enlarging the important one.",
+   "Measured afterwards, same screen, quiet state: the first loot button sits at 899 instead of 1,292 pixels, visible instead of 355 pixels below. The per-character table is folded away, but its row still shows the ranking so it is not an empty handle.",
+   "Numbers that are not measured no longer look like they are: loot you entered yourself carries a ≥ and its coverage next to it. The warning line below hangs on the data, not on a dismiss button. Once coverage rises above 90 percent it disappears by itself, and only the strongest warning is ever shown. A warning that is always there is no longer a warning.",
+   "Switching happens in three places: the hint on the page, a pill in the compact header to go back, and ⚙ Options. The choice lives in the configuration rather than only in the browser, so it applies to the installation and not to one browser profile.",
+   "Two smaller things from the same report: the yellow alpha bar is gone from the mission page (the blood trail keeps its own, that one really is still experimental), and Canary now remembers where you had scrolled in each view. Come back from the loot page and you land where you were."
+  ]
+ },
+ {
   "v": "2.89.0",
   "d": "2026-09-06",
   "de": [
