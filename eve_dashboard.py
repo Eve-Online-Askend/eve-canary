@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.87.0"
+VERSION = "2.88.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -11448,6 +11448,30 @@ def state_info():
             "alerts": alerts.list()}
 
 
+def ist_einsatz(mission, site, dmg_out, bounty, logi_out, logi_in):
+    """Ist diese Zeile ein echter Einsatz, oder nur Belt-Ratten?
+
+    Es gibt diese Funktion, weil die Schwellen an zwei Stellen standen
+    und die zweite sie schlicht vergass. Die Kampf-Bilanz las die
+    Rohtabelle, die Liste direkt darunter filterte. Auf demselben
+    Bildschirm standen damit zwei Wahrheiten (06.09.2026).
+
+    Gemessen an 119 echten Zeilen: 68 davon waren Belt-Ratten. Sie
+    trugen 1,24 von 76,9 Millionen Kopfgeld bei, also 1,6 Prozent,
+    hielten aber 83 Prozent der gezaehlten Zeit. Der Median einer Zeile
+    fiel dadurch von 14,9 auf 18,4 Minuten, der Schnitt von 28,5 auf
+    60,7.
+
+    Ein Logi-Einsatz hat naturgemaess weder Schaden noch Bounty, deshalb
+    zaehlt auch geleistete oder empfangene Reparatur. Ein erkannter Ort
+    (Abyss) zaehlt wie eine erkannte Mission: dort gibt es gar keine
+    Bounty."""
+    return bool(mission or site
+                or (dmg_out or 0) >= 5000
+                or (bounty or 0) >= 100000
+                or (logi_out or 0) or (logi_in or 0))
+
+
 def query_mission_history(limit=40, nur_mids=None):
     """Einzelne Missionen (aus den Gamelogs, an Undock-Grenzen getrennt), neueste
     zuerst, inkl. vom Nutzer eingefügtem Loot.
@@ -11580,8 +11604,7 @@ def query_mission_history(limit=40, nur_mids=None):
         # Ein erkannter Ort (Abyss) zaehlt wie eine erkannte Mission: dort gibt
         # es gar keine Bounty, der Einsatz waere sonst nur ueber den Schaden
         # drin und bei einem kurzen Lauf auch der zu klein.
-        if (not mission and not site and (do or 0) < 5000 and (bounty or 0) < 100000
-                and not (lo or 0) and not (li or 0)):
+        if not ist_einsatz(mission, site, do, bounty, lo, li):
             continue
         # NPC-Funk: bis zu 3 aussagekräftige Zeilen als Story-Schnipsel
         dlines = [d.strip() for d in re.split(r"(?<=[.!?])\s+", dialog or "") if len(d.strip()) > 12][:3]
@@ -13710,7 +13733,8 @@ def query_pve_bilanz(chars=None, tage=30):
     with DB_LOCK:
         rows = DB.execute(
             "SELECT char, start_ts, end_ts, bounty, loot_isk, kills, dmg_out, "
-            "dmg_in, system, label, mid FROM missions "
+            "dmg_in, system, label, mid, enemies, dialog, loot_text, "
+            "logi_out, logi_in FROM missions "
             "WHERE end_ts >= start_ts ORDER BY start_ts").fetchall()
         jrows = DB.execute(
             "SELECT char, ts, ref_type, amount FROM journal").fetchall()
@@ -13725,10 +13749,26 @@ def query_pve_bilanz(chars=None, tage=30):
             "sek": 0.0, "reward": 0.0, "bonus": 0.0, "j_bounty": 0.0,
             "abyss": 0, "best": None})
 
-    for (char, st, et, bounty, loot, kills, do, di, sysn, label, mid) in rows:
+    for (char, st, et, bounty, loot, kills, do, di, sysn, label, mid,
+         ej, dialog, loot_text, lo, li) in rows:
         if not char or (nur and char not in nur):
             continue
         if seit and (st or 0) < seit:
+            continue
+        # DIESELBE Regel wie in der Liste darunter, siehe ist_einsatz.
+        # Ohne sie zaehlt die Bilanz Belt-Ratten mit: an 119 echten
+        # Zeilen waren das 68 Stueck mit 1,6 Prozent des Kopfgelds, aber
+        # 83 Prozent der Zeit, und die ISK-je-Stunde-Spalte teilte
+        # dadurch durch Leerlauf.
+        try:
+            gg = json.loads(ej or "[]")
+        except Exception:
+            gg = []
+        _mission = (({"selbst": True} if (label or "").strip() else None)
+                    or beste_mission(
+                        detect_mission(gg, dialog or "", loot_namen(loot_text)),
+                        fingerprint_mission(gg)))
+        if not ist_einsatz(_mission, detect_site(gg), do, bounty, lo, li):
             continue
         e = eimer(char)
         dauer = max(0.0, (et or 0) - (st or 0))
@@ -13800,7 +13840,13 @@ def query_pve_bilanz(chars=None, tage=30):
                 "lang": e["lang"], "lang_sek": int(e["lang_sek"]),
                 "best": b}
 
-    liste = sorted((fertig(e) for e in je.values()),
+    # Charaktere OHNE Einsatz fallen aus der Tabelle. Sie entstehen, weil
+    # das Journal auch Kopfgeld von Belt-Ratten kennt: ein reiner Miner
+    # stuende sonst mit lauter Nullen da, als haette er PvE gemacht und
+    # nichts verdient. Sein Journal-Kopfgeld bleibt trotzdem im
+    # Gegencheck, sonst stimmt die Luecke nicht mehr.
+    alle = [fertig(e) for e in je.values()]
+    liste = sorted((x for x in alle if x["runs"]),
                    key=lambda x: -x["mit_loot_isk"])
     summe = {k: sum(x[k] for x in liste)
              for k in ("runs", "abyss", "bounty", "loot", "mit_loot", "kills",
@@ -13812,6 +13858,9 @@ def query_pve_bilanz(chars=None, tage=30):
     summe["mit_loot_h"] = round(summe["mit_loot_isk"] / std) if std else 0
     # Die Luecke zwischen beiden Kopfgeld-Messungen. Positiv heisst: das
     # Journal kennt mehr, das sind Belt-Ratten ausserhalb erkannter Einsaetze.
+    # Der Gegencheck zaehlt ALLE Buchungen, auch die der reinen Miner:
+    # genau deren Belt-Ratten sind ja die Erklaerung fuer die Luecke.
+    summe["j_bounty"] = sum(x["j_bounty"] for x in alle)
     summe["bounty_luecke"] = summe["j_bounty"] - summe["bounty"]
     summe["belegt_run"] = (round(summe["belegt"] / summe["runs"])
                            if summe["runs"] else 0)

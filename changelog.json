@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.88.0",
+  "d": "2026-09-06",
+  "de": [
+   "BEHOBEN: die gestern eingeführte Kampf-Bilanz zählte Belt-Ratten mit. Sie las die Rohtabelle, während die Missionsliste direkt darunter längst filtert. Auf demselben Bildschirm standen damit zwei Wahrheiten, und das ist genau die Sorte Fehler, die diese Bilanz eigentlich sichtbar machen soll.",
+   "Wie groß der Unterschied ist, an 119 echten Zeilen gemessen: 68 davon waren Belt-Ratten. Sie trugen 1,24 von 76,9 Millionen Kopfgeld bei, also 1,6 Prozent, hielten aber 83 Prozent der gezählten Zeit. Es waren Mining-Sitzungen über Stunden mit ein paar tausend ISK Flotten-Kopfgeld, ohne eigenen Schaden, teils doppelt bei zwei multiboxenden Charakteren. Nach dem Filter: Median einer Zeile 14,9 statt 18,4 Minuten, überlange Zeilen 6 statt 41, und die Stundenrate eines Charakters stieg von 1,6 auf 4,65 Millionen ISK, weil sie nicht mehr durch Leerlauf teilt.",
+   "Damit das nicht wieder auseinanderläuft, steht die Regel jetzt an genau einer Stelle und wird von Liste und Bilanz benutzt. Die Prüfung dazu vergleicht beide Zahlen gegeneinander, nicht nur jede für sich.",
+   "Charaktere ganz ohne Einsatz fallen aus der Tabelle. Ein reiner Miner stand darin sonst mit lauter Nullen, als hätte er PvE gemacht und nichts verdient. Sein Kopfgeld aus dem Wallet-Journal bleibt trotzdem im Gegencheck, denn genau seine Belt-Ratten sind ja die Erklärung für die Lücke zwischen beiden Messungen."
+  ],
+  "en": [
+   "FIXED: the combat balance introduced yesterday counted belt ratting. It read the raw table while the mission list right below it has been filtering all along. Two truths on the same screen, which is exactly the kind of thing this balance is meant to expose.",
+   "How big the difference is, measured on 119 real rows: 68 of them were belt ratting. They contributed 1.24 of 76.9 million in bounty, that is 1.6 percent, yet held 83 percent of the counted time. They were hours-long mining sessions with a few thousand ISK of fleet bounty, no damage of their own, some of them duplicated across two multiboxed characters. After the filter: median row 14.9 instead of 18.4 minutes, overlong rows 6 instead of 41, and one character's hourly rate rose from 1.6 to 4.65 million ISK because it no longer divides by idle time.",
+   "To stop that drifting apart again, the rule now lives in exactly one place and is used by both the list and the balance. The test compares the two figures against each other, not just each on its own.",
+   "Characters with no runs at all drop out of the table. A pure miner used to sit there with nothing but zeroes, as if he had done PvE and earned nothing. His bounty from the wallet journal stays in the cross-check, because his belt ratting is precisely the explanation for the gap between the two measurements."
+  ]
+ },
+ {
   "v": "2.87.0",
   "d": "2026-09-06",
   "de": [
