@@ -1,5 +1,23 @@
 [
  {
+  "v": "2.87.0",
+  "d": "2026-09-06",
+  "de": [
+   "NEU: ⚔ KAMPF-BILANZ. Die Miner haben ihre Erz-Auswertung längst, die Kämpfer hatten nur Einzelzeilen. Jetzt steht über der Missionsliste eine Bilanz je Charakter: Kopfgeld, Missionsbelohnung und Zeitbonus, Loot, erledigte Gegner, Zeit, ISK je Einsatz und ISK je Stunde. Die Daten lagen alle schon da, es fehlte die Zusammenfassung.",
+   "Zwei Zahlen stehen dort bewusst doppelt, und das ist der Kern. „Belegte ISK“ sind Kopfgeld aus den Gamelogs plus Belohnung und Zeitbonus aus dem Wallet-Journal, alle drei gemessen. „Mit Loot“ rechnet den selbst eingetragenen Loot dazu. EVE protokolliert das Plündern nicht, deshalb steht die Abdeckung immer daneben: im Testbestand war Loot in 25 von 119 Läufen eingetragen, war aber mit 419,8 Millionen die größte Zahl gegen 76,9 Millionen Kopfgeld. Eine einzelne Summe wäre hier eine Lüge mit drei Nachkommastellen.",
+   "Dasselbe gilt für die Zeit. Median 18,4 Minuten je Einsatz, Schnitt 60,7: 41 von 119 Zeilen liefen länger als eine Stunde und hielten 83 Prozent der gezählten Zeit, die längste 359 Minuten für 50.832 ISK und 11 Kills. Das sind Sitzungen, die nie sauber abgeschlossen wurden, keine Kämpfe. Deshalb steht ISK je Einsatz daneben, die hängt nicht an der Dauer, und ein Hinweis erscheint, sobald die Verzerrung groß wird.",
+   "Nebenbei ein Gegencheck: das Wallet-Journal und die Einsatzzeilen messen Kopfgeld unabhängig voneinander. Weichen sie ab, steht dort warum. Kennt das Journal mehr, sind es Belt-Ratten außerhalb erkannter Einsätze. Kennen die Einsätze mehr, reicht das Journal nicht so weit zurück wie deine Gamelogs.",
+   "NEU: 🤝 GEMEINSAM GEKÄMPFT auf der Homepage, freiwillig und standardmäßig aus. Genau derselbe Weg wie bei den Erz-Erträgen: es wird NICHTS gesendet. Ist die Option an, holt Canary einmal im Monat eine vorbereitete leere Datei, deren Name die Größenklasse trägt. Kein Wert, keine Kennung, keine Namen. Gemeldet werden die belegten Einnahmen und die Abschusszahl, der selbst eingetragene Loot bleibt draußen: sonst hinge die Gemeinschaftszahl an der Eintragedisziplin statt am Kämpfen."
+  ],
+  "en": [
+   "NEW: ⚔ COMBAT BALANCE. Miners have had their ore analysis for ages, fighters only had individual rows. Now a balance per character sits above the mission list: bounty, mission reward and time bonus, loot, enemies taken down, time, ISK per run and ISK per hour. The data was all there already, the summary was missing.",
+   "Two figures are deliberately shown twice, and that is the heart of it. „Measured ISK“ is bounty from the game logs plus reward and time bonus from the wallet journal, all three measured. „With loot“ adds the loot you entered yourself. EVE does not log looting, so the coverage always sits next to it: in the test data loot was entered in 25 of 119 runs, yet at 419.8 million it was the largest figure against 76.9 million of bounty. A single total would be a lie with three decimal places.",
+   "The same goes for time. Median 18.4 minutes per run, average 60.7: 41 of 119 rows ran longer than an hour and held 83 percent of the counted time, the longest 359 minutes for 50,832 ISK and 11 kills. Those are sessions that never got closed properly, not fights. That is why ISK per run sits next to it, which does not depend on the duration, and a note appears as soon as the distortion gets large.",
+   "A cross-check comes along: the wallet journal and the run rows measure bounty independently. When they differ, the card says why. If the journal knows more, that is belt ratting outside recognised runs. If the runs know more, the journal does not reach as far back as your game logs.",
+   "NEW: 🤝 FOUGHT TOGETHER on the homepage, voluntary and off by default. Exactly the same route as the ore yields: NOTHING is sent. With the option on, Canary fetches one prepared empty file per month whose name carries the size band. No value, no identifier, no names. Reported are the measured earnings and the kill count; loot you entered yourself stays out, otherwise the community figure would depend on bookkeeping rather than fighting."
+  ]
+ },
+ {
   "v": "2.86.0",
   "d": "2026-09-06",
   "de": [

@@ -454,6 +454,17 @@ header.eng .missionCta{margin-left:auto}
   <div id="mined"></div>
 </section>
 
+<!-- Dieselbe Mechanik fuer die Kaempfer. Blendet sich ebenso aus, solange
+     niemand etwas freigegeben hat. -->
+<section id="foughtWrap" hidden>
+  <h2 data-i18n="h.fought">Fought together</h2>
+  <p data-i18n="fought.intro">The same for combat: pilots who switched it on report once a month
+  which size band their measured combat income and their kill count fell into. Measured means bounty
+  from the game logs plus mission reward and time bonus from the wallet journal. Loot entered by hand
+  stays out, otherwise the figure would depend on bookkeeping rather than fighting.</p>
+  <div id="fought"></div>
+</section>
+
 <h2 data-i18n="h.privacy">Your data stays with you</h2>
 <ul>
   <li data-i18n="pv1">Canary runs entirely on your machine at <code>localhost:8765</code>.
@@ -635,6 +646,8 @@ const LANGS = {
     'cmp.combat': 'Kampf und DPS',
     'cmp.free': 'Kostenlos',
     'compare.note': 'Kategorien, keine konkreten Produkte. Ein „~“ heißt teilweise oder nur bei manchen.',
+    'h.fought': 'Gemeinsam gekämpft',
+    'fought.intro': 'Dasselbe für die Kämpfer: Wer es einschaltet, meldet einmal im Monat, in welche Größenklasse seine belegten Kampf-Einnahmen und seine Abschusszahl fielen. Belegt heißt Kopfgeld aus den Gamelogs plus Missionsbelohnung und Zeitbonus aus dem Wallet-Journal. Selbst eingetragener Loot bleibt draußen, sonst hinge die Zahl an der Eintragedisziplin statt am Kämpfen.',
     'h.mined': 'Gemeinsam gefördert',
     'mined.intro': 'Canary-Piloten, die in den Optionen die Freigabe eingeschaltet haben, melden einmal im Monat, in welche Größenklasse ihr Ertrag fiel. Keine genauen Zahlen, keine Namen, nichts darüber, wer oder wo. Die Summen unten zählen von jeder Klasse nur die Untergrenze, die echte Menge liegt also höher, nie niedriger.',
     'h.privacy': 'Deine Daten bleiben bei dir',
@@ -738,6 +751,8 @@ const LANGS = {
     'cmp.combat': 'Combat et DPS',
     'cmp.free': 'Gratuit',
     'compare.note': 'Des catégories, pas des produits précis. Un « ~ » signifie en partie ou seulement chez certains.',
+    'h.fought': 'Combattu ensemble',
+    'fought.intro': 'La même chose pour les combattants : qui l’active signale une fois par mois dans quelle tranche se situaient ses revenus de combat vérifiés et son nombre de victimes. Vérifié signifie les primes des journaux de jeu plus la récompense de mission et le bonus de temps du journal de portefeuille. Le butin saisi à la main reste dehors, sinon le chiffre dépendrait de la tenue des comptes plutôt que des combats.',
     'h.mined': 'Extrait ensemble',
     'mined.intro': 'Les pilotes Canary qui ont activé le partage dans les options signalent une fois par mois dans quelle tranche se situait leur récolte. Aucun chiffre exact, aucun nom, rien sur qui ni où. Les totaux ci-dessous ne comptent que la borne inférieure de chaque tranche, la quantité réelle est donc supérieure, jamais inférieure.',
     'h.privacy': 'Vos données restent chez vous',
@@ -841,6 +856,8 @@ const LANGS = {
     'cmp.combat': 'Бой и DPS',
     'cmp.free': 'Бесплатно',
     'compare.note': 'Категории, а не конкретные продукты. «~» означает частично или только у некоторых.',
+    'h.fought': 'Сражались сообща',
+    'fought.intro': 'То же самое для бойцов: кто включит, раз в месяц сообщает, в какой диапазон попали подтверждённый боевой доход и число уничтоженных противников. Подтверждённый значит награда за головы из игровых логов плюс награда за миссию и бонус за время из журнала кошелька. Введённый вручную лут остаётся за скобками, иначе число зависело бы от аккуратности записей, а не от боёв.',
     'h.mined': 'Добыто сообща',
     'mined.intro': 'Пилоты Canary, включившие обмен в настройках, раз в месяц сообщают, в какой диапазон попала их добыча. Ни точных чисел, ни имён, ничего о том, кто и где. Итоги ниже считают только нижнюю границу каждого диапазона, поэтому реальный объём выше, а не ниже.',
     'h.privacy': 'Ваши данные остаются у вас',
@@ -1044,6 +1061,53 @@ function minedHtml() {
         + `</div>`
       : '')
     + `<p class="minedfoot">${L.foot(melder)}</p>`;
+}
+function foughtHtml() {
+  if (!ST || !ST.kampf) return '';
+  const mon = Object.keys(ST.kampf).sort();
+  if (!mon.length) return '';
+  let isk = 0, kills = 0, melder = 0;
+  mon.forEach(k => { isk += ST.kampf[k].isk || 0; kills += ST.kampf[k].kills || 0;
+                     melder = Math.max(melder, ST.kampf[k].melder || 0); });
+  if (!isk) return '';
+  const L = ({
+    de: { isk: 'mindestens im Kampf verdient', kills: 'Gegner mindestens erledigt',
+          mon: 'Nach Monat', wer: 'Melder',
+          foot: n => `Freigegeben von bis zu ${n} Installationen. Gezählt wird die Untergrenze jeder Größenklasse, der tatsächliche Wert liegt also höher. Selbst eingetragener Loot ist NICHT enthalten.` },
+    fr: { isk: 'gagné au minimum en combat', kills: 'ennemis éliminés au minimum',
+          mon: 'Par mois', wer: 'sources',
+          foot: n => `Partagé par jusqu’à ${n} installations. Seule la borne inférieure de chaque tranche est comptée, la valeur réelle est donc supérieure. Le butin saisi à la main n’est PAS inclus.` },
+    ru: { isk: 'заработано в боях как минимум', kills: 'противников уничтожено как минимум',
+          mon: 'По месяцам', wer: 'источников',
+          foot: n => `Поделились до ${n} установок. Считается нижняя граница каждого диапазона, поэтому реальное значение выше. Введённый вручную лут НЕ учитывается.` },
+    en: { isk: 'earned in combat at least', kills: 'enemies taken down at least',
+          mon: 'By month', wer: 'sources',
+          foot: n => `Shared by up to ${n} installations. Only the lower bound of each band is counted, so the real figure is higher. Loot entered by hand is NOT included.` }
+  })[curLang] || {};
+  const max = Math.max(...mon.map(k => ST.kampf[k].isk || 0), 1);
+  return `<div class="mined">`
+    + `<div class="minedbox"><b>${kurz(isk, curLang)}</b><span class="u">ISK</span>`
+    +   `<span class="l">${L.isk}</span></div>`
+    + `<div class="minedbox"><b>${kurz(kills, curLang)}</b><span class="u"></span>`
+    +   `<span class="l">${L.kills}</span></div>`
+    + `</div>`
+    + (mon.length > 1
+      ? `<div class="minedmon"><div class="dltop">${L.mon}</div>`
+        + mon.map(k => `<div class="row"><span class="m">${k}</span>`
+          + `<span class="barw"><span class="bar" style="width:${Math.max(3, Math.round(100 * (ST.kampf[k].isk || 0) / max))}%"></span></span>`
+          + `<span class="v">${kurz(ST.kampf[k].isk || 0, curLang)} ISK`
+          + (ST.kampf[k].melder ? `<small>${ST.kampf[k].melder} ${L.wer}</small>` : '')
+          + `</span></div>`).join('')
+        + `</div>`
+      : '')
+    + `<p class="minedfoot">${L.foot(melder)}</p>`;
+}
+function renderFought() {
+  const box = document.getElementById('fought'), wrap = document.getElementById('foughtWrap');
+  if (!box || !wrap) return;
+  const html = foughtHtml();
+  box.innerHTML = html;
+  wrap.hidden = !html;
 }
 function renderMined() {
   const box = document.getElementById('mined'), wrap = document.getElementById('minedWrap');
@@ -1292,6 +1356,7 @@ function applyLang(code) {
   renderJourney();     // Meilenstein-Zeitachse in der neuen Sprache
   renderThanks();      // Danke-Bereich in der neuen Sprache
   renderMined();       // Gemeinsame Foerdermenge in der neuen Sprache
+  renderFought();      // und dasselbe fuer die Kampfzahlen
 }
 
 // Rabattcode mit einem Klick in die Zwischenablage.
@@ -1459,6 +1524,7 @@ applyLang(start);
     }
     renderDlChart();
     renderMined();
+    renderFought();
   } catch (e) {}
   try {
     // Cache-Buster: verhindert, dass ein kurz zwischengespeicherter 404 (direkt

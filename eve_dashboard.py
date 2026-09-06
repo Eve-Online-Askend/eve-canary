@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.86.0"
+VERSION = "2.87.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1731,6 +1731,7 @@ def load_config():
            "auto_update": False,
            "clip_watch": False, "roles": {}, "log_texts": {},
            "count_me": True, "ping": {}, "share_ore": False,
+           "share_pve": False,
            "update_url": "https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main"}
     if CONFIG_PATH.exists():
         try:
@@ -2871,6 +2872,19 @@ ORE_ISK_BUCKETS = [10_000_000, 30_000_000, 100_000_000, 300_000_000,
                    30_000_000_000, 100_000_000_000]
 
 
+# Dasselbe fuer die freiwillige Kampf-Statistik (share_pve). Gemeldet wird
+# die BELEGTE Summe: Kopfgeld aus den Logs plus Missionsbelohnung und
+# Zeitbonus aus dem Wallet-Journal. Der eingetragene Loot bleibt bewusst
+# draussen, sonst haengt die Gemeinschaftszahl an der Eintragedisziplin.
+# Am echten Bestand am 06.09.2026 gemessen: Loot stand in 25 von 119
+# Laeufen, war aber die groesste Zahl. Eine Statistik daraus waere ein
+# Zerrbild.
+PVE_ISK_BUCKETS = [10_000_000, 30_000_000, 100_000_000, 300_000_000,
+                   1_000_000_000, 3_000_000_000, 10_000_000_000,
+                   30_000_000_000, 100_000_000_000]
+PVE_KILL_BUCKETS = [100, 300, 1_000, 3_000, 10_000, 30_000, 100_000]
+
+
 def ore_bucket(wert, klassen):
     """Groesste Klasse, die 'wert' noch erreicht, sonst None (zu wenig)."""
     treffer = None
@@ -2915,6 +2929,75 @@ def ore_month_totals(stamp):
         isk += i
         m3 += v
     return m3, isk
+
+
+def pve_month_totals(stamp):
+    """Belegte Kampf-ISK und Kills des Monats ('2026-08').
+
+    Belegt heisst: Kopfgeld aus den Einsatzzeilen, dazu
+    Missionsbelohnung und Zeitbonus aus dem Wallet-Journal. Alles drei
+    gemessen. Der von Hand eingetragene Loot bleibt draussen, siehe
+    PVE_ISK_BUCKETS."""
+    with DB_LOCK:
+        b, k = DB.execute(
+            "SELECT COALESCE(SUM(bounty),0), COALESCE(SUM(kills),0) "
+            "FROM missions WHERE strftime('%Y-%m', start_ts, "
+            "'unixepoch')=?", (stamp,)).fetchone()
+        j = DB.execute(
+            "SELECT COALESCE(SUM(amount),0) FROM journal "
+            "WHERE ref_type LIKE 'agent_mission%' "
+            "AND strftime('%Y-%m', ts, 'unixepoch')=?",
+            (stamp,)).fetchone()[0]
+    return float(b or 0) + float(j or 0), int(k or 0)
+
+
+def share_pve_ping():
+    """Freiwillige Kampf-Statistik (Opt-in, Standard AUS).
+
+    Wunsch von Askend (06.09.2026), und zwar ausdruecklich ueber
+    denselben Weg wie beim Erz: es wird NICHTS gesendet. Canary holt
+    einmal im Monat eine vorbereitete leere Datei, deren Name die
+    Groessenklasse traegt. Kein Wert, keine Kennung, keine Namen."""
+    if not CONFIG.get("share_pve", False):
+        return
+    now = time.time()
+    vor = time.gmtime(now - 15 * 86400)
+    # Am Ersten eines Monats ist der Vormonat oft noch nicht durch die
+    # Zeitzonen gelaufen, deshalb dann einen Monat weiter zurueck.
+    if time.gmtime(now).tm_mday >= 2:
+        stamp = time.strftime("%Y-%m", vor)
+    else:
+        stamp = time.strftime("%Y-%m", time.gmtime(now - 40 * 86400))
+    if (CONFIG.get("ping") or {}).get("pve") == stamp:
+        return
+    try:
+        isk, kills = pve_month_totals(stamp)
+    except Exception as e:
+        log_error("CN-UPD-01", "share_pve_ping(db)", e)
+        return
+    marken = []
+    b = ore_bucket(isk, PVE_ISK_BUCKETS)
+    if b:
+        marken.append(f"pve-{stamp}-isk-{b}.json")
+    b = ore_bucket(kills, PVE_KILL_BUCKETS)
+    if b:
+        marken.append(f"pve-{stamp}-kills-{b}.json")
+    for name in marken:
+        try:
+            fetch_url(f"https://github.com/{PING_REPO}/releases/download/"
+                      f"stats-{stamp}/{name}", timeout=20)
+        except urllib.error.HTTPError as e:
+            if e.code != 404:
+                log_error("CN-UPD-01", "share_pve_ping", e)
+                return
+        except Exception as e:
+            log_error("CN-UPD-01", "share_pve_ping", e)
+            return
+    with CONFIG_LOCK:
+        p = dict(CONFIG.get("ping") or {})
+        p["pve"] = stamp
+        CONFIG["ping"] = p
+        save_config()
 
 
 def share_ore_ping():
@@ -4349,6 +4432,7 @@ class Ingest(threading.Thread):
                 auto_update_pruefen()
                 count_ping()
                 share_ore_ping()
+                share_pve_ping()
                 refresh_gank_list()
             except Exception as e:
                 log_error("CN-LOG-05", "Ingest.run", e)
@@ -11325,6 +11409,7 @@ def state_info():
             "eigenbeschuss_warnen": bool(CONFIG.get("eigenbeschuss_warnen", False)),
             "char_versteckt": list(CONFIG.get("char_versteckt") or []),
             "share_ore": bool(CONFIG.get("share_ore", False)),
+            "share_pve": bool(CONFIG.get("share_pve", False)),
             "autostart": AUTOSTART_OK and autostart_path().exists(),
             # Was diese Plattform kann — die Oberflaeche blendet den Rest aus,
             # damit auf Linux keine toten Schalter stehen.
@@ -13587,6 +13672,157 @@ def abyss_filament_preise(schluessel):
     return out
 
 
+def query_pve_bilanz(chars=None, tage=30):
+    """Was das Kaempfen eingebracht hat, je Charakter.
+
+    Wunsch von Askend (06.09.2026): "wir erfassen ja die Einkuenfte von den
+    Minern mit dem Erzen, warum nicht auch die Mission Leute mit Abyss und
+    PvE". Die Daten lagen laengst da, es fehlte die Zusammenfassung: 118
+    Einsaetze mit Bounty in 90, Kills in 90, Schaden in 94.
+
+    DREI Quellen, die verschieden viel wert sind, und genau das muss die
+    Anzeige auseinanderhalten:
+
+      Bounty      steht als eigene Zeile im Gamelog. Gemessen.
+      Belohnung   Missionslohn und Zeitbonus aus dem Wallet-Journal ueber die
+      + Zeitbonus EVE-Anmeldung. Ebenfalls gemessen, kommt aber bis zu eine
+                  Stunde spaeter.
+      Loot        traegt der Spieler selbst ein, EVE protokolliert das
+                  Pluendern nicht. Im echten Bestand am 06.09.2026 war er in
+                  24 von 118 Laeufen eingetragen, also einem Fuenftel, WAR
+                  aber mit 414,7 Mio die groesste Zahl (gegen 76,9 Mio
+                  Bounty). Die unvollstaendigste Zahl ist also die
+                  gewichtigste, und der Unterschied zwischen 7,19 Mio ISK/h
+                  und 7.833 ISK/h zwischen zwei Charakteren war fast reine
+                  Eintragedisziplin.
+
+    Deshalb gibt es die ISK-Zeile ZWEIMAL: einmal nur aus den belegten
+    Quellen, einmal mit Loot, und die Abdeckung steht daneben.
+
+    Das Journal liefert nebenbei einen Gegencheck: es kennt 82,8 Mio
+    Kopfgeld, die Einsatzzeilen nur 76,9. Die Differenz sind Belt-Ratten
+    ausserhalb erkannter Einsaetze. Kein Fehler, sondern eine zweite
+    Messung."""
+    if isinstance(chars, str):
+        chars = [chars]
+    seit = (time.time() - tage * 86400) if tage else 0
+    nur = set(chars) if chars else None
+    with DB_LOCK:
+        rows = DB.execute(
+            "SELECT char, start_ts, end_ts, bounty, loot_isk, kills, dmg_out, "
+            "dmg_in, system, label, mid FROM missions "
+            "WHERE end_ts >= start_ts ORDER BY start_ts").fetchall()
+        jrows = DB.execute(
+            "SELECT char, ts, ref_type, amount FROM journal").fetchall()
+
+    je = {}
+
+    def eimer(name):
+        return je.setdefault(name, {
+            "char": name, "runs": 0, "bounty": 0.0, "loot": 0.0,
+            "lang": 0, "lang_sek": 0.0,
+            "mit_loot": 0, "kills": 0, "dmg_out": 0.0, "dmg_in": 0.0,
+            "sek": 0.0, "reward": 0.0, "bonus": 0.0, "j_bounty": 0.0,
+            "abyss": 0, "best": None})
+
+    for (char, st, et, bounty, loot, kills, do, di, sysn, label, mid) in rows:
+        if not char or (nur and char not in nur):
+            continue
+        if seit and (st or 0) < seit:
+            continue
+        e = eimer(char)
+        dauer = max(0.0, (et or 0) - (st or 0))
+        e["runs"] += 1
+        e["bounty"] += bounty or 0
+        e["loot"] += loot or 0
+        e["mit_loot"] += 1 if (loot or 0) > 0 else 0
+        e["kills"] += kills or 0
+        e["dmg_out"] += do or 0
+        e["dmg_in"] += di or 0
+        e["sek"] += dauer
+        # Zeilen, die laenger als eine Stunde laufen, sind fast immer
+        # Sitzungen, die nie sauber abgeschlossen wurden, keine Kaempfe.
+        # Am echten Bestand am 06.09.2026 gemessen: Median 18,4 Minuten,
+        # Schnitt 60,7. 34 Prozent der Zeilen waren laenger als eine
+        # Stunde, und in ihnen steckten 99,6 der 120,5 Gesamtstunden.
+        # Die laengste: 359 Minuten fuer 50.832 ISK Kopfgeld und 11
+        # Kills. Wer ISK je Stunde daraus rechnet, teilt durch Leerlauf.
+        if dauer > 3600:
+            e["lang"] = e.get("lang", 0) + 1
+            e["lang_sek"] = e.get("lang_sek", 0.0) + dauer
+        if (sysn or "") == ABYSS_ORT:
+            e["abyss"] += 1
+        # Beste Runde: nach ISK je Minute, wie im Abyss-Bereich. Ein langer
+        # Lauf mit viel Beute ist nicht automatisch der bessere.
+        wert = (bounty or 0) + (loot or 0)
+        if dauer >= 60 and wert > 0:
+            pm = wert / (dauer / 60.0)
+            if not e["best"] or pm > e["best"]["isk_min"]:
+                e["best"] = {"mid": mid, "start": int(st or 0),
+                             "min": round(dauer / 60.0, 1), "sek": int(dauer),
+                             "isk": round(wert), "isk_min": pm,
+                             "label": label, "system": sysn}
+
+    for (char, ts, ref, amount) in jrows:
+        if not char or (nur and char not in nur):
+            continue
+        if seit and (ts or 0) < seit:
+            continue
+        e = eimer(char)
+        if ref == "agent_mission_reward":
+            e["reward"] += amount or 0
+        elif ref == "agent_mission_time_bonus_reward":
+            e["bonus"] += amount or 0
+        elif ref in ("bounty_prizes", "bounty_prize"):
+            e["j_bounty"] += amount or 0
+
+    def fertig(e):
+        std = e["sek"] / 3600.0
+        belegt = e["bounty"] + e["reward"] + e["bonus"]
+        mit = belegt + e["loot"]
+        b = e["best"]
+        if b:
+            b = dict(b, isk_min=round(b["isk_min"]))
+        return {"char": e["char"], "runs": e["runs"], "abyss": e["abyss"],
+                "bounty": round(e["bounty"]), "loot": round(e["loot"]),
+                "mit_loot": e["mit_loot"], "kills": e["kills"],
+                "dmg_out": round(e["dmg_out"]), "dmg_in": round(e["dmg_in"]),
+                "sek": int(e["sek"]),
+                "reward": round(e["reward"]), "bonus": round(e["bonus"]),
+                "j_bounty": round(e["j_bounty"]),
+                "belegt": round(belegt), "mit_loot_isk": round(mit),
+                "belegt_h": round(belegt / std) if std else 0,
+                "mit_loot_h": round(mit / std) if std else 0,
+                # Je Einsatz statt je Stunde. Diese Zahl haengt nicht an
+                # der Dauer und ist deshalb die robustere von beiden.
+                "belegt_run": round(belegt / e["runs"]) if e["runs"] else 0,
+                "mit_loot_run": round(mit / e["runs"]) if e["runs"] else 0,
+                "lang": e["lang"], "lang_sek": int(e["lang_sek"]),
+                "best": b}
+
+    liste = sorted((fertig(e) for e in je.values()),
+                   key=lambda x: -x["mit_loot_isk"])
+    summe = {k: sum(x[k] for x in liste)
+             for k in ("runs", "abyss", "bounty", "loot", "mit_loot", "kills",
+                       "dmg_out", "dmg_in", "sek", "reward", "bonus",
+                       "j_bounty", "belegt", "mit_loot_isk", "lang",
+                       "lang_sek")}
+    std = summe["sek"] / 3600.0
+    summe["belegt_h"] = round(summe["belegt"] / std) if std else 0
+    summe["mit_loot_h"] = round(summe["mit_loot_isk"] / std) if std else 0
+    # Die Luecke zwischen beiden Kopfgeld-Messungen. Positiv heisst: das
+    # Journal kennt mehr, das sind Belt-Ratten ausserhalb erkannter Einsaetze.
+    summe["bounty_luecke"] = summe["j_bounty"] - summe["bounty"]
+    summe["belegt_run"] = (round(summe["belegt"] / summe["runs"])
+                           if summe["runs"] else 0)
+    summe["mit_loot_run"] = (round(summe["mit_loot_isk"] / summe["runs"])
+                             if summe["runs"] else 0)
+    # Wie viel der gezaehlten Zeit steckt in diesen ueberlangen Zeilen?
+    summe["lang_anteil"] = (round(100.0 * summe["lang_sek"] / summe["sek"])
+                            if summe["sek"] else 0)
+    return {"chars": liste, "summe": summe, "tage": tage}
+
+
 def query_abyss_ertrag(chars=None, tage=30, gruppierung="filament"):
     """Abyss-Ertrag je Filament: ISK pro Durchgang und ISK pro Minute.
 
@@ -14364,6 +14600,11 @@ class Handler(BaseHTTPRequestHandler):
                 data["abyss_ertrag"] = query_abyss_ertrag(
                     wahl, atage if atage in (0, 30, 90, 365) else 30,
                     "klasse" if "agrp=klasse" in self.path else "filament")
+                # Was das Kaempfen eingebracht hat, je Charakter. Derselbe
+                # Zeitraum wie die Liste darunter, sonst stehen zwei
+                # Zahlen fuer verschiedene Fenster uebereinander.
+                data["pve"] = query_pve_bilanz(
+                    wahl, atage if atage in (0, 30, 90, 365) else 30)
                 data["chars"] = snapshot_live()
                 data["mchars"] = erlaubt
                 data["mchar"] = mgewaehlt
@@ -14785,6 +15026,8 @@ class Handler(BaseHTTPRequestHandler):
                 AUTO_UPDATE["versuch"] = 0.0
         elif action == "share_ore":
             CONFIG["share_ore"] = bool(body.get("on"))
+        elif action == "share_pve":
+            CONFIG["share_pve"] = bool(body.get("on"))
         elif action == "clip_watch":
             CONFIG["clip_watch"] = bool(body.get("on"))
         elif action == "calc":
@@ -16564,6 +16807,12 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   <div class="hint">Einmal am Tag holt Canary eine leere Datei von GitHub, deren Name nur das Datum enthält. Gesendet wird dabei nichts: keine Kennung, keine Namen, keine Spieldaten. GitHub zählt nur, wie oft die Datei ausgeliefert wurde, und daraus wird sichtbar, wie viele Installationen es gibt. Ohne diese Zahl gibt es keinen Nachweis für die EVE-Partnerschaft.</div>
   <label><input type="checkbox" id="shareOre"> Erz-Erträge für die Homepage-Statistik freigeben</label>
   <div class="hint">Standardmäßig aus. Ist es an, holt Canary einmal im Monat eine weitere leere Datei, deren Name die Größenklasse deiner Fördermenge des Vormonats trägt (zum Beispiel „ab 3 Mio m³"). Auch hier wird nichts gesendet: keine genaue Zahl, keine Kennung, keine Namen, keine Charaktere, keine Orte. Aus der Summe aller Klassen entsteht auf der Homepage eine Gesamtmenge, die bewusst als Untergrenze ausgewiesen wird. Deine eigenen Zahlen bleiben auf deinem Rechner, verraten wird allein die Größenordnung.</div>
+  <label><input type="checkbox" id="sharePve"> Kampf-Erträge für die Homepage-Statistik freigeben</label>
+  <div class="hint">Ebenfalls standardmäßig aus, und derselbe Weg: einmal im Monat eine leere Datei,
+  deren Name die Größenklasse deiner belegten Kampf-Einnahmen des Vormonats trägt. Belegt heißt
+  Kopfgeld aus den Logs plus Missionsbelohnung und Zeitbonus aus dem Wallet-Journal. Der von Hand
+  eingetragene Loot bleibt bewusst draußen, sonst hinge die Gemeinschaftszahl an der
+  Eintragedisziplin. Gesendet wird auch hier nichts: kein Wert, keine Kennung, keine Namen.</div>
   <div style="margin-top:10px"><b>Main-Charakter (für das Teilen-Bild)</b>
    <div class="hint">Welcher Name auf dem geteilten Mining-Fleet-Power-Bild steht. Automatisch = Command Ship, sonst der aktivste Miner.</div>
    <select id="mainCharSel" class="pill" style="margin-top:4px"><option value="">Automatisch</option></select></div>
@@ -16910,6 +17159,7 @@ $('#countMe').onchange=()=>post({action:'count_me',on:$('#countMe').checked});
 $('#autoUpdate').onchange=()=>post({action:'auto_update',on:$('#autoUpdate').checked});
 $('#eigenWarn').onchange=()=>post({action:'eigenbeschuss',on:$('#eigenWarn').checked});
 $('#shareOre').onchange=()=>post({action:'share_ore',on:$('#shareOre').checked});
+$('#sharePve').onchange=()=>post({action:'share_pve',on:$('#sharePve').checked});
 $('#saveLogDir').onclick=async()=>{
  const st=$('#logDirStat');st.textContent='Prüfe …';st.style.color='';
  const r=await post({action:'log_dir',path:$('#logDir').value});
@@ -17313,6 +17563,7 @@ function syncOpts(){
     tick();
    });}}
  $('#shareOre').checked=state.share_ore===true;
+ $('#sharePve').checked=state.share_pve===true;
  // Log-Ordner nur befüllen, solange niemand darin tippt
  if(document.activeElement!==$('#logDir'))$('#logDir').value=state.log_dir||'';
  // Aufgetretene Fehlercodes auflisten, damit man sie schicken kann
@@ -21508,6 +21759,88 @@ function charWahlKarte(namen){
   ${hinweis}
  </div>`;
 }
+// Was das Kaempfen eingebracht hat. Wunsch von Askend (06.09.2026): "wir
+// erfassen ja die Einkuenfte von den Minern mit dem Erzen, warum nicht auch
+// die Mission Leute mit Abyss und PvE".
+//
+// Die ISK-Zahl steht ZWEIMAL da, und das ist der Kern dieser Karte. Bounty
+// und Belohnung sind gemessen, der Loot wird von Hand eingetragen. Im echten
+// Bestand am 06.09.2026 war er in 24 von 118 Laeufen eingetragen, WAR aber
+// mit 414,7 Mio die groesste Zahl gegen 76,9 Mio Bounty. Der Unterschied
+// zwischen 7,19 Mio ISK/h und 7.833 ISK/h zwischen zwei Charakteren war
+// deshalb fast reine Eintragedisziplin. Eine einzelne Summe waere hier eine
+// Luege mit drei Nachkommastellen.
+function pveBilanz(p){
+ if(!p||!p.chars||!p.chars.length)return '';
+ const en=lang==='en';
+ const s=p.summe||{};
+ const std=(s.sek||0)/3600;
+ const abd=s.runs?Math.round(100*s.mit_loot/s.runs):0;
+ const kopf=(l,v,cls,tip)=>`<div class="stat" title="${esc(tip||'')}">
+   <div class="l">${l}</div><div class="v ${cls||''}">${v}</div></div>`;
+ const zeile=c=>{
+  const q=c.runs?Math.round(100*c.mit_loot/c.runs):0;
+  return `<tr><td style="white-space:nowrap">${esc(c.char)}</td>
+   <td class="r">${c.runs}${c.abyss?`<span class="sub"> (${c.abyss} Abyss)</span>`:''}</td>
+   <td class="r isk">${fmtM(c.bounty)}</td>
+   <td class="r isk">${fmtM(c.reward+c.bonus)}</td>
+   <td class="r ${q<50?'sub':'isk'}" title="${en?`Entered in ${c.mit_loot} of ${c.runs} runs`:`In ${c.mit_loot} von ${c.runs} Läufen eingetragen`}">${fmtM(c.loot)} <span class="sub">${q}%</span></td>
+   <td class="r">${fmt(c.kills)}</td>
+   <td class="r">${dauerMS(c.sek)} min</td>
+   <td class="r isk"><b>${fmtM(c.belegt_run)}</b></td>
+   <td class="r ${(c.lang&&c.lang_sek>c.sek*0.5)?'sub':'isk'}" title="${
+     c.lang?(en?`${c.lang} of ${c.runs} runs ran longer than an hour and hold ${Math.round(100*c.lang_sek/(c.sek||1))}% of the counted time`
+               :`${c.lang} von ${c.runs} Einsätzen liefen länger als eine Stunde und halten ${Math.round(100*c.lang_sek/(c.sek||1))}% der gezählten Zeit`):''
+    }">${fmtM(c.belegt_h)}</td></tr>`;
+ };
+ return `<div class="card" style="grid-column:1/-1">
+  <div class="sect">⚔ ${en?'Combat balance':'Kampf-Bilanz'}</div>
+  <div class="stats" style="grid-template-columns:repeat(5,1fr)">
+   ${kopf(en?'Runs':'Einsätze', fmt(s.runs||0)+(s.abyss?` <span class="sub">${en?'incl.':'davon'} ${s.abyss} Abyss</span>`:''), '',
+     en?'Fights counted from the game logs. Pure belt ratting is filtered out, that is not a run.'
+       :'Aus den Gamelogs gezählte Kämpfe. Reines Belt-Ratten fällt heraus, das ist kein Einsatz.')}
+   ${kopf(en?'Measured ISK':'Belegte ISK', fmtM(s.belegt||0), 'grn',
+     en?'Bounty from the game logs plus mission reward and time bonus from the wallet journal. All three are measured, nothing entered by hand.'
+       :'Kopfgeld aus den Gamelogs, dazu Missionsbelohnung und Zeitbonus aus dem Wallet-Journal. Alle drei gemessen, nichts von Hand eingetragen.')}
+   ${kopf(en?'With loot':'Mit Loot', fmtM(s.mit_loot_isk||0), abd<50?'':'isk',
+     en?`Same figure plus the loot you entered yourself. Entered in ${s.mit_loot} of ${s.runs} runs, so this is a lower bound.`
+       :`Dieselbe Zahl plus den Loot, den du selbst eingetragen hast. In ${s.mit_loot} von ${s.runs} Läufen eingetragen, das ist also eine Untergrenze.`)}
+   ${kopf(en?'Measured per run':'Belegt je Einsatz', fmtM(s.belegt_run||0), 'grn',
+     en?'The same measured ISK divided by the number of runs. This one does not depend on the duration and is therefore the sturdier figure.'
+       :'Dieselben belegten ISK, geteilt durch die Zahl der Einsätze. Diese Zahl hängt nicht an der Dauer und ist deshalb die robustere.')}
+   ${kopf(en?'Enemies down':'Gegner erledigt', fmt(s.kills||0), '',
+     en?'Kills counted from the bounty lines in the game log. Enemies that pay nothing are not in there.'
+       :'Aus den Kopfgeld-Zeilen im Gamelog gezählt. Gegner, die nichts zahlen, stehen nicht darin.')}
+  </div>
+  <div class="sub" style="margin-top:8px">${
+   abd>=90?(en?`Loot is entered in ${s.mit_loot} of ${s.runs} runs. Both ISK figures rest on nearly the same base.`
+              :`Loot ist in ${s.mit_loot} von ${s.runs} Läufen eingetragen. Beide ISK-Zahlen stehen also auf fast derselben Grundlage.`)
+      :(en?`Loot is entered in only ${s.mit_loot} of ${s.runs} runs (${abd}%). EVE does not log looting, so the second ISK figure says more about your bookkeeping than about your income. The first one is measured.`
+          :`Loot ist nur in ${s.mit_loot} von ${s.runs} Läufen eingetragen (${abd}%). EVE protokolliert das Plündern nicht, deshalb sagt die zweite ISK-Zahl mehr über deine Eintragedisziplin als über deinen Verdienst. Die erste ist gemessen.`)}</div>
+  ${(s.lang_anteil>=50)?`<div class="sub" style="margin-top:4px">${
+    en?`Careful with ISK per hour: ${s.lang} of ${s.runs} runs ran longer than an hour, and they hold ${s.lang_anteil}% of the counted time. Those are almost always sessions that never got closed properly, not fights. The ISK per run column does not have that problem.`
+      :`Vorsicht bei ISK je Stunde: ${s.lang} von ${s.runs} Einsätzen liefen länger als eine Stunde, und in ihnen stecken ${s.lang_anteil}% der gezählten Zeit. Das sind fast immer Sitzungen, die nie sauber abgeschlossen wurden, keine Kämpfe. Die Spalte ISK je Einsatz hat dieses Problem nicht.`}</div>`:''}
+  ${(s.bounty_luecke&&Math.abs(s.bounty_luecke)>1000000)?`<div class="sub" style="margin-top:4px">${
+    // Die Luecke geht in BEIDE Richtungen, und sie bedeutet je nachdem etwas
+    // anderes. Beim Bauen stand hier nur die eine Erklaerung, und die waere
+    // im umgekehrten Fall schlicht falsch gewesen.
+    s.bounty_luecke>0
+     ?(en?`The wallet journal knows ${fmtM(s.j_bounty)} of bounty, the runs above only ${fmtM(s.bounty)}. The difference is belt ratting outside recognised runs. Two measurements, not an error.`
+         :`Das Wallet-Journal kennt ${fmtM(s.j_bounty)} Kopfgeld, die Einsätze oben nur ${fmtM(s.bounty)}. Die Differenz sind Belt-Ratten außerhalb erkannter Einsätze. Zwei Messungen, kein Fehler.`)
+     :(en?`The runs above hold ${fmtM(s.bounty)} of bounty, the wallet journal only ${fmtM(s.j_bounty)}. The journal is fetched through the EVE login and does not reach back as far as your game logs, so older runs are missing from it.`
+         :`Die Einsätze oben halten ${fmtM(s.bounty)} Kopfgeld, das Wallet-Journal nur ${fmtM(s.j_bounty)}. Das Journal kommt über den EVE-Login und reicht nicht so weit zurück wie deine Gamelogs, ältere Einsätze fehlen dort also.`)}</div>`:''}
+  <div style="overflow-x:auto;margin-top:10px"><table>
+   <tr><th>${en?'Character':'Charakter'}</th><th class="r">${en?'Runs':'Einsätze'}</th>
+    <th class="r">${en?'Bounty':'Kopfgeld'}</th><th class="r">${en?'Reward':'Belohnung'}</th>
+    <th class="r">Loot</th><th class="r">${en?'Kills':'Gegner'}</th>
+    <th class="r">${en?'Time':'Zeit'}</th>
+    <th class="r" title="${en?'Measured sources divided by the number of runs. Does not depend on the duration.':'Belegte Quellen geteilt durch die Zahl der Einsätze. Hängt nicht an der Dauer.'}">${en?'ISK/run':'ISK/Einsatz'}</th>
+    <th class="r" title="${en?'Measured sources divided by the counted time. Runs that were never closed properly stretch the time and push this down.':'Belegte Quellen geteilt durch die gezählte Zeit. Einsätze, die nie sauber abgeschlossen wurden, strecken die Zeit und drücken diese Zahl.'}">${en?'ISK/h':'ISK/h'}</th></tr>
+   ${p.chars.map(zeile).join('')}
+  </table></div>
+ </div>`;
+}
+
 function renderMissions(d){
  letzteMissionen = d;
  lastMissionD=d;                         // fuer die lokale Simulation merken
@@ -21574,6 +21907,7 @@ function renderMissions(d){
    <span class="sub" style="color:var(--dim)">${lang==='en'?'Local demo (not shipped)':'Lokale Demo (nicht ausgeliefert)'}</span>
    <button class="btn${SIM.on?' simon':''}" onclick="toggleSim()">${SIM.on?(lang==='en'?'⏹ Stop simulation':'⏹ Simulation stoppen'):(lang==='en'?'▶ Start simulation':'▶ Simulation starten')}</button></div>`:''}
  ${renderMissionLive(d.chars)}
+ ${pveBilanz(d.pve)}
  <div class="card" style="grid-column:1/-1">
   <b>Heute im Detail (EVE-Zeit)</b>
   ${(m.asof||m.next)?(()=>{const now=Date.now()/1000;const p=['Aus dem Wallet-Journal (ESI)'];
