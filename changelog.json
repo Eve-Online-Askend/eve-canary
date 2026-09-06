@@ -1,5 +1,17 @@
 [
  {
+  "v": "2.92.0",
+  "d": "2026-09-06",
+  "de": [
+   "Im kompakten Missions-Kopf steht jetzt hinter „Je Charakter (2)“ auch, was ein Klick dort bewirkt: „(Tabelle zeigen)“, und wenn sie offen ist „(Tabelle verstecken)“. Rückmeldung von Nirahse nach dem ersten Ausprobieren: „Wo man hinklicken muss, damit die Tabelle je Char aufklappt, ist nicht offensichtlich.“",
+   "Er hat recht, und der Grund ist einfach: ein Winkel ist eine Verzierung, bis man ihn einmal getroffen hat. Ein Wort ist eine Aufforderung. Es steht in derselben Farbe wie die anderen Links, damit man es nicht für Beschriftung hält."
+  ],
+  "en": [
+   "In the compact mission header, „Per character (2)“ is now followed by what a click there does: „(show table)“, and „(hide table)“ once it is open. Feedback from Nirahse after trying it: „where to click so the per-character table opens is not obvious.“",
+   "He is right, and the reason is simple: a chevron is decoration until you have hit it once. A word is an invitation. It uses the same colour as the other links so it does not read as a label."
+  ]
+ },
+ {
   "v": "2.91.0",
   "d": "2026-09-06",
   "de": [

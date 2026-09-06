@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.91.0"
+VERSION = "2.92.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -15848,6 +15848,8 @@ nav span.on{color:var(--cyan);border-bottom:2px solid var(--cyan)}
 .kktabkopf{display:flex;align-items:center;gap:7px;cursor:pointer;
  font-size:11.5px;color:var(--dim);padding:3px 0;user-select:none}
 .kktabkopf .arr{display:inline-block;transition:transform .15s ease;font-size:9px}
+.kktabtu{color:var(--cyan);opacity:.85}
+.kktabkopf:hover .kktabtu{opacity:1;text-decoration:underline}
 .kktabvor{margin-left:auto;opacity:.8;white-space:nowrap;overflow:hidden;
  text-overflow:ellipsis}
 /* Die Warnzeile haengt am DATENSTAND, nicht an einem Wegklick-Knopf. Steigt
@@ -22341,6 +22343,9 @@ function kompakterKopf(d, t, m, tag, wIsk, wMis, lootHeute){
    <div class="kktabkopf" data-kktab="1">
      <span class="arr" style="${auf?'':'transform:rotate(-90deg)'}">▾</span>
      <span>${en?'Per character':'Je Charakter'} (${chars.length})</span>
+     <span class="kktabtu">${auf
+       ?(en?'(hide table)':'(Tabelle verstecken)')
+       :(en?'(show table)':'(Tabelle zeigen)')}</span>
      <span class="kktabvor">${chars.slice(0,3).map(c=>esc(c.char)+' '+fmt(c.runs)).join(' · ')}${chars.length>3?(' · '+(en?'and':'und')+' '+(chars.length-3)+' '+(en?'more':'weitere')):''}</span>
    </div>
    ${auf?pveTabelle(p):''}</div>`:'';
