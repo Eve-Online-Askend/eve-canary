@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.84.0"
+VERSION = "2.85.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -2090,23 +2090,52 @@ def meta_set(key, value):
         DB.commit()
 
 
-def filament_schluessel(stufe, wetter, klasse):
-    """Ein Filament plus Schiffsklasse als ein Schluessel.
+def filament_schluessel(stufe, klasse):
+    """Stufe plus Schiffsklasse als ein Schluessel fuer eine Notiz.
 
-    Genau dieselbe Aufteilung wie eine Zeile der Ertrags-Tabelle: T4
-    Firestorm mit Fregatten ist etwas anderes als T4 Firestorm mit
-    Kreuzern, und beim Vergleich der beiden faengt die Notiz ja an."""
-    return "%s|%s|%s" % (stufe if stufe is not None else "",
-                         wetter or "", klasse or "")
+    Das WETTER steht bewusst nicht drin. Zwei Gruende:
+
+    Erstens laesst sich die Tabelle zwischen "je Filament" und "je
+    Schiffsklasse" umschalten. Haenge die Notiz am Wetter, verschwindet
+    sie beim Umschalten, und das liest sich wie ein Fehler.
+
+    Zweitens passt es zu dem, was Nirahse tatsaechlich notieren wollte
+    (06.09.2026): "Destroyer-Runs wuerfeln 2 mal, Fregatten-Runs 3 mal
+    Loot in die Bio-Cache Box". Das ist eine Aussage ueber die
+    Schiffsklasse, nicht ueber das Wetter.
+
+    Der Preis: eine wetter-eigene Notiz gibt es damit nicht. Die Notiz
+    steht dafuer in beiden Ansichten und an allen Wetter-Zeilen
+    derselben Stufe und Klasse."""
+    return "%s|%s" % (stufe if stufe is not None else "", klasse or "")
 
 
 def filament_notizen():
-    """Alle eigenen Notizen zu Filamenten. Schluessel -> Text."""
+    """Alle eigenen Notizen. Schluessel -> Text.
+
+    Alte Schluessel aus v2.84.0 hatten noch das Wetter mit drin
+    ("4|firestorm|Fregatte"). Die werden beim Lesen auf die neue Form
+    gefaltet, damit eine bereits geschriebene Notiz nicht verwaist.
+    Treffen dabei zwei aufeinander, bleiben beide erhalten, durch
+    einen Punkt getrennt: lieber ein Satz zu viel als einer weg."""
     try:
         d = json.loads(meta_get("filament_notizen") or "{}")
-        return d if isinstance(d, dict) else {}
+        if not isinstance(d, dict):
+            return {}
     except Exception:
         return {}
+    if not any(k.count("|") == 2 for k in d):
+        return d
+    neu = {}
+    for k, v in d.items():
+        teile = k.split("|")
+        nk = "%s|%s" % (teile[0], teile[2]) if len(teile) == 3 else k
+        if nk in neu and v and v not in neu[nk]:
+            neu[nk] = (neu[nk] + " " + v).strip()
+        else:
+            neu.setdefault(nk, v)
+    meta_set("filament_notizen", json.dumps(neu, ensure_ascii=False))
+    return neu
 
 
 def filament_notiz_setzen(schluessel, text):
@@ -12873,7 +12902,7 @@ def mchar_aus_pfad(pfad, erlaubt):
     return [n for n in namen if n in erlaubt]
 
 
-def query_abyss(chars=None, tage=30):
+def query_abyss(chars=None, tage=30, gruppierung="filament"):
     """Alles fuer den Abyss-Bereich: Kennzahlen, Filament-Bilanz, Top-Beute
     und die beste Runde.
 
@@ -12883,7 +12912,7 @@ def query_abyss(chars=None, tage=30):
     zwei Wahrheiten in der Datenbank."""
     if isinstance(chars, str):
         chars = [chars]
-    ertrag = query_abyss_ertrag(chars, tage)
+    ertrag = query_abyss_ertrag(chars, tage, gruppierung)
     seit = (time.time() - tage * 86400) if tage else 0
     nur = set(chars) if chars else None
     with DB_LOCK:
@@ -13558,7 +13587,7 @@ def abyss_filament_preise(schluessel):
     return out
 
 
-def query_abyss_ertrag(chars=None, tage=30):
+def query_abyss_ertrag(chars=None, tage=30, gruppierung="filament"):
     """Abyss-Ertrag je Filament: ISK pro Durchgang und ISK pro Minute.
 
     Wunsch von Nirahse (29.08.2026). Zwei Dinge machen das ueberhaupt
@@ -13644,8 +13673,26 @@ def query_abyss_ertrag(chars=None, tage=30):
         # Tabelle mit einer Spalte mehr statt zwei Tabellen untereinander).
         # Dasselbe Filament mit Fregatten geflogen ergibt eine eigene Zeile,
         # und genau darum ging es ihm: der Vergleich steht nebeneinander.
-        schl = (stufe, wetter, klasse)
-        e = eimer.setdefault(schl, {"stufe": stufe, "wetter": wetter,
+        # Zwei Aufteilungen, umschaltbar (Nirahse, 06.09.2026):
+        #
+        #   "filament"  Stufe + Wetter + Klasse, wie bisher.
+        #   "klasse"    Stufe + Klasse, das Wetter faellt zusammen.
+        #
+        # Sein Grund, an seinen eigenen Zahlen nachgerechnet: wechselt
+        # man nur die Schiffsklasse, unterscheidet sich der Ertrag um
+        # den Faktor 2,83 (T4 Firestorm: Fregatte 96,7 gegen Kreuzer
+        # 34,2 Mio). Wechselt man nur das Wetter, um 1,35 (T4 Kreuzer:
+        # Exotic 46,2 gegen Firestorm 34,2). Das Wetter zu trennen
+        # zerbroeselt also die Zeilen, ohne viel zu erklaeren, und die
+        # Varianz-Sperre kommt bei drei bis fuenf Durchgaengen nie zu
+        # einer Aussage.
+        #
+        # Die Vorgabe bleibt trotzdem "filament": in denselben Daten
+        # steckt beim T4-Kreuzer ein Wetter-Unterschied von 35 Prozent,
+        # und der verschwindet beim Zusammenfassen.
+        _w = wetter if gruppierung != "klasse" else None
+        schl = (stufe, _w, klasse)
+        e = eimer.setdefault(schl, {"stufe": stufe, "wetter": _w,
                                     "klasse": klasse,
                                     "runs": 0, "isk": 0.0, "min": 0.0,
                                     "schiffe": {}, "n_schiffe": 0,
@@ -13664,7 +13711,10 @@ def query_abyss_ertrag(chars=None, tage=30):
         # Beute, Dauer und Zahl der Schiffe dieses einen Durchgangs.
         # Die Filamentkosten kommen erst in fertig() dazu, dort steht
         # der Preis fest.
-        e["laeufe"].append((loot, minuten, len(idx)))
+        # Stufe und Wetter des EINZELNEN Laufs kommen mit. Beim
+        # Zusammenfassen hat die Zeile kein Wetter mehr, der
+        # Filamentpreis haengt aber genau daran.
+        e["laeufe"].append((loot, minuten, len(idx), stufe, wetter))
         ges_runs += 1
         ges_isk += loot
         ges_min += minuten
@@ -13678,15 +13728,36 @@ def query_abyss_ertrag(chars=None, tage=30):
     # Was hat der Einsatz gekostet? Preise nur fuer Kombinationen, bei denen
     # Stufe UND Wetter feststehen, denn erst beide zusammen ergeben ein
     # Filament mit einem Preis.
-    preise = abyss_filament_preise({(e["stufe"], e["wetter"])
-                                    for e in eimer.values()})
+    #
+    # Gefragt wird nach den Kombinationen der EINZELNEN Laeufe, nicht
+    # nach denen der Zeilen: beim Zusammenfassen nach Schiffsklasse hat
+    # die Zeile gar kein Wetter mehr, die Laeufe darin schon.
+    preise = abyss_filament_preise({(l[3], l[4])
+                                    for e in eimer.values()
+                                    for l in e["laeufe"]})
 
     def fertig(e):
         # Meistgeflogenes Schiff dieser Sorte, plus wie viele Laeufe ueberhaupt
         # eine Angabe haben. Ohne EVE-Login oder bei alten Laeufen bleibt es leer.
         top = sorted(e["schiffe"].items(), key=lambda x: -x[1])
-        stueck = preise.get((e["stufe"], e["wetter"]))
-        kosten = (stueck * e["n_schiffe"]) if stueck else None
+        # Die Kosten je Lauf mit dem Preis SEINES Filaments, nicht mit
+        # einem Preis fuer die ganze Zeile. Sonst waere die Rechnung
+        # beim Zusammenfassen falsch: T4 Exotic und T4 Firestorm kosten
+        # nicht dasselbe. Fehlt fuer auch nur einen Lauf der Preis,
+        # bleibt die ganze Zeile ohne Einsatz, statt die Haelfte zu
+        # unterschlagen.
+        kosten = 0.0
+        for _l in e["laeufe"]:
+            _p = preise.get((_l[3], _l[4]))
+            if not _p:
+                kosten = None
+                break
+            kosten += _p * _l[2]
+        # Der Stueckpreis steht nur dann in der Zeile, wenn alle Laeufe
+        # darin dasselbe Filament hatten. Sonst waere es ein Preis, den
+        # es so nicht gibt.
+        _sorten = {(l[3], l[4]) for l in e["laeufe"]}
+        stueck = preise.get(next(iter(_sorten))) if len(_sorten) == 1 else None
         netto = (e["isk"] - kosten) if kosten is not None else None
         # Netto je Minute, je Durchgang einzeln gerechnet, und wie weit
         # diese Einzelwerte streuen.
@@ -13699,14 +13770,15 @@ def query_abyss_ertrag(chars=None, tage=30):
         # Deshalb wird zusaetzlich der Standardfehler des Mittels
         # gerechnet, und die Empfehlung weiter unten muss ihn schlagen.
         werte = []
-        for isk_r, min_r, n_s in e["laeufe"]:
+        for isk_r, min_r, n_s, _st, _we in e["laeufe"]:
             if min_r <= 0:
                 continue
-            # Ohne bekannten Filamentpreis ist netto gleich brutto.
-            # Solche Zeilen kommen fuer die Empfehlung nicht in Frage,
-            # sonst vergleicht man Netto mit Brutto.
-            netto_r = isk_r - (stueck * n_s if stueck else 0.0)
-            werte.append(netto_r / min_r)
+            # Auch hier der Preis DIESES Laufs. Ohne bekannten Preis ist
+            # netto gleich brutto; solche Zeilen kommen fuer die
+            # Empfehlung nicht in Frage, sonst vergleicht man Netto mit
+            # Brutto (siehe die Auswahl der Kandidaten unten).
+            _p = preise.get((_st, _we)) or 0.0
+            werte.append((isk_r - _p * n_s) / min_r)
         nm = sum(werte) / len(werte) if werte else None
         if len(werte) >= 2:
             _var = sum((w - nm) ** 2 for w in werte) / (len(werte) - 1)
@@ -13770,7 +13842,7 @@ def query_abyss_ertrag(chars=None, tage=30):
     # dort, wo "ja es bringt mehr, aber ..." hingehoert.
     _notizen = filament_notizen()
     for z in liste:
-        z["fkey"] = filament_schluessel(z["stufe"], z["wetter"], z["klasse"])
+        z["fkey"] = filament_schluessel(z["stufe"], z["klasse"])
         z["notiz"] = _notizen.get(z["fkey"], "")
 
     MIND_RUNS = 8
@@ -13800,7 +13872,7 @@ def query_abyss_ertrag(chars=None, tage=30):
                       "mind_runs": MIND_RUNS}
 
     return {"zeilen": liste, "tage": tage, "mit_schiff": mit_schiff,
-            "empfehlung": empfehlung,
+            "empfehlung": empfehlung, "gruppierung": gruppierung,
             "runs": ges_runs, "schiffe": ges_schiffe, "isk": round(ges_isk),
             "isk_run": round(ges_isk / ges_runs) if ges_runs else 0,
             "isk_min": round(ges_isk / ges_min) if ges_min else 0,
@@ -14290,7 +14362,8 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError:
                     atage = 30
                 data["abyss_ertrag"] = query_abyss_ertrag(
-                    wahl, atage if atage in (0, 30, 90, 365) else 30)
+                    wahl, atage if atage in (0, 30, 90, 365) else 30,
+                    "klasse" if "agrp=klasse" in self.path else "filament")
                 data["chars"] = snapshot_live()
                 data["mchars"] = erlaubt
                 data["mchar"] = mgewaehlt
@@ -14311,8 +14384,12 @@ class Handler(BaseHTTPRequestHandler):
                     atage = int(self.path.split("atage=")[1].split("&")[0])                         if "atage=" in self.path else 30
                 except ValueError:
                     atage = 30
+                # Aufteilung der Ertrags-Tabelle: "filament" (Stufe,
+                # Wetter, Klasse) oder "klasse" (Wetter zusammengefasst).
+                agrp = ("klasse" if "agrp=klasse" in self.path else "filament")
                 data["abyss"] = query_abyss(
-                    mgew or None, atage if atage in (0, 30, 90, 365) else 30)
+                    mgew or None, atage if atage in (0, 30, 90, 365) else 30,
+                    agrp)
                 # Die Einzelheiten jedes Laufs GLEICH mitliefern. Vorher kamen
                 # sie aus der Missionsseite, wer den Abyss-Bereich direkt
                 # oeffnete, sah eine leere Liste unter einer Kopfzeile, die
@@ -14494,8 +14571,7 @@ class Handler(BaseHTTPRequestHandler):
                 _st = int(_st) if _st not in (None, "") else None
             except (TypeError, ValueError):
                 _st = None
-            _k = filament_schluessel(_st, str(body.get("wetter") or "")[:40],
-                                     str(body.get("klasse") or "")[:40])
+            _k = filament_schluessel(_st, str(body.get("klasse") or "")[:40])
             filament_notiz_setzen(_k, str(body.get("text") or ""))
         elif action == "eigenbeschuss":
             # Beschuss durch eigene Charaktere melden ja/nein (Vorgabe: nein).
@@ -16851,6 +16927,13 @@ let walletChar=localStorage.getItem('walletChar')||'';
 // Schiffsangabe (vor v2.57) von selbst herausfallen, statt geraten zu werden.
 let abyssTage=Number(localStorage.getItem('abyssTage')??30);
 if(![0,30,90,365].includes(abyssTage))abyssTage=30;
+// Aufteilung der Ertrags-Tabelle. 'filament' trennt nach Stufe, Wetter
+// und Klasse, 'klasse' fasst die Wetter zusammen. Wunsch von Nirahse
+// (06.09.2026): bei ihm unterscheidet die Schiffsklasse den Ertrag um
+// den Faktor 2,83, das Wetter nur um 1,35. Das Wetter zu trennen
+// zerbroeselt die Zeilen, ohne viel zu erklaeren.
+let abyssGrp=localStorage.getItem('abyssGrp')||'filament';
+if(!['filament','klasse'].includes(abyssGrp))abyssGrp='filament';
 let missChars=(()=>{try{const r=JSON.parse(localStorage.getItem('missChars')||'[]');
   return Array.isArray(r)?r.filter(x=>typeof x==='string'):[];}catch(e){return [];}})();
 function applyFs(){
@@ -17150,7 +17233,7 @@ $('#fnotizText').oninput=fnotizRest;
 $('#fnotizZu').onclick=()=>$('#fnotizDlg').close();
 function fnotizSenden(text){
  if(!fnotizZiel)return;
- post({action:'filament_notiz',stufe:fnotizZiel.stufe,wetter:fnotizZiel.wetter,
+ post({action:'filament_notiz',stufe:fnotizZiel.stufe,
        klasse:fnotizZiel.klasse,text:text});
  $('#fnotizDlg').close();
 }
@@ -17776,18 +17859,27 @@ document.addEventListener('click',e=>{
  // "Alle zeigen" aus dem Filter-Hinweis. Aus demselben Grund hier und nicht
  // am Element: die Ansicht wird im Takt neu gebaut, ein direkt gesetzter
  // Handler waere nach zwei Sekunden weg.
+ // Umschalter der Ertrags-Tabelle. Ueber den document-Verteiler, aus dem
+ // gleichen Grund wie der Stift darunter.
+ {const ag=e.target.closest&&e.target.closest('.agrp');
+  if(ag){
+   abyssGrp=ag.dataset.ag;
+   localStorage.setItem('abyssGrp',abyssGrp);
+   tick();
+   return;
+  }}
  // Stift an einer Filament-Zeile: Notizfenster oeffnen. Ueber den
  // document-Verteiler, weil die Tabelle im Takt neu gebaut wird und ein
  // onclick am Knoten damit verschwaende.
  {const fn=e.target.closest&&e.target.closest('.fnotiz');
   if(fn){
    const d=$('#fnotizDlg');
-   fnotizZiel={stufe:fn.dataset.stufe,wetter:fn.dataset.wetter,klasse:fn.dataset.klasse};
+   fnotizZiel={stufe:fn.dataset.stufe,klasse:fn.dataset.klasse};
    $('#fnotizTitel').textContent=fn.dataset.name
      +(fn.dataset.klasse?' · '+fn.dataset.klasse:'');
    $('#fnotizWas').textContent=lang==='en'
-     ?'Your own note on this filament. It appears in the table and, if this line is the best one, right in the hint below it. Numbers cannot know stress, price swings or what you would rather keep than sell.'
-     :'Deine eigene Notiz zu diesem Filament. Sie steht in der Tabelle und, wenn diese Zeile die beste ist, direkt im Hinweis darunter. Stress, Preisschwankungen oder was du lieber sammelst als verkaufst, weiß keine Zahl.';
+     ?'Your own note on this tier and ship class. It applies to every weather of that combination and stays put when you switch the table between per filament and per ship class. It appears in the table and, if this line is the best one, right in the hint below it. Numbers cannot know stress, price swings or what you would rather keep than sell.'
+     :'Deine eigene Notiz zu dieser Stufe und Schiffsklasse. Sie gilt für jedes Wetter dieser Kombination und bleibt stehen, wenn du die Tabelle zwischen "je Filament" und "je Schiffsklasse" umschaltest. Sie steht in der Tabelle und, wenn diese Zeile die beste ist, direkt im Hinweis darunter. Stress, Preisschwankungen oder was du lieber sammelst als verkaufst, weiß keine Zahl.';
    $('#fnotizText').value=fn.dataset.notiz||'';
    fnotizRest();
    if(!d.open)d.showModal();
@@ -21141,15 +21233,26 @@ function renderAbyss(a){
       : ` Bei ${H.gesamt-H.erfasst} älteren Durchgängen fehlt die Zahl: sie entsteht beim Einlesen des Logs, rückwirkend gibt es sie nicht.`}</b>`:''}</div>
    </div>`;})():''}
   ${(A.zeilen&&A.zeilen.length)?`<div class="card" style="grid-column:1/-1">
-   <div class="sect">${en?'Yield per filament':'Ertrag je Filament'}</div>
+   <div class="sect" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <span>${en?'Yield per filament':'Ertrag je Filament'}</span>
+    <span style="margin-left:auto;display:flex;gap:6px">${
+     [['filament',en?'per filament':'je Filament'],
+      ['klasse',en?'per ship class':'je Schiffsklasse']]
+     .map(([w,l])=>`<span class="pill agrp${abyssGrp===w?' on':''}" data-ag="${w}" title="${
+       w==='klasse'
+        ?(en?'Merges the weathers, so each ship class gets one row with more runs behind it. The hint below can only speak up once a row carries enough of them.'
+            :'Fasst die Wetter zusammen, dann steht je Schiffsklasse eine Zeile mit mehr Durchgängen dahinter. Der Hinweis darunter kann erst etwas sagen, wenn eine Zeile genug davon hat.')
+        :(en?'One row per tier, weather and ship class. The most detailed view, but it splits your runs into small groups.'
+            :'Eine Zeile je Stufe, Wetter und Schiffsklasse. Die genaueste Ansicht, sie zerlegt deine Durchgänge aber in kleine Grüppchen.')
+      }">${l}</span>`).join('')}</span></div>
    <table><tr><th>Filament</th><th>${en?'Ship class':'Schiffklasse'}</th><th class="r">${en?'Runs':'Durchgänge'}</th>
     <th class="r">${en?'ISK per run':'ISK je Durchgang'}</th><th class="r">ISK/min</th><th class="r">${en?'Ø duration':'Ø Dauer'}</th>
     <th class="r" title="${en?'Loot minus the filaments used. Only where tier and weather are known.':'Beute abzüglich der verbrauchten Filamente. Nur wo Stufe und Wetter feststehen.'}">${en?'Net per run':'Netto je Durchgang'}</th></tr>
    ${A.zeilen.map(z=>`<tr><td>${esc(nam(z))} <span class="fnotiz" title="${
-     en?'Add your own note on this filament':'Eigene Notiz zu diesem Filament'
-    }" data-stufe="${z.stufe==null?'':z.stufe}" data-wetter="${esc(z.wetter||'')}"
+     en?'Your own note on this tier and ship class':'Eigene Notiz zu dieser Stufe und Schiffsklasse'
+    }" data-stufe="${z.stufe==null?'':z.stufe}"
     data-klasse="${esc(z.klasse||'')}" data-notiz="${esc(z.notiz||'')}"
-    data-name="${esc(nam(z))}"
+    data-name="${z.stufe?('T'+z.stufe):(en?'no details':'ohne Angabe')}"
     style="cursor:pointer;opacity:${z.notiz?'1':'.45'}">📝</span></td>
     <td${z.klasse?'':' class="sub"'}>${z.klasse?esc(z.klasse):(en?'unknown':'unbekannt')}</td>
     <td class="r">${z.runs}</td><td class="r isk">${fmtM(z.isk_run)}</td>
@@ -22879,7 +22982,7 @@ async function tick(){
   const zusatz=(reqView==='wallet')
     ?('&days='+walletTage+(walletChar?'&wchar='+encodeURIComponent(walletChar):''))
     :(mitZeitraum
-        ?('&atage='+abyssTage
+        ?('&atage='+abyssTage+'&agrp='+abyssGrp
           +(missChars.length?('&mchar='+encodeURIComponent(missChars.join(','))):''))
         :'');
   // Harte Zeitgrenze fuer den Abruf. Ohne sie kann eine Verbindung, die nie

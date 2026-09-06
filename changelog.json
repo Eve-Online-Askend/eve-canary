@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.85.0",
+  "d": "2026-09-06",
+  "de": [
+   "NEU: die Tabelle Ertrag je Filament lässt sich umschalten. „Je Filament“ trennt wie bisher nach Stufe, Wetter und Schiffsklasse. „Je Schiffsklasse“ fasst die Wetter zusammen, dann steht je Klasse eine Zeile mit mehr Durchgängen dahinter. Vorschlag von Nirahse.",
+   "Sein Grund, an seinen eigenen Zahlen nachgerechnet: wechselt man nur die Schiffsklasse, unterscheidet sich der Ertrag um den Faktor 2,83 (T4 Firestorm: Fregatte 96,7 gegen Kreuzer 34,2 Mio je Durchgang). Wechselt man nur das Wetter, um 1,35. Das Wetter zu trennen zerlegt die Durchgänge also in kleine Grüppchen, ohne viel zu erklären, und der Hinweis darunter kommt bei drei bis fünf Durchgängen nie zu einer Aussage. Die Vorgabe bleibt trotzdem „je Filament“: in denselben Daten steckt beim T4-Kreuzer ein Wetter-Unterschied von 35 Prozent, und der verschwindet beim Zusammenfassen.",
+   "Dabei ist die Kostenrechnung genauer geworden, und zwar für beide Ansichten. Jeder Durchgang wird jetzt mit dem Preis SEINES Filaments verrechnet, nicht mehr mit einem Preis für die ganze Zeile. Beim Zusammenfassen wäre das sonst schlicht falsch, denn T4 Exotic und T4 Firestorm kosten nicht dasselbe. Fehlt für auch nur einen Durchgang der Preis, bleibt die ganze Zeile ohne Einsatz, statt die Hälfte zu unterschlagen.",
+   "BEHOBEN: die gestern eingeführte Notiz hing am Wetter und verschwand deshalb beim Umschalten auf „je Schiffsklasse“. Sie hängt jetzt an Stufe und Schiffsklasse, steht damit in beiden Ansichten und passt auch besser zu dem, was man dort notiert. Nirahses eigenes Beispiel: „Destroyer-Runs würfeln 2 mal, Fregatten-Runs 3 mal Loot in die Bio-Cache Box.“ Das ist eine Aussage über die Schiffsklasse, nicht über das Wetter. Bereits geschriebene Notizen ziehen automatisch mit um."
+  ],
+  "en": [
+   "NEW: the yield per filament table can be switched. „Per filament“ splits by tier, weather and ship class as before. „Per ship class“ merges the weathers, so each class gets one row with more runs behind it. Suggested by Nirahse.",
+   "His reason, checked against his own numbers: change only the ship class and the yield differs by a factor of 2.83 (T4 Firestorm: frigate 96.7 against cruiser 34.2 million per run). Change only the weather and it is 1.35. Splitting by weather therefore breaks the runs into small groups without explaining much, and the hint below can never speak up on three to five runs. The default stays „per filament“ all the same: the same data holds a 35 percent weather difference on T4 cruisers, and that disappears when merged.",
+   "The cost calculation got more accurate along the way, for both views. Every run is now charged the price of ITS own filament instead of one price for the whole row. When merging, anything else would simply be wrong, because T4 Exotic and T4 Firestorm do not cost the same. If the price is missing for even one run, the entire row stays without a cost figure rather than hiding half of it.",
+   "FIXED: the note introduced yesterday hung on the weather and therefore vanished when switching to „per ship class“. It now hangs on tier and ship class, so it shows in both views and fits better what people actually note down there. Nirahse's own example: „Destroyer runs roll loot twice, frigate runs three times, into the bio-cache box.“ That is a statement about the ship class, not the weather. Notes already written move across automatically."
+  ]
+ },
+ {
   "v": "2.84.0",
   "d": "2026-09-06",
   "de": [
