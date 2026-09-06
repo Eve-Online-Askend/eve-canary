@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.86.0",
+  "d": "2026-09-06",
+  "de": [
+   "NEU: das Optionen-Fenster hat jetzt einklappbare Abschnitte, und zugeklappt ist die Vorgabe. Wunsch von Nirahse: „Da ist viel kleingedrucktes über dass ich jedes mal scrollen muss, um an die unteren Optionen zu kommen.“",
+   "Nachgemessen, bevor ich etwas geändert habe: das Fenster war 2.287 Pixel hoch bei 1.121 Pixeln sichtbarer Höhe. Man scrollte also durch mehr als das Doppelte. Zwei Abschnitte machten zwei Drittel aus, Alarme & Wachen 752 und System & Daten 769 Pixel, dazu 21 Erklärblöcke mit zusammen 583 Pixeln. Jetzt sind es zugeklappt 467 Pixel und kein Scrollen mehr.",
+   "Neben jeder zugeklappten Zeile steht, wie viele Einstellungen darin stecken, sonst sieht sie aus wie eine leere Überschrift. Was du aufklappst, bleibt beim nächsten Öffnen offen. Und die Erklärtexte sind alle geblieben, sie liegen nur nicht mehr im Weg."
+  ],
+  "en": [
+   "NEW: the options window now has collapsible sections, and collapsed is the default. Requested by Nirahse: „there is a lot of small print I have to scroll past every time to reach the lower options.“",
+   "Measured before changing anything: the window was 2,287 pixels tall with 1,121 pixels visible. You scrolled through more than twice the visible height. Two sections made up two thirds of it, Alerts & watches at 752 and System & data at 769 pixels, plus 21 explanatory blocks totalling 583 pixels. Collapsed it is now 467 pixels and no scrolling at all.",
+   "Each collapsed row says how many settings it holds, otherwise it would look like an empty heading. Whatever you open stays open next time. And all the explanations are still there, they just no longer sit in the way."
+  ]
+ },
+ {
   "v": "2.85.0",
   "d": "2026-09-06",
   "de": [

@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.85.0"
+VERSION = "2.86.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -15326,6 +15326,20 @@ html[data-skin=photon] .bootbar,html[data-skin=photon] #bootfill{border-radius:1
 .optgroup{background:var(--inset);border:1px solid var(--line);border-radius:8px;
  padding:12px 14px;margin-bottom:10px}
 .optgroup .sect{margin-top:0}
+/* Einklappbare Abschnitte im Optionen-Fenster.
+   Gemessen am 06.09.2026: das Fenster war 2.287 px hoch bei 1.121 px
+   sichtbarer Hoehe, allein "Alarme & Wachen" 752 und "System & Daten"
+   769 px, dazu 21 Erklaerbloecke mit zusammen 583 px. Wer an die
+   unteren Optionen wollte, musste jedes Mal durch alles scrollen
+   (Nirahse, 06.09.2026). */
+.optgroup[data-og] > .sect:first-child{cursor:pointer;user-select:none;
+ display:flex;align-items:center;gap:6px}
+.optgroup[data-og] > .sect:first-child::before{content:"▾";font-size:10px;
+ transition:transform .15s ease;display:inline-block}
+.optgroup[data-og].zu > .sect:first-child::before{transform:rotate(-90deg)}
+.optgroup[data-og].zu > *:not(.sect:first-child){display:none !important}
+.optgroup[data-og].zu{padding-bottom:10px}
+.ogzahl{margin-left:auto;font-size:10px;color:var(--dim);font-weight:400}
 .btnrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 html[data-skin=photon] .optgroup{border-radius:1px}
 .pills{display:flex;gap:4px;margin-left:auto}
@@ -16462,7 +16476,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 <dialog id="opts">
  <h2>⚙ Optionen <span class="byline">EVE Canary by Askend</span></h2>
 
- <div class="optgroup">
+ <div class="optgroup" data-og="darstellung">
   <div class="sect">🎨 Darstellung</div>
   <label><input type="radio" name="skin" value=""> Klassisch (das gewohnte Canary-Design)</label>
   <label><input type="radio" name="skin" value="photon"> Photon (angelehnt ans EVE-Interface: dunkel, kantig, Gold-Akzente)</label>
@@ -16472,7 +16486,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   bleibt über dem EVE-Client (Fenstermodus/randlos). In Chrome und Edge klickbar, in Firefox als Bild. Start nur per Klick.</div>
  </div>
 
- <div class="optgroup">
+ <div class="optgroup" data-og="alarme">
   <div class="sect">🔔 Alarme &amp; Wachen</div>
   <label><input type="checkbox" id="sndPvp" checked> Sound bei Spieler-Angriff</label>
   <label><input type="checkbox" id="sndDep" checked> Sound bei leerem Asteroiden</label>
@@ -16518,7 +16532,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   </div>
  </div>
 
- <div class="optgroup">
+ <div class="optgroup" data-og="ziel">
   <div class="sect">🎯 Ziel &amp; Zähler</div>
   <div style="display:flex;gap:6px">
    <input type="number" id="goalIsk" placeholder="ISK-Ziel, z.B. 1000000000">
@@ -16533,7 +16547,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   <div class="hint" id="baseinfo"></div>
  </div>
 
- <div class="optgroup">
+ <div class="optgroup" data-og="esi">
   <div class="sect esi" id="esiAbschnitt">🔑 EVE-Account verbinden</div>
   <div class="esinudge" id="esiNudge" hidden>✨ Verbinde deinen EVE-Account, dann zeigt Canary automatisch Portrait,
    aktuelles Schiff, Wallet-Stand, Heavy Water und Missions-Einnahmen. Kein Setup nötig, einfach einloggen.</div>
@@ -16541,7 +16555,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   <div class="btnrow"><button class="btn" id="esiLogin">🔑 Mit EVE-Account verbinden</button></div>
  </div>
 
- <div class="optgroup">
+ <div class="optgroup" data-og="system">
   <div class="sect">🖥 System &amp; Daten</div>
   <label id="autostartRow"><input type="checkbox" id="autostart"> Canary beim Systemstart automatisch mitstarten (still im Hintergrund, ohne Konsolenfenster)</label>
   <label><input type="checkbox" id="autoUpdate"> Neue Versionen selbst installieren</label>
@@ -17219,6 +17233,39 @@ document.querySelectorAll('#opts input[name=mode]').forEach(r=>r.onchange=()=>po
 async function post(b){return (await fetch('/',{method:'POST',
  headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})).json();}
 
+// Einklappbare Abschnitte im Optionen-Fenster.
+//
+// Wunsch von Nirahse (06.09.2026): "Da ist viel kleingedrucktes über dass ich
+// jedes mal scrollen muss, um an die unteren Optionen zu kommen."
+//
+// Nachgemessen: das Fenster war 2.287 px hoch bei 1.121 px sichtbarer Hoehe.
+// "Alarme & Wachen" allein 752 px, "System & Daten" 769, dazu 21
+// Erklaerbloecke mit zusammen 583 px. Zugeklappt bleiben fuenf Kopfzeilen
+// uebrig, und man oeffnet, was man braucht.
+//
+// Zugeklappt ist die Vorgabe. Was jemand aufklappt, bleibt offen: der
+// Zustand liegt in localStorage, nicht im DOM.
+let optAuf=new Set(lsGet('optauf',[]));
+function optAbschnitteAnwenden(){
+ document.querySelectorAll('.optgroup[data-og]').forEach(g=>{
+  const auf=optAuf.has(g.dataset.og);
+  g.classList.toggle('zu',!auf);
+  // Wieviele Einstellungen stecken darin? Sonst sieht eine zugeklappte
+  // Zeile aus wie eine Ueberschrift ohne Inhalt.
+  let z=g.querySelector('.ogzahl');
+  if(!z){
+   z=document.createElement('span');
+   z.className='ogzahl';
+   const kopf=g.querySelector('.sect');
+   if(kopf)kopf.appendChild(z);
+  }
+  const n=g.querySelectorAll('input,select,textarea,button,a.btn').length;
+  const wort=lang==='en'?(n===1?' setting':' settings')
+                        :(n===1?' Einstellung':' Einstellungen');
+  z.textContent=auf?'':(n+wort);
+ });
+}
+
 // Notizfenster fuer Filamente. Genau einmal verdrahtet, ausserhalb des
 // Takts: im Render waere jeder Knopf alle zwei Sekunden neu und der
 // Klick-Zustand ginge verloren.
@@ -17241,6 +17288,10 @@ $('#fnotizSpeichern').onclick=()=>fnotizSenden($('#fnotizText').value);
 $('#fnotizLeeren').onclick=()=>{$('#fnotizText').value='';fnotizRest();fnotizSenden('');};
 
 function syncOpts(){
+ // Vor dem Oeffnen den gemerkten Klapp-Zustand herstellen. Steht VOR der
+ // Abbruchzeile darunter: ohne Daten ist das Fenster trotzdem offen, und
+ // dann waeren alle Abschnitte aufgeklappt.
+ optAbschnitteAnwenden();
  if(!state)return;
  document.querySelectorAll('#opts input[name=mode]').forEach(r=>r.checked=r.value===state.mode);
  document.querySelectorAll('#opts input[name=skin]').forEach(r=>r.checked=r.value===(document.documentElement.dataset.skin||''));
@@ -17859,6 +17910,18 @@ document.addEventListener('click',e=>{
  // "Alle zeigen" aus dem Filter-Hinweis. Aus demselben Grund hier und nicht
  // am Element: die Ansicht wird im Takt neu gebaut, ein direkt gesetzter
  // Handler waere nach zwei Sekunden weg.
+ // Abschnitt im Optionen-Fenster auf- oder zuklappen.
+ {const kopf=e.target.closest&&e.target.closest('.optgroup[data-og] > .sect');
+  // Nur die erste Zeile schaltet. In "Alarme & Wachen" steht weiter unten
+  // noch eine .sect (die Ueberschrift ueber der Watchlist), und ein Klick
+  // darauf duerfte den Abschnitt nicht zuklappen.
+  if(kopf&&kopf===kopf.parentElement.firstElementChild){
+   const g=kopf.parentElement, k=g.dataset.og;
+   if(optAuf.has(k))optAuf.delete(k); else optAuf.add(k);
+   localStorage.setItem('optauf',JSON.stringify([...optAuf]));
+   optAbschnitteAnwenden();
+   return;
+  }}
  // Umschalter der Ertrags-Tabelle. Ueber den document-Verteiler, aus dem
  // gleichen Grund wie der Stift darunter.
  {const ag=e.target.closest&&e.target.closest('.agrp');
