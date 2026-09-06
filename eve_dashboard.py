@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.90.0"
+VERSION = "2.91.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -15825,6 +15825,25 @@ nav span.on{color:var(--cyan);border-bottom:2px solid var(--cyan)}
 .kkv.kkoffen{color:var(--gold)}
 .kku{font-size:10px;color:var(--dim);line-height:1.4;white-space:nowrap;
  overflow:hidden;text-overflow:ellipsis}
+/* Das Kleingedruckte steht RECHTS neben den Kacheln, nicht darunter.
+   Nirahse (06.09.2026): "Wir haben Landscape Bildschirme, keine Portait
+   Mobile View in den allermeisten Faellen, also mehr Platz horizontal als
+   vertikal." Ein Satz unter den Kacheln kostet immer eine ganze Zeile
+   Hoehe, rechts daneben kostet er nichts, solange Platz da ist. */
+.kabsx{flex:0 0 300px;font-size:10.5px;line-height:1.5;color:var(--dim);
+ padding-top:2px;border-left:1px solid rgba(255,255,255,.07);padding-left:12px}
+/* Charakterwahl und Zeitraum nebeneinander, beide ueber die volle Breite.
+   Der Zeitraum wirkt auf JEDE Zahl der Seite und gehoerte deshalb nie in
+   die Durchgaenge-Karte. Seine Breite ist fest, weil die drei Knoepfe
+   feststehen; die Charakterwahl nimmt den Rest und bricht nur um, wenn
+   wirklich zu viele Namen da sind. */
+.kzeile{grid-column:1/-1;display:flex;gap:10px;align-items:stretch}
+.kchar{flex:1 1 auto;min-width:0;margin:0}
+.kzeit{flex:0 0 auto;margin:0;white-space:nowrap}
+.kzeit .kku{max-width:230px}
+.kkv.kkisk{color:var(--gold)}
+@media (max-width:1100px){.kabsx{display:none}}
+@media (max-width:760px){.kzeile{flex-direction:column}}
 .kktab{grid-column:1/-1;margin-top:4px}
 .kktabkopf{display:flex;align-items:center;gap:7px;cursor:pointer;
  font-size:11.5px;color:var(--dim);padding:3px 0;user-select:none}
@@ -17414,7 +17433,7 @@ function renderViewInfo(){
  // genau einmal gelesen. Eine eigene Wahl schlaegt die Vorgabe weiterhin,
  // der Schluessel bleibt derselbe.
  const inf=VIEW_INFO[view],
-   offen=lsGet('viewinfo',!(view==='missionen'&&missKopf==='kompakt')),
+   offen=lsGet('viewinfo',!(missKopf==='kompakt'&&(view==='missionen'||view==='abyss'))),
    schl=view+'|'+offen;
  if(box.dataset.k===schl)return;   // sonst baut der 2s-Takt den Kasten dauernd neu
  box.dataset.k=schl;
@@ -21687,7 +21706,13 @@ function renderAbyss(a){
    <div class="sect">${t}</div><table><tr>${spalten.map(c=>`<th${c[2]?' class="r"':''}>${c[0]}</th>`).join('')}</tr>
    ${rows.map(r=>`<tr>${spalten.map(c=>`<td${c[2]?' class="r"':''}>${c[1](r)}</td>`).join('')}</tr>`).join('')}
    </table></div>`:'';
- $('#grid').innerHTML=charWahlKarte(a.mchars)+`
+ // Zwei Fassungen nebeneinander: die klassische bleibt Zeichen fuer
+ // Zeichen stehen, der kompakte Kopf legt die vier Kaesten in einen
+ // und stellt das Kleingedruckte nach rechts (Nirahse, 06.09.2026).
+ $('#grid').innerHTML=(missKopf==='kompakt'
+   ?kompakterAbyssKopf(a,A,B,b,zeitKnoepfe,nam)
+   :charWahlKarte(a.mchars))+`
+  ${missKopf==='kompakt'?'':`
   <div class="card" style="grid-column:1/-1">
    <div class="sect" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <span>🌀 ${en?'Abyssal runs':'Abyss-Durchgänge'}</span>
@@ -21762,7 +21787,7 @@ function renderAbyss(a){
     ${H.erfasst<H.gesamt?`<b class="in">${en
       ? ` ${H.gesamt-H.erfasst} older run(s) have no figure: it is counted while the log is read, so there is nothing to add retroactively.`
       : ` Bei ${H.gesamt-H.erfasst} älteren Durchgängen fehlt die Zahl: sie entsteht beim Einlesen des Logs, rückwirkend gibt es sie nicht.`}</b>`:''}</div>
-   </div>`;})():''}
+   </div>`;})():''}`}
   ${(A.zeilen&&A.zeilen.length)?`<div class="card" style="grid-column:1/-1">
    <div class="sect" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
     <span>${en?'Yield per filament':'Ertrag je Filament'}</span>
@@ -22081,6 +22106,140 @@ function pveTabelle(p, zeile){
     <th class="r" title="${en?'Measured sources divided by the counted time.':'Belegte Quellen geteilt durch die gezählte Zeit.'}">ISK/h</th></tr>
    ${p.chars.map(z).join('')}
   </table></div>`;
+}
+
+// ===========================================================================
+// Kompakter Kopf der Abyss-Seite (Wunsch Nirahse, 06.09.2026)
+// ===========================================================================
+//
+// Seine Meldung, gekuerzt: "Ich wuensche mir einen in der Hoehe deutlich
+// schlankeren Kopf der Abyssal-Seite. Die in den Boxen zusammengetragene
+// Information an sich finde ich gut, aber die vielen Box-Raender nehmen viel
+// Platz ein, so dass die tolle Tabelle 'Ertrag je Filament' nur durch
+// Scrollen erreichbar ist. Was faellt auf: Die Flaeche ist groesstenteils
+// leer. Das Klein-gedruckte kann in eine Info-Box RECHTS NEBEN (nicht
+// unterhalb) jeder Kategorie plaziert werden. Wir haben Landscape
+// Bildschirme, also mehr Platz horizontal als vertikal."
+//
+// Gemessen am 06.09.2026 bei 937 px sichtbarer Hoehe: die vier Kaesten
+// brauchten 722 px, die Ertrags-Tabelle sass bei 1.416 px, war also nicht
+// sichtbar. Genau sein Befund.
+//
+// Zwei Dinge unterscheiden diesen Kopf vom kompakten Missions-Kopf:
+//
+//  1. Das Kleingedruckte steht RECHTS neben den Kacheln, nicht darunter.
+//     Auf einem Breitbildschirm ist waagerechter Platz der billigere, und
+//     ein Satz unter den Kacheln kostet immer eine ganze Zeile Hoehe.
+//  2. Die Zeitraum-Wahl steht in einem EIGENEN Kasten oben rechts, nicht
+//     mehr in der Durchgaenge-Karte. Nirahse: "Wenn sich die Auswahl des
+//     Zeitraums auf alles auf der ganzen Seite auswirkt, dann macht diese
+//     Platzierung keinen Sinn." Er hat recht: sie wirkt auf jede Zahl der
+//     Seite und gehoerte damit nie in eine einzelne Karte.
+function kompakterAbyssKopf(a, A, B, b, zeitKnoepfe, nam){
+ const en=lang==='en';
+ const k=(l,v,unten,cls,tip)=>`<div class="kk" title="${esc(tip||'')}">
+   <div class="kkl">${l}</div><div class="kkv ${cls||''}">${v}</div>
+   ${unten?`<div class="kku">${unten}</div>`:''}</div>`;
+ // Ein Abschnitt: Name links, Kacheln in der Mitte, Kleingedrucktes RECHTS.
+ const abschnitt=(name,unter,inhalt,info)=>`<div class="kabs">
+   <div class="kabsn">${name}${unter?`<span>${unter}</span>`:''}</div>
+   <div class="kabsi">${inhalt}</div>
+   ${info?`<div class="kabsx">${info}</div>`:''}</div>`;
+
+ // --- Durchgaenge --------------------------------------------------------
+ const ohneLoot=(a.n||0)-(a.mit_loot||0);
+ const durchgaenge=
+   k(en?'Runs':'Durchgänge', fmt(a.n||0), '', 'kkgross',
+     en?'Completed runs in the selected period. A run flown together as a group counts as ONE, not as three.'
+       :'Abgeschlossene Durchgänge im gewählten Zeitraum. Ein gemeinsam geflogener Lauf zählt als EINER, nicht als drei.')
+   +k(en?'ISK per run':'ISK je Durchgang', fmtM(A.isk_run||0))
+   +k('ISK/min', fmtM(A.isk_min||0))
+   +k(en?'Ø duration':'Ø Dauer', A.sek!=null?dauerMS(A.sek):(A.min||0), '', '',
+     en?'The hard in-game limit is 20 minutes; staying well under it means more runs per hour.'
+       :'Die harte Grenze im Spiel liegt bei 20 Minuten; wer deutlich darunter bleibt, schafft mehr Läufe pro Stunde.');
+ const iDurch=ohneLoot>0
+   ?(en?`Loot is missing on ${ohneLoot} of ${a.n} runs. Everything here rests on the ${a.mit_loot} that have it.`
+       :`Bei ${ohneLoot} von ${a.n} Durchgängen fehlt der Loot. Alles hier beruht auf den ${a.mit_loot}, bei denen er steht.`)
+   :(en?`Loot is entered on all ${a.n} runs.`:`Loot ist bei allen ${a.n} Durchgängen eingetragen.`);
+
+ // --- Filamente ----------------------------------------------------------
+ const filamente=
+   k(en?'Used':'Verbraucht', fmt(B.verbraucht||0), '', 'in')
+   +k(en?'Looted':'Erbeutet', fmt(B.erbeutet||0), '', 'grn')
+   +k('Netto', ((B.netto||0)>0?'+':'')+fmt(B.netto||0), '', (B.netto||0)>=0?'grn':'in')
+   +k(en?'Their value':'Ihr Wert', B.isk?fmtM(B.isk):'—', '', 'kkisk')
+   +k(en?'Outlay':'Einsatz', fmtM(A.einsatz||0), '', 'in')
+   +k(en?'Loot':'Beute', fmtM(A.isk||0), '', 'kkisk')
+   +k('Netto ISK', A.netto!=null?((A.netto>0?'+':'')+fmtM(A.netto)):'—', '',
+      (A.netto||0)>=0?'grn':'in')
+   +k(en?'Net per run':'Netto je Durchgang', A.netto_run!=null?fmtM(A.netto_run):'—',
+      '', (A.netto_run||0)>=0?'grn':'in');
+ const iFil=(en
+   ?`Does your abyss pay for itself? Every run burns filaments and most drop some. You are ${(B.netto||0)>=0?'up':'down'} ${Math.abs(B.netto||0)} filaments.`
+   :`Trägt sich dein Abyss selbst? Jeder Lauf verbraucht Filamente, und fast jeder wirft welche ab. Du liegst ${Math.abs(B.netto||0)} Filamente im ${(B.netto||0)>=0?'Plus':'Minus'}.`)
+   +(A.runs_mit_preis!=null&&A.runs_mit_preis<a.n
+     ?(en?` The ISK line counts only the ${A.runs_mit_preis} runs where tier AND weather are known, because only both together make a filament with a price.`
+         :` Die ISK-Zeile rechnet nur die ${A.runs_mit_preis} Durchgänge mit, bei denen Stufe UND Wetter feststehen, denn erst beide zusammen ergeben ein Filament mit einem Preis.`)
+     :'');
+
+ // --- Beste Runde --------------------------------------------------------
+ const beste=b?(
+   k('ISK/min', fmtM(b.isk_min||0), '', 'grn')
+   +k(en?'Yield':'Ertrag', fmtM(b.isk||0), '', 'kkisk')
+   +k(en?'Duration':'Dauer', b.sek!=null?dauerMS(b.sek):(b.min||0))
+   +k('Filament', esc(nam(b)||'—'), b.klasse?esc(b.klasse):'')
+ ):'';
+ const iBeste=b?(new Date(b.start*1000).toLocaleString().slice(0,16)+' · '
+   +esc((b.chars&&b.chars.length?b.chars:[b.char||'']).join(', '))
+   +(b.schiff?' · '+esc(b.schiff):'')+'. '
+   +(en?'Measured as ISK per minute across the whole run, not on the total: a long run with a lot of loot is not automatically the best.'
+       :'Gemessen an ISK je Minute über den ganzen Durchgang, nicht am Gesamtwert: ein langer Lauf mit viel Beute ist nicht automatisch der beste.')):'';
+
+ // --- Behaelter ----------------------------------------------------------
+ const H=a.behaelter||{};
+ const behaelter=H.erfasst?(
+   k(en?'Ø per run':'Ø je Durchgang', H.schnitt, '/ 3')
+   +k(en?'All three opened':'Alle drei geöffnet', H.voll_quote+'%', '',
+      H.voll_quote>=90?'grn':'')
+   +k(en?'Caches total':'Behälter gesamt', fmt(H.summe||0))
+   +k(en?'Runs counted':'Erfasste Durchgänge', H.erfasst, '/ '+(a.n||0), 'out')
+ ):'';
+ const iBeh=H.erfasst?(en
+   ?'Each of the three pockets holds exactly one cache. Counted is what you OPENED: a cache you fly past leaves no log line. A low number means loot left behind, not a missing cache.'
+   :'Jede der drei Taschen enthält genau einen Behälter. Gezählt wird, was du AUFGEMACHT hast: an einem Behälter, an dem du vorbeifliegst, steht keine Logzeile. Eine niedrige Zahl heißt also liegengelassene Beute, nicht ein fehlender Behälter.')
+   +(H.sorten?' '+esc(H.sorten):''):'';
+
+ // --- Der Zeitraum als eigener Kasten, plus ehrlicher Hinweis ------------
+ // Nirahse: "Zeitraum Auswahl wirkt sich bei mir gar nicht aus." Nachgemessen
+ // filtert der Server richtig (30 Tage -> 5, 90 -> 12, alles -> 16 an einem
+ // gestellten Bestand), und der Klick schickt nachweislich atage mit. Es
+ // bleibt eine Erklaerung: alle ERFASSTEN Durchgaenge liegen im Fenster.
+ // Genau das muss dastehen, sonst sieht es wie ein kaputter Knopf aus.
+ const laeufe=a.laeufe||[];
+ const aeltester=laeufe.length?Math.min(...laeufe.map(l=>l.start||0)):0;
+ const tageAlt=aeltester?Math.floor((Date.now()/1000-aeltester)/86400):0;
+ const bindet=!abyssTage||tageAlt>=abyssTage;
+ const zHinweis=(aeltester&&!bindet)
+   ?(en?`Your oldest recorded run is ${tageAlt} days old, so every period shows the same ${a.n} runs.`
+       :`Dein ältester erfasster Durchgang ist ${tageAlt} Tage alt, deshalb zeigen alle Zeiträume dieselben ${a.n} Durchgänge.`)
+   :'';
+
+ return `<div class="kzeile">
+  <div class="card kchar">${charWahlKarte(a.mchars)||('<div class="sub">'+(en?'One character':'Ein Charakter')+'</div>')}</div>
+  <div class="card kzeit">
+   <div class="kkl">${en?'Period':'Zeitraum'}</div>
+   <div class="btnrow" style="margin-top:4px">${zeitKnoepfe()}</div>
+   ${zHinweis?`<div class="kku" style="margin-top:6px;white-space:normal">${esc(zHinweis)}</div>`:''}
+  </div>
+ </div>
+ <div class="card kkkopf" style="grid-column:1/-1">
+  <span class="pill mkopfpille" data-mk="klassisch" style="float:right;margin-left:10px"
+    title="${en?'Back to the separate boxes.':'Zurück zu den einzelnen Kästen.'}">${en?'classic header':'klassischer Kopf'}</span>
+  ${abschnitt(en?'RUNS':'DURCHGÄNGE','',durchgaenge,iDurch)}
+  ${abschnitt(en?'FILAMENTS':'FILAMENTE','',filamente,iFil)}
+  ${beste?abschnitt(en?'BEST RUN':'BESTE RUNDE','',beste,iBeste):''}
+  ${behaelter?abschnitt(en?'CACHES':'BEHÄLTER','',behaelter,iBeh):''}
+ </div>`;
 }
 
 // ===========================================================================

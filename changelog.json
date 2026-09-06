@@ -1,5 +1,23 @@
 [
  {
+  "v": "2.91.0",
+  "d": "2026-09-06",
+  "de": [
+   "NEU: der kompakte Kopf gibt es jetzt auch für die Abyss-Seite, umschaltbar mit demselben Schalter. Wunsch von Nirahse: „Die vielen Box-Ränder nehmen viel Platz ein, so dass die tolle Tabelle Ertrag je Filament nur durch Scrollen erreichbar ist.“",
+   "Vier seiner Punkte, alle vier umgesetzt. Die vier Kästen liegen jetzt in einem. Das Kleingedruckte steht RECHTS neben den Kacheln statt darunter, wie er vorgeschlagen hat: „Wir haben Landscape Bildschirme, also mehr Platz horizontal als vertikal.“ Ein Satz unter den Kacheln kostet immer eine ganze Zeile Höhe, rechts daneben kostet er nichts. Die Zeitraum-Wahl ist aus der Durchgänge-Karte heraus und steht in einem eigenen Kasten, denn sie wirkt auf jede Zahl der Seite und gehörte nie in eine einzelne Karte. Und Charakterwahl und Zeitraum stehen nebeneinander, der Zeitraum mit fester Breite, die Charakterwahl nimmt den Rest.",
+   "Gemessen bei Full HD: die Tabelle Ertrag je Filament rückt von 1.156 auf 866 Pixel und ist damit sichtbar, statt erst nach dem Scrollen.",
+   "DAZU eine Klarstellung zu seiner zweiten Meldung, „Zeitraum Auswahl wirkt sich bei mir gar nicht aus“: der Zeitraum funktioniert. Nachgemessen an einem gestellten Bestand aus 5 Läufen von vor drei Tagen, 7 von vor fünfzig und 4 von vor zweihundert liefert Canary 30 Tage → 5, 90 Tage → 12, alles → 16, und zwar in allen Zahlen einschließlich der Filament-Bilanz. Auch der Klick schickt den Zeitraum nachweislich mit.",
+   "Es bleibt also nur eine Erklärung: alle ERFASSTEN Durchgänge liegen innerhalb des Fensters. Canary kennt nur, was beim Einlesen in die Datenbank kam, nicht die ganze Spielhistorie. Das darf die Seite aber nicht verschweigen, sonst sieht ein Knopf ohne Wirkung wie ein Fehler aus. Deshalb steht jetzt neben der Zeitraum-Wahl: „Dein ältester erfasster Durchgang ist 14 Tage alt, deshalb zeigen alle Zeiträume dieselben 19 Durchgänge.“ Der Satz erscheint nur, wenn er auch zutrifft."
+  ],
+  "en": [
+   "NEW: the compact header now covers the abyss page too, on the same switch. Requested by Nirahse: „all those box borders take up a lot of room, so the nice yield per filament table is only reachable by scrolling.“",
+   "Four of his points, all four done. The four boxes now sit in one. The small print sits to the RIGHT of the tiles rather than below, as he proposed: „we have landscape screens, so more room horizontally than vertically.“ A sentence below the tiles always costs a full line of height; beside them it costs nothing. The period selector has moved out of the runs card into a box of its own, because it affects every figure on the page and never belonged inside a single card. And the character selection and the period now sit side by side, the period at a fixed width, the character selection taking the rest.",
+   "Measured at Full HD: the yield per filament table moves from 1,156 to 866 pixels and is visible instead of hidden below the fold.",
+   "ALSO a clarification on his second report, „the period selection has no effect for me at all“: the period works. Measured against a staged set of 5 runs from three days ago, 7 from fifty days and 4 from two hundred, Canary returns 30 days → 5, 90 days → 12, all → 16, in every figure including the filament balance. The click demonstrably sends the period along too.",
+   "So only one explanation remains: all RECORDED runs fall inside the window. Canary knows only what came into the database when the logs were read, not your whole play history. The page must not keep that quiet though, otherwise a button with no effect looks like a bug. So next to the period selector it now says: „Your oldest recorded run is 14 days old, so every period shows the same 19 runs.“ The sentence appears only when it actually applies."
+  ]
+ },
+ {
   "v": "2.90.0",
   "d": "2026-09-06",
   "de": [
