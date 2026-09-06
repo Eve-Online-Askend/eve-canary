@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.89.0",
+  "d": "2026-09-06",
+  "de": [
+   "Die Notizen in der Ertrags-Tabelle haben jetzt eine eigene Spalte. Vorher standen sie als zusätzliche Zeile über die volle Tabellenbreite unter dem Datensatz, und das zerschnitt die Zeilen optisch. Gemeldet von Nirahse: „Wirkt optisch etwas zerschossen.“",
+   "Und sie hängen wieder am Filament, also an Stufe UND Wetter, nicht mehr nur an Stufe und Schiffsklasse. Auch das ist Nirahses Korrektur, und sie war berechtigt: in seiner Tabelle stand dieselbe Notiz bei T4 Exotic und bei T4 Firestorm, weil beide mit Kreuzern geflogen waren. Ich hatte das Wetter herausgenommen, damit die Notiz beim Umschalten auf „je Schiffsklasse“ nicht verschwindet. Der bessere Weg war der andere: die Notiz bleibt am Filament, und in der zusammengefassten Ansicht stehen die Notizen aller Wetter hintereinander.",
+   "Schon geschriebene Notizen bleiben in jedem Fall gültig. Einträge aus v2.85 bis v2.88 hatten das Wetter nicht im Schlüssel; sie gelten weiterhin für jedes Wetter derselben Stufe und Klasse. Umgeschrieben wird nichts, denn welche Wetter zu so einem Eintrag gehören, weiß niemand, und Raten wäre schlimmer als zwei Schlüsselformen nebeneinander."
+  ],
+  "en": [
+   "Notes in the yield table now have their own column. They used to sit as an extra full-width row underneath the record, which visually cut the rows apart. Reported by Nirahse: „looks a bit shot up“.",
+   "And they hang on the filament again, meaning tier AND weather, no longer just tier and ship class. That is Nirahse's correction too, and a fair one: in his table the same note appeared on T4 Exotic and on T4 Firestorm because both were flown in cruisers. I had taken the weather out so the note would not vanish when switching to „per ship class“. The better answer was the other one: the note stays on the filament, and in the merged view the notes of all weathers are shown one after another.",
+   "Notes already written stay valid either way. Entries from v2.85 to v2.88 had no weather in their key; they continue to apply to every weather of the same tier and class. Nothing is rewritten, because nobody knows which weathers such an entry belonged to, and guessing would be worse than two key forms side by side."
+  ]
+ },
+ {
   "v": "2.88.0",
   "d": "2026-09-06",
   "de": [

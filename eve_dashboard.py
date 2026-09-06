@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.88.0"
+VERSION = "2.89.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -2091,52 +2091,72 @@ def meta_set(key, value):
         DB.commit()
 
 
-def filament_schluessel(stufe, klasse):
-    """Stufe plus Schiffsklasse als ein Schluessel fuer eine Notiz.
+def filament_schluessel(stufe, wetter, klasse):
+    """Stufe, Wetter und Schiffsklasse als Schluessel fuer eine Notiz.
 
-    Das WETTER steht bewusst nicht drin. Zwei Gruende:
+    Das Wetter war zwischendurch draussen, damit die Notiz beim Umschalten
+    auf "je Schiffsklasse" nicht verschwindet. Nirahse hat das am 06.09.2026
+    korrigiert, und er hat recht: "die Notizen bitte pro Tier+Wetter
+    (Filament) speichern". In seiner Tabelle stand dieselbe Notiz sonst bei
+    T4 Exotic UND T4 Firestorm, weil beide Kreuzer sind.
 
-    Erstens laesst sich die Tabelle zwischen "je Filament" und "je
-    Schiffsklasse" umschalten. Haenge die Notiz am Wetter, verschwindet
-    sie beim Umschalten, und das liest sich wie ein Fehler.
+    Fuer die zusammengefasste Ansicht loest das notiz_fuer() auf, indem es
+    die Notizen aller Wetter aneinanderhaengt."""
+    return "%s|%s|%s" % (stufe if stufe is not None else "",
+                         wetter or "", klasse or "")
 
-    Zweitens passt es zu dem, was Nirahse tatsaechlich notieren wollte
-    (06.09.2026): "Destroyer-Runs wuerfeln 2 mal, Fregatten-Runs 3 mal
-    Loot in die Bio-Cache Box". Das ist eine Aussage ueber die
-    Schiffsklasse, nicht ueber das Wetter.
 
-    Der Preis: eine wetter-eigene Notiz gibt es damit nicht. Die Notiz
-    steht dafuer in beiden Ansichten und an allen Wetter-Zeilen
-    derselben Stufe und Klasse."""
-    return "%s|%s" % (stufe if stufe is not None else "", klasse or "")
+def notiz_fuer(notizen, stufe, wetter, klasse):
+    """Die Notiz zu einer Tabellenzeile.
+
+    Drei Faelle:
+      - Zeile mit Wetter: genau ihre eigene Notiz.
+      - Zeile OHNE Wetter (Ansicht "je Schiffsklasse"): die Notizen aller
+        Wetter dieser Stufe und Klasse, aneinandergehaengt. So gehen sie
+        beim Umschalten nicht verloren, ohne dass eine davon faelschlich
+        fuer alle gilt.
+      - Alte Notizen aus v2.85 bis v2.88 hatten das Wetter nicht im
+        Schluessel ("4|Fregatte"). Sie gelten weiter fuer alle Wetter
+        dieser Stufe und Klasse, damit nichts verwaist.
+    """
+    if wetter:
+        eigen = notizen.get(filament_schluessel(stufe, wetter, klasse))
+        if eigen:
+            return eigen
+        return notizen.get("%s|%s" % (stufe if stufe is not None else "",
+                                      klasse or ""), "")
+    st = str(stufe) if stufe is not None else ""
+    kl = klasse or ""
+    teile = []
+    for k, v in sorted(notizen.items()):
+        st_k = k.split("|")
+        if len(st_k) == 3 and st_k[0] == st and st_k[2] == kl and v:
+            teile.append(v)
+        elif len(st_k) == 2 and st_k[0] == st and st_k[1] == kl and v:
+            teile.append(v)
+    # Doppelte raus, Reihenfolge behalten: zwei Wetter mit derselben Notiz
+    # sollen sie nicht zweimal zeigen.
+    gesehen, raus = set(), []
+    for t in teile:
+        if t not in gesehen:
+            gesehen.add(t)
+            raus.append(t)
+    return " · ".join(raus)
 
 
 def filament_notizen():
     """Alle eigenen Notizen. Schluessel -> Text.
 
-    Alte Schluessel aus v2.84.0 hatten noch das Wetter mit drin
-    ("4|firestorm|Fregatte"). Die werden beim Lesen auf die neue Form
-    gefaltet, damit eine bereits geschriebene Notiz nicht verwaist.
-    Treffen dabei zwei aufeinander, bleiben beide erhalten, durch
-    einen Punkt getrennt: lieber ein Satz zu viel als einer weg."""
+    Es stehen zwei Schluesselformen nebeneinander: die heutige mit
+    Wetter ("4|firestorm|Fregatte") und die aus v2.85 bis v2.88 ohne
+    ("4|Fregatte"). Umgeschrieben wird NICHTS: welche Wetter zu einer
+    alten Notiz gehoeren, weiss niemand, und Raten waere schlimmer als
+    zwei Formen. notiz_fuer() loest beide auf."""
     try:
         d = json.loads(meta_get("filament_notizen") or "{}")
-        if not isinstance(d, dict):
-            return {}
+        return d if isinstance(d, dict) else {}
     except Exception:
         return {}
-    if not any(k.count("|") == 2 for k in d):
-        return d
-    neu = {}
-    for k, v in d.items():
-        teile = k.split("|")
-        nk = "%s|%s" % (teile[0], teile[2]) if len(teile) == 3 else k
-        if nk in neu and v and v not in neu[nk]:
-            neu[nk] = (neu[nk] + " " + v).strip()
-        else:
-            neu.setdefault(nk, v)
-    meta_set("filament_notizen", json.dumps(neu, ensure_ascii=False))
-    return neu
 
 
 def filament_notiz_setzen(schluessel, text):
@@ -14127,8 +14147,9 @@ def query_abyss_ertrag(chars=None, tage=30, gruppierung="filament"):
     # dort, wo "ja es bringt mehr, aber ..." hingehoert.
     _notizen = filament_notizen()
     for z in liste:
-        z["fkey"] = filament_schluessel(z["stufe"], z["klasse"])
-        z["notiz"] = _notizen.get(z["fkey"], "")
+        z["fkey"] = filament_schluessel(z["stufe"], z["wetter"], z["klasse"])
+        z["notiz"] = notiz_fuer(_notizen, z["stufe"], z["wetter"],
+                                z["klasse"])
 
     MIND_RUNS = 8
     # Nur Zeilen mit bekanntem Filamentpreis: sonst stuende bei einer
@@ -14861,7 +14882,8 @@ class Handler(BaseHTTPRequestHandler):
                 _st = int(_st) if _st not in (None, "") else None
             except (TypeError, ValueError):
                 _st = None
-            _k = filament_schluessel(_st, str(body.get("klasse") or "")[:40])
+            _k = filament_schluessel(_st, str(body.get("wetter") or "")[:40],
+                                     str(body.get("klasse") or "")[:40])
             filament_notiz_setzen(_k, str(body.get("text") or ""))
         elif action == "eigenbeschuss":
             # Beschuss durch eigene Charaktere melden ja/nein (Vorgabe: nein).
@@ -17580,7 +17602,7 @@ $('#fnotizZu').onclick=()=>$('#fnotizDlg').close();
 function fnotizSenden(text){
  if(!fnotizZiel)return;
  post({action:'filament_notiz',stufe:fnotizZiel.stufe,
-       klasse:fnotizZiel.klasse,text:text});
+       wetter:fnotizZiel.wetter,klasse:fnotizZiel.klasse,text:text});
  $('#fnotizDlg').close();
 }
 $('#fnotizSpeichern').onclick=()=>fnotizSenden($('#fnotizText').value);
@@ -18237,12 +18259,17 @@ document.addEventListener('click',e=>{
  {const fn=e.target.closest&&e.target.closest('.fnotiz');
   if(fn){
    const d=$('#fnotizDlg');
-   fnotizZiel={stufe:fn.dataset.stufe,klasse:fn.dataset.klasse};
+   fnotizZiel={stufe:fn.dataset.stufe,wetter:fn.dataset.wetter,
+               klasse:fn.dataset.klasse};
    $('#fnotizTitel').textContent=fn.dataset.name
      +(fn.dataset.klasse?' · '+fn.dataset.klasse:'');
-   $('#fnotizWas').textContent=lang==='en'
-     ?'Your own note on this tier and ship class. It applies to every weather of that combination and stays put when you switch the table between per filament and per ship class. It appears in the table and, if this line is the best one, right in the hint below it. Numbers cannot know stress, price swings or what you would rather keep than sell.'
-     :'Deine eigene Notiz zu dieser Stufe und Schiffsklasse. Sie gilt für jedes Wetter dieser Kombination und bleibt stehen, wenn du die Tabelle zwischen "je Filament" und "je Schiffsklasse" umschaltest. Sie steht in der Tabelle und, wenn diese Zeile die beste ist, direkt im Hinweis darunter. Stress, Preisschwankungen oder was du lieber sammelst als verkaufst, weiß keine Zahl.';
+   $('#fnotizWas').textContent=fn.dataset.wetter
+     ?(lang==='en'
+       ?'Your own note on this filament and ship class. It appears in that row and, if this row is the best one, right in the hint below the table. In the per ship class view the notes of all weathers are shown one after another. Numbers cannot know stress, price swings or what you would rather keep than sell.'
+       :'Deine eigene Notiz zu diesem Filament und dieser Schiffsklasse. Sie steht in dieser Zeile und, wenn sie die beste ist, direkt im Hinweis unter der Tabelle. In der Ansicht "je Schiffsklasse" stehen die Notizen aller Wetter hintereinander. Stress, Preisschwankungen oder was du lieber sammelst als verkaufst, weiß keine Zahl.')
+     :(lang==='en'
+       ?'This row has no weather, so the note here belongs to the runs without a weather. The notes of the individual weathers stay where they are and are shown one after another in this view. Switch to per filament to edit one of them.'
+       :'Diese Zeile hat kein Wetter, die Notiz hier gehört also zu den Durchgängen ohne Wetterangabe. Die Notizen der einzelnen Wetter bleiben, wo sie sind, und stehen in dieser Ansicht hintereinander. Zum Bearbeiten einer davon auf "je Filament" umschalten.');
    $('#fnotizText').value=fn.dataset.notiz||'';
    fnotizRest();
    if(!d.open)d.showModal();
@@ -21610,19 +21637,22 @@ function renderAbyss(a){
       }">${l}</span>`).join('')}</span></div>
    <table><tr><th>Filament</th><th>${en?'Ship class':'Schiffklasse'}</th><th class="r">${en?'Runs':'Durchgänge'}</th>
     <th class="r">${en?'ISK per run':'ISK je Durchgang'}</th><th class="r">ISK/min</th><th class="r">${en?'Ø duration':'Ø Dauer'}</th>
-    <th class="r" title="${en?'Loot minus the filaments used. Only where tier and weather are known.':'Beute abzüglich der verbrauchten Filamente. Nur wo Stufe und Wetter feststehen.'}">${en?'Net per run':'Netto je Durchgang'}</th></tr>
-   ${A.zeilen.map(z=>`<tr><td>${esc(nam(z))} <span class="fnotiz" title="${
-     en?'Your own note on this tier and ship class':'Eigene Notiz zu dieser Stufe und Schiffsklasse'
-    }" data-stufe="${z.stufe==null?'':z.stufe}"
-    data-klasse="${esc(z.klasse||'')}" data-notiz="${esc(z.notiz||'')}"
-    data-name="${z.stufe?('T'+z.stufe):(en?'no details':'ohne Angabe')}"
-    style="cursor:pointer;opacity:${z.notiz?'1':'.45'}">📝</span></td>
+    <th class="r" title="${en?'Loot minus the filaments used. Only where tier and weather are known.':'Beute abzüglich der verbrauchten Filamente. Nur wo Stufe und Wetter feststehen.'}">${en?'Net per run':'Netto je Durchgang'}</th>
+    <th title="${en?'Your own note. Numbers know neither stress nor price swings.':'Deine eigene Notiz. Zahlen kennen weder Stress noch Preisschwankungen.'}">${en?'Note':'Notiz'}</th></tr>
+   ${A.zeilen.map(z=>`<tr><td>${esc(nam(z))}</td>
     <td${z.klasse?'':' class="sub"'}>${z.klasse?esc(z.klasse):(en?'unknown':'unbekannt')}</td>
     <td class="r">${z.runs}</td><td class="r isk">${fmtM(z.isk_run)}</td>
     <td class="r isk">${fmtM(z.isk_min)}</td><td class="r">${z.sek!=null?dauerMS(z.sek):z.min} min</td>
-    <td class="r ${z.netto_run==null?'sub':(z.netto_run>=0?'grn':'in')}">${z.netto_run!=null?fmtM(z.netto_run):'—'}</td></tr>${
-    z.notiz?`<tr><td colspan="7" class="sub" style="padding-top:0;border-top:0">
-      <span style="opacity:.7">📝</span> ${esc(z.notiz)}</td></tr>`:''}`).join('')}
+    <td class="r ${z.netto_run==null?'sub':(z.netto_run>=0?'grn':'in')}">${z.netto_run!=null?fmtM(z.netto_run):'—'}</td>
+    <td class="fnotiz" title="${
+      z.wetter
+       ?(en?'Your own note on this filament and ship class':'Eigene Notiz zu diesem Filament und dieser Schiffsklasse')
+       :(en?'Notes of all weathers of this tier and ship class. Click to edit the one without a weather.':'Notizen aller Wetter dieser Stufe und Schiffsklasse. Der Klick bearbeitet die ohne Wetter.')
+     }" data-stufe="${z.stufe==null?'':z.stufe}" data-wetter="${esc(z.wetter||'')}"
+     data-klasse="${esc(z.klasse||'')}" data-notiz="${esc(z.notiz||'')}"
+     data-name="${esc(nam(z))}"
+     style="cursor:pointer;max-width:260px;white-space:normal;font-size:11px;line-height:1.35;color:var(--dim)">${
+      z.notiz?esc(z.notiz):'<span style="opacity:.35">📝</span>'}</td></tr>`).join('')}
    </table>
    ${ertragsTipp(A,nam)}
    <div class="sub" style="margin-top:8px">${en
