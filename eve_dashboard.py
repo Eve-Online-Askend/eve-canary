@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.82.0"
+VERSION = "2.83.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -8897,6 +8897,23 @@ const fmtP=n=>{n=n||0; const a=Math.abs(n);
 // zaehlt allein das Log. Wer in eine Orca ablaedt, sieht den Balken bis zur
 // naechsten ESI-Abfrage zu hoch. Das steht so im Tooltip, statt es zu
 // verschweigen.
+// Dauer als M:SS statt gerundeter Minuten.
+//
+// Wunsch von Nirahse (06.09.2026): "Ist die Zeitmessung fuer Abyss
+// eigentlich auf die Sekunde genau und wir sehen nur auf Minuten gerundete
+// Zeiten? Der Zeitstempel im Log muesste eine sekunden-genaue Auswertung
+// zulassen."
+//
+// Er hat recht. EVE schreibt ganze Sekunden ins Log, und genau die stehen in
+// der Datenbank: nachgezaehlt am 06.09.2026, 116 von 116 Zeilen. Gerundet
+// wurde ausschliesslich hier in der Anzeige, und bei 15 dieser 116 Einsaetze
+// lag die angezeigte Minute mehr als 25 Sekunden daneben. Ein Lauf von 11:13
+// stand als "11 min" da.
+//
+// Die Minuten laufen bewusst weiter als 59: ein Einsatz von 359:03 ist eine
+// Dauer, keine Uhrzeit.
+const dauerMS=s=>{s=Math.max(0,Math.round(s||0));
+ return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
 // Kurzform fuer den Fuellstandsbalken. fmtC waere hier zu grob: es rundet
 // ab 10.000 auf ganze Tausender, und ein Hulk mit 11.500 m³ Erzladeraum
 // stand dann als "12 K" da. Bei einem Balken, der genau diese Grenze zeigen
@@ -11425,6 +11442,14 @@ def query_mission_history(limit=40, nur_mids=None):
             # geloescht werden.
             "min": (round(((et or 0) - (st or 0)) / 60)
                     if (et or 0) >= (st or 0) else None),
+            # Die Dauer sekundengenau. Gerundet wurde noch nie beim
+            # Einlesen, EVE schreibt ganze Sekunden ins Log und genau die
+            # stehen in der Datenbank (nachgezaehlt am 06.09.2026: 116 von
+            # 116 Zeilen). Erst die Anzeige machte Minuten daraus, und bei
+            # 15 dieser 116 Einsaetze lag die angezeigte Minute mehr als
+            # 25 s daneben. Wunsch von Nirahse (06.09.2026).
+            "sek": (int((et or 0) - (st or 0))
+                    if (et or 0) >= (st or 0) else None),
             "system": sysn or "?",
             "dmg_out": do or 0, "dmg_in": di or 0, "kills": kills or 0,
             "bounty": round(bounty or 0), "hit": round(100 * hits / shots) if shots else None,
@@ -12857,6 +12882,8 @@ def query_abyss(chars=None, tage=30):
             # ein KeyError statt einer Gruppe.
             "system": r[4],
             "min": round(dauer, 1), "label": r[5], "isk": round(wert),
+            # dauer ist in Minuten, kommt aber aus ganzen Sekunden.
+            "sek": round(dauer * 60),
             "isk_min": round(wert / dauer) if dauer > 0 else 0,
             "stufe": abyss_tier_aus_name(r[5] or "") or abyss_tier_aus_gegnern(gg),
             "wetter": abyss_wetter_aus_name(r[5] or ""),
@@ -12911,6 +12938,7 @@ def query_abyss(chars=None, tage=30):
             kandidat = dict(teil[0])
             kandidat.update({
                 "isk": round(wert), "min": round(minuten, 1),
+                "sek": round(minuten * 60),
                 "isk_min": round(wert / minuten),
                 # Bei einer Multibox-Gruppe gehoert dazu, WER mitgeflogen ist.
                 # Sonst steht dort ein Charakter und eine Summe, die drei
@@ -13619,6 +13647,7 @@ def query_abyss_ertrag(chars=None, tage=30):
                 "isk": round(e["isk"]),
                 "isk_run": round(e["isk"] / e["runs"]) if e["runs"] else 0,
                 "min": round(e["min"] / e["runs"], 1) if e["runs"] else 0,
+                "sek": round(e["min"] * 60 / e["runs"]) if e["runs"] else 0,
                 "isk_min": round(e["isk"] / e["min"]) if e["min"] else 0,
                 # Einsatz und Netto stehen nur da, wo ein Preis ermittelt
                 # werden konnte. Sonst bleibt das Feld leer, statt den
@@ -13646,6 +13675,7 @@ def query_abyss_ertrag(chars=None, tage=30):
             "isk_run": round(ges_isk / ges_runs) if ges_runs else 0,
             "isk_min": round(ges_isk / ges_min) if ges_min else 0,
             "min": round(ges_min / ges_runs, 1) if ges_runs else 0,
+            "sek": round(ges_min * 60 / ges_runs) if ges_runs else 0,
             "ohne_angabe": sum(x["runs"] for x in liste
                                if x["stufe"] is None and x["wetter"] is None),
             "einsatz": einsatz_ges,
@@ -16440,6 +16470,23 @@ const fmtP=n=>{n=n||0; const a=Math.abs(n);
 // zaehlt allein das Log. Wer in eine Orca ablaedt, sieht den Balken bis zur
 // naechsten ESI-Abfrage zu hoch. Das steht so im Tooltip, statt es zu
 // verschweigen.
+// Dauer als M:SS statt gerundeter Minuten.
+//
+// Wunsch von Nirahse (06.09.2026): "Ist die Zeitmessung fuer Abyss
+// eigentlich auf die Sekunde genau und wir sehen nur auf Minuten gerundete
+// Zeiten? Der Zeitstempel im Log muesste eine sekunden-genaue Auswertung
+// zulassen."
+//
+// Er hat recht. EVE schreibt ganze Sekunden ins Log, und genau die stehen in
+// der Datenbank: nachgezaehlt am 06.09.2026, 116 von 116 Zeilen. Gerundet
+// wurde ausschliesslich hier in der Anzeige, und bei 15 dieser 116 Einsaetze
+// lag die angezeigte Minute mehr als 25 Sekunden daneben. Ein Lauf von 11:13
+// stand als "11 min" da.
+//
+// Die Minuten laufen bewusst weiter als 59: ein Einsatz von 359:03 ist eine
+// Dauer, keine Uhrzeit.
+const dauerMS=s=>{s=Math.max(0,Math.round(s||0));
+ return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
 // Kurzform fuer den Fuellstandsbalken. fmtC waere hier zu grob: es rundet
 // ab 10.000 auf ganze Tausender, und ein Hulk mit 11.500 m³ Erzladeraum
 // stand dann als "12 K" da. Bei einem Balken, der genau diese Grenze zeigen
@@ -20780,7 +20827,7 @@ function renderAbyss(a){
     <div class="stat" title="${en?`Completed runs in the selected period. A run you flew together as a group counts as ONE, not as three.`:`Abgeschlossene Durchgänge im gewählten Zeitraum. Ein Durchgang, den ihr zu mehreren geflogen seid, zählt als EINER, nicht als drei.`}"><div class="l">${en?'Runs':'Durchgänge'}</div><div class="v">${A.runs||0}</div></div>
     <div class="stat" title="${en?`Average loot per run at Jita instant-sell prices. Only counts what you entered: EVE does not log looting, so a run without an entry is missing from this figure.`:`Beute je Durchgang im Schnitt, zu Jita-Sofortverkaufspreisen. Gerechnet wird nur mit dem, was du eingetragen hast: EVE protokolliert das Plündern nicht, ohne Eintrag fehlt der Lauf in dieser Zahl.`}"><div class="l">${en?'ISK per run':'ISK je Durchgang'}</div><div class="v isk">${fmtM(A.isk_run||0)}</div></div>
     <div class="stat" title="${en?`Loot divided by the time actually spent inside. That time comes from the chat log, from the Local channel vanishing and returning, so it is measured. The gap between two runs is not counted.`:`Beute geteilt durch die tatsächlich im Abyss verbrachte Zeit. Die Zeit stammt aus dem Chatlog, nämlich aus dem Verschwinden und Wiederauftauchen des Local-Kanals, ist also gemessen. Die Pause zwischen zwei Läufen zählt nicht mit.`}"><div class="l">ISK/min</div><div class="v isk">${fmtM(A.isk_min||0)}</div></div>
-    <div class="stat" title="${en?`Average length of a run, measured from the chat log. The hard in-game limit is 20 minutes; staying well under it means more runs per hour.`:`Wie lange ein Durchgang im Schnitt gedauert hat, aus dem Chatlog gemessen. Die harte Grenze im Spiel liegt bei 20 Minuten; wer deutlich darunter bleibt, schafft mehr Läufe pro Stunde.`}"><div class="l">${en?'Ø duration':'Ø Dauer'}</div><div class="v out">${A.min||0} min</div></div>
+    <div class="stat" title="${en?`Average length of a run, measured from the chat log. The hard in-game limit is 20 minutes; staying well under it means more runs per hour.`:`Wie lange ein Durchgang im Schnitt gedauert hat, aus dem Chatlog gemessen. Die harte Grenze im Spiel liegt bei 20 Minuten; wer deutlich darunter bleibt, schafft mehr Läufe pro Stunde.`}"><div class="l">${en?'Ø duration':'Ø Dauer'}</div><div class="v out">${A.sek!=null?dauerMS(A.sek):(A.min||0)} min</div></div>
    </div>
    ${a.mit_loot<a.n?`<div class="sub" style="margin-top:8px">${en
      ? `${a.n-a.mit_loot} of ${a.n} runs have no loot entered yet. Everything below is based on the ${a.mit_loot} that do.`
@@ -20819,7 +20866,7 @@ function renderAbyss(a){
    <div class="stats" style="grid-template-columns:repeat(4,1fr)">
     <div class="stat" title="${en?`The yardstick for the best run: loot per minute across the whole run. Not the total, because a long run with a lot of loot is not automatically the best.`:`Der Maßstab für die beste Runde: Beute je Minute über den ganzen Durchgang. Nicht der Gesamtwert, denn ein langer Lauf mit viel Beute ist nicht automatisch der beste.`}"><div class="l">ISK/min</div><div class="v isk">${fmtM(b.isk_min)}</div></div>
     <div class="stat" title="${en?`The entire loot from this one run, at Jita instant-sell.`:`Die gesamte Beute dieses einen Durchgangs, zu Jita-Sofortverkauf.`}"><div class="l">${en?'Yield':'Ertrag'}</div><div class="v isk">${fmtM(b.isk)}</div></div>
-    <div class="stat" title="${en?`How long this run took, measured from the chat log.`:`Wie lange dieser Durchgang gedauert hat, aus dem Chatlog gemessen.`}"><div class="l">${en?'Duration':'Dauer'}</div><div class="v out">${b.min} min</div></div>
+    <div class="stat" title="${en?`How long this run took, measured from the chat log.`:`Wie lange dieser Durchgang gedauert hat, aus dem Chatlog gemessen.`}"><div class="l">${en?'Duration':'Dauer'}</div><div class="v out">${b.sek!=null?dauerMS(b.sek):b.min} min</div></div>
     <div class="stat" title="${en?`Tier and weather of this run. Canary works both out from the enemies in the combat log; neither is written down anywhere in a log file.`:`Stufe und Wetter dieses Durchgangs. Beides erkennt Canary an den Gegnern im Kampflog, es steht nirgends ausdrücklich in einer Logdatei.`}"><div class="l">Filament</div><div class="v">${esc(nam(b))}</div></div>
    </div>
    <div class="sub" style="margin-top:6px">${new Date(b.start*1000).toLocaleString()} · ${esc((b.chars&&b.chars.length?b.chars:[b.char||'']).join(', '))}${(b.chars&&b.chars.length>1)?` <span class="grn">(${en?'flown together':'zusammen geflogen'})</span>`:''}${b.schiff?' · '+esc(b.schiff):''}${b.klasse?' ('+esc(b.klasse)+')':''} · ${en
@@ -20855,7 +20902,7 @@ function renderAbyss(a){
    ${A.zeilen.map(z=>`<tr><td>${esc(nam(z))}</td>
     <td${z.klasse?'':' class="sub"'}>${z.klasse?esc(z.klasse):(en?'unknown':'unbekannt')}</td>
     <td class="r">${z.runs}</td><td class="r isk">${fmtM(z.isk_run)}</td>
-    <td class="r isk">${fmtM(z.isk_min)}</td><td class="r">${z.min} min</td>
+    <td class="r isk">${fmtM(z.isk_min)}</td><td class="r">${z.sek!=null?dauerMS(z.sek):z.min} min</td>
     <td class="r ${z.netto_run==null?'sub':(z.netto_run>=0?'grn':'in')}">${z.netto_run!=null?fmtM(z.netto_run):'—'}</td></tr>`).join('')}
    </table>
    <div class="sub" style="margin-top:8px">${en
@@ -20933,7 +20980,7 @@ function laufZeile(x){
     <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:baseline">
      <b>${new Date(x.start*1000).toLocaleString().slice(0,16)}</b>
      <span class="char" style="font-size:12px">${esc(x.char||'')}</span>
-     <span class="sys">${x.system&&x.system!=='?'?'· '+esc(x.system)+' ':''}· ${x.min!=null?x.min:'?'} min</span>
+     <span class="sys">${x.system&&x.system!=='?'?'· '+esc(x.system)+' ':''}· ${x.sek!=null?dauerMS(x.sek)+' min':(x.min!=null?x.min+' min':'?')}</span>
      ${(x.zusammen&&x.zusammen.length)?`<span class="zusammen" title="${lang==='en'
         ? 'Same system, in and out within 90 seconds of each other. Every character keeps its own entry, because each has its own log, its own damage and its own EWAR. Whether it was one filament for the fleet or several started at the same time is not in any log file.'
         : 'Gleiches System, rein und raus innerhalb von 90 Sekunden. Jeder Charakter behält seinen eigenen Eintrag, denn jeder hat sein eigenes Log, seinen eigenen Schaden und sein eigenes EWAR. Ob es ein Filament für die Flotte war oder mehrere gleichzeitig gestartete, steht in keiner Logdatei.'}">🤝 ${lang==='en'?'together with':'gemeinsam mit'} ${esc(x.zusammen.join(', '))}</span>`:''}

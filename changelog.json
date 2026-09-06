@@ -1,5 +1,19 @@
 [
  {
+  "v": "2.83.0",
+  "d": "2026-09-06",
+  "de": [
+   "NEU: ⏱ DAUERN AUF DIE SEKUNDE, im Format Minuten:Sekunden. Frage von Nirahse, ob die Abyss-Zeitmessung sekundengenau ist und wir nur gerundete Minuten sehen, oder ob Canary schon beim Einlesen rundet. Nachgemessen an der echten Datenbank: alle 116 Missionszeilen stehen auf ganze Sekunden, genau wie EVE sie ins Log schreibt. Gerundet wurde ausschließlich in der Anzeige.",
+   "Und das war nicht folgenlos: bei 15 dieser 116 Einsätze lag die angezeigte Minute mehr als 25 Sekunden neben der Wahrheit. Ein Lauf von 11:13 stand als „11 min“ da, und einer von 41:49 sprang sogar über die Minute hinweg auf „42 min“. Bei Abyss-Durchgängen mit ihrer harten 20-Minuten-Grenze macht das einen Unterschied.",
+   "Umgestellt sind vier Stellen: die Missionsliste, die beste Runde, die Ø Dauer und die Tabelle Ertrag je Filament. Die Minuten laufen dabei bewusst über 59 hinaus weiter, ein Einsatz von 359:03 ist eine Dauer und keine Uhrzeit. Der Formatierer steht in demselben geteilten Block wie die Zahlen, damit Dashboard und Overlay nicht wieder auseinanderlaufen."
+  ],
+  "en": [
+   "NEW: ⏱ DURATIONS DOWN TO THE SECOND, in minutes:seconds. Nirahse asked whether the abyss timing is second-accurate and we only see rounded minutes, or whether Canary rounds on read. Measured against the real database: all 116 mission rows sit on whole seconds, exactly as EVE writes them into the log. Rounding happened in the display only.",
+   "And it was not harmless: on 15 of those 116 runs the displayed minute was more than 25 seconds off. A run of 11:13 showed as „11 min“, and one of 41:49 even jumped across the minute to „42 min“. For abyss runs, with their hard 20 minute limit, that matters.",
+   "Four places changed: the mission list, the best run, the average duration and the yield per filament table. Minutes deliberately keep counting past 59, because a run of 359:03 is a duration, not a clock time. The formatter sits in the same shared block as the numbers, so dashboard and overlay cannot drift apart again."
+  ]
+ },
+ {
   "v": "2.82.0",
   "d": "2026-09-05",
   "de": [
