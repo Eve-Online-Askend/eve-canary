@@ -73,16 +73,16 @@
  {
   "name": "Nirahse",
   "role": {
-   "de": "Missionsdaten",
-   "en": "Mission data",
-   "fr": "Donnees de missions",
-   "ru": "Данные миссий"
+   "de": "Logs, Missionen & Abyss",
+   "en": "Logs, missions & abyss",
+   "fr": "Logs, missions et Abyss",
+   "ru": "Логи, миссии и Abyss"
   },
   "note": {
-   "de": "Hat 9.161 Gamelogs aus sieben Jahren gespendet und meldet laufend Missionen, die Canary noch nicht kennt. Ein grosser Teil der Missionserkennung geht auf ihn zurueck.",
-   "en": "Donated 9,161 game logs spanning seven years and keeps reporting missions Canary does not know yet. A large part of the mission detection goes back to him.",
-   "fr": "A donne 9 161 journaux de jeu sur sept ans et signale regulierement des missions que Canary ne connait pas encore.",
-   "ru": "Передал 9161 игровой лог за семь лет и постоянно сообщает о миссиях, которые Canary ещё не знает."
+   "de": "Hat 9.161 Gamelogs aus sieben Jahren gespendet, den Prüfstand für den Parser. Ein großer Teil der Missionserkennung geht auf ihn zurück, und der ganze Abyss-Bereich ist an seinen Rückmeldungen gewachsen: Schiffsklassen im Ertrag, sekundengenaue Dauern, der Filament-Berater und die eigenen Notizen dazu.",
+   "en": "Donated 9,161 game logs spanning seven years, the test bench for the parser. A large part of the mission recognition goes back to him, and the whole abyss section grew out of his feedback: ship classes in the yield table, second-accurate durations, the filament advisor and the notes that go with it.",
+   "fr": "A fait don de 9 161 journaux de jeu sur sept ans, le banc d'essai de l'analyseur. Une grande partie de la reconnaissance des missions vient de lui, et toute la section Abyss a grandi grâce à ses retours : classes de vaisseaux dans le rendement, durées à la seconde près, le conseiller de filaments et ses notes.",
+   "ru": "Пожертвовал 9 161 игровой лог за семь лет, испытательный стенд для парсера. Значительная часть распознавания миссий появилась благодаря ему, а весь раздел Abyss вырос из его отзывов: классы кораблей в доходности, длительность с точностью до секунды, советник по филаментам и заметки к нему."
   },
   "links": []
  },
