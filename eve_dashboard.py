@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.83.0"
+VERSION = "2.84.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -2088,6 +2088,45 @@ def meta_set(key, value):
     with DB_LOCK:
         DB.execute("INSERT OR REPLACE INTO meta VALUES(?,?)", (key, str(value)))
         DB.commit()
+
+
+def filament_schluessel(stufe, wetter, klasse):
+    """Ein Filament plus Schiffsklasse als ein Schluessel.
+
+    Genau dieselbe Aufteilung wie eine Zeile der Ertrags-Tabelle: T4
+    Firestorm mit Fregatten ist etwas anderes als T4 Firestorm mit
+    Kreuzern, und beim Vergleich der beiden faengt die Notiz ja an."""
+    return "%s|%s|%s" % (stufe if stufe is not None else "",
+                         wetter or "", klasse or "")
+
+
+def filament_notizen():
+    """Alle eigenen Notizen zu Filamenten. Schluessel -> Text."""
+    try:
+        d = json.loads(meta_get("filament_notizen") or "{}")
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def filament_notiz_setzen(schluessel, text):
+    """Eine Notiz ablegen. Leerer Text loescht sie.
+
+    Wunsch von Nirahse (06.09.2026): "mach es so das man noch Notizen
+    hinzufuegen kann, sowas wie 'ja es bringt mehr, aber XXX'". Genau
+    das ist die Haelfte, die in keiner Zahl steht: Stress,
+    Preisstabilitaet, ob man Filamente lieber sammelt als verkauft.
+
+    Die Laenge ist begrenzt, damit ein versehentlich eingefuegter Roman
+    nicht die Tabelle sprengt und die Datenbank aufblaeht."""
+    d = filament_notizen()
+    text = (text or "").strip()[:600]
+    if text:
+        d[str(schluessel)] = text
+    else:
+        d.pop(str(schluessel), None)
+    meta_set("filament_notizen", json.dumps(d, ensure_ascii=False))
+    return d
 
 
 def zu_laden():
@@ -13609,7 +13648,11 @@ def query_abyss_ertrag(chars=None, tage=30):
         e = eimer.setdefault(schl, {"stufe": stufe, "wetter": wetter,
                                     "klasse": klasse,
                                     "runs": 0, "isk": 0.0, "min": 0.0,
-                                    "schiffe": {}, "n_schiffe": 0})
+                                    "schiffe": {}, "n_schiffe": 0,
+                                    # Jeder Durchgang einzeln, fuer die
+                                    # Streuung. Ein Schnitt allein sagt
+                                    # nicht, ob er belastbar ist.
+                                    "laeufe": []})
         # Fuer die Kosten zaehlt die Zahl der SCHIFFE, nicht der Durchgaenge:
         # jedes Schiff verbraucht ein eigenes Filament.
         e["n_schiffe"] += len(idx)
@@ -13618,6 +13661,10 @@ def query_abyss_ertrag(chars=None, tage=30):
         e["runs"] += 1
         e["isk"] += loot
         e["min"] += minuten
+        # Beute, Dauer und Zahl der Schiffe dieses einen Durchgangs.
+        # Die Filamentkosten kommen erst in fertig() dazu, dort steht
+        # der Preis fest.
+        e["laeufe"].append((loot, minuten, len(idx)))
         ges_runs += 1
         ges_isk += loot
         ges_min += minuten
@@ -13641,6 +13688,34 @@ def query_abyss_ertrag(chars=None, tage=30):
         stueck = preise.get((e["stufe"], e["wetter"]))
         kosten = (stueck * e["n_schiffe"]) if stueck else None
         netto = (e["isk"] - kosten) if kosten is not None else None
+        # Netto je Minute, je Durchgang einzeln gerechnet, und wie weit
+        # diese Einzelwerte streuen.
+        #
+        # Der Schnitt allein taugt nicht als Empfehlung. In Nirahses
+        # eigener Tabelle (06.09.2026) stand DASSELBE Filament T4
+        # Firestorm dreimal, mit 96,7 / 45,0 / 34,2 Mio je Durchgang,
+        # auf 9, 3 und 5 Durchgaengen: Faktor 2,8 beim gleichen
+        # Filament. Wer daraus einen Sieger ausruft, ruft Rauschen aus.
+        # Deshalb wird zusaetzlich der Standardfehler des Mittels
+        # gerechnet, und die Empfehlung weiter unten muss ihn schlagen.
+        werte = []
+        for isk_r, min_r, n_s in e["laeufe"]:
+            if min_r <= 0:
+                continue
+            # Ohne bekannten Filamentpreis ist netto gleich brutto.
+            # Solche Zeilen kommen fuer die Empfehlung nicht in Frage,
+            # sonst vergleicht man Netto mit Brutto.
+            netto_r = isk_r - (stueck * n_s if stueck else 0.0)
+            werte.append(netto_r / min_r)
+        nm = sum(werte) / len(werte) if werte else None
+        if len(werte) >= 2:
+            _var = sum((w - nm) ** 2 for w in werte) / (len(werte) - 1)
+            streuung = (_var ** 0.5) / (len(werte) ** 0.5)
+        else:
+            # Ein einziger Durchgang hat keine Streuung, und "0" waere
+            # die gefaehrlichste aller Antworten: dann saehe er aus wie
+            # ein sicherer Sieger.
+            streuung = None
         return {"stufe": e["stufe"], "wetter": e["wetter"],
                 "klasse": e["klasse"], "runs": e["runs"],
                 "schiff": top[0][0] if top else None,
@@ -13656,7 +13731,10 @@ def query_abyss_ertrag(chars=None, tage=30):
                 "einsatz": round(kosten) if kosten is not None else None,
                 "netto": round(netto) if netto is not None else None,
                 "netto_run": (round(netto / e["runs"])
-                              if netto is not None and e["runs"] else None)}
+                              if netto is not None and e["runs"] else None),
+                "netto_min": round(nm) if nm is not None else None,
+                "streuung": round(streuung) if streuung is not None else None,
+                "n_werte": len(werte)}
 
     liste = [fertig(e) for e in eimer.values()]
     einsatz_ges = sum(z["einsatz"] or 0 for z in liste)
@@ -13670,7 +13748,59 @@ def query_abyss_ertrag(chars=None, tage=30):
     liste.sort(key=lambda x: ((x["stufe"] is None and x["wetter"] is None),
                               -x["isk_run"]))
     mit_schiff = sum(z["runs"] for z in liste if z["klasse"])
+
+    # --- Welches Filament brachte am meisten? ---------------------------
+    #
+    # Wunsch von Nirahse (06.09.2026), aus seiner eigenen Auswertung
+    # heraus. Der Maßstab ist NETTO je Minute: was nach Abzug der
+    # verbrauchten Filamente haengen bleibt, geteilt durch die Zeit, die
+    # es gekostet hat. ISK je Durchgang taugt nicht, ein langer Lauf mit
+    # viel Beute ist nicht automatisch der bessere.
+    #
+    # Und davor eine Sperre, sonst wird der Hinweis zur Falschaussage.
+    # In Nirahses Tabelle stand dasselbe Filament dreimal mit 96,7 / 45,0
+    # / 34,2 Mio je Durchgang, auf 9, 3 und 5 Durchgaengen. Bei so wenig
+    # Daten kippt ein ausgerufener Sieger beim naechsten Lauf.
+    #
+    # Zwei Bedingungen also: genug Durchgaenge, und der Vorsprung muss
+    # groesser sein als die Streuung beider Zeilen zusammen. Sonst sagt
+    # Canary ausdruecklich, dass es noch nichts sagen kann.
+    # Die eigenen Notizen an die Zeilen haengen. Sie stehen in der
+    # Tabelle und, wenn es die Siegerzeile ist, direkt im Hinweis:
+    # dort, wo "ja es bringt mehr, aber ..." hingehoert.
+    _notizen = filament_notizen()
+    for z in liste:
+        z["fkey"] = filament_schluessel(z["stufe"], z["wetter"], z["klasse"])
+        z["notiz"] = _notizen.get(z["fkey"], "")
+
+    MIND_RUNS = 8
+    # Nur Zeilen mit bekanntem Filamentpreis: sonst stuende bei einer
+    # Zeile Netto und bei der anderen Brutto, und Brutto gewinnt immer.
+    kand = sorted([z for z in liste
+                   if z["netto_min"] is not None and z["einsatz"] is not None],
+                  key=lambda z: -z["netto_min"])
+    if not kand:
+        empfehlung = {"stand": "kein_preis"}
+    else:
+        erst = kand[0]
+        zweit = kand[1] if len(kand) > 1 else None
+        if erst["runs"] < MIND_RUNS:
+            stand = "zu_wenig"
+        elif zweit is None:
+            # Nichts zum Vergleichen. Das ist keine Empfehlung, das ist
+            # die einzige Zeile.
+            stand = "allein"
+        elif (erst["streuung"] is None or zweit["streuung"] is None
+              or (erst["netto_min"] - erst["streuung"])
+              <= (zweit["netto_min"] + zweit["streuung"])):
+            stand = "unsicher"
+        else:
+            stand = "gesichert"
+        empfehlung = {"stand": stand, "erster": erst, "zweiter": zweit,
+                      "mind_runs": MIND_RUNS}
+
     return {"zeilen": liste, "tage": tage, "mit_schiff": mit_schiff,
+            "empfehlung": empfehlung,
             "runs": ges_runs, "schiffe": ges_schiffe, "isk": round(ges_isk),
             "isk_run": round(ges_isk / ges_runs) if ges_runs else 0,
             "isk_min": round(ges_isk / ges_min) if ges_min else 0,
@@ -14354,6 +14484,19 @@ class Handler(BaseHTTPRequestHandler):
         elif action == "laser_off_mode":
             if body.get("modus") in ("immer", "rate", "leer", "aus"):
                 CONFIG["laser_off_mode"] = body["modus"]
+        elif action == "filament_notiz":
+            # Eigene Notiz zu einem Filament. Leerer Text loescht sie.
+            # Der Schluessel wird NICHT vertraut, sondern aus den drei
+            # Teilen neu gebaut: sonst koennte irgendetwas als Schluessel
+            # in der Ablage landen.
+            try:
+                _st = body.get("stufe")
+                _st = int(_st) if _st not in (None, "") else None
+            except (TypeError, ValueError):
+                _st = None
+            _k = filament_schluessel(_st, str(body.get("wetter") or "")[:40],
+                                     str(body.get("klasse") or "")[:40])
+            filament_notiz_setzen(_k, str(body.get("text") or ""))
         elif action == "eigenbeschuss":
             # Beschuss durch eigene Charaktere melden ja/nein (Vorgabe: nein).
             CONFIG["eigenbeschuss_warnen"] = bool(body.get("on"))
@@ -16204,6 +16347,25 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
      Sekunden neu gezeichnet. Der Link zum Meldeformular war deshalb weg,
      bevor man ihn treffen konnte (Savox76, 05.09.2026). Ein Dialog haengt
      nicht im Raster und ueberlebt jeden Takt. -->
+<!-- Eigene Notiz zu einem Filament. Wunsch von Nirahse (06.09.2026):
+     die Zahlen sagen, was am meisten bringt, aber nicht, warum man es
+     trotzdem nicht fliegt. Bewusst ein eigenes Fenster: die Abyss-Tabelle
+     wird im Zwei-Sekunden-Takt neu gezeichnet, ein Textfeld mitten darin
+     wuerde beim Tippen wegspringen. Denselben Fehler hatte der Knopf
+     "Fuer alle beitragen" (Savox76, 05.09.2026). -->
+<dialog id="fnotizDlg">
+ <h2>📝 <span id="fnotizTitel">Notiz</span></h2>
+ <div class="hint" id="fnotizWas"></div>
+ <textarea id="fnotizText" rows="5" maxlength="600"
+   style="width:100%;margin-top:8px"
+   placeholder="Zum Beispiel: bringt mehr, aber deutlich stressiger und der Loot-Preis schwankt."></textarea>
+ <div class="sub" id="fnotizRest" style="margin-top:4px"></div>
+ <div class="btnrow" style="margin-top:10px">
+  <button class="btn" id="fnotizSpeichern">Speichern</button>
+  <button class="btn" id="fnotizLeeren">Notiz löschen</button>
+  <button class="btn" id="fnotizZu">Schließen</button>
+ </div>
+</dialog>
 <dialog id="beitragDlg">
  <h2>🎯 <span id="beitragTitel">Für alle beitragen</span></h2>
  <div class="hint" id="beitragText"></div>
@@ -16974,6 +17136,27 @@ document.querySelectorAll('#opts input[name=mode]').forEach(r=>r.onchange=()=>po
 async function post(b){return (await fetch('/',{method:'POST',
  headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})).json();}
 
+// Notizfenster fuer Filamente. Genau einmal verdrahtet, ausserhalb des
+// Takts: im Render waere jeder Knopf alle zwei Sekunden neu und der
+// Klick-Zustand ginge verloren.
+let fnotizZiel=null;
+function fnotizRest(){
+ const t=$('#fnotizText');
+ const rest=600-(t.value||'').length;
+ $('#fnotizRest').textContent=(lang==='en'
+   ?rest+' characters left':'noch '+rest+' Zeichen');
+}
+$('#fnotizText').oninput=fnotizRest;
+$('#fnotizZu').onclick=()=>$('#fnotizDlg').close();
+function fnotizSenden(text){
+ if(!fnotizZiel)return;
+ post({action:'filament_notiz',stufe:fnotizZiel.stufe,wetter:fnotizZiel.wetter,
+       klasse:fnotizZiel.klasse,text:text});
+ $('#fnotizDlg').close();
+}
+$('#fnotizSpeichern').onclick=()=>fnotizSenden($('#fnotizText').value);
+$('#fnotizLeeren').onclick=()=>{$('#fnotizText').value='';fnotizRest();fnotizSenden('');};
+
 function syncOpts(){
  if(!state)return;
  document.querySelectorAll('#opts input[name=mode]').forEach(r=>r.checked=r.value===state.mode);
@@ -17593,6 +17776,24 @@ document.addEventListener('click',e=>{
  // "Alle zeigen" aus dem Filter-Hinweis. Aus demselben Grund hier und nicht
  // am Element: die Ansicht wird im Takt neu gebaut, ein direkt gesetzter
  // Handler waere nach zwei Sekunden weg.
+ // Stift an einer Filament-Zeile: Notizfenster oeffnen. Ueber den
+ // document-Verteiler, weil die Tabelle im Takt neu gebaut wird und ein
+ // onclick am Knoten damit verschwaende.
+ {const fn=e.target.closest&&e.target.closest('.fnotiz');
+  if(fn){
+   const d=$('#fnotizDlg');
+   fnotizZiel={stufe:fn.dataset.stufe,wetter:fn.dataset.wetter,klasse:fn.dataset.klasse};
+   $('#fnotizTitel').textContent=fn.dataset.name
+     +(fn.dataset.klasse?' · '+fn.dataset.klasse:'');
+   $('#fnotizWas').textContent=lang==='en'
+     ?'Your own note on this filament. It appears in the table and, if this line is the best one, right in the hint below it. Numbers cannot know stress, price swings or what you would rather keep than sell.'
+     :'Deine eigene Notiz zu diesem Filament. Sie steht in der Tabelle und, wenn diese Zeile die beste ist, direkt im Hinweis darunter. Stress, Preisschwankungen oder was du lieber sammelst als verkaufst, weiß keine Zahl.';
+   $('#fnotizText').value=fn.dataset.notiz||'';
+   fnotizRest();
+   if(!d.open)d.showModal();
+   $('#fnotizText').focus();
+   return;
+  }}
  {const kk=e.target.closest&&e.target.closest('.kompkopf');
   if(kk){
    const n=kk.dataset.kk;
@@ -18218,6 +18419,51 @@ function gegnerAbschnitte(x){
 // erkanntem Nachfuellen (Kern laeuft weiter, obwohl der Tank rechnerisch
 // leer waere) wird keine falsche Restzahl behauptet, sondern auf die
 // naechste ESI-Basis verwiesen.
+// Welches Filament brachte am meisten? Wunsch von Nirahse (06.09.2026).
+//
+// Gerechnet wird NETTO je Minute: was nach Abzug der verbrauchten Filamente
+// haengen bleibt, geteilt durch die Zeit. Und der Hinweis behauptet nur dann
+// einen Sieger, wenn der Vorsprung groesser ist als die Streuung beider
+// Zeilen. Warum das noetig ist, steht in Nirahses eigener Tabelle: dasselbe
+// Filament stand dort dreimal mit 96,7 / 45,0 / 34,2 Mio je Durchgang.
+//
+// nam() baut den Filamentnamen und steht weiter oben im Abyss-Block.
+function ertragsTipp(A,nam){
+ const E=A&&A.empfehlung;
+ if(!E)return '';
+ const en=lang==='en';
+ const wie=en
+  ?'Counted as ISK per minute after deducting the filaments used. What this cannot know: stress, how stable the loot prices are, and whether you would rather keep filaments than sell them.'
+  :'Gerechnet als ISK je Minute nach Abzug der verbrauchten Filamente. Was das nicht kennen kann: Stress, wie stabil die Loot-Preise sind, und ob du Filamente lieber sammelst als verkaufst.';
+ const wer=z=>esc(nam(z))+(z.klasse?' '+(en?'with ':'mit ')+esc(z.klasse):'');
+ let txt;
+ if(E.stand==='kein_preis'){
+  txt=en?'No recommendation yet: without a filament price there is no net figure to compare.'
+       :'Noch keine Empfehlung: ohne Filamentpreis gibt es kein Netto zum Vergleichen.';
+ }else if(E.stand==='zu_wenig'){
+  txt=(en?`Not enough runs yet for a recommendation. ${wer(E.erster)} is ahead at ${fmtM(E.erster.netto_min)} ISK/min net, but on only ${E.erster.runs} of at least ${E.mind_runs} runs.`
+        :`Für eine Empfehlung fehlen Durchgänge. Vorn liegt ${wer(E.erster)}: ${fmtM(E.erster.netto_min)} ISK/min netto, aber auf nur ${E.erster.runs} von mindestens ${E.mind_runs} Durchgängen.`);
+ }else if(E.stand==='allein'){
+  txt=(en?`${wer(E.erster)} brought ${fmtM(E.erster.netto_min)} ISK/min net over ${E.erster.runs} runs. It is the only line with a known filament price, so there is nothing to compare it against yet.`
+        :`${wer(E.erster)} brachte ${fmtM(E.erster.netto_min)} ISK/min netto über ${E.erster.runs} Durchgänge. Das ist die einzige Zeile mit bekanntem Filamentpreis, ein Vergleich fehlt also noch.`);
+ }else if(E.stand==='unsicher'){
+  txt=(en?`${wer(E.erster)} is ahead at ${fmtM(E.erster.netto_min)} ISK/min net, but the lead over ${wer(E.zweiter)} (${fmtM(E.zweiter.netto_min)}) is smaller than the scatter between runs. Not enough to call a winner.`
+        :`Vorn liegt ${wer(E.erster)}: ${fmtM(E.erster.netto_min)} ISK/min netto. Der Vorsprung vor ${wer(E.zweiter)} (${fmtM(E.zweiter.netto_min)}) ist aber kleiner als die Streuung zwischen den Durchgängen, das reicht nicht für einen Sieger.`);
+ }else{
+  txt=(en?`Most productive: ${wer(E.erster)} at ${fmtM(E.erster.netto_min)} ISK/min net over ${E.erster.runs} runs. That holds even after subtracting the scatter, ahead of ${wer(E.zweiter)} (${fmtM(E.zweiter.netto_min)}).`
+        :`Am meisten brachte ${wer(E.erster)}: ${fmtM(E.erster.netto_min)} ISK/min netto über ${E.erster.runs} Durchgänge. Das hält auch, wenn man die Streuung abzieht, vor ${wer(E.zweiter)} (${fmtM(E.zweiter.netto_min)}).`);
+ }
+ const farbe=E.stand==='gesichert'?'var(--gold)':'var(--dim)';
+ // Die eigene Notiz zur Siegerzeile steht direkt darunter. Genau dort
+ // gehoert "ja es bringt mehr, aber ..." hin (Nirahse, 06.09.2026).
+ const notiz=(E.erster&&E.erster.notiz)?`<div style="margin-top:6px">
+   <span style="opacity:.7">📝</span> <b>${esc(E.erster.notiz)}</b></div>`:'';
+ return `<div class="sub" style="margin-top:10px;padding:8px 10px;border-radius:8px;
+   background:var(--line);border-left:3px solid ${farbe}" title="${esc(wie)}">
+   <b>${E.stand==='gesichert'?'💡':'🤔'}</b> ${txt}${notiz}
+   <div style="margin-top:4px;opacity:.75">${esc(wie)}</div></div>`;
+}
+
 // Fuellstand-Balken fuer die Laderaum-Kachel. Rechnet nichts selbst,
 // erzFuellung() oben ist die eine Regel fuer Dashboard und Overlay.
 function ladeBalken(c){
@@ -20899,12 +21145,20 @@ function renderAbyss(a){
    <table><tr><th>Filament</th><th>${en?'Ship class':'Schiffklasse'}</th><th class="r">${en?'Runs':'Durchgänge'}</th>
     <th class="r">${en?'ISK per run':'ISK je Durchgang'}</th><th class="r">ISK/min</th><th class="r">${en?'Ø duration':'Ø Dauer'}</th>
     <th class="r" title="${en?'Loot minus the filaments used. Only where tier and weather are known.':'Beute abzüglich der verbrauchten Filamente. Nur wo Stufe und Wetter feststehen.'}">${en?'Net per run':'Netto je Durchgang'}</th></tr>
-   ${A.zeilen.map(z=>`<tr><td>${esc(nam(z))}</td>
+   ${A.zeilen.map(z=>`<tr><td>${esc(nam(z))} <span class="fnotiz" title="${
+     en?'Add your own note on this filament':'Eigene Notiz zu diesem Filament'
+    }" data-stufe="${z.stufe==null?'':z.stufe}" data-wetter="${esc(z.wetter||'')}"
+    data-klasse="${esc(z.klasse||'')}" data-notiz="${esc(z.notiz||'')}"
+    data-name="${esc(nam(z))}"
+    style="cursor:pointer;opacity:${z.notiz?'1':'.45'}">📝</span></td>
     <td${z.klasse?'':' class="sub"'}>${z.klasse?esc(z.klasse):(en?'unknown':'unbekannt')}</td>
     <td class="r">${z.runs}</td><td class="r isk">${fmtM(z.isk_run)}</td>
     <td class="r isk">${fmtM(z.isk_min)}</td><td class="r">${z.sek!=null?dauerMS(z.sek):z.min} min</td>
-    <td class="r ${z.netto_run==null?'sub':(z.netto_run>=0?'grn':'in')}">${z.netto_run!=null?fmtM(z.netto_run):'—'}</td></tr>`).join('')}
+    <td class="r ${z.netto_run==null?'sub':(z.netto_run>=0?'grn':'in')}">${z.netto_run!=null?fmtM(z.netto_run):'—'}</td></tr>${
+    z.notiz?`<tr><td colspan="7" class="sub" style="padding-top:0;border-top:0">
+      <span style="opacity:.7">📝</span> ${esc(z.notiz)}</td></tr>`:''}`).join('')}
    </table>
+   ${ertragsTipp(A,nam)}
    <div class="sub" style="margin-top:8px">${en
      ?'Abyss NPCs pay no bounty, so the loot you enter is the entire yield of a run. Tier and weather come from the name you give a run, the ship from the EVE login.'
      :'Abyss-Gegner zahlen keine Bounty, der eingetragene Loot ist deshalb der vollständige Ertrag eines Laufs. Stufe und Wetter kommen aus dem Namen, den du dem Lauf gibst, das Schiff aus dem EVE-Login.'}</div>

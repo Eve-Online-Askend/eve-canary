@@ -1,5 +1,23 @@
 [
  {
+  "v": "2.84.0",
+  "d": "2026-09-06",
+  "de": [
+   "NEU: 💡 WELCHES FILAMENT LOHNT SICH? Unter der Tabelle Ertrag je Filament steht jetzt eine Zeile, die es beim Namen nennt. Wunsch von Nirahse, aus seiner eigenen Auswertung heraus.",
+   "Der Maßstab ist NETTO je Minute: was nach Abzug der verbrauchten Filamente hängen bleibt, geteilt durch die Zeit, die es gekostet hat. ISK je Durchgang taugt dafür nicht, ein langer Lauf mit viel Beute ist nicht automatisch der bessere.",
+   "Wichtiger als der Hinweis ist aber die Sperre davor. Canary ruft einen Sieger nur aus, wenn zwei Dinge stimmen: mindestens 8 Durchgänge, und der Vorsprung muss größer sein als die Streuung zwischen den einzelnen Läufen. Sonst steht dort ausdrücklich, dass es noch nichts sagen kann. Warum das nötig ist, stand in Nirahses Tabelle: dasselbe Filament erschien dreimal mit 96,7 / 45,0 / 34,2 Millionen je Durchgang, auf 9, 3 und 5 Durchgängen. Faktor 2,8 beim gleichen Filament. Wer daraus einen Sieger ausruft, ruft Rauschen aus.",
+   "NEU: 📝 EIGENE NOTIZ JE FILAMENT. Weil die Zahlen nur die eine Hälfte kennen: was am meisten bringt, aber nicht, warum du es trotzdem nicht fliegst. Ein Klick auf den Stift in der Tabelle öffnet ein Textfeld, die Notiz steht danach in der Zeile und, wenn es die beste Zeile ist, direkt im Hinweis darunter. Also genau da, wo „ja es bringt mehr, aber ...“ hingehört. Ebenfalls Nirahses Idee.",
+   "Und was der Hinweis nicht weiß, steht daneben: Stress, wie stabil die Loot-Preise sind und ob du Filamente lieber sammelst als verkaufst. Er sagt „das brachte am meisten ISK je Minute“, nicht „das solltest du fliegen“. Zeilen ohne bekannten Filamentpreis bleiben außen vor, sonst stünde bei einer Netto und bei der anderen Brutto, und Brutto gewinnt immer."
+  ],
+  "en": [
+   "NEW: 💡 WHICH FILAMENT PAYS OFF? A line under the yield per filament table now names it. Requested by Nirahse, out of his own analysis.",
+   "The yardstick is NET per minute: what is left after deducting the filaments used, divided by the time it cost. ISK per run does not work for this, a long run with a lot of loot is not automatically the better one.",
+   "More important than the hint is the gate in front of it. Canary only calls a winner when two things hold: at least 8 runs, and the lead has to be larger than the scatter between the individual runs. Otherwise it says outright that it cannot tell yet. Why that is needed was in Nirahse's own table: the same filament appeared three times at 96.7 / 45.0 / 34.2 million per run, on 9, 3 and 5 runs. A factor of 2.8 on the same filament. Calling a winner from that is calling noise.",
+   "NEW: 📝 YOUR OWN NOTE PER FILAMENT. Because the numbers only know one half: what pays best, but not why you still do not fly it. A click on the pencil in the table opens a text field, and the note then sits in that row and, if it is the best row, right in the hint below it. Exactly where „yes it pays more, but ...“ belongs. Nirahse's idea as well.",
+   "And what the hint cannot know is written next to it: stress, how stable the loot prices are, and whether you would rather keep filaments than sell them. It says „this brought the most ISK per minute“, not „you should fly this“. Rows without a known filament price stay out, otherwise one row would show net and the other gross, and gross always wins."
+  ]
+ },
+ {
   "v": "2.83.0",
   "d": "2026-09-06",
   "de": [
