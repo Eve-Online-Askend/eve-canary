@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.92.0"
+VERSION = "2.93.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -24039,6 +24039,21 @@ def port_belegt_von_prozess(port):
         return False
 
 
+def canary_auf_port(port):
+    """True, wenn auf dem Port wirklich ein EVE Canary antwortet.
+
+    Ein belegter Port heisst nur, dass irgendetwas lauscht. Erst die Antwort
+    beweist, dass es Canary ist. Ohne diesen Unterschied wuerde der zweite
+    Start den Browser auf ein fremdes Programm schicken und behaupten, Canary
+    laufe schon."""
+    try:
+        req = urllib.request.Request("http://127.0.0.1:%d/" % port)
+        with urllib.request.urlopen(req, timeout=2.0) as a:
+            return b"EVE Canary" in a.read(4096)
+    except Exception:
+        return False
+
+
 if __name__ == "__main__":
     try:
         # Zeilenweise ausgeben: bei umgeleiteter Ausgabe (Autostart, nohup,
@@ -24097,12 +24112,51 @@ if __name__ == "__main__":
                 print("Abgebrochen.")
                 sys.exit(0)
     if srv is None:
-        print(f"EVE Canary läuft offenbar schon (Port {port} ist belegt).")
-        print("Einfach das vorhandene Fenster nutzen: http://localhost:" + str(port))
-        try:
-            input("Enter zum Schließen ...")
-        except (EOFError, KeyboardInterrupt):
-            pass  # ohne Konsole (Autostart) oder bei Strg+C still beenden
+        # Der Port ist belegt. Das sind zwei verschiedene Lagen, und sie
+        # brauchen zwei verschiedene Antworten.
+        #
+        # Askend, 07.09.2026: Der Autostart laeuft mit --no-browser, also ohne
+        # Konsole und ohne Tab. Wer Canary danach von Hand startet, las bisher
+        # "einfach das vorhandene Fenster nutzen". Es gibt aber gar keins,
+        # genau dafuer ist --no-browser da. Der zweite Start wusste, dass dort
+        # ein Canary laeuft, und schickte den Benutzer trotzdem selbst auf die
+        # Adresssuche. Jetzt macht er die Seite einfach auf.
+        def warten():
+            try:
+                input("Enter zum Schließen ...")
+            except Exception:
+                pass  # ohne Konsole (Autostart) oder bei Strg+C still beenden
+
+        if canary_auf_port(port):
+            print(f"EVE Canary läuft schon:  http://localhost:{port}")
+            # Mit --no-browser faellt der Lauf hier durch bis zum Ende: ein
+            # zweiter Autostart darf nichts aufmachen, sonst springt beim
+            # Hochfahren doch ein Fenster auf.
+            if "--no-browser" not in sys.argv:
+                try:
+                    import webbrowser
+                    if webbrowser.open(f"http://localhost:{port}"):
+                        print("Die Seite ist im Browser aufgegangen.")
+                        sys.exit(0)
+                except Exception:
+                    pass
+                print("Der Browser ließ sich nicht öffnen."
+                      " Bitte die Adresse von Hand aufrufen.")
+                warten()
+            sys.exit(0)
+        if port_belegt_von_prozess(port):
+            # Es lauscht jemand, aber es ist kein Canary. Den Browser dorthin
+            # zu schicken waere falsch.
+            print(f"Port {port} ist belegt, aber dort antwortet kein EVE Canary.")
+            print("Ein anderes Programm hält ihn. In config.json kann mit dem"
+                  " Eintrag \"port\" ein anderer gewählt werden.")
+        else:
+            # Niemand lauscht, und trotzdem ging der Bind nicht: der Socket der
+            # vorigen Sitzung klingt noch ab (TIME_WAIT). Das gibt sich von
+            # selbst, hier hilft nur ein zweiter Versuch.
+            print(f"Port {port} ist noch nicht frei (die vorige Sitzung klingt ab).")
+            print("Bitte in einer halben Minute noch einmal starten.")
+        warten()
         sys.exit(1)
 
     # Zweiter Lauscher auf dem IPv6-Loopback. Grund: "localhost" loest unter

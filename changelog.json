@@ -1,5 +1,21 @@
 [
  {
+  "v": "2.93.0",
+  "d": "2026-09-07",
+  "de": [
+   "Wer Canary startet, während es schon läuft, bekommt jetzt die laufende Seite im Browser aufgemacht. Vorher stand da „Einfach das vorhandene Fenster nutzen“ und dann „Enter zum Schließen“, und das Fenster wartete.",
+   "Gefunden von Askend an der eigenen Installation. Der Autostart läuft absichtlich ohne Konsole und ohne Browsertab, damit beim Hochfahren nichts aufspringt. Genau deshalb gibt es hinterher aber auch kein „vorhandenes Fenster“, auf das man verweisen könnte. Canary wusste, dass auf dem Port ein Canary antwortet, und schickte den Benutzer trotzdem selbst auf die Adresssuche. Nachgemessen: der Server lief seit dem Hochfahren und antwortete in 4,6 ms, der Start von Hand wartete daneben fünf Minuten lang auf eine Enter-Taste.",
+   "Jetzt fragt der zweite Start erst nach, WER da antwortet, und handelt danach. Ist es Canary, geht die Seite auf und der zweite Start beendet sich, gemessen nach 0,6 Sekunden. Ein zweiter Autostart macht weiterhin gar nichts auf, sonst würde beim Hochfahren ungefragt ein Fenster aufspringen.",
+   "Hält ein FREMDES Programm den Port, steht das jetzt auch so da, und der Browser wird nicht dorthin geschickt. Eine fremde Seite als das eigene Programm auszugeben wäre die schlimmere Variante des alten Fehlers. Und klingt nur noch der Socket der vorigen Sitzung ab, sagt Canary das ebenfalls, statt „läuft offenbar schon“ zu behaupten."
+  ],
+  "en": [
+   "Starting Canary while it is already running now opens the running page in your browser. Before, it said „just use the existing window“ followed by „press Enter to close“, and then sat there waiting.",
+   "Found by Askend on his own installation. Autostart deliberately runs without a console and without a browser tab so nothing pops up while the machine boots. That is exactly why there is no „existing window“ to point at afterwards. Canary knew a Canary was answering on the port and still sent the user off to find the address. Measured: the server had been running since boot and answered in 4.6 ms, while the manual start waited five minutes for an Enter key.",
+   "Now the second start first asks WHO is answering there, and acts on it. If it is Canary, the page opens and the second start quits, measured after 0.6 seconds. A second autostart still opens nothing, otherwise a window would pop up unasked during boot.",
+   "If a FOREIGN program holds the port, it now says so, and no browser is sent there. Passing off someone else's page as your own program would be the worse version of the old bug. And if it is only the previous session's socket cooling down, Canary says that too instead of claiming it „is apparently already running“."
+  ]
+ },
+ {
   "v": "2.92.0",
   "d": "2026-09-06",
   "de": [
