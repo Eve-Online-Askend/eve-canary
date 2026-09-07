@@ -1,5 +1,25 @@
 [
  {
+  "v": "2.94.0",
+  "d": "2026-09-07",
+  "de": [
+   "NEU: Industrie-Aufträge aus dem Corphangar stehen jetzt mit im Industrie-Tab. Gemeldet von Vile Gangster: „Alle Forschungsaufträge die meine Chars haben werden nicht angezeigt, da sie aus dem Corphangar gestartet wurden. Was meiner Meinung nach kein Sonderfall ist, die BPO zentral abzulegen damit mehrere Accounts diese erforschen können.“",
+   "Er hat recht, und die Ursache liegt an einer Stelle, die man nicht vermutet. ESI hat zwei getrennte Listen: „industry jobs placed by a character“ und „industry jobs run by a corporation“. Die Trennung verläuft nicht am Charakter, sondern am Besitzer des Auftrags. Eine Blaupause aus dem Corphangar gehört der Corp, also gehört der Auftrag der Corp, auch wenn dein eigener Char ihn gestartet hat. Canary hat bisher nur die erste Liste gelesen.",
+   "Dafür braucht es ZWEI Dinge, nicht eins. Erstens eine neue Berechtigung, deshalb bittet Canary einmalig darum, die Charaktere neu zu verbinden. Zweitens die Corp-Rolle Factory Manager im Spiel: die verlangt CCP für diesen Endpunkt, und ohne sie gibt ESI nichts heraus, ganz gleich was man beim Login angeklickt hat. Das ist auch der Grund, warum es in EVEMon geht: dort ist es ein eigener Datenpunkt namens CorporationIndustryJobs, und wer ihn gefüllt sieht, hat die Rolle.",
+   "Gezeigt werden nur die eigenen Aufträge. Der Endpunkt liefert die der ganzen Corporation, und unter dem Namen eines Charakters haben fremde Aufträge nichts zu suchen. Jede Zeile aus dem Corphangar trägt eine kleine Marke „Corp“, damit man sieht, woher sie kommt.",
+   "Fehlt etwas, sagt Canary auch welcher der beiden Gründe es ist. Fehlt die Berechtigung, steht dort: einmal neu verbinden. Fehlt die Rolle, steht die Rolle beim Namen da, denn Klicken hilft dann nicht. Und nach einer Absage wird eine Weile nicht weitergefragt: ohne diese Pause liefen gegen jeden Charakter ohne die Rolle 288 vergebliche Abrufe am Tag.",
+   "Zwei Charaktere in derselben Corporation teilen sich den Abruf, statt dieselben Seiten doppelt zu ziehen."
+  ],
+  "en": [
+   "NEW: industry jobs started from the corp hangar now show up in the industry tab. Reported by Vile Gangster: „none of the research jobs my chars have are shown, because they were started from the corp hangar. Which in my opinion is not a special case, putting the BPO in a central place so several accounts can research it.“",
+   "He is right, and the cause sits somewhere you would not look. ESI keeps two separate lists: „industry jobs placed by a character“ and „industry jobs run by a corporation“. The split does not follow the character, it follows who owns the job. A blueprint in the corp hangar belongs to the corp, so the job belongs to the corp, even though your own character started it. Canary only ever read the first list.",
+   "That takes TWO things, not one. First a new permission, which is why Canary asks you to reconnect your characters once. Second the in-game corporation role Factory Manager: CCP requires it for this endpoint, and without it ESI hands out nothing, no matter what you ticked at login. It is also why it works in EVEMon: there it is a data source of its own called CorporationIndustryJobs, and anyone who sees it filled has the role.",
+   "Only your own jobs are shown. The endpoint returns the whole corporation's, and other people's jobs have no business appearing under your character's name. Every row from the corp hangar carries a small „Corp“ tag so you can see where it came from.",
+   "If something is missing, Canary says which of the two reasons it is. Missing permission: reconnect once. Missing role: the role is named, because clicking will not help. And after a refusal it stops asking for a while: without that pause, every character without the role would produce 288 pointless calls a day.",
+   "Two characters in the same corporation share one fetch instead of pulling the same pages twice."
+  ]
+ },
+ {
   "v": "2.93.0",
   "d": "2026-09-07",
   "de": [

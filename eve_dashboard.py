@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.93.0"
+VERSION = "2.94.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -6001,6 +6001,14 @@ ESI_SCOPES = ("esi-assets.read_assets.v1 esi-location.read_ship_type.v1 "
               "esi-industry.read_character_mining.v1 esi-planets.manage_planets.v1 "
               "esi-markets.read_character_orders.v1 "
               "esi-industry.read_character_jobs.v1 "
+              # Auftraege aus dem CORP-Hangar. Sie gehoeren der Corp, nicht
+              # dem Charakter, und stehen deshalb NUR im Corp-Endpunkt,
+              # auch wenn der eigene Char sie gestartet hat (Meldung Vile
+              # Gangster, 07.09.2026). Das ist Canarys erste
+              # Corp-Berechtigung. Sie reicht allein nicht: ESI verlangt
+              # zusaetzlich die Rolle Factory Manager IM SPIEL
+              # (x-required-roles in der ESI-Spezifikation).
+              "esi-industry.read_corporation_jobs.v1 "
               # Namen von Spieler-Strukturen (Athanor, Tatara, Raitaru,
               # Citadel). Ohne diesen Scope antwortet ESI mit 403 und der
               # Lagerort heisst dauerhaft "Struktur #1035…". Fehlte bis
@@ -6193,6 +6201,9 @@ class Esi(threading.Thread):
         self.tid_cache = {}   # Produktname -> type_id (fuer Icon/Tier der Fabrik-Produkte)
         self.pi_alerted = {}  # (char, planet_id) -> Ablauf-ts, fuer den PI-Ablauf-Alarm ohne Wiederholung
         self.job_alerted = {}  # (char, job_id, status) -> gemeldet, damit jede Meldung genau einmal kommt
+        # Corp-Auftraege werden JE CORP gemerkt, nicht je Charakter: zwei
+        # Chars in derselben Corp holten sonst dieselben Seiten zweimal.
+        self.corp_jobs_cache = {}  # corp_id -> (gueltig_bis, Liste)
         self.party_names = {} # id -> Name (Agenten aus dem Wallet-Journal)
         # Serialisiert den Token-Refresh: poll-Thread und HTTP-Thread (ui_open)
         # duerfen nicht gleichzeitig dasselbe Refresh-Token einloesen (CCP
@@ -6323,8 +6334,13 @@ class Esi(threading.Thread):
         'missing' listet fehlende Scopes (Kurzform) fuer den Tooltip."""
         req = set(ESI_SCOPES.split())
         gr = self.token_scopes(c)
+        # Die Kurzform schneidet am ersten Punkt ab, und seit es ZWEI
+        # Industrie-Scopes gibt (Charakter und Corp), ergaben zwei fehlende
+        # denselben Text: im Tooltip stand "industry, industry". Ein doppelter
+        # Eintrag sieht aus wie ein Fehler, deshalb hier nur einmal.
         return {"ok": self.status.get(name) == "verbunden" and req <= gr,
-                "missing": sorted(s.split(".")[0].replace("esi-", "") for s in (req - gr))}
+                "missing": sorted({s.split(".")[0].replace("esi-", "")
+                                   for s in (req - gr)})}
 
     def _access(self, c):
         if time.time() < c.get("exp", 0) and c.get("access"):
@@ -6664,6 +6680,62 @@ class Esi(threading.Thread):
             return None
         return PI_GROUP_TIER.get(self.type_group(tid), "P0")
 
+    def corp_id(self, c):
+        """Die Corporation des Charakters. Oeffentlicher Endpunkt, kein Token.
+
+        Eine Stunde gemerkt: ein Corp-Wechsel ist selten, und der Endpunkt
+        wird sonst bei jedem Durchlauf mitgefragt, obwohl sich nichts
+        aendert."""
+        if c.get("corp_id") and time.time() < c.get("corp_id_next", 0):
+            return c["corp_id"]
+        try:
+            req = urllib.request.Request(
+                ESI_BASE + "/characters/%s/" % c["char_id"],
+                headers={"User-Agent": ESI_UA})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                pub = json.loads(r.read())
+            with CONFIG_LOCK:
+                c["corp_id"] = pub.get("corporation_id")
+                c["corp_id_next"] = time.time() + 3600
+            return c["corp_id"]
+        except Exception:
+            return c.get("corp_id")
+
+    def corp_industry_jobs(self, c, corp):
+        """Alle laufenden Industrie-Auftraege der Corporation.
+
+        Blaettert, denn anders als beim Charakter ist dieser Endpunkt
+        seitenweise (X-Pages in der ESI-Spezifikation). Die Obergrenze von 20
+        Seiten ist eine Notbremse gegen eine Grosscorp mit zehntausenden
+        Auftraegen; wer sie reisst, verliert nur die aeltesten, und die sind
+        ohnehin abgeholt.
+
+        Wirft weiter, damit der Aufrufer 401 (Berechtigung fehlt) und 403
+        (Rolle fehlt im Spiel) unterscheiden kann. Das sind zwei ganz
+        verschiedene Nachrichten an den Benutzer: die erste laesst sich durch
+        Neuverbinden beheben, die zweite nur im Spiel."""
+        alt = self.corp_jobs_cache.get(corp)
+        if alt and time.time() < alt[0]:
+            return alt[1]
+        alle, seite, seiten = [], 1, 1
+        while seite <= min(seiten, 20):
+            js, hdr = self._get(c, "/corporations/%s/industry/jobs/" % corp,
+                                {"page": seite} if seite > 1 else None)
+            alle.extend(js or [])
+            if seite == 1:
+                try:
+                    seiten = int(hdr.get("X-Pages") or 1)
+                except Exception:
+                    seiten = 1
+                try:
+                    bis = email.utils.parsedate_to_datetime(
+                        hdr["Expires"]).timestamp()
+                except Exception:
+                    bis = time.time() + 300
+            seite += 1
+        self.corp_jobs_cache[corp] = (bis, alle)
+        return alle
+
     def sync_industry(self, name, c):
         """Industrie-Auftraege (Scope esi-industry.read_character_jobs).
 
@@ -6673,6 +6745,49 @@ class Esi(threading.Thread):
         28.08.2026). Fertige und abgeholte Auftraege interessieren nicht, die
         Liste soll zeigen, was noch laeuft."""
         jobs, hdr = self._get(c, f"/characters/{c['char_id']}/industry/jobs/")
+        # Dazu die Auftraege aus dem Corphangar. Sie stehen NUR hier, weil sie
+        # der Corp gehoeren. Gezeigt werden nur die eigenen: der Endpunkt
+        # liefert die der ganzen Corp, und unter dem Namen eines Charakters
+        # duerfen keine fremden Auftraege stehen.
+        eigene_id = str(c["char_id"])
+        corp_roh, corp_zustand, ruhe = [], "aus", 0
+        corp = self.corp_id(c)
+        if not corp:
+            corp_zustand = "unbekannt"
+        elif corp < 2000000:
+            # NPC-Corps haben keine Hangars und keine Rollen. Fragen waere
+            # ein sicherer 403 alle fuenf Minuten.
+            corp_zustand = "npc"
+        elif time.time() < c.get("corp_jobs_next", 0):
+            # Ruhepause nach einer Absage. Ohne sie liefe gegen jeden
+            # Charakter ohne die Rolle alle fuenf Minuten ein 403, also
+            # 288 vergebliche Abrufe am Tag, und das dauerhaft.
+            corp_zustand = c.get("corp_jobs") or "aus"
+        else:
+            try:
+                corp_roh = [j for j in self.corp_industry_jobs(c, corp)
+                            if str(j.get("installer_id")) == eigene_id]
+                corp_zustand = "ok"
+            except urllib.error.HTTPError as e:
+                code = getattr(e, "code", None)
+                # 403 heisst: die Rolle fehlt im Spiel. Daran aendert
+                # sich nicht in fuenf Minuten etwas, also lange Ruhe.
+                # 401 heisst: die Berechtigung fehlt; ein Neuverbinden
+                # kann jederzeit kommen, deshalb dieselbe halbe Stunde
+                # wie beim Charakter-Scope.
+                corp_zustand = ("keine_rolle" if code == 403
+                                else ("kein_scope" if code == 401
+                                      else "fehler"))
+                ruhe = 6 * 3600 if code == 403 else 1800
+            except Exception:
+                corp_zustand = "fehler"
+                ruhe = 1800
+        with CONFIG_LOCK:
+            c["corp_jobs"] = corp_zustand
+            if corp_zustand in ("ok", "npc", "unbekannt"):
+                c.pop("corp_jobs_next", None)
+            elif ruhe:
+                c["corp_jobs_next"] = time.time() + ruhe
         try:
             exp = email.utils.parsedate_to_datetime(hdr["Expires"]).timestamp()
         except Exception:
@@ -6691,9 +6806,14 @@ class Esi(threading.Thread):
                 return None
 
         raus = []
-        for j in jobs or []:
+        gesehen = set()
+        for j in list(jobs or []) + list(corp_roh):
             if (j.get("status") or "") in ("delivered", "cancelled", "reverted"):
                 continue
+            if j.get("job_id") in gesehen:
+                continue          # derselbe Auftrag aus beiden Quellen
+            gesehen.add(j.get("job_id"))
+            aus_corp = j.get("location_id") is not None
             akt = j.get("activity_id")
             bp_id = j.get("blueprint_type_id")
             prod = j.get("product_type_id") or bp_id
@@ -6715,6 +6835,10 @@ class Esi(threading.Thread):
                 "bild": "bpc" if kopie else ("bp" if zeigt_bp else "icon"),
                 "produkt": prod,
                 "runs": j.get("runs") or 0,
+                # Woher der Auftrag kam. Der Corp-Endpunkt fuehrt location_id,
+                # der Charakter-Endpunkt station_id; sonst sind die Felder
+                # Zeichen fuer Zeichen dieselben.
+                "corp": aus_corp,
                 "ende": _ts(j.get("end_date")),
                 "start": _ts(j.get("start_date")),
                 "pause": _ts(j.get("pause_date")),
@@ -12928,6 +13052,10 @@ def query_industrie():
     (Wunsch von Eron Solette, 28.08.2026)."""
     now = time.time()
     jobs, reconnect, chars = [], [], []
+    # Zwei Gruende, warum Corp-Auftraege fehlen koennen, und sie brauchen
+    # verschiedene Antworten: die Berechtigung holt ein Neuverbinden, die
+    # Rolle Factory Manager gibt es nur im Spiel.
+    corp_neu, corp_rolle = [], []
     stale = None
     for nm, c in ((CONFIG.get("esi") or {}).get("chars", {})).items():
         ind = c.get("industry")
@@ -12939,6 +13067,10 @@ def query_industrie():
         if c.get("industry_scope") is not True and not ind:
             reconnect.append(nm)
             continue
+        if c.get("corp_jobs") == "kein_scope":
+            corp_neu.append(nm)
+        elif c.get("corp_jobs") == "keine_rolle":
+            corp_rolle.append(nm)
         if not ind:
             continue
         stale = ind.get("as_of") if stale is None else min(stale, ind.get("as_of") or stale)
@@ -12956,6 +13088,8 @@ def query_industrie():
     naechster = next((j["ende"] for j in laufend if j["ende"]), None)
     return {"jobs": jobs[:200], "chars": sorted(chars, key=lambda x: -x["n"]),
             "reconnect": sorted(reconnect),
+            "corp_neu": sorted(corp_neu), "corp_rolle": sorted(corp_rolle),
+            "n_corp": sum(1 for j in jobs if j.get("corp")),
             "n": len(jobs), "n_fertig": len(fertig), "n_pausiert": len(pausiert),
             "n_laufend": len(laufend),
             "naechster": int(naechster) if naechster else None,
@@ -15920,6 +16054,8 @@ tr.lvl-yellow td{background:rgba(228,179,76,.07)}
 /* Industrie-Tab: Item-Bilder vom offiziellen EVE-Bilddienst in 32 px, damit
    sie scharf bleiben. Feste Groesse, sonst springt die Zeile beim Nachladen.
    Der dunkle Rahmen faengt die sehr hellen Blaupausen-Symbole ab. */
+.corpmk{font-size:10px;padding:1px 5px;border-radius:8px;
+ background:rgba(120,190,255,.14);color:var(--cyan);vertical-align:middle}
 .jobico{width:32px;height:32px;flex:0 0 32px;border-radius:4px;
  background:var(--inset);border:1px solid var(--line);object-fit:contain}
 .jobprod{display:flex;align-items:center;gap:9px}
@@ -21039,6 +21175,18 @@ function renderIndustrie(ind){
  lastIndustrie=ind=ind||{jobs:[],chars:[],reconnect:[]};
  const en=lang==='en', now=Date.now()/1000;
  syncCharFilter(ind.chars||[]);
+ // Fehlen Corp-Auftraege, dann aus einem von zwei Gruenden, und die zwei
+ // brauchen verschiedene Antworten. Die Berechtigung holt ein Neuverbinden,
+ // die Rolle Factory Manager gibt es nur im Spiel. Beides hier zu vermengen
+ // waere der haeufigste Weg, jemanden vergeblich klicken zu lassen.
+ const namen=l=>l.map(esc).join(', ');
+ const corpHinweis=(ind.corp_neu||[]).length
+  ?(en?`Jobs from the corp hangar are still missing for ${namen(ind.corp_neu)}. Reconnect once in ⚙ Options, the permission for them is new.`
+      :`Für ${namen(ind.corp_neu)} fehlen noch die Aufträge aus dem Corphangar. Einmal in ⚙ Optionen neu verbinden, die Berechtigung dafür ist neu.`)
+  :((ind.corp_rolle||[]).length
+    ?(en?`Canary cannot read the corp hangar for ${namen(ind.corp_rolle)}: that character needs the in-game corporation role Factory Manager. Without it ESI hands out nothing, no matter which permission was granted.`
+        :`Für ${namen(ind.corp_rolle)} kann Canary den Corphangar nicht lesen: dieser Charakter braucht im Spiel die Corp-Rolle Factory Manager. Ohne sie gibt ESI nichts heraus, ganz gleich welche Berechtigung erteilt wurde.`)
+    :'');
  if(!(ind.jobs||[]).length){
   // Leer heisst dreierlei, und die drei brauchen verschiedene Antworten.
   const msg=(ind.reconnect||[]).length
@@ -21051,7 +21199,8 @@ function renderIndustrie(ind){
          :'Noch keine Charaktere verbunden. Über ⚙ Optionen verbinden, dann stehen hier deine Laufzeiten aus Produktion und Forschung.'));
   $('#grid').innerHTML=filterHinweis()
    +`<div class="card" style="grid-column:1/-1"><b>🏭 ${en?'Industry':'Industrie'}</b>
-   <div class="sub" style="margin-top:6px">${msg}</div></div>`;
+   <div class="sub" style="margin-top:6px">${msg}</div>
+   ${corpHinweis?`<div class="sub" style="margin-top:8px">${corpHinweis}</div>`:''}</div>`;
   return;
  }
  const asof=ind.as_of?((en?'synced ':'Abgleich vor ')+Math.max(0,Math.round((now-ind.as_of)/60))+(en?' min ago':' min')):'';
@@ -21076,7 +21225,9 @@ function renderIndustrie(ind){
   const kl=fertig?'grn':(pause?'in':'');
   const rest=fertig?(en?'ready':'fertig'):(pause?(en?'paused':'pausiert'):jobRest(j.ende,now,en));
   const wann=j.ende?new Date(j.ende*1000).toLocaleString():'';
-  return `<tr><td>${esc(j.char)}</td><td>${esc(j.art)}</td>
+  return `<tr><td>${esc(j.char)}${j.corp?` <span class="corpmk" title="${
+    en?'Started from the corp hangar. The job belongs to the corporation, which is why it needs its own permission.'
+      :'Aus dem Corphangar gestartet. Der Auftrag gehört der Corporation, deshalb braucht er eine eigene Berechtigung.'}">Corp</span>`:''}</td><td>${esc(j.art)}</td>
    <td class="jobprod">${jobBild(j)}<span>${esc(j.name)}${j.runs>1?` <span class="sub">×${j.runs}</span>`:''}</span></td>
    <td class="r ${kl}" title="${wann}">${rest}</td></tr>`;};
  const tafel=(titel,liste,hinweis)=>liste.length?`<div class="card" style="grid-column:1/-1">
@@ -21102,7 +21253,9 @@ function renderIndustrie(ind){
     <div class="stat" title="${en?'Installation fees and facility tax of all listed jobs.':'Anlagegebühren und Struktursteuer aller gelisteten Aufträge.'}">
      <div class="l">${en?'Fees':'Gebühren'}</div><div class="v isk">${fmtM(ind.kosten||0)} ISK</div></div>
    </div>
-   ${(ind.arten||[]).length?`<div class="sub" style="margin-top:8px">${ind.arten.map(a=>esc(a.art)+' '+a.n).join(' · ')}</div>`:''}
+   ${(ind.arten||[]).length?`<div class="sub" style="margin-top:8px">${ind.arten.map(a=>esc(a.art)+' '+a.n).join(' · ')}${
+     (ind.n_corp||0)?' · '+ind.n_corp+' '+(en?'from the corp hangar':'aus dem Corphangar'):''}</div>`:''}
+   ${corpHinweis?`<div class="sub" style="margin-top:8px">${corpHinweis}</div>`:''}
   </div>
   ${tafel('⏸ '+(en?'Paused':'Pausiert'),pausiert,
     en?'A paused job is not burning time, it is standing still. Almost always the structure went offline.'
