@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.94.0"
+VERSION = "2.95.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1744,6 +1744,12 @@ def load_config():
            # den Fuessen weggezogen. Ein wegklickbarer Hinweis zeigt auf
            # die neue Fassung.
            "missionskopf": "klassisch",
+           # Gespeicherte Routen, je Eintrag
+           #   {"name": ..., "systeme": [Systemname, ...]}
+           # Sie gehoeren an die Installation, nicht an einen Browser:
+           # wer eine Route anlegt, will sie auch vom zweiten Rechner
+           # aus setzen koennen.
+           "routen": [],
            "update_url": "https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main"}
     if CONFIG_PATH.exists():
         try:
@@ -5799,6 +5805,67 @@ def spruenge_von(start_name):
     return dist
 
 
+MAX_ROUTEN = 20        # gespeicherte Routen je Installation
+MAX_WEGPUNKTE = 30     # Systeme je Route
+
+
+def system_suche(text, grenze=10):
+    """Systeme, deren Name mit dem Getippten beginnt oder ihn enthaelt.
+
+    Der Anfang zaehlt mehr als die Mitte: wer "jit" tippt, meint Jita und
+    nicht Ejited. Deshalb erst die Treffer am Wortanfang, dann der Rest."""
+    text = (text or "").strip().lower()
+    if len(text) < 2:
+        return []
+    m = load_json("eve_map.json", None) or {}
+    vorn, drin = [], []
+    for v in (m.get("systems") or {}).values():
+        if not (isinstance(v, list) and len(v) > 5):
+            continue
+        nl = v[0].lower()
+        if nl.startswith(text):
+            vorn.append(v)
+        elif text in nl:
+            drin.append(v)
+        if len(vorn) >= grenze:
+            break
+    treffer = (vorn + drin)[:grenze]
+    return [{"name": v[0], "sec": round(float(v[1] or 0), 1), "region": v[4]}
+            for v in treffer]
+
+
+def routen_pruefen(roh):
+    """Eine Routenliste vom Browser saeubern.
+
+    Sie landet in der Konfiguration und wird spaeter an ESI geschickt, also
+    wird hier alles begrenzt und jeder Systemname gegen die Sternenkarte
+    gehalten. Rueckgabe: (saubere Liste, Fehlertext oder None)."""
+    if not isinstance(roh, list):
+        return None, "Ungueltige Daten."
+    if len(roh) > MAX_ROUTEN:
+        return None, "Mehr als %d Routen gehen nicht." % MAX_ROUTEN
+    name2id, _, _, _, schoen = _ort_index()
+    raus = []
+    for r in roh:
+        if not isinstance(r, dict):
+            continue
+        systeme = [str(x).strip() for x in (r.get("systeme") or [])
+                   if str(x).strip()]
+        if len(systeme) > MAX_WEGPUNKTE:
+            return None, ("Eine Route fasst hoechstens %d Systeme."
+                          % MAX_WEGPUNKTE)
+        sauber = []
+        for x in systeme:
+            if x.lower() not in name2id:
+                return None, "Unbekanntes System: %s" % x[:30]
+            # Immer in der Schreibweise der Karte speichern, damit zwei
+            # Schreibvarianten nicht als zwei Systeme dastehen.
+            sauber.append(schoen[x.lower()])
+        raus.append({"name": (str(r.get("name") or "").strip() or "Route")[:40],
+                     "systeme": sauber})
+    return raus, None
+
+
 class JobBoerse(threading.Thread):
     """Freiberufliche Auftraege (Freelance Jobs) von der OEFFENTLICHEN
     EVE-Schnittstelle, kein Login noetig. Canary sendet dabei nichts ueber den
@@ -5998,6 +6065,12 @@ ESI_BASE = "https://esi.evetech.net/latest"
 ESI_SCOPES = ("esi-assets.read_assets.v1 esi-location.read_ship_type.v1 "
               "esi-wallet.read_character_wallet.v1 esi-location.read_online.v1 "
               "esi-ui.open_window.v1 esi-skills.read_skills.v1 "
+              # Wegpunkte im Client setzen (Wunsch Dune2Man, 07.09.2026).
+              # Die einzige SCHREIBENDE Berechtigung neben dem Oeffnen von
+              # Fenstern, und sie kann genau eines: die Route des
+              # eingeloggten Charakters fuellen. Sie fliegt nichts, sie
+              # kauft nichts und sie liest nichts.
+              "esi-ui.write_waypoint.v1 "
               "esi-industry.read_character_mining.v1 esi-planets.manage_planets.v1 "
               "esi-markets.read_character_orders.v1 "
               "esi-industry.read_character_jobs.v1 "
@@ -6389,6 +6462,55 @@ class Esi(threading.Thread):
             "Authorization": "Bearer " + self._access(c), "User-Agent": ESI_UA})
         with urllib.request.urlopen(req, timeout=20) as r:
             return r.status
+
+    def wegpunkte(self, name, systeme):
+        """Eine Route als Wegpunkte in den laufenden Client schreiben.
+
+        Ein Aufruf JE Wegpunkt, so verlangt es ESI. Der erste raeumt die alte
+        Route weg, die uebrigen haengen an; die Reihenfolge ist die der
+        Aufrufe. Rueckgabe: (Anzahl gesetzt, Fehlertext oder None).
+
+        Grenzen, die dazugehoeren: der Charakter muss im Spiel eingeloggt
+        sein, und gesetzt wird nur die Route. Geflogen wird sie nicht, den
+        Autopiloten startet weiterhin der Spieler.
+
+        Die Namen werden aus der mitgelieferten Sternenkarte aufgeloest, nicht
+        ueber ESI: 5.000 Systeme liegen ohnehin in eve_map.json."""
+        c = (self.cfg().get("chars") or {}).get(name)
+        if not c:
+            return 0, "Charakter nicht verbunden."
+        name2id, _, _, _, schoen = _ort_index()
+        ziele, unbekannt = [], []
+        for sys_name in systeme or []:
+            sid = name2id.get(str(sys_name).strip().lower())
+            (ziele.append(sid) if sid else unbekannt.append(str(sys_name)))
+        if unbekannt:
+            return 0, "Unbekanntes System: " + ", ".join(unbekannt[:3])
+        if not ziele:
+            return 0, "Die Route ist leer."
+        gesetzt = 0
+        for i, sid in enumerate(ziele):
+            try:
+                # Die Wahrheitswerte MUESSEN klein geschrieben in die Adresse:
+                # Pythons True wuerde als "True" landen, und das kennt ESI
+                # nicht.
+                self._post(c, "/ui/autopilot/waypoint/", {
+                    "destination_id": sid,
+                    "add_to_beginning": "false",
+                    "clear_other_waypoints": "true" if i == 0 else "false"})
+                gesetzt += 1
+            except urllib.error.HTTPError as e:
+                if self.scope_fehlt(e):
+                    return gesetzt, ("Diesem Charakter fehlt die Berechtigung "
+                                     "fuer Wegpunkte. Einmal in den Optionen "
+                                     "neu verbinden.")
+                return gesetzt, ("ESI hat abgelehnt (HTTP %s). Ist der "
+                                 "Charakter im Spiel eingeloggt?"
+                                 % getattr(e, "code", "?"))
+            except Exception as e:
+                log_error("CN-ESI-01", "wegpunkte", e)
+                return gesetzt, "ESI nicht erreichbar."
+        return gesetzt, None
 
     def ui_open(self, name, kind, oid):
         """Im laufenden Client des Charakters ein Fenster oeffnen. kind:
@@ -11597,10 +11719,12 @@ def state_info():
             "prices_loaded": any((prices.get(CONFIG["region"]) or {}).values()),
             "price_src": PRICE_SOURCE.get(str(CONFIG["region"]), "fuzzwork"),
             "watchlist": CONFIG.get("watchlist", []), "goal": CONFIG.get("goal"),
+            "routen": CONFIG.get("routen", []),
             "esi": {"client_id": (CONFIG.get("esi") or {}).get("client_id", ""),
                     "cb": esi.redirect_uri(),
                     "chars": [dict({"name": n, "status": esi.status.get(n, "warte auf Abgleich …"),
-                                    "ship": c.get("ship"), "wallet": c.get("wallet")},
+                                    "ship": c.get("ship"), "wallet": c.get("wallet"),
+                                    "online": bool(c.get("online"))},
                                    **esi.char_health(n, c))
                               for n, c in (CONFIG.get("esi") or {}).get("chars", {}).items()]},
             "server": serverstatus.state,
@@ -15523,6 +15647,53 @@ class Handler(BaseHTTPRequestHandler):
         elif action == "market_item":
             self._send(json.dumps(market_item(body.get("name") or "")))
             return
+        elif action == "besuchte_systeme":
+            # Die eigenen Systeme aus dem Flugschreiber, meistbesuchte zuerst.
+            # Genau daraus besteht eine Farmroute, und das ist der Teil, den
+            # ein fremdes Werkzeug nicht hat. Gegen die Karte gefiltert:
+            # ein Name, den die Karte nicht kennt, waere als Wegpunkt wertlos.
+            try:
+                name2id, _, _, _, _ = _ort_index()
+                b = query_besuche()
+                namen = [x["system"] for x in (b.get("systeme") or [])
+                         if str(x.get("system") or "").lower() in name2id]
+            except Exception:
+                namen = []
+            self._send(json.dumps({"systeme": namen[:24]}, ensure_ascii=False))
+            return
+        elif action == "system_suche":
+            self._send(json.dumps(
+                {"treffer": system_suche(body.get("q") or "")},
+                ensure_ascii=False))
+            return
+        elif action == "routen_speichern":
+            sauber, fehler = routen_pruefen(body.get("routen"))
+            if fehler:
+                self._send(json.dumps({"ok": False, "fehler": fehler},
+                                      ensure_ascii=False))
+                return
+            CONFIG["routen"] = sauber
+            save_config()
+            self._send(json.dumps({"ok": True, "routen": sauber},
+                                  ensure_ascii=False))
+            return
+        elif action == "route_setzen":
+            # Schreibt in den laufenden Client. Deshalb steht hier eine
+            # eigene Pruefung der Systemnamen, auch wenn sie beim Speichern
+            # schon lief: die Liste kommt aus dem Browser.
+            sauber, fehler = routen_pruefen(
+                [{"name": "x", "systeme": body.get("systeme") or []}])
+            if fehler:
+                self._send(json.dumps({"ok": False, "msg": fehler},
+                                      ensure_ascii=False))
+                return
+            systeme = sauber[0]["systeme"] if sauber else []
+            gesetzt, fehler = esi.wegpunkte(str(body.get("char") or ""), systeme)
+            self._send(json.dumps(
+                {"ok": fehler is None, "n": gesetzt,
+                 "msg": fehler or ("%d Wegpunkte gesetzt." % gesetzt)},
+                ensure_ascii=False))
+            return
         elif action == "ui_open":
             # Fenster im laufenden Client oeffnen (Markt-Detail oder Info).
             err = esi.ui_open(str(body.get("char") or ""),
@@ -16054,6 +16225,23 @@ tr.lvl-yellow td{background:rgba(228,179,76,.07)}
 /* Industrie-Tab: Item-Bilder vom offiziellen EVE-Bilddienst in 32 px, damit
    sie scharf bleiben. Feste Groesse, sonst springt die Zeile beim Nachladen.
    Der dunkle Rahmen faengt die sehr hellen Blaupausen-Symbole ab. */
+.routebox{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:8px}
+.routekopf{display:flex;align-items:center;gap:8px}
+.routekopf .spacer{flex:1}
+.routename{flex:0 0 190px;background:var(--inset);border:1px solid var(--line);
+ border-radius:6px;color:inherit;padding:3px 6px;font:inherit}
+.routesys{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.syschip{display:inline-flex;align-items:center;gap:5px;font-size:11px;
+ padding:2px 7px;border-radius:9px;background:var(--inset)}
+.syschip.klick{cursor:pointer}
+.syschip.klick:hover{background:rgba(120,190,255,.18)}
+.sysweg{cursor:pointer;opacity:.55}
+.sysweg:hover{opacity:1;color:var(--red)}
+.routeadd{margin-top:6px}
+.routesuch{width:210px;background:var(--inset);border:1px solid var(--line);
+ border-radius:6px;color:inherit;padding:3px 6px;font:inherit}
+.routetreffer,.routehaeufig{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;
+ align-items:center}
 .corpmk{font-size:10px;padding:1px 5px;border-radius:8px;
  background:rgba(120,190,255,.14);color:var(--cyan);vertical-align:middle}
 .jobico{width:32px;height:32px;flex:0 0 32px;border-radius:4px;
@@ -16920,6 +17108,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
    <span class="pill" id="obsBtn" title="Overlay fuer OBS einrichten: Aussehen waehlen, Adresse kopieren, in OBS als Browser-Quelle einfuegen. Mit Anleitung.">🎥 OBS Overlay</span>
    <span class="pill" id="uhrBtn" title="Stoppuhr fuer eine Aktivitaet: starten, pausieren, am Ende als Trip speichern. Zaehlt mit, wieviel in der Zeit gefoerdert wurde.">⏱ Stoppuhr</span>
    <span class="pill" id="setBtn" title="EVE-Einstellungen sichern, wiederherstellen und das UI eines Charakters auf andere uebertragen. Alpha.">💾 EVE-Einstellungen</span>
+   <span class="pill" id="routeBtn" title="Routen speichern und mit einem Klick als Wegpunkte in den Client schreiben.">🧭 Routen</span>
    <span class="pill" id="skillBtn" title="Skillplan aus dem Spiel einfügen: zeigt, welche Attribute der Plan wirklich braucht, und sortiert ihn auf Wunsch nach Attribut-Paaren um.">🎓 Skillplan</span>
   </div></span>
  <span class="hsep"></span>
@@ -17195,6 +17384,20 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  </div>
 </dialog>
 
+<dialog id="routeDlg">
+ <h2>🧭 Routen</h2>
+ <p class="sub">Wege, die du immer wieder fliegst, einmal zusammenstellen und danach mit einem Klick als Wegpunkte in den Client schreiben. Canary setzt die Route, geflogen wird sie von dir: den Autopiloten startest du im Spiel wie sonst auch. Der Charakter muss dafür eingeloggt sein.</p>
+ <div class="btnrow" style="margin-top:6px">
+  <span class="sub">Charakter</span>
+  <select id="routeChar"></select>
+  <span class="sub" id="routeStat"></span>
+ </div>
+ <div id="routeListe" style="margin-top:10px"></div>
+ <div class="btnrow" style="margin-top:10px">
+  <button class="btn" id="routeNeu">+ Neue Route</button>
+  <button class="btn" onclick="document.getElementById('routeDlg').close()">Schließen</button>
+ </div>
+</dialog>
 <dialog id="skillDlg">
  <h2>🎓 Skillplan-Berater</h2>
  <p class="sub">Im Spiel das Skillfenster öffnen, deinen Skillplan über das Menü oben rechts kopieren und hier einfügen. Canary rechnet mit Skillpunkten, nicht bloß Skill-Anzahl: du siehst, welche Attribute dein Plan wirklich braucht, und bekommst ihn auf Wunsch so umsortiert, dass gleiche Attribute hintereinander trainieren, Voraussetzungen bleiben gewahrt.</p>
@@ -18798,6 +19001,207 @@ function siteHtml(s){
 const ATTR_LABEL={int:['Intelligenz','Intelligence'],mem:['Erinnerung','Memory'],
  per:['Wahrnehmung','Perception'],wil:['Willenskraft','Willpower'],cha:['Charisma','Charisma']};
 function attrName(a,en){const l=ATTR_LABEL[a];return l?l[en?1:0]:a;}
+// ===========================================================================
+// Gespeicherte Routen (Wunsch Dune2Man, 07.09.2026)
+// ===========================================================================
+//
+// Seine Meldung: "was mir im spiel fehlt ist eine moeglichkeit automatisch
+// routen zu setzen, zum beispiel wenn ich beim combat explo immer die selben
+// systeme in der reihe farme. Kann man vielleicht mehrere routen angeben und
+// speichern und die dann per mausklick ueber den tool beim eingeloggten char
+// setzen?"
+//
+// ESI kann genau das, mit einem Aufruf JE Wegpunkt: der erste raeumt die alte
+// Route weg, die uebrigen haengen an. Die Systemnamen loest Canary aus der
+// mitgelieferten Sternenkarte auf, dafuer geht keine Anfrage ins Netz.
+//
+// Der Dialog liegt bewusst ausserhalb von #grid: dort wuerde der
+// Zwei-Sekunden-Takt alles ueberschreiben, was man gerade tippt.
+let routen=[], routeSuchTimer=null, routeBesucht=[];
+
+function routeStatus(t,gut){
+ const st=document.getElementById('routeStat');
+ if(!st)return;
+ st.textContent=t||'';
+ st.style.color=gut===false?'var(--red)':(gut?'var(--grn)':'');
+}
+
+function routeSichern(){
+ post({action:'routen_speichern',routen:routen}).then(r=>{
+  if(r&&r.ok===false)routeStatus(r.fehler||'',false);
+ }).catch(()=>{});
+}
+
+// Die Charakterliste. Wer nicht eingeloggt ist, steht trotzdem drin, aber
+// mit dem Grund dahinter: ein Knopf, der wortlos nichts tut, ist schlimmer
+// als einer, der sagt warum.
+function routeChars(){
+ const sel=document.getElementById('routeChar');
+ if(!sel)return;
+ const en=lang==='en';
+ const chars=((state&&state.esi&&state.esi.chars)||[]);
+ const vorher=sel.value;
+ sel.innerHTML=chars.length
+  ?chars.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}${c.online?'':(en?' (not logged in)':' (nicht eingeloggt)')}</option>`).join('')
+  :`<option value="">${en?'no character connected':'kein Charakter verbunden'}</option>`;
+ if(vorher)sel.value=vorher;
+}
+
+function routeZeichnen(){
+ const en=lang==='en';
+ const w=document.getElementById('routeListe');
+ if(!w)return;
+ if(!routen.length){
+  w.innerHTML=`<div class="sub">${en
+   ?'No routes yet. Create one, then add the systems in the order you want to fly them.'
+   :'Noch keine Route. Eine anlegen und die Systeme in der Reihenfolge eintragen, in der du sie fliegen willst.'}</div>`;
+  return;
+ }
+ w.innerHTML=routen.map((r,i)=>`<div class="routebox">
+  <div class="routekopf">
+   <input class="routename" data-rname="${i}" value="${esc(r.name||'')}" maxlength="40">
+   <span class="sub">${(r.systeme||[]).length} ${en?'waypoints':'Wegpunkte'}</span>
+   <span class="spacer"></span>
+   <button class="btn" data-rset="${i}">${en?'Set':'Setzen'}</button>
+   <button class="btn" data-rdel="${i}" title="${en?'Delete route':'Route löschen'}">🗑</button>
+  </div>
+  <div class="routesys">${(r.systeme||[]).map((sName,j)=>`<span class="syschip">${
+    j+1}. ${esc(sName)}<span class="sysweg" data-rsysdel="${i}.${j}" title="${
+    en?'remove':'entfernen'}">×</span></span>`).join('')||`<span class="sub">${
+    en?'no systems yet':'noch keine Systeme'}</span>`}</div>
+  <div class="routeadd">
+   <input class="routesuch" data-rsuch="${i}" placeholder="${
+     en?'add system …':'System hinzufügen …'}" autocomplete="off">
+   <div class="routetreffer" data-rtreffer="${i}"></div>
+  </div>
+ </div>`).join('');
+ routeVorschlaege();
+}
+
+// Die haeufig besuchten Systeme aus dem eigenen Flugschreiber. Das ist der
+// Teil, den ein fremdes Werkzeug nicht kann: Canary weiss aus den Logs, wo
+// man wirklich unterwegs war, und genau daraus besteht so eine Farmroute.
+function routeVorschlaege(){
+ if(!routeBesucht.length)return;
+ const en=lang==='en';
+ document.querySelectorAll('.routeadd').forEach((el,i)=>{
+  if(el.querySelector('.routehaeufig'))return;
+  const d=document.createElement('div');
+  d.className='routehaeufig';
+  d.innerHTML=`<span class="sub">${en?'often visited':'oft besucht'}:</span> `
+   +routeBesucht.slice(0,12).map(s=>`<span class="syschip klick" data-rhaeufig="${i}|${esc(s)}">${esc(s)}</span>`).join('');
+  el.appendChild(d);
+ });
+}
+
+function routeSystemDazu(i,name){
+ if(!routen[i])return;
+ routen[i].systeme=routen[i].systeme||[];
+ if(routen[i].systeme.length>=30){
+  routeStatus(lang==='en'?'A route holds at most 30 systems.'
+                         :'Eine Route fasst höchstens 30 Systeme.',false);
+  return;
+ }
+ routen[i].systeme.push(name);
+ routeZeichnen();
+ // Nach dem Neuzeichnen ist das Suchfeld ein anderes Element. Ohne diese
+ // Zeile muesste man es fuer jedes weitere System neu anklicken, und eine
+ // Route besteht selten aus einem einzigen.
+ const feld=document.querySelector('[data-rsuch="'+i+'"]');
+ if(feld)feld.focus();
+ routeSichern();
+}
+
+document.getElementById('routeBtn').onclick=()=>{
+ const m=document.getElementById('toolsMenu'); if(m)m.hidden=true;
+ routen=JSON.parse(JSON.stringify((state&&state.routen)||[]));
+ routeChars();
+ routeZeichnen();
+ routeStatus('');
+ const d=document.getElementById('routeDlg');
+ d.showModal();
+ if(lang!=='de')tr(d);
+ if(!routeBesucht.length)post({action:'besuchte_systeme'}).then(r=>{
+  routeBesucht=(r&&r.systeme)||[];
+  routeVorschlaege();
+ }).catch(()=>{});
+};
+
+document.getElementById('routeNeu').onclick=()=>{
+ if(routen.length>=20){
+  routeStatus(lang==='en'?'20 routes is the limit.':'Mehr als 20 Routen gehen nicht.',false);
+  return;
+ }
+ routen.push({name:(lang==='en'?'Route ':'Route ')+(routen.length+1),systeme:[]});
+ routeZeichnen();
+ routeSichern();
+};
+
+// Ein einziger Verteiler fuer alles Anklickbare im Dialog. Die Kaesten werden
+// bei jeder Aenderung neu gezeichnet, einzeln gebundene Handler waeren danach
+// weg.
+document.addEventListener('click',e=>{
+ const del=e.target.closest('[data-rdel]');
+ if(del){routen.splice(+del.dataset.rdel,1);routeZeichnen();routeSichern();return;}
+ const sysdel=e.target.closest('[data-rsysdel]');
+ if(sysdel){
+  const t=sysdel.dataset.rsysdel.split('.');
+  const r=routen[+t[0]];
+  if(r&&r.systeme)r.systeme.splice(+t[1],1);
+  routeZeichnen();routeSichern();return;
+ }
+ const hf=e.target.closest('[data-rhaeufig]');
+ if(hf){
+  const t=hf.dataset.rhaeufig.split('|');
+  routeSystemDazu(+t[0],t[1]);return;
+ }
+ const tr2=e.target.closest('[data-rwahl]');
+ if(tr2){
+  const t=tr2.dataset.rwahl.split('|');
+  routeSystemDazu(+t[0],t[1]);return;
+ }
+ const setzen=e.target.closest('[data-rset]');
+ if(setzen){
+  const i=+setzen.dataset.rset, r=routen[i];
+  const sel=document.getElementById('routeChar');
+  const char=sel?sel.value:'';
+  const en=lang==='en';
+  if(!char){routeStatus(en?'No character connected.':'Kein Charakter verbunden.',false);return;}
+  if(!r||!(r.systeme||[]).length){routeStatus(en?'This route is empty.':'Diese Route ist leer.',false);return;}
+  routeStatus(en?'Setting …':'Setze …');
+  post({action:'route_setzen',char:char,systeme:r.systeme}).then(a=>{
+   routeStatus((a&&a.msg)||(en?'No answer':'Keine Antwort'),!!(a&&a.ok));
+  }).catch(()=>routeStatus(en?'Server not reachable':'Server nicht erreichbar',false));
+ }
+});
+
+// Tippen im Suchfeld. Gesucht wird auf dem Server, dort liegt die Karte;
+// 5.000 Systemnamen in jede Seite zu legen waere Verschwendung.
+document.addEventListener('input',e=>{
+ const nm=e.target.closest('[data-rname]');
+ if(nm){
+  const i=+nm.dataset.rname;
+  if(routen[i]){routen[i].name=nm.value;clearTimeout(routeSuchTimer);
+   routeSuchTimer=setTimeout(routeSichern,600);}
+  return;
+ }
+ const su=e.target.closest('[data-rsuch]');
+ if(!su)return;
+ const i=+su.dataset.rsuch, q=su.value;
+ const ziel=document.querySelector('[data-rtreffer="'+i+'"]');
+ clearTimeout(routeSuchTimer);
+ if(!ziel)return;
+ if(q.trim().length<2){ziel.innerHTML='';return;}
+ routeSuchTimer=setTimeout(()=>{
+  post({action:'system_suche',q:q}).then(r=>{
+   const t=(r&&r.treffer)||[];
+   ziel.innerHTML=t.length
+    ?t.map(x=>`<span class="syschip klick" data-rwahl="${i}|${esc(x.name)}">${esc(x.name)} <span class="sub">${x.sec.toFixed(1)} · ${esc(x.region)}</span></span>`).join('')
+    :`<span class="sub">${lang==='en'?'nothing found':'nichts gefunden'}</span>`;
+  }).catch(()=>{});
+ },220);
+});
+
 document.getElementById('skillBtn').onclick=()=>{
  const m=document.getElementById('toolsMenu'); if(m)m.hidden=true;
  const d=document.getElementById('skillDlg'); d.showModal();
@@ -23449,6 +23853,12 @@ const EN = {
  'Deliveries with multiplied yield. Canary spots them because the amount is an exact multiple of your normal delivery. Only the part beyond the normal amount is shown.',
 'per ⛽ setzen':'set via ⛽',
 '≈ ISK/h (Erz)':'≈ ISK/h (ore)',
+'🧭 Routen':'🧭 Routes',
+'Routen speichern und mit einem Klick als Wegpunkte in den Client schreiben.':
+ 'Save routes and write them into the client as waypoints with one click.',
+'Wege, die du immer wieder fliegst, einmal zusammenstellen und danach mit einem Klick als Wegpunkte in den Client schreiben. Canary setzt die Route, geflogen wird sie von dir: den Autopiloten startest du im Spiel wie sonst auch. Der Charakter muss dafür eingeloggt sein.':
+ 'Put together the runs you fly again and again, then write them into the client as waypoints with one click. Canary sets the route, you fly it: you start the autopilot in game as always. The character has to be logged in for this.',
+'+ Neue Route':'+ New route',
 '🎓 Skillplan-Berater':'🎓 Skill plan advisor',
 '🎓 Skillplan':'🎓 Skill plan',
 'Analysieren':'Analyse',

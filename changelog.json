@@ -1,5 +1,23 @@
 [
  {
+  "v": "2.95.0",
+  "d": "2026-09-08",
+  "de": [
+   "NEU: gespeicherte Routen. Im Menü 🧰 Werkzeuge steht jetzt 🧭 Routen: Wege, die du immer wieder fliegst, einmal zusammenstellen und danach mit einem Klick als Wegpunkte in den Client schreiben. Wunsch von Dune2Man: „Was mir im Spiel fehlt ist eine Möglichkeit automatisch Routen zu setzen, zum Beispiel wenn ich beim Combat Explo immer die selben Systeme in der Reihe farme.“",
+   "Systeme fügst du auf zwei Wegen hinzu: tippen, dann schlägt Canary aus der mitgelieferten Sternenkarte vor, mit Sicherheitsstatus und Region. Oder mit einem Klick aus deinen oft besuchten Systemen, denn die kennt Canary aus deinen eigenen Logs. Genau daraus besteht so eine Farmroute meistens.",
+   "Beim Setzen schickt Canary einen Aufruf je Wegpunkt, so verlangt es ESI. Der erste räumt die alte Route weg, die übrigen hängen an, die Reihenfolge ist deine. Ehrlich dazugesagt: der Charakter muss im Spiel eingeloggt sein, und Canary setzt nur die Route. Geflogen wird sie von dir, den Autopiloten startest du wie sonst auch.",
+   "Ein unbekannter Systemname führt zu gar keinem Aufruf, nicht zu einer halben Route im Client. Und die Systemnamen löst Canary aus der eigenen Karte auf, dafür geht keine einzige Anfrage ins Netz.",
+   "Dafür braucht es die Berechtigung esi-ui.write_waypoint.v1, also wieder ein Neuverbinden. Sie kommt bewusst direkt hinter der von gestern: wer beide auf einmal erledigt, klickt einmal statt zweimal. Es ist die einzige schreibende Berechtigung neben dem Öffnen von Fenstern, und sie kann genau eines, nämlich die Route des eingeloggten Charakters füllen. Sie fliegt nichts, sie kauft nichts und sie liest nichts."
+  ],
+  "en": [
+   "NEW: saved routes. The 🧰 Tools menu now has 🧭 Routes: put together the runs you fly again and again, then write them into the client as waypoints with one click. Requested by Dune2Man: „what I miss in the game is a way to set routes automatically, for example when I farm the same systems in a row doing combat exploration.“",
+   "You add systems two ways: type, and Canary suggests from the star map that ships with it, security status and region included. Or click one of your often visited systems, because Canary knows those from your own logs. That is usually what a farming route is made of.",
+   "Setting a route sends one call per waypoint, as ESI requires. The first clears the old route, the rest are appended, the order is yours. Said plainly: the character has to be logged into the game, and Canary only sets the route. You fly it, and you start the autopilot as always.",
+   "An unknown system name leads to no call at all, rather than half a route in your client. And the system names are resolved from Canary's own map, without a single request going out.",
+   "This needs the permission esi-ui.write_waypoint.v1, so another reconnect. It deliberately comes right behind yesterday's one: doing both at once is one click instead of two. It is the only writing permission besides opening windows, and it can do exactly one thing, fill the route of the logged-in character. It flies nothing, it buys nothing and it reads nothing."
+  ]
+ },
+ {
   "v": "2.94.0",
   "d": "2026-09-07",
   "de": [
