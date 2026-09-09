@@ -1,5 +1,23 @@
 [
  {
+  "v": "2.98.0",
+  "d": "2026-09-09",
+  "de": [
+   "Die Routenliste ist umgebaut. Anlass war Dune2Mans erste echte Route: „Serpentis“, 14 Wegpunkte durch Everyshore. Bis dahin hatte ich Routen nur mit drei oder vier Halten gesehen, und mit vierzehn fiel die Anzeige auseinander.",
+   "Bei Full HD nachgemessen: der Dialog war 620 Pixel breit, obwohl 1920 zur Verfügung standen. Die Systemmarken waren 136 Pixel breit, die eine Stationsmarke 405, also dreimal so viel, und sprengte die Zeile. Die 14 Wegpunkte verteilten sich auf vier umbrechende Zeilen, dazu 56 kleine Bedienzeichen gegen 14 Namen.",
+   "Eine Route ist eine Abfolge, und Abfolgen liest das Auge senkrecht. Jetzt steht eine Zeile je Wegpunkt: Nummer in fester Spalte, Name, Sicherheitsstatus. Die vier Knöpfe stehen rechtsbündig und leise und werden beim Überfahren der Zeile deutlich; ganz ausblenden wäre falsch, ein Knopf, der erst beim Überfahren erscheint, ist für den, der ihn sucht, nicht vorhanden. Bei einer Station steht der Stationsname in der Zeile und das System klein darunter, statt daneben zu schweben.",
+   "NEU dabei: der Sicherheitsstatus an jedem Wegpunkt, in denselben Farben wie die Sternenkarte. Canary kennt ihn ohnehin aus der mitgelieferten Karte, dafür geht keine Anfrage ins Netz. Bei Dune2Mans Route reicht er von 0.9 in Bereye bis 0.5 in Bille und Junsoraert, und beim Combat Exploration ist genau das der Unterschied, was einen erwartet.",
+   "Der Dialog darf jetzt 880 Pixel breit werden, und ab etwa zwölf Halten scrollt die Liste, statt den Kasten wachsen zu lassen. Seine 14 Wegpunkte brauchen damit 320 Pixel statt vier Zeilen Suchen."
+  ],
+  "en": [
+   "The route list has been rebuilt. The trigger was Dune2Man's first real route: „Serpentis“, 14 waypoints through Everyshore. Until then I had only seen routes with three or four stops, and at fourteen the display fell apart.",
+   "Measured at Full HD: the dialog was 620 pixels wide although 1920 were available. System chips were 136 pixels wide, the one station chip 405, three times as much, and it broke the line. The 14 waypoints spread over four wrapping rows, with 56 small control glyphs against 14 names.",
+   "A route is a sequence, and the eye reads sequences vertically. Now there is one row per waypoint: number in a fixed column, name, security status. The four buttons sit right aligned and quiet and sharpen when you pass over the row; hiding them entirely would be wrong, a button that only appears on hover does not exist for the person looking for it. For a station the station name is in the row and the system sits small underneath, instead of floating beside it.",
+   "NEW with it: the security status on every waypoint, in the same colours as the star map. Canary knows it from the map that ships with it, so no request goes out. On Dune2Man's route it runs from 0.9 in Bereye down to 0.5 in Bille and Junsoraert, and for combat exploration that is exactly the difference in what awaits you.",
+   "The dialog may now be 880 pixels wide, and from about twelve stops the list scrolls instead of growing the box. His 14 waypoints now need 320 pixels rather than four rows of searching."
+  ]
+ },
+ {
   "v": "2.97.0",
   "d": "2026-09-09",
   "de": [

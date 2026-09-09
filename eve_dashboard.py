@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.97.0"
+VERSION = "2.98.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -5921,6 +5921,22 @@ def wegpunkt_lesen(x, name2id, schoen):
         raus["station"] = st
         raus["label"] = str(x.get("label") or "")[:80]
     return raus, None
+
+
+def system_sec(namen):
+    """Sicherheitsstatus zu einer Liste von Systemnamen.
+
+    Aus eve_map.json, kein Netz. Die Routenliste zeigt ihn je Wegpunkt: bei
+    Combat Exploration ist 0.5 gegen 0.9 der Unterschied, was einen erwartet,
+    und Canary kennt den Wert ohnehin. Dune2Mans erste echte Route lief von
+    0.9 in Bereye bis 0.5 in Bille und Junsoraert."""
+    m = load_json("eve_map.json", None) or {}
+    gesucht = {str(x).strip().lower() for x in (namen or []) if str(x).strip()}
+    raus = {}
+    for v in (m.get("systems") or {}).values():
+        if isinstance(v, list) and len(v) > 4 and v[0].lower() in gesucht:
+            raus[v[0]] = round(float(v[1] or 0), 1)
+    return raus
 
 
 def routen_pruefen(roh):
@@ -15783,6 +15799,11 @@ class Handler(BaseHTTPRequestHandler):
                 namen = []
             self._send(json.dumps({"systeme": namen[:24]}, ensure_ascii=False))
             return
+        elif action == "system_sec":
+            self._send(json.dumps(
+                {"sec": system_sec(body.get("namen") or [])},
+                ensure_ascii=False))
+            return
         elif action == "stationen":
             self._send(json.dumps(
                 {"stationen": stationen_im_system(body.get("system") or "")},
@@ -16352,12 +16373,32 @@ tr.lvl-yellow td{background:rgba(228,179,76,.07)}
 /* Industrie-Tab: Item-Bilder vom offiziellen EVE-Bilddienst in 32 px, damit
    sie scharf bleiben. Feste Groesse, sonst springt die Zeile beim Nachladen.
    Der dunkle Rahmen faengt die sehr hellen Blaupausen-Symbole ab. */
+/* Die Grundregel fuer dialog setzt max-width:620px. Eine ID schlaegt zwar
+   den Element-Selektor, aber max-width deckelt trotzdem: ohne die zweite
+   Zeile blieb der Dialog gemessene 620px breit, obwohl width auf 880
+   stand. Eine Routenzeile mit Stationsnamen braucht 405px. */
+#routeDlg{width:min(880px,94vw);max-width:880px}
 .routebox{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:8px}
 .routekopf{display:flex;align-items:center;gap:8px}
 .routekopf .spacer{flex:1}
 .routename{flex:0 0 190px;background:var(--inset);border:1px solid var(--line);
  border-radius:6px;color:inherit;padding:3px 6px;font:inherit}
-.routesys{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+/* Eine Route ist eine Abfolge, und die liest das Auge senkrecht. Deshalb
+   eine Zeile je Wegpunkt statt umbrechender Marken. Ab etwa zwoelf Halten
+   scrollt die Liste, damit der Kasten nicht ins Uferlose waechst. */
+.routesys{margin-top:6px;max-height:320px;overflow-y:auto}
+.wpz{display:flex;align-items:center;gap:8px;padding:2px 6px;border-radius:6px}
+.wpz:hover{background:var(--inset)}
+.wpn{flex:0 0 20px;text-align:right;color:var(--dim);
+ font-variant-numeric:tabular-nums;font-size:11px}
+.wpname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+ white-space:nowrap}
+.wpunter{display:block;font-size:11px;color:var(--dim)}
+.wpsec{font-size:11px;font-variant-numeric:tabular-nums}
+/* Immer sichtbar, nur leise: ein Knopf, der erst beim Ueberfahren erscheint,
+   ist fuer den, der ihn sucht, nicht vorhanden. */
+.wpakt{flex:0 0 auto;white-space:nowrap;opacity:.35}
+.wpz:hover .wpakt{opacity:1}
 .syschip{display:inline-flex;align-items:center;gap:5px;font-size:11px;
  padding:2px 7px;border-radius:9px;background:var(--inset)}
 .syschip.klick{cursor:pointer}
@@ -19149,7 +19190,8 @@ function attrName(a,en){const l=ATTR_LABEL[a];return l?l[en?1:0]:a;}
 //
 // Der Dialog liegt bewusst ausserhalb von #grid: dort wuerde der
 // Zwei-Sekunden-Takt alles ueberschreiben, was man gerade tippt.
-let routen=[], routeSuchTimer=null, routeBesucht=[], routeStListe=[];
+let routen=[], routeSuchTimer=null, routeBesucht=[], routeStListe=[],
+    routeSec={};
 
 function routeStatus(t,gut){
  const st=document.getElementById('routeStat');
@@ -19185,6 +19227,29 @@ function routeChars(){
 function wpForm(x){return (typeof x==='string')?{sys:x}:(x||{sys:''});}
 function wpText(w){return w.station?(w.label||('Station '+w.station)):w.sys;}
 
+// Der Sicherheitsstatus kommt aus der mitgelieferten Karte, ein Aufruf fuer
+// alle Systeme aller Routen. Fehlt einer, wird EINMAL nachgeladen und danach
+// neu gezeichnet; ohne diese Sperre liefe das im Kreis.
+function routeSecLaden(){
+ const fehlt=[];
+ routen.forEach(r=>(r.systeme||[]).forEach(x=>{
+  const sy=wpForm(x).sys;
+  if(sy&&!(sy in routeSec)&&fehlt.indexOf(sy)<0)fehlt.push(sy);
+ }));
+ if(!fehlt.length)return;
+ fehlt.forEach(sy=>{routeSec[sy]=null;});   // Sperre gegen Dauerschleife
+ post({action:'system_sec',namen:fehlt}).then(a=>{
+  Object.assign(routeSec,(a&&a.sec)||{});
+  routeZeichnen();
+ }).catch(()=>{});
+}
+
+function secChip(sy){
+ const v=routeSec[sy];
+ if(v==null)return '';
+ return `<span class="wpsec" style="color:${secFarbe(v)}">${v.toFixed(1)}</span>`;
+}
+
 function routeZeichnen(){
  const en=lang==='en';
  const w=document.getElementById('routeListe');
@@ -19195,6 +19260,11 @@ function routeZeichnen(){
    :'Noch keine Route. Eine anlegen und die Systeme in der Reihenfolge eintragen, in der du sie fliegen willst.'}</div>`;
   return;
  }
+ // Eine Route ist eine ABFOLGE, und Abfolgen liest das Auge senkrecht.
+ // Bis v2.97.0 standen die Wegpunkte als umbrechende Marken nebeneinander:
+ // Dune2Mans erste echte Route mit 14 Halten lief dabei ueber vier Zeilen,
+ // und der 405 px breite Stationseintrag brach das Muster ganz. Gemessen am
+ // 09.09.2026 bei Full HD. Deshalb jetzt eine Zeile je Wegpunkt.
  w.innerHTML=routen.map((r,i)=>{
   const eintraege=(r.systeme||[]).map(wpForm);
   r.systeme=eintraege;
@@ -19207,6 +19277,17 @@ function routeZeichnen(){
      ?`${[...new Set(doppelt)].join(', ')} appears twice without a station. Pick a station via ⚓ so the two stops can be told apart.`
      :`${[...new Set(doppelt)].join(', ')} steht zweimal ohne Station. Über ⚓ eine Station wählen, dann sind die beiden Halte unterscheidbar.`}</div>`
    :'';
+  const zeilen=eintraege.map((e,j)=>`<div class="wpz">
+    <span class="wpn">${j+1}</span>
+    <span class="wpname">${esc(wpText(e))}${e.station
+      ?`<span class="wpunter">${esc(e.sys)} ${secChip(e.sys)}</span>`
+      :` ${secChip(e.sys)}`}</span>
+    <span class="wpakt"><span class="sysknopf" data-rup="${i}.${j}" title="${
+      en?'move up':'nach vorn'}">↑</span><span class="sysknopf" data-rdown="${i}.${j}" title="${
+      en?'move down':'nach hinten'}">↓</span><span class="sysknopf" data-rdock="${i}.${j}" title="${
+      en?'choose a station':'Station wählen'}">⚓</span><span class="sysweg" data-rsysdel="${i}.${j}" title="${
+      en?'remove':'entfernen'}">×</span></span>
+   </div>`).join('');
   return `<div class="routebox">
   <div class="routekopf">
    <input class="routename" data-rname="${i}" value="${esc(r.name||'')}" maxlength="40">
@@ -19215,13 +19296,8 @@ function routeZeichnen(){
    <button class="btn" data-rset="${i}">${en?'Set':'Setzen'}</button>
    <button class="btn" data-rdel="${i}" title="${en?'Delete route':'Route löschen'}">🗑</button>
   </div>
-  <div class="routesys">${eintraege.map((e,j)=>`<span class="syschip${e.station?' iststation':''}">${
-    j+1}. ${esc(wpText(e))}${e.station?` <span class="sub">${esc(e.sys)}</span>`:''}<span
-     class="sysknopf" data-rup="${i}.${j}" title="${en?'move up':'nach vorn'}">↑</span><span
-     class="sysknopf" data-rdown="${i}.${j}" title="${en?'move down':'nach hinten'}">↓</span><span
-     class="sysknopf" data-rdock="${i}.${j}" title="${en?'choose a station':'Station wählen'}">⚓</span><span
-     class="sysweg" data-rsysdel="${i}.${j}" title="${en?'remove':'entfernen'}">×</span></span>`).join('')||`<span class="sub">${
-    en?'no systems yet':'noch keine Systeme'}</span>`}</div>
+  <div class="routesys">${zeilen||`<div class="sub">${
+    en?'no systems yet':'noch keine Systeme'}</div>`}</div>
   ${warn}
   <div class="routestat" data-rstat="${i}"></div>
   <div class="routeadd">
@@ -19231,6 +19307,7 @@ function routeZeichnen(){
   </div>
  </div>`;}).join('');
  routeVorschlaege();
+ routeSecLaden();
 }
 
 // Die haeufig besuchten Systeme aus dem eigenen Flugschreiber. Das ist der
