@@ -1,5 +1,25 @@
 [
  {
+  "v": "2.97.0",
+  "d": "2026-09-09",
+  "de": [
+   "Der Skillplan-Berater versteht jetzt auch Pläne aus einem nicht englischen Client. Gemeldet von Dune2Man: „Wollte den Skillplan umbauen lassen, musste dabei aber feststellen, dass es aufgrund meines deutschen Clients wohl hakt.“",
+   "Er hatte recht, und zwar vollständig: von seinen 125 Zeilen erkannte Canary keine einzige. Ein nicht englischer Client verpackt jeden Namen so: <localized hint=\"Research\">Research*</localized> 4. Die Stufe wurde richtig gelesen, es scheiterte allein am Stern hinter dem Namen. Aus „Research“ wurde „Research*“, und den Skill gibt es nicht.",
+   "Genommen wird jetzt das Attribut hint. Es trägt immer den englischen Namen, in jeder Client-Sprache, nicht nur in der deutschen. Ein Stern allein, ohne diese Verpackung, stört auch nicht mehr.",
+   "Wichtiger als das Erkennen ist die Rückgabe: der umsortierte Plan behält die Verpackung Zeichen für Zeichen. Ein deutscher Client hat sie geschrieben und erwartet sie beim Import auch wieder. Gäbe Canary die aufgeräumte Fassung aus, wäre der Plan zwar lesbar, aber nicht mehr einlesbar, und einlesbar zu sein ist sein einziger Zweck.",
+   "An seinem echten Export nachgemessen: 125 von 125 Zeilen, 20,2 Millionen Skillpunkte, 60 Stufen auf Intelligenz/Gedächtnis und 20 auf Wahrnehmung/Willenskraft.",
+   "Und wenn gar nichts erkannt wird, schreibt Canary jetzt dazu, was es gelesen hat. Vorher stand da nur „keine Skill-Zeile erkannt“, während der Plan sichtbar im Feld stand. Das war eine Sackgasse."
+  ],
+  "en": [
+   "The skill plan advisor now understands plans exported from a non English client. Reported by Dune2Man: „wanted to have my skill plan rearranged, but had to find out that it apparently trips over my German client.“",
+   "He was right, completely: not one of his 125 lines was recognised. A non English client wraps every name like this: <localized hint=\"Research\">Research*</localized> 4. The level was read correctly, it failed purely on the asterisk behind the name. „Research“ became „Research*“, and no such skill exists.",
+   "The hint attribute is used now. It always carries the English name, in every client language, not just German. A lone asterisk without that wrapper no longer trips it either.",
+   "More important than reading it is giving it back: the re-sorted plan keeps the wrapper character for character. A German client wrote it and expects it back on import. Handing out the tidied version would leave a plan that reads fine but can no longer be imported, and being importable is its whole purpose.",
+   "Measured against his real export: 125 of 125 lines, 20.2 million skill points, 60 levels on Intelligence/Memory and 20 on Perception/Willpower.",
+   "And when nothing at all is recognised, Canary now says what it did read. Before, it only said „no skill line recognised“ while the plan sat visibly in the field. That was a dead end."
+  ]
+ },
+ {
   "v": "2.96.0",
   "d": "2026-09-09",
   "de": [

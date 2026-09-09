@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.96.0"
+VERSION = "2.97.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -779,6 +779,12 @@ HW_CORE_GAP = 600
 TS_RE = re.compile(r"^\[ (\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2}):(\d{2}) \] \((\w+)\) (.*)$")
 HINT_RE = re.compile(r'hint="([^"]+)"')
 STRIP_RE = re.compile(r"<[^>]+>")
+# Der Mantel, in den nicht englische Clients jeden uebersetzbaren Namen
+# packen. Das Attribut hint traegt IMMER den englischen Namen, der
+# Inhalt den uebersetzten mit einem Stern dahinter. Gemeldet von
+# Dune2Man am 06.09.2026 an seinem deutschen Client, siehe
+# skillplan_analyse.
+LOCALIZED_RE = re.compile(r'<localized[^>]*\bhint="([^"]*)"[^>]*>', re.I)
 # NBSP (\xa0) mit aufnehmen: manche Client-Sprachen (z.B. RU) nutzen ein
 # geschuetztes Leerzeichen als Tausendertrenner — sonst wird "1<NBSP>234" zu "1".
 # APOSTROPH ebenso: manche Clients schreiben "131'250 ISK". An 9.161 gespendeten
@@ -12333,15 +12339,41 @@ def skillplan_analyse(text):
         if not 1 <= lvl <= 5:
             unbekannt.append(zeile)
             continue
-        name = teile[0].strip()
+        # Ein nicht englischer Client verpackt jeden Namen in
+        #   <localized hint="Research">Research*</localized> 4
+        # Das Attribut hint traegt den ENGLISCHEN Namen, und genau den kennt
+        # skill_plan.json. Ihn zu nehmen ist zuverlaessiger als die
+        # Uebersetzung durch die Alias-Tabelle zu jagen, und es gilt fuer
+        # jede Client-Sprache, nicht nur fuer Deutsch.
+        mantel = LOCALIZED_RE.search(raw)
+        name = (mantel.group(1) if mantel and mantel.group(1).strip()
+                else teile[0]).strip()
+        # Der Stern hinter dem uebersetzten Namen ist eine Marke des Clients,
+        # kein Teil des Skillnamens. Ohne diese Zeile scheiterten 125 von 125
+        # Zeilen aus Dune2Mans Export.
+        name = name.rstrip("*").strip()
         kanon = name if name in skills else alias.get(name)
         if not kanon:
             unbekannt.append(zeile)
             continue
-        eintraege.append({"zeile": zeile, "name": kanon, "lvl": lvl})
+        # "zeile" ist die aufgeraeumte Fassung fuer die Anzeige, "roh" die
+        # Zeile, wie der Client sie ausgegeben hat. Zurueck in den Client
+        # geht die ROHE: ein deutscher Client hat den localized-Mantel
+        # geschrieben und erwartet ihn beim Import auch wieder. Gaebe
+        # Canary die abgeraeumte Fassung aus, waere der umsortierte Plan
+        # zwar lesbar, aber nicht mehr einlesbar.
+        eintraege.append({"zeile": zeile, "roh": raw.rstrip(),
+                          "name": kanon, "lvl": lvl})
     if not eintraege:
-        return {"ok": False, "fehler": "Keine Skill-Zeile erkannt. Erwartet "
-                "wird eine Zeile je Skill, etwa: Astrogeology IV"}
+        # Ohne Beispiel ist so eine Meldung eine Sackgasse: der Benutzer sieht
+        # seinen Plan vor sich und Canary sagt nur "nichts erkannt". Die
+        # ersten Zeilen dazuzuschreiben kostet nichts und zeigt sofort, ob
+        # der Text ueberhaupt angekommen ist.
+        beispiel = "; ".join(unbekannt[:2])
+        return {"ok": False, "unbekannt": unbekannt[:20],
+                "fehler": "Keine Skill-Zeile erkannt. Erwartet wird eine Zeile "
+                          "je Skill, etwa: Astrogeology IV"
+                          + (". Gelesen wurde: " + beispiel if beispiel else "")}
 
     def sp_bis(lvl, rang):
         # Offizielle Formel: SP fuer Stufe L = 250 * Rang * sqrt(32)^(L-1)
@@ -12403,11 +12435,11 @@ def skillplan_analyse(text):
         ergebnis.append(wahl)
         letzter = eintraege[wahl]["paar"]
         offen.remove(wahl)
-    sortiert = [eintraege[i]["zeile"] for i in ergebnis]
+    sortiert = [eintraege[i]["roh"] for i in ergebnis]
     return {"ok": True, "n": len(eintraege), "sp": round(gesamt),
             "attribute": attribute, "frei": frei, "paare": paar_liste,
             "unbekannt": unbekannt[:20], "sortiert": sortiert,
-            "geaendert": sortiert != [e["zeile"] for e in eintraege]}
+            "geaendert": sortiert != [e["roh"] for e in eintraege]}
 
 
 def query_verschnitt():
