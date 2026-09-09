@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.99.0"
+VERSION = "3.0.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -20750,6 +20750,15 @@ border-radius:8px;padding:6px 10px;margin-bottom:5px}
    Stream jede Zeile schmal ist und ein Hulk sonst umbricht. Gedaempft, damit
    Name und ISK die Blicke behalten. */
 .shp{font-size:9px;color:#8a97a8;line-height:1.3;margin-top:1px}
+/* Fuellstand des Erzladeraums, direkt unter dem Charakter (Savox76,
+   09.09.2026: "der Laderaum Balken fuers Mining finde ich geil, aber
+   bekommst das auch in die Overview rein unter den Char?"). Drei Pixel
+   hoch: im Overlay ist jede Zeile Hoehe, die im Stream fehlt, und die
+   Farbe traegt die Information ohnehin allein. */
+.ovh{height:3px;border-radius:2px;background:#1e2636;margin-top:3px;
+ overflow:hidden}
+.ovh i{display:block;height:3px;border-radius:2px}
+.ovht{font-size:9px;color:#8a97a8;line-height:1.3;margin-top:1px}
 /* Flottensumme, abgesetzt durch eine Linie statt durch einen weiteren Kasten:
    im Overlay ist jeder Rahmen ein Stueck Hoehe, das im Stream fehlt. */
 .sum{display:flex;align-items:center;justify-content:space-between;
@@ -20823,6 +20832,19 @@ function drawOverlayCanvas(d){
   x.textAlign='right';x.fillStyle='#eaf0f7';x.font='13px sans-serif';x.fillText(fmtM(c.total_isk),W-10,y+5);
   x.fillStyle='#8a94a6';x.font='11px sans-serif';x.fillText(fmt(c.m3h)+' m³/h',W-10,y+21);
   y+=37;
+  // Derselbe Balken wie in der HTML-Fassung. Firefox und Safari koennen kein
+  // Bild-in-Bild-Dokument, dort wird das Overlay gezeichnet; ohne diese paar
+  // Zeilen haetten genau diese Nutzer den Balken als einzige nicht.
+  const fv=erzFuellung(c);
+  if(fv){
+   const bx=26, bw=W-36-bx, by=y-8;
+   x.fillStyle='#1e2636';x.fillRect(bx,by,bw,3);
+   x.fillStyle=fv.pct>=95?'#e8564f':fv.pct>=80?'#e8c645':'#4fd47f';
+   x.fillRect(bx,by,Math.max(1,bw*Math.min(100,fv.pct)/100),3);
+   x.textAlign='left';x.fillStyle='#8a94a6';x.font='10px sans-serif';
+   x.fillText(m3kurz(fv.m3)+' / '+m3kurz(fv.cap)+' m³ · '+Math.round(fv.pct)+'%',bx,by+13);
+   y+=18;
+  }
  });
  // Flottensumme (BamKi, 24.08.2026): im Stream ist das die Zahl, nach der im
  // Chat gefragt wird. Das HTML-Overlay hatte sie laengst, dem gezeichneten
@@ -20937,6 +20959,21 @@ function ovStatus(c,st){
 // zuletzt ins Overlay, und im Stream stand ein veralteter Stand. Beim Audit
 // gefunden.
 let ovBusy=false;
+// Fuellstand des Erzladeraums fuer das allgemeine Overlay.
+//
+// WUNSCH Savox76, 09.09.2026: "Der Laderaum Balken fuers Mining finde ich
+// geil, aber bekommst das auch in die Overview rein unter den Char?"
+// Im Dashboard und im OBS-Overlay gab es ihn laengst, im Bild-in-Bild-
+// Overlay nicht. Gerechnet wird nichts Neues: erzFuellung() ist die eine
+// Regel fuer alle drei Ansichten.
+function ovBalken(c){
+ const f=erzFuellung(c);
+ if(!f)return '';
+ const farbe=f.pct>=95?'#e8564f':f.pct>=80?'#e8c645':'#4fd47f';
+ return `<div class="ovh"><i style="width:${f.pct.toFixed(1)}%;background:${farbe}"></i></div>`
+  +`<div class="ovht">${m3kurz(f.m3)} / ${m3kurz(f.cap)} m³ · ${Math.round(f.pct)}%</div>`;
+}
+
 async function overlayTick(){
  if(!pipWin&&!ffVid)return;
  if(ovBusy)return;
@@ -20957,7 +20994,7 @@ async function overlayTick(){
     return `<div class="row"><span class="dot ${cls}"></span>
      <span><div class="nm">${esc(c.name)} <span class="sys">· ${esc(c.system)}</span></div>
      ${c.ship?`<div class="shp">${esc(c.ship)}</div>`:''}
-     ${txt?`<div class="st ${cls==='bad'?'bad':''}">${txt}</div>`:''}</span>
+     ${txt?`<div class="st ${cls==='bad'?'bad':''}">${txt}</div>`:''}${ovBalken(c)}</span>
      <span class="val">${fmtM(c.total_isk)}<small>${fmt(c.m3h)} m³/h</small></span></div>`;}).join('')+
    // Flottensumme. Im Stream ist das die Zahl, nach der im Chat gefragt wird:
    // was hat die Truppe zusammen geholt. Einzelwerte stehen darueber, hier

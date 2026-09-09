@@ -1,5 +1,21 @@
 [
  {
+  "v": "3.0.0",
+  "d": "2026-09-09",
+  "de": [
+   "Der Laderaum-Balken steht jetzt auch im allgemeinen Overlay, direkt unter dem Charakter. Wunsch von Savox76: „Der Laderaum Balken fürs Mining finde ich geil, aber bekommst das auch in die Overview rein unter den Char?“ Im Dashboard und im OBS-Overlay gab es ihn längst, im Bild-in-Bild-Fenster nicht.",
+   "Er ist drei Pixel hoch, mit den Zahlen darunter, und in den gleichen Warnfarben wie überall: grün, ab 80 Prozent gelb, ab 95 rot. Gerechnet wird nichts Neues, erzFuellung() ist die eine Regel für alle drei Ansichten. Ein Schiff ohne Erzladeraum bekommt keinen Balken, ein leerer grauer Streifen unter jedem Missionsflieger wäre nur verschenkter Platz.",
+   "Eingebaut in BEIDE Fassungen des Overlays. Chrome und Edge bekommen ein echtes Bild-in-Bild-Dokument, Firefox und Safari eine gezeichnete Leinwand. Wer nur die erste ergänzt, lässt genau die Firefox-Nutzer als einzige ohne Balken dastehen, und niemandem fällt es auf. Nachgemessen zeigen beide dieselben Zahlen auf das Pixel: bei 85 Prozent Füllung 219 von 258 Pixeln.",
+   "DAZU eine Absicherung, die genau jetzt fällig war: mit 3.0.0 ist die Zweier-Reihe nach 99 Ausgaben zu Ende. Wäre es 2.100.0 geworden, hätte jeder Vergleich, der Versionen als Text behandelt, ab sofort das Falsche gesagt, denn „2.100.0“ ist als Text kleiner als „2.99.0“. Canary rechnet an dieser Stelle mit Zahlen und macht es richtig, aber geprüft war es nie. Jetzt ist es geprüft, samt derselben Falle bei 2.9 gegen 2.10. Der Schaden wäre still gewesen: alle hätten „du bist aktuell“ gelesen, während längst eine neue Version dalag."
+  ],
+  "en": [
+   "The ore hold bar now also sits in the general overlay, right under the character. Requested by Savox76: „I really like the ore hold bar for mining, but can you get it into the overview under the char too?“ The dashboard and the OBS overlay had it all along, the picture in picture window did not.",
+   "It is three pixels tall with the figures underneath, in the same warning colours as everywhere else: green, yellow from 80 percent, red from 95. Nothing new is computed, erzFuellung() is the single rule for all three views. A ship without an ore hold gets no bar; an empty grey strip under every mission runner would only waste space.",
+   "Built into BOTH versions of the overlay. Chrome and Edge get a real picture in picture document, Firefox and Safari a drawn canvas. Extend only the first and Firefox users are the only ones left without a bar, and nobody notices. Measured, both show the same numbers to the pixel: at 85 percent fill, 219 of 258 pixels.",
+   "ALSO a safeguard that came due exactly now: with 3.0.0 the two series ends after 99 releases. Had it become 2.100.0, every comparison that treats versions as text would have started saying the wrong thing, because „2.100.0“ sorts below „2.99.0“ as text. Canary uses numbers there and gets it right, but it had never been tested. Now it is, including the same trap at 2.9 against 2.10. The damage would have been silent: everyone would have read „you are up to date“ while a newer version sat there."
+  ]
+ },
+ {
   "v": "2.99.0",
   "d": "2026-09-09",
   "de": [
