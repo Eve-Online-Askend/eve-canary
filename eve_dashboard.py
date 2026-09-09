@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.98.0"
+VERSION = "2.99.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -3589,6 +3589,20 @@ class CharSession:
         self.route = deque(maxlen=200)
         self.station = None       # wo zuletzt angedockt war, aus dem Abdocken
         self.trips = 0  # Anzahl Station-Stopps (Abdocken) in dieser Session
+        # Der Trip VOR dem letzten Abdocken, damit er nicht verloren ist.
+        #
+        # MELDUNG Savox76, 09.09.2026: "Ich musste gerade wegen einem
+        # Ganker docken und der geminerte ISK Trip wurde auf null gesetzt.
+        # Ist das normal und so gewollt?" Gewollt war es, mit der Annahme
+        # "wer andockt, laedt ab". An 6.018 Logdateien nachgemessen stimmt
+        # die in zwei von drei Faellen nicht: von 1.293 Stationsaufenthalten
+        # lagen 64,3 Prozent unter fuenf Minuten, der Median bei 2,4.
+        # So kurz laedt niemand ab.
+        #
+        # Ob abgeladen wurde, kann Canary nicht wissen: EVE protokolliert
+        # Ladungstransfers nicht. Deshalb wird hier nicht geraten, sondern
+        # angeboten. Der Spieler weiss es.
+        self.vorher = None
         self.mining = {}
         self.compressed = {}
         # Erz -> {Liefermenge: Anzahl}. Grundlage der Bonus-Zaehlung, siehe
@@ -3896,6 +3910,8 @@ class CharSession:
             if raw_ore:
                 self.hold_raw[raw_ore] = max(0, self.hold_raw.get(raw_ore, 0) - ev["value"])
         elif k == "hold_reset":
+            if ev["key"] == "dock":
+                self._trip_merken(ev["ts"])
             self.hold_raw = {}
             self.hold_comp = {}
             self.cargo_full = False  # angedockt/gehandelt -> Frachtraum-Warnung hinfaellig
@@ -4330,6 +4346,52 @@ class CharSession:
         self.mission_system = m.get("system") or self.mission_system
         self.first_ts = m.get("start_ts") or self.first_ts
         self.dock_ts = None
+
+    def _trip_merken(self, bis_ts):
+        """Alles, was den laufenden Trip ausmacht, vor dem Zuruecksetzen
+        beiseitelegen. Nur wenn ueberhaupt etwas gefoerdert wurde: ein
+        Angebot ueber einen leeren Trip waere Tapete."""
+        if not self.mining and not self.hold_raw and not self.hold_comp:
+            self.vorher = None
+            return
+        self.vorher = {
+            "mining": dict(self.mining),
+            "hold_raw": dict(self.hold_raw),
+            "hold_comp": dict(self.hold_comp),
+            "verschnitt": dict(self.verschnitt),
+            "compressed": dict(self.compressed),
+            "ore_amounts": {k: dict(v) for k, v in self.ore_amounts.items()},
+            "trip_ts": self.trip_ts,
+            "bis": bis_ts,
+            # Wie lange der Stationsaufenthalt dauerte. dock_ts steht seit dem
+            # Anflug ("Andock-Perimeter"), das ist das einzige Andock-Signal,
+            # das in beiden Client-Sprachen belegt ist.
+            "stopp": (bis_ts - self.dock_ts) if self.dock_ts else None,
+            "angeboten": time.time(),
+        }
+
+    def trip_zurueck(self):
+        """Den gemerkten Trip wieder an den laufenden anhaengen.
+
+        Zusammengezaehlt, nicht ersetzt: wer nach dem Abdocken schon wieder
+        gefoerdert hat, soll das nicht verlieren."""
+        v = self.vorher
+        if not v:
+            return False
+        for feld in ("mining", "hold_raw", "hold_comp", "verschnitt",
+                     "compressed"):
+            ziel = getattr(self, feld)
+            for k, wert in (v.get(feld) or {}).items():
+                ziel[k] = ziel.get(k, 0) + wert
+        for erz, mengen in (v.get("ore_amounts") or {}).items():
+            ziel = self.ore_amounts.setdefault(erz, {})
+            for menge, anzahl in mengen.items():
+                ziel[menge] = ziel.get(menge, 0) + anzahl
+        if v.get("trip_ts"):
+            self.trip_ts = min(self.trip_ts or v["trip_ts"], v["trip_ts"])
+        self.trips = max(0, self.trips - 1)
+        self.vorher = None
+        return True
 
     def reset_combat(self, ts=None):
         """Kampfzaehler auf null und einen neuen Einsatz beginnen.
@@ -10465,6 +10527,12 @@ def tripdauer(s, mindestens=60.0):
     return max(time.time() - grund, mindestens)
 
 
+# So lange steht das Angebot, den vorherigen Trip weiterzuzaehlen. Lang
+# genug, dass man es nach der Rueckkehr zum Guertel noch findet, kurz genug,
+# dass es nicht am naechsten Tag noch herumsteht.
+TRIP_ANGEBOT_SEK = 900
+
+
 def snapshot_live():
     pm = prices.get(CONFIG["region"])
     chars = []
@@ -10533,6 +10601,18 @@ def snapshot_live():
             fleet_comp.append({"name": pname, "units": round(fu),
                                "m3": round(fm3), "isk": round(fisk)})
         fleet_comp.sort(key=lambda k: -k["m3"])
+        vorher_karte = None
+        if s.vorher and (time.time() - s.vorher["angeboten"]) < TRIP_ANGEBOT_SEK:
+            v_isk = v_m3 = 0.0
+            for ore, units in (s.vorher.get("mining") or {}).items():
+                i2, m2 = ore_value(ore, units, pm)
+                v_isk += i2
+                v_m3 += m2
+            dauer = ((s.vorher.get("bis") or 0) - (s.vorher.get("trip_ts") or 0))
+            vorher_karte = {"isk": round(v_isk), "m3": round(v_m3),
+                            "min": round(max(0.0, dauer) / 60.0),
+                            "stopp": (round(s.vorher["stopp"])
+                                      if s.vorher.get("stopp") else None)}
         hold_isk = hold_m3 = 0.0
         hold_types = hold_missing = 0
         for tname, units in list(s.hold_raw.items()) + list(s.hold_comp.items()):
@@ -10656,6 +10736,10 @@ def snapshot_live():
             "mined_30d": (esi_char or {}).get("mined_30d"),
             "skill_bonus": (esi_char or {}).get("skill_bonus"),
             "trips": s.trips,
+            # Der Trip vor dem letzten Abdocken, als Angebot. Bewertet mit
+            # denselben Preisen wie alles andere, damit die Zahl im Angebot
+            # und die Zahl nach dem Klick dieselbe ist.
+            "vorher": vorher_karte,
             "compressed": comp, "fleet_compress": fleet_comp, "tool_warns": s.tool_warns(),
             "lasers_off": [] if drone_only else s.laser_off_liste(),
             # Bei Command Ships / Drohnen-Boostern (Orca/Porpoise/Rorqual, aktiver
@@ -15842,6 +15926,28 @@ class Handler(BaseHTTPRequestHandler):
                  "msg": fehler or ("%d Wegpunkte gesetzt." % gesetzt)},
                 ensure_ascii=False))
             return
+        elif action == "trip_weiter":
+            # Den gemerkten Trip wieder anhaengen. Nur der Spieler weiss, ob
+            # er an der Station abgeladen hat, deshalb entscheidet er.
+            name = str(body.get("char") or "")
+            with ingest.lock:
+                s = next((x for x in ingest.sessions.values()
+                          if x.name == name), None)
+                ok = bool(s and s.trip_zurueck())
+            self._send(json.dumps(
+                {"ok": ok, "msg": ("Vorheriger Trip wieder dabei."
+                                   if ok else "Nichts mehr zum Anhängen.")},
+                ensure_ascii=False))
+            return
+        elif action == "trip_verwerfen":
+            name = str(body.get("char") or "")
+            with ingest.lock:
+                s = next((x for x in ingest.sessions.values()
+                          if x.name == name), None)
+                if s:
+                    s.vorher = None
+            self._send(json.dumps({"ok": True}))
+            return
         elif action == "ui_open":
             # Fenster im laufenden Client oeffnen (Markt-Detail oder Info).
             err = esi.ui_open(str(body.get("char") or ""),
@@ -16378,6 +16484,9 @@ tr.lvl-yellow td{background:rgba(228,179,76,.07)}
    Zeile blieb der Dialog gemessene 620px breit, obwohl width auf 880
    stand. Eine Routenzeile mit Stationsnamen braucht 405px. */
 #routeDlg{width:min(880px,94vw);max-width:880px}
+.triphinweis .tripweiter{color:var(--cyan);cursor:pointer;text-decoration:underline;margin-left:6px}
+.triphinweis .tripweg{cursor:pointer;opacity:.55;margin-left:8px}
+.triphinweis .tripweg:hover{opacity:1;color:var(--red)}
 .routebox{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-bottom:8px}
 .routekopf{display:flex;align-items:center;gap:8px}
 .routekopf .spacer{flex:1}
@@ -19989,6 +20098,7 @@ function miningCardHtml(c){
     <span class="mini">${c.cargo_full?'<span class="warnbadge drone">⚠ Frachtraum voll!</span> · ':''}${(c.tool_warns||[]).map(w=>'<span class="warnbadge'+(w.drone?' drone':'')+'">⚠ '+esc(w.tool)+(w.count>1?' ×'+w.count:'')+'</span> · ').join('')}${(c.lasers_off||[]).map(w=>'<span class="warnbadge">⛔ '+esc(w.tool)+' aus</span> · ').join('')}${c.heavy_water&&c.heavy_water.on&&!c.heavy_water.refill&&c.heavy_water.min_left<30?'<span class="warnbadge drone">⛽ HW ~'+c.heavy_water.min_left+' min</span> · ':''}${c.drones_idle?'<span class="warnbadge">🤖 Drohnen ohne Erz</span> · ':''}${c.laser_stalled?'<span class="warnbadge">⛏ Laser ohne Erz</span> · ':''}${c.rate_low?'<span class="warnbadge">⚠ Rate '+c.rate_low+'%</span> · ':''}${mineIdle(c,state)?'<span class="warnbadge">⚠ Kein Erz seit '+Math.round(c.mine_idle/60)+' min</span> · ':''}${fmtM(c.total_isk)} ISK · ${fmt(c.m3h)} m³/h${c.dps_in>0?' · <span class=\"in\">⚠ '+c.dps_in+' DPS rein</span>':''}</span>
    </div>
    <div class="cbody">
+   ${tripAngebot(c)}
    ${c.cargo_full?`<div class="cardwarn drone">⚠ Frachtraum voll! Erz verladen oder komprimieren.</div>`:''}
    ${(c.tool_warns||[]).map(w=>w.drone
      ?`<div class="cardwarn drone">⚠ ${esc(w.tool)}${w.count>1?' ×'+w.count:''} abgeschaltet, Drohnen prüfen!</div>`
@@ -20074,6 +20184,46 @@ function autoRole(c){
 // Karte je nach Rolle waehlen: Mining-Chars -> Mining-Karte, alle anderen
 // (Missionen/PvP) -> Kampf-Karte. So sieht man in einer gemischten Flotte
 // fuer jeden das Richtige.
+// Der Trip vor dem letzten Abdocken, als Angebot.
+//
+// MELDUNG Savox76, 09.09.2026: "Ich musste gerade wegen einem Ganker docken
+// und der geminerte ISK Trip wurde auf null gesetzt. Ist das normal und so
+// gewollt?" Gewollt war es, mit der Annahme "wer andockt, laedt ab". An
+// 6.018 Logdateien nachgemessen stimmt die in zwei von drei Faellen nicht:
+// von 1.293 Stationsaufenthalten lagen 64,3 Prozent unter fuenf Minuten.
+//
+// Ob abgeladen wurde, steht nirgends: EVE protokolliert Ladungstransfers
+// nicht. Also wird nicht geraten, sondern gefragt. Der Spieler weiss es.
+// Die Karten werden alle zwei Sekunden neu gezeichnet. Handler an den
+// Knoepfen selbst waeren nach dem naechsten Takt verschwunden, deshalb
+// haengt auch dieser Klick am document.
+document.addEventListener('click',e=>{
+ const w=e.target.closest('[data-tripweiter]');
+ if(w){
+  post({action:'trip_weiter',char:w.dataset.tripweiter}).then(()=>tick()).catch(()=>{});
+  return;
+ }
+ const x=e.target.closest('[data-tripweg]');
+ if(x)post({action:'trip_verwerfen',char:x.dataset.tripweg}).then(()=>tick()).catch(()=>{});
+});
+
+function tripAngebot(c){
+ const v=c.vorher;
+ if(!v)return '';
+ const en=lang==='en';
+ const stopp=v.stopp!=null
+  ?(en?`, ${Math.max(1,Math.round(v.stopp/60))} min docked`
+      :`, ${Math.max(1,Math.round(v.stopp/60))} min an der Station`)
+  :'';
+ return `<div class="cardwarn triphinweis">${en
+   ?`Previous trip: ${fmtM(v.isk)} ISK, ${fmt(v.m3)} m³ in ${v.min} min${stopp}. Nothing was unloaded?`
+   :`Vorheriger Trip: ${fmtM(v.isk)} ISK, ${fmt(v.m3)} m³ in ${v.min} min${stopp}. Nichts abgeladen?`}
+  <span class="tripweiter" data-tripweiter="${esc(c.name)}">${
+    en?'keep counting':'weiterzählen'}</span>
+  <span class="tripweg" data-tripweg="${esc(c.name)}" title="${
+    en?'discard':'verwerfen'}">×</span></div>`;
+}
+
 function cardHtml(c){
  return autoRole(c)==='mining'?miningCardHtml(c):combatCardHtml(c);
 }

@@ -1,5 +1,23 @@
 [
  {
+  "v": "2.99.0",
+  "d": "2026-09-09",
+  "de": [
+   "Wer mitten im Trip andocken muss, verliert die Zahlen nicht mehr. Gemeldet von Savox76: „Ich musste gerade wegen einem Ganker docken und der geminerte ISK Trip wurde auf null gesetzt. Ist das normal und so gewollt?“",
+   "Gewollt war es, und der Auslöser ist genau genommen das Abdocken, nicht das Andocken. Dahinter stand die Annahme: wer andockt, lädt ab, und danach wären die ISK-Werte falsch. An 6.018 Logdateien mit 2,3 Millionen Zeilen nachgemessen stimmt die Annahme in zwei von drei Fällen nicht. Von 1.293 vollständigen Stationsaufenthalten lagen 26,3 Prozent unter einer Minute und 64,3 Prozent unter fünf. Der Median liegt bei 2,4 Minuten. So kurz lädt niemand ab und verkauft. Savox76s Fall ist nicht die Ausnahme, sondern der häufigste.",
+   "Ob abgeladen wurde, kann Canary nicht wissen: EVE protokolliert Ladungstransfers nicht. Deshalb wird auch nicht nach einer Zeitschwelle geraten, sondern gefragt. Nach dem Abdocken steht in der Charakterkarte: „Vorheriger Trip: 12,4 M ISK, 48.000 m³ in 48 min, 3 min an der Station. Nichts abgeladen? weiterzählen“. Ein Klick hängt die alten Zahlen wieder an, das × wirft sie weg, und nach fünfzehn Minuten verschwindet die Zeile von selbst.",
+   "Angehängt wird zusammengezählt, nicht ersetzt: wer nach dem Abdocken schon wieder gefördert hat, verliert das nicht. Die Trip-Dauer zählt wieder ab dem ursprünglichen Anfang, sonst wäre die ISK je Stunde danach absurd hoch, und der Stopp zählt nicht mehr als eigener Trip.",
+   "Verloren war übrigens auch vorher nichts: die Tagestabelle speichert unabhängig davon, in 30 Tage, Gesamt und Verlauf stand alles. Es war allein die Live-Karte, die bei null anfing. Das ist trotzdem die Karte, auf die man während des Minens schaut."
+  ],
+  "en": [
+   "Docking in the middle of a trip no longer costs you the numbers. Reported by Savox76: „I had to dock because of a ganker just now and the mined ISK trip was set to zero. Is that normal and intended?“",
+   "It was intended, and strictly speaking the trigger is undocking, not docking. Behind it sat the assumption that whoever docks unloads, after which the ISK figures would be wrong. Measured against 6,018 log files with 2.3 million lines, that assumption is wrong in two of three cases. Of 1,293 complete station stops, 26.3 percent were under one minute and 64.3 percent under five. The median is 2.4 minutes. Nobody unloads and sells that fast. Savox76's case is not the exception, it is the most common one.",
+   "Whether anything was unloaded is something Canary cannot know: EVE does not log cargo transfers. So instead of guessing from a time threshold, it asks. After undocking the character card says: „Previous trip: 12.4 M ISK, 48,000 m³ in 48 min, 3 min docked. Nothing was unloaded? keep counting“. One click puts the old figures back, the × discards them, and after fifteen minutes the line disappears by itself.",
+   "Putting them back adds up rather than replaces: anything mined since undocking is kept. The trip duration counts from the original start again, otherwise ISK per hour would be absurdly high afterwards, and the stop no longer counts as a trip of its own.",
+   "Nothing was actually lost before either: the daily table stores independently of this, and 30 days, total and history had it all. It was only the live card that started from zero. That is still the card you look at while mining."
+  ]
+ },
+ {
   "v": "2.98.0",
   "d": "2026-09-09",
   "de": [
