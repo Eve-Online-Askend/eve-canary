@@ -1,5 +1,25 @@
 [
  {
+  "v": "2.96.0",
+  "d": "2026-09-09",
+  "de": [
+   "Routen können jetzt auch Stationen enthalten, und Wegpunkte lassen sich verschieben. Beides von Dune2Man, einen Tag nach der ersten Fassung: „Gibts ne Möglichkeit Stationen (NPC) hinzuzufügen? Normal setz ich meine Route so, dass ich in meiner Startstation auch direkt wieder andocke.“",
+   "Hinter jedem Wegpunkt steht ein ⚓. Ein Klick holt die NPC-Stationen dieses Systems und zeigt sie zur Auswahl, dazu immer „nur das System“ als Rückweg. Steht eine Station im Wegpunkt, ist SIE das Ziel: der Autopilot dockt dort an, statt nur ins System zu fliegen. Damit geht genau das, was er beschrieben hat, nämlich das Startsystem an den Anfang und die Startstation ans Ende, um Loot rauszuwerfen und Munition für die nächste Runde einzuladen.",
+   "Die Stationsliste kommt aus zwei öffentlichen Abrufen ohne Login und wird zwischengespeichert. Gemessen: Jita hat 18 Stationen, beide Abrufe zusammen 0,4 Sekunden. Spieler-Strukturen sind bewusst nicht dabei, deren Namen gibt ESI nur mit Andockrecht heraus, und das steht auch so in der Liste statt einfach zu fehlen.",
+   "Zu seinem zweiten Punkt, „Probleme gibts auch wenn ein System 2 mal vorkommt“: steht dasselbe System zweimal ohne Station in der Route, sagt Canary das jetzt und schlägt den Weg über ⚓ vor. Mit zwei verschiedenen Stationen sind die beiden Halte unterscheidbar.",
+   "Und die Pfeile ↑ ↓ an jedem Wegpunkt verschieben ihn. Er hatte es als „nice to have, kein Muss“ eingeordnet, es kostete aber fast nichts und erspart, für eine vertauschte Reihenfolge die ganze Route neu anzulegen.",
+   "Routen aus v2.95.0 bleiben lesbar, es ist nichts nachzutragen."
+  ],
+  "en": [
+   "Routes can now contain stations, and waypoints can be reordered. Both from Dune2Man, one day after the first version: „is there a way to add stations (NPC)? I normally set my route so that I dock right back at my starting station.“",
+   "Every waypoint carries an ⚓. One click fetches the NPC stations of that system and offers them, always with „system only“ as the way back. If a waypoint holds a station, THAT is the destination: the autopilot docks there instead of only flying into the system. That gives exactly what he described, the starting system at the front and the starting station at the end, to drop loot and load ammo for the next lap.",
+   "The station list comes from two public calls without a login and is cached. Measured: Jita has 18 stations, both calls together 0.4 seconds. Player structures are deliberately not included, ESI only hands out their names with docking rights, and the list says so instead of quietly leaving them out.",
+   "On his second point, „there are also problems when a system appears twice“: if the same system stands twice without a station, Canary now says so and points at the ⚓. With two different stations the two stops can be told apart.",
+   "And the ↑ ↓ arrows on each waypoint move it. He filed it as „nice to have, not a must“, but it cost almost nothing and saves rebuilding a whole route over one swapped stop.",
+   "Routes from v2.95.0 keep working, nothing needs to be re-entered."
+  ]
+ },
+ {
   "v": "2.95.0",
   "d": "2026-09-08",
   "de": [

@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "2.95.0"
+VERSION = "2.96.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -5834,6 +5834,89 @@ def system_suche(text, grenze=10):
             for v in treffer]
 
 
+# NPC-Stationen liegen in diesem ID-Bereich. Spieler-Strukturen (Citadel,
+# Raitaru, Athanor) haben Nummern ab 1.000.000.000.000 und sind hier
+# ausdruecklich NICHT dabei: ihre Namen bekommt man nur mit einer eigenen
+# Berechtigung und nur, wenn man andocken darf.
+ST_MIN, ST_MAX = 60000000, 64000000
+_STATIONEN = {}   # Systemname (klein) -> (gueltig_bis, [{"id","name"}])
+
+
+def stationen_im_system(name):
+    """Die NPC-Stationen eines Systems, Name und ID.
+
+    Zwei oeffentliche Abrufe ohne Login: das System nennt die Stations-IDs,
+    der Namensdienst loest sie in EINEM Aufruf auf. Gemessen am 09.09.2026:
+    Jita 18 Stationen, zusammen 0,4 Sekunden. Beide Antworten laufen taeglich
+    um 11:05 UTC ab, deshalb wird hier grosszuegig zwischengespeichert.
+
+    Wunsch von Dune2Man, 08.09.2026: "gibts ne moeglichkeit stationen (npc)
+    hinzuzufuegen? normal setz ich meine route so das ich in meiner
+    startstation auch direkt wieder andocke."
+    """
+    schluessel = (name or "").strip().lower()
+    alt = _STATIONEN.get(schluessel)
+    if alt and time.time() < alt[0]:
+        return alt[1]
+    name2id, _, _, _, _ = _ort_index()
+    sid = name2id.get(schluessel)
+    if not sid:
+        return []
+    try:
+        req = urllib.request.Request(
+            ESI_BASE + "/universe/systems/%d/" % sid,
+            headers={"User-Agent": ESI_UA})
+        with urllib.request.urlopen(req, timeout=20) as a:
+            ids = (json.loads(a.read()) or {}).get("stations") or []
+        raus = []
+        if ids:
+            req = urllib.request.Request(
+                ESI_BASE + "/universe/names/",
+                data=json.dumps([int(i) for i in ids][:100]).encode(),
+                method="POST",
+                headers={"User-Agent": ESI_UA,
+                         "Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=20) as a:
+                for x in json.loads(a.read()) or []:
+                    if x.get("category") == "station":
+                        raus.append({"id": x["id"], "name": x["name"]})
+        raus.sort(key=lambda x: x["name"])
+        _STATIONEN[schluessel] = (time.time() + 6 * 3600, raus)
+        return raus
+    except Exception as e:
+        log_error("CN-ESI-01", "stationen_im_system", e)
+        return []
+
+
+def wegpunkt_lesen(x, name2id, schoen):
+    """Einen Eintrag einer Route in die feste Form bringen.
+
+    Erlaubt ist beides: ein blosser Systemname (so sahen die Routen in
+    v2.95.0 aus) oder ein Kasten mit System und optionaler Station. Alte
+    Routen bleiben damit lesbar, ohne dass jemand etwas nachtragen muss.
+    Rueckgabe: (Eintrag, Fehlertext oder None)."""
+    if isinstance(x, str):
+        x = {"sys": x}
+    if not isinstance(x, dict):
+        return None, "Ungueltiger Wegpunkt."
+    sysname = str(x.get("sys") or "").strip()
+    if sysname.lower() not in name2id:
+        return None, "Unbekanntes System: %s" % (sysname or "?")[:30]
+    raus = {"sys": schoen[sysname.lower()]}
+    if x.get("station"):
+        try:
+            st = int(x["station"])
+        except (TypeError, ValueError):
+            return None, "Ungueltige Station."
+        # Nur der NPC-Bereich. Eine fremde Nummer wuerde als Wegpunkt
+        # irgendwo landen, und das faellt erst im Client auf.
+        if not (ST_MIN <= st <= ST_MAX):
+            return None, "Das ist keine NPC-Station."
+        raus["station"] = st
+        raus["label"] = str(x.get("label") or "")[:80]
+    return raus, None
+
+
 def routen_pruefen(roh):
     """Eine Routenliste vom Browser saeubern.
 
@@ -5849,18 +5932,18 @@ def routen_pruefen(roh):
     for r in roh:
         if not isinstance(r, dict):
             continue
-        systeme = [str(x).strip() for x in (r.get("systeme") or [])
-                   if str(x).strip()]
+        systeme = [x for x in (r.get("systeme") or []) if x]
         if len(systeme) > MAX_WEGPUNKTE:
-            return None, ("Eine Route fasst hoechstens %d Systeme."
+            return None, ("Eine Route fasst hoechstens %d Wegpunkte."
                           % MAX_WEGPUNKTE)
         sauber = []
         for x in systeme:
-            if x.lower() not in name2id:
-                return None, "Unbekanntes System: %s" % x[:30]
             # Immer in der Schreibweise der Karte speichern, damit zwei
             # Schreibvarianten nicht als zwei Systeme dastehen.
-            sauber.append(schoen[x.lower()])
+            eintrag, fehler = wegpunkt_lesen(x, name2id, schoen)
+            if fehler:
+                return None, fehler
+            sauber.append(eintrag)
         raus.append({"name": (str(r.get("name") or "").strip() or "Route")[:40],
                      "systeme": sauber})
     return raus, None
@@ -6481,11 +6564,18 @@ class Esi(threading.Thread):
             return 0, "Charakter nicht verbunden."
         name2id, _, _, _, schoen = _ort_index()
         ziele, unbekannt = [], []
-        for sys_name in systeme or []:
-            sid = name2id.get(str(sys_name).strip().lower())
-            (ziele.append(sid) if sid else unbekannt.append(str(sys_name)))
+        for x in systeme or []:
+            eintrag, fehler = wegpunkt_lesen(x, name2id, schoen)
+            if fehler:
+                unbekannt.append(fehler)
+                continue
+            # Steht eine Station da, ist SIE das Ziel: dann dockt der
+            # Autopilot dort an, statt nur ins System zu fliegen. Genau
+            # darum ging Dune2Mans zweite Meldung.
+            ziele.append(eintrag.get("station")
+                         or name2id[eintrag["sys"].lower()])
         if unbekannt:
-            return 0, "Unbekanntes System: " + ", ".join(unbekannt[:3])
+            return 0, unbekannt[0]
         if not ziele:
             return 0, "Die Route ist leer."
         gesetzt = 0
@@ -15661,6 +15751,11 @@ class Handler(BaseHTTPRequestHandler):
                 namen = []
             self._send(json.dumps({"systeme": namen[:24]}, ensure_ascii=False))
             return
+        elif action == "stationen":
+            self._send(json.dumps(
+                {"stationen": stationen_im_system(body.get("system") or "")},
+                ensure_ascii=False))
+            return
         elif action == "system_suche":
             self._send(json.dumps(
                 {"treffer": system_suche(body.get("q") or "")},
@@ -16235,6 +16330,11 @@ tr.lvl-yellow td{background:rgba(228,179,76,.07)}
  padding:2px 7px;border-radius:9px;background:var(--inset)}
 .syschip.klick{cursor:pointer}
 .syschip.klick:hover{background:rgba(120,190,255,.18)}
+.sysknopf{cursor:pointer;opacity:.5;padding:0 1px}
+.sysknopf:hover{opacity:1;color:var(--cyan)}
+.syschip.iststation{background:rgba(120,190,255,.14)}
+.routewarn{margin-top:5px;color:var(--gold)}
+.routestat{margin-top:5px;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
 .sysweg{cursor:pointer;opacity:.55}
 .sysweg:hover{opacity:1;color:var(--red)}
 .routeadd{margin-top:6px}
@@ -19017,7 +19117,7 @@ function attrName(a,en){const l=ATTR_LABEL[a];return l?l[en?1:0]:a;}
 //
 // Der Dialog liegt bewusst ausserhalb von #grid: dort wuerde der
 // Zwei-Sekunden-Takt alles ueberschreiben, was man gerade tippt.
-let routen=[], routeSuchTimer=null, routeBesucht=[];
+let routen=[], routeSuchTimer=null, routeBesucht=[], routeStListe=[];
 
 function routeStatus(t,gut){
  const st=document.getElementById('routeStat');
@@ -19047,6 +19147,12 @@ function routeChars(){
  if(vorher)sel.value=vorher;
 }
 
+// Ein Wegpunkt ist entweder ein System oder eine Station DARIN. Die alte
+// Form (blosser Systemname) bleibt lesbar, sonst waeren die Routen aus
+// v2.95.0 beim ersten Zeichnen weg.
+function wpForm(x){return (typeof x==='string')?{sys:x}:(x||{sys:''});}
+function wpText(w){return w.station?(w.label||('Station '+w.station)):w.sys;}
+
 function routeZeichnen(){
  const en=lang==='en';
  const w=document.getElementById('routeListe');
@@ -19057,24 +19163,41 @@ function routeZeichnen(){
    :'Noch keine Route. Eine anlegen und die Systeme in der Reihenfolge eintragen, in der du sie fliegen willst.'}</div>`;
   return;
  }
- w.innerHTML=routen.map((r,i)=>`<div class="routebox">
+ w.innerHTML=routen.map((r,i)=>{
+  const eintraege=(r.systeme||[]).map(wpForm);
+  r.systeme=eintraege;
+  // Zweimal dasselbe System OHNE Station: genau der Fall, den Dune2Man
+  // gemeldet hat. Eine Station macht daraus zwei unterscheidbare Ziele.
+  const nur=eintraege.filter(e=>!e.station).map(e=>e.sys);
+  const doppelt=nur.filter((sn,k)=>nur.indexOf(sn)!==k);
+  const warn=doppelt.length
+   ?`<div class="sub routewarn">${en
+     ?`${[...new Set(doppelt)].join(', ')} appears twice without a station. Pick a station via ⚓ so the two stops can be told apart.`
+     :`${[...new Set(doppelt)].join(', ')} steht zweimal ohne Station. Über ⚓ eine Station wählen, dann sind die beiden Halte unterscheidbar.`}</div>`
+   :'';
+  return `<div class="routebox">
   <div class="routekopf">
    <input class="routename" data-rname="${i}" value="${esc(r.name||'')}" maxlength="40">
-   <span class="sub">${(r.systeme||[]).length} ${en?'waypoints':'Wegpunkte'}</span>
+   <span class="sub">${eintraege.length} ${en?'waypoints':'Wegpunkte'}</span>
    <span class="spacer"></span>
    <button class="btn" data-rset="${i}">${en?'Set':'Setzen'}</button>
    <button class="btn" data-rdel="${i}" title="${en?'Delete route':'Route löschen'}">🗑</button>
   </div>
-  <div class="routesys">${(r.systeme||[]).map((sName,j)=>`<span class="syschip">${
-    j+1}. ${esc(sName)}<span class="sysweg" data-rsysdel="${i}.${j}" title="${
-    en?'remove':'entfernen'}">×</span></span>`).join('')||`<span class="sub">${
+  <div class="routesys">${eintraege.map((e,j)=>`<span class="syschip${e.station?' iststation':''}">${
+    j+1}. ${esc(wpText(e))}${e.station?` <span class="sub">${esc(e.sys)}</span>`:''}<span
+     class="sysknopf" data-rup="${i}.${j}" title="${en?'move up':'nach vorn'}">↑</span><span
+     class="sysknopf" data-rdown="${i}.${j}" title="${en?'move down':'nach hinten'}">↓</span><span
+     class="sysknopf" data-rdock="${i}.${j}" title="${en?'choose a station':'Station wählen'}">⚓</span><span
+     class="sysweg" data-rsysdel="${i}.${j}" title="${en?'remove':'entfernen'}">×</span></span>`).join('')||`<span class="sub">${
     en?'no systems yet':'noch keine Systeme'}</span>`}</div>
+  ${warn}
+  <div class="routestat" data-rstat="${i}"></div>
   <div class="routeadd">
    <input class="routesuch" data-rsuch="${i}" placeholder="${
      en?'add system …':'System hinzufügen …'}" autocomplete="off">
    <div class="routetreffer" data-rtreffer="${i}"></div>
   </div>
- </div>`).join('');
+ </div>`;}).join('');
  routeVorschlaege();
 }
 
@@ -19094,21 +19217,55 @@ function routeVorschlaege(){
  });
 }
 
+// Die Stationsliste eines Systems, geholt und angezeigt. Sie kommt aus zwei
+// oeffentlichen Abrufen ohne Login und wird im Server zwischengespeichert.
+function routeStationen(i,j){
+ const en=lang==='en';
+ const e=wpForm((routen[i]||{}).systeme[j]);
+ const ziel=document.querySelector('[data-rstat="'+i+'"]');
+ if(!ziel||!e.sys)return;
+ ziel.innerHTML=`<span class="sub">${en?'loading stations …':'hole Stationen …'}</span>`;
+ post({action:'stationen',system:e.sys}).then(a=>{
+  const st=(a&&a.stationen)||[];
+  routeStListe=st;
+  ziel.innerHTML=st.length
+   ?`<span class="sub">${en?'Stations in':'Stationen in'} ${esc(e.sys)}:</span> `
+    +`<span class="syschip klick" data-rstwahl="${i}.${j}.-1">${en?'system only':'nur das System'}</span>`
+    +st.map((x,k)=>`<span class="syschip klick" data-rstwahl="${i}.${j}.${k}">${esc(x.name)}</span>`).join('')
+   :`<span class="sub">${en?'No NPC station in this system. Player structures cannot be read without docking rights.':'In diesem System gibt es keine NPC-Station. Spieler-Strukturen kann Canary ohne Andockrecht nicht lesen.'}</span>`;
+ }).catch(()=>{ziel.innerHTML=`<span class="sub">${en?'not reachable':'nicht erreichbar'}</span>`;});
+}
+
 function routeSystemDazu(i,name){
  if(!routen[i])return;
  routen[i].systeme=routen[i].systeme||[];
  if(routen[i].systeme.length>=30){
-  routeStatus(lang==='en'?'A route holds at most 30 systems.'
-                         :'Eine Route fasst höchstens 30 Systeme.',false);
+  routeStatus(lang==='en'?'A route holds at most 30 waypoints.'
+                         :'Eine Route fasst höchstens 30 Wegpunkte.',false);
   return;
  }
- routen[i].systeme.push(name);
+ routen[i].systeme.push({sys:name});
  routeZeichnen();
  // Nach dem Neuzeichnen ist das Suchfeld ein anderes Element. Ohne diese
  // Zeile muesste man es fuer jedes weitere System neu anklicken, und eine
  // Route besteht selten aus einem einzigen.
  const feld=document.querySelector('[data-rsuch="'+i+'"]');
  if(feld)feld.focus();
+ routeSichern();
+}
+
+// Einen Wegpunkt verschieben. Dune2Man: "verschieben waere noch nen feature
+// das optional waere, nice to have aber kein muss." Zwei Pfeile kosten fast
+// nichts und ersparen das Neuanlegen der ganzen Route.
+function routeSchieben(i,j,um){
+ const r=routen[i];
+ if(!r||!r.systeme)return;
+ const k=j+um;
+ if(k<0||k>=r.systeme.length)return;
+ const x=r.systeme[j];
+ r.systeme[j]=r.systeme[k];
+ r.systeme[k]=x;
+ routeZeichnen();
  routeSichern();
 }
 
@@ -19148,6 +19305,27 @@ document.addEventListener('click',e=>{
   const t=sysdel.dataset.rsysdel.split('.');
   const r=routen[+t[0]];
   if(r&&r.systeme)r.systeme.splice(+t[1],1);
+  routeZeichnen();routeSichern();return;
+ }
+ const auf=e.target.closest('[data-rup]');
+ if(auf){const t=auf.dataset.rup.split('.');routeSchieben(+t[0],+t[1],-1);return;}
+ const ab=e.target.closest('[data-rdown]');
+ if(ab){const t=ab.dataset.rdown.split('.');routeSchieben(+t[0],+t[1],1);return;}
+ const dock=e.target.closest('[data-rdock]');
+ if(dock){const t=dock.dataset.rdock.split('.');routeStationen(+t[0],+t[1]);return;}
+ const stw=e.target.closest('[data-rstwahl]');
+ if(stw){
+  const t=stw.dataset.rstwahl.split('.');
+  const r=routen[+t[0]];
+  if(r&&r.systeme&&r.systeme[+t[1]]){
+   const e2=wpForm(r.systeme[+t[1]]);
+   const k=+t[2];
+   // -1 heisst: doch keine Station, nur das System. Ohne diesen Weg waere
+   // ein Fehlgriff nur durch Loeschen und neu Anlegen zu heilen.
+   if(k<0){delete e2.station;delete e2.label;}
+   else if(routeStListe[k]){e2.station=routeStListe[k].id;e2.label=routeStListe[k].name;}
+   r.systeme[+t[1]]=e2;
+  }
   routeZeichnen();routeSichern();return;
  }
  const hf=e.target.closest('[data-rhaeufig]');
