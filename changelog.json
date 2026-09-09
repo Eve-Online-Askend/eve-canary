@@ -1,5 +1,21 @@
 [
  {
+  "v": "3.0.1",
+  "d": "2026-09-09",
+  "de": [
+   "Behebt einen Fehler aus v2.99.0, gemeldet von Savox76 eine Stunde später: „Jetzt kleiner Anzeigefehler, wenn ich auf weiter klicke bleibt Bergbau-Laderaumbalken bei 100%.“",
+   "Er hatte recht, und der Denkfehler war meiner. Beim Weiterzählen wurde auch der Frachtraum wieder aufaddiert. Der ist aber ein Bestand und kein Zähler, und er hat einen eigenen Bezugspunkt: Canary merkt sich zur letzten ESI-Messung, auf welchem Log-Stand sie beruhte. Wer den Bestand aufaddiert, ohne den Bezugspunkt mitzuziehen, zählt ihn doppelt.",
+   "Nachgestellt mit der echten Sitzung: 28.000 von 35.000 m³ vor dem Andocken, also 80 Prozent. Nach dem Abdocken steht der Log-Zähler auf null, ESI misst den Frachtraum aber weiter voll, weil nichts abgeladen wurde. Nach dem Klick kamen 28.000 aus der Messung und 29.400 aus dem Wiederaufaddieren zusammen: 57.400 von 35.000, also Anschlag.",
+   "Wiederhergestellt wird jetzt nur, was tatsächlich ein Zähler ist, also das kumulativ Geförderte. Den Frachtraum liest ESI direkt, er stimmt ohne Zutun. Geprüft wird ab jetzt genau das: der Balken zeigt vor und nach dem Klick dasselbe, während der Ertrag wächst."
+  ],
+  "en": [
+   "Fixes a bug from v2.99.0, reported by Savox76 an hour later: „small display bug now, when I click keep counting the mining ore hold bar stays at 100%.“",
+   "He was right, and the mistake in thinking was mine. Keeping the count also added the cargo hold back. But the hold is a stock, not a counter, and it has a reference point of its own: Canary remembers which log level the last ESI measurement was based on. Add the stock back without carrying the reference point along and you count it twice.",
+   "Reproduced with the real session: 28,000 of 35,000 m³ before docking, so 80 percent. After undocking the log counter is at zero, but ESI still measures the hold as full because nothing was unloaded. After the click, 28,000 from the measurement and 29,400 from adding back came together: 57,400 of 35,000, pinned at the top.",
+   "What gets restored now is only what really is a counter, the cumulative yield. The cargo hold is read directly from ESI and is right without help. And that is exactly what is tested from now on: the bar shows the same before and after the click while the yield grows."
+  ]
+ },
+ {
   "v": "3.0.0",
   "d": "2026-09-09",
   "de": [

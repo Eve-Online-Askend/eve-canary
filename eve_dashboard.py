@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "3.0.0"
+VERSION = "3.0.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -4354,10 +4354,23 @@ class CharSession:
         if not self.mining and not self.hold_raw and not self.hold_comp:
             self.vorher = None
             return
+        # Was hier NICHT hineingehoert: hold_raw und hold_comp, also der
+        # Frachtraum. Er ist ein BESTAND, kein Zaehler, und er hat einen
+        # eigenen Bezugspunkt in ore_hold.log_m3 (dort steht der Log-Stand
+        # zum Zeitpunkt der letzten ESI-Messung). Wer den Bestand wieder
+        # aufaddiert, ohne den Bezugspunkt mitzuziehen, zaehlt ihn doppelt.
+        #
+        # Genau das ist in v2.99.0 passiert, gemeldet von Savox76 am
+        # 09.09.2026: "jetzt kleines anzeige fehler, wenn ich auf weiter
+        # klicke bleibt bergbau Laderaumbalken bei 100%". Nachgestellt:
+        # 28.000 m3 aus der ESI-Messung plus 29.400 wieder aufaddiert waren
+        # 57.400 von 35.000, also dauerhaft Anschlag.
+        #
+        # Gebraucht wird er auch nicht: den Frachtraum liest ESI direkt, der
+        # Balken stimmt ohne Zutun. Wiederhergestellt wird nur, was ein
+        # Zaehler ist: das kumulativ Gefoerderte.
         self.vorher = {
             "mining": dict(self.mining),
-            "hold_raw": dict(self.hold_raw),
-            "hold_comp": dict(self.hold_comp),
             "verschnitt": dict(self.verschnitt),
             "compressed": dict(self.compressed),
             "ore_amounts": {k: dict(v) for k, v in self.ore_amounts.items()},
@@ -4378,8 +4391,9 @@ class CharSession:
         v = self.vorher
         if not v:
             return False
-        for feld in ("mining", "hold_raw", "hold_comp", "verschnitt",
-                     "compressed"):
+        # Nur Zaehler, kein Bestand: der Frachtraum bleibt, wie ESI ihn
+        # gerade sieht. Siehe die Begruendung in _trip_merken.
+        for feld in ("mining", "verschnitt", "compressed"):
             ziel = getattr(self, feld)
             for k, wert in (v.get(feld) or {}).items():
                 ziel[k] = ziel.get(k, 0) + wert
