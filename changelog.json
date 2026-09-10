@@ -1,5 +1,23 @@
 [
  {
+  "v": "3.0.2",
+  "d": "2026-09-10",
+  "de": [
+   "Behebt eine falsche Zahl im Abyss-Kopf, gemeldet von Nirahse: „Dein ältester erfasster Durchgang ist 21 Tage alt“, fünf Minuten vorher stand da 23, vor drei Tagen auch 23. Er erwartete täglich eine Steigerung und hatte recht.",
+   "Die Zahl kam aus der Liste der Durchgänge, und die hat zwei Einschränkungen, von denen im Satz keine steht: sie ist auf den gewählten Zeitraum gefiltert und zusätzlich auf die 200 neuesten Zeilen gedeckelt. Wer mehr als 200 Durchgänge hat, bekam damit das Alter des 200. neuesten, und das wird kleiner, sobald neue dazukommen. Genau darum sank die Zahl.",
+   "An 300 gestellten Durchgängen nachgemessen, einer je Tag, der älteste 299 Tage alt: bei 30 Tagen meldete Canary 29, bei 90 Tagen 89, bei „alles“ 199. Richtig wären jedes Mal 299 gewesen. Jetzt rechnet der Server die Zahl aus der Datenbank, ohne Zeitfilter und ohne Deckel, und sie ist bei jedem Zeitraum dieselbe.",
+   "Das behebt noch einen zweiten Fehler, den man leicht übersieht: der Satz soll überhaupt nur erscheinen, wenn der Zeitraum nichts einschränkt. Mit der gefilterten Zahl war das Alter immer knapp kleiner als das Fenster, der Satz erschien also fast immer, auch bei Aufzeichnungen über Monate. Bei Nirahse verschwindet er jetzt, und das ist richtig: sein Zeitraum schränkt ja wirklich ein.",
+   "Die neue Abfrage stellt erst die billige Frage und dann die teure. An 20.000 Missionszeilen gemessen: 11 Millisekunden statt 34, bei gleichem Ergebnis."
+  ],
+  "en": [
+   "Fixes a wrong figure in the abyss header, reported by Nirahse: „your oldest recorded run is 21 days old“, five minutes earlier it said 23, three days ago also 23. He expected it to grow by one per day and he was right.",
+   "The figure came from the list of runs, and that list has two limits, neither of which the sentence mentions: it is filtered to the selected period and capped at the 200 newest rows. Anyone with more than 200 runs got the age of the 200th newest, and that gets smaller as new ones arrive. That is exactly why the number went down.",
+   "Measured against 300 staged runs, one per day, the oldest 299 days old: at 30 days Canary said 29, at 90 days 89, at „all“ 199. The right answer was 299 every time. The server now computes it from the database, without the period filter and without the cap, and it is the same for every period.",
+   "This also fixes a second bug that is easy to miss: the sentence should only appear when the period is not limiting anything. With the filtered figure the age was always just below the window, so it appeared almost always, even for records spanning months. For Nirahse it now disappears, and rightly so: his period really is limiting.",
+   "The new query asks the cheap question first and the expensive one second. Measured on 20,000 mission rows: 11 milliseconds instead of 34, same result."
+  ]
+ },
+ {
   "v": "3.0.1",
   "d": "2026-09-09",
   "de": [

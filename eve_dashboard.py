@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "3.0.1"
+VERSION = "3.0.2"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -13539,6 +13539,55 @@ def mchar_aus_pfad(pfad, erlaubt):
     return [n for n in namen if n in erlaubt]
 
 
+def abyss_aeltester(chars=None):
+    """Zeitstempel des AELTESTEN erfassten Abyss-Durchgangs, ohne Zeitfilter
+    und ohne Deckel.
+
+    MELDUNG Nirahse, 09.09.2026: der Satz "Dein aeltester erfasster Durchgang
+    ist X Tage alt" zeigte 23, dann wieder 23, dann 21. Er erwartete taeglich
+    eine Steigerung und hatte recht.
+
+    Die Zahl kam aus der Liste "laeufe", und die hat ZWEI Einschraenkungen,
+    von denen im Satz keine steht: sie ist auf den gewaehlten Zeitraum
+    gefiltert und zusaetzlich auf die 200 NEUESTEN Zeilen gedeckelt. Wer mehr
+    als 200 Durchgaenge hat, bekam damit das Alter des 200. neuesten, und das
+    wird KLEINER, sobald neue dazukommen. An 300 gestellten Durchgaengen
+    nachgemessen: gemeldet wurden 199 Tage statt 299.
+
+    Deshalb hier eine eigene Abfrage. Der Ort allein reicht als Erkennung
+    nicht (ein Logistiker ohne Gegnerliste faellt sonst heraus), aber fuer
+    das ALTER genuegt der frueheste Treffer: es geht darum, wie weit die
+    Aufzeichnung zurueckreicht, nicht darum, jeden Lauf zu zaehlen."""
+    nur = sorted(set(chars)) if chars else None
+    wo, args = "", []
+    if nur:
+        wo = " AND char IN (%s)" % ",".join("?" * len(nur))
+        args = list(nur)
+    with DB_LOCK:
+        # Erst die billige Frage: der frueheste Lauf, dessen ORT schon Abyss
+        # sagt. Das ist reines SQL, ohne eine einzige Gegnerliste zu lesen.
+        z = DB.execute("SELECT MIN(start_ts) FROM missions WHERE system=?" + wo,
+                       [ABYSS_ORT] + args).fetchone()
+        ueber_ort = (z[0] if z else None) or 0
+        # Und dann die teure nur noch fuer das, was WIRKLICH aelter sein
+        # koennte: Laeufe ohne Ort im Chatlog, die sich allein am Gegner
+        # erkennen lassen. An 20.000 gestellten Zeilen gemessen: 34 ms
+        # vorher, 11 ms nachher, bei gleichem Ergebnis.
+        eng = " AND start_ts<?" if ueber_ort else ""
+        rows = DB.execute(
+            "SELECT start_ts,system,enemies FROM missions WHERE 1=1" + wo + eng
+            + " ORDER BY start_ts ASC",
+            args + ([ueber_ort] if ueber_ort else []))
+        for ts, system, enemies in rows:
+            try:
+                gg = json.loads(enemies or "[]")
+            except Exception:
+                gg = []
+            if ist_abyss(system, gg):
+                return int(ts or 0)
+    return int(ueber_ort or 0)
+
+
 def query_abyss(chars=None, tage=30, gruppierung="filament"):
     """Alles fuer den Abyss-Bereich: Kennzahlen, Filament-Bilanz, Top-Beute
     und die beste Runde.
@@ -13714,6 +13763,9 @@ def query_abyss(chars=None, tage=30, gruppierung="filament"):
             # "zeilen" daneben, die Liste zeigt ja wirklich Zeilen.
             "laeufe": laeufe[:200], "n": len(gruppen_alle),
             "zeilen": len(laeufe),
+            # Ungefiltert und ungedeckelt: die Liste oben taugt dafuer
+            # nicht, siehe abyss_aeltester.
+            "aeltester": abyss_aeltester(chars),
             "filamente": fil[:12], "beute": rest[:10],
             "bilanz": {"verbraucht": verbraucht, "erbeutet": erbeutet,
                        "netto": erbeutet - verbraucht, "isk": fil_isk},
@@ -23262,8 +23314,11 @@ function kompakterAbyssKopf(a, A, B, b, zeitKnoepfe, nam){
  // gestellten Bestand), und der Klick schickt nachweislich atage mit. Es
  // bleibt eine Erklaerung: alle ERFASSTEN Durchgaenge liegen im Fenster.
  // Genau das muss dastehen, sonst sieht es wie ein kaputter Knopf aus.
- const laeufe=a.laeufe||[];
- const aeltester=laeufe.length?Math.min(...laeufe.map(l=>l.start||0)):0;
+ // Die Zahl kommt vom Server und meint den aeltesten Durchgang in der
+ // DATENBANK. Aus a.laeufe zu rechnen war falsch: die Liste ist auf den
+ // gewaehlten Zeitraum gefiltert UND auf die 200 neuesten Zeilen gedeckelt,
+ // die Zahl sank also, sobald neue Laeufe dazukamen (Nirahse, 09.09.2026).
+ const aeltester=a.aeltester||0;
  const tageAlt=aeltester?Math.floor((Date.now()/1000-aeltester)/86400):0;
  const bindet=!abyssTage||tageAlt>=abyssTage;
  const zHinweis=(aeltester&&!bindet)
