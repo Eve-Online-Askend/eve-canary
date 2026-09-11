@@ -1,5 +1,5 @@
 {
- "version": "3.1.0",
+ "version": "3.2.0",
  "files": [
   "eve_dashboard.py",
   "ore_types.json",
@@ -14,6 +14,7 @@
   "market_types.json",
   "gank_groups.json",
   "skill_plan.json",
+  "refine_items.json",
   "README_INSTALL.md",
   "start_dashboard.bat",
   "install.ps1",
@@ -22,5 +23,5 @@
   "install.sh"
  ],
  "repo": "Eve-Online-Askend/eve-canary",
- "tag": "v3.1.0"
+ "tag": "v3.2.0"
 }

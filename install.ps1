@@ -115,7 +115,8 @@ Write-Host "  Python gefunden ($py)"
 # Diese Liste MUSS alle Datendateien aus FILES in release.py enthalten, sonst
 # startet eine frische Installation mit weniger Erkennung als eine aktualisierte.
 # release.py prueft das vor jeder Veroeffentlichung und bricht sonst ab.
-$files = "eve_dashboard.py", "ore_types.json", "ore_refine.json", "eve_map.json",
+$files = "eve_dashboard.py", "ore_types.json", "ore_refine.json",
+         "refine_items.json", "eve_map.json",
          "npc_factions.json", "site_sigs.json",
          "mining_tools.json", "mission_sigs.json", "mission_items.json",
          "mission_fingerprints.json", "market_types.json",

@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "3.1.0"
+VERSION = "3.2.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -47,6 +47,7 @@ UPDATE_FILES = ["eve_dashboard.py", "ore_types.json", "ore_refine.json",
                 "mining_tools.json", "mission_sigs.json", "mission_items.json",
                 "mission_fingerprints.json", "market_types.json",
                 "gank_groups.json", "skill_plan.json",
+                "refine_items.json",
                 "install.ps1", "uninstall.ps1", "install.sh",
                 "README_INSTALL.md"]
 # BEWUSST NICHT dabei: start_dashboard.bat und start_dashboard.sh. Genau die
@@ -266,6 +267,15 @@ ORE_BY_TID = {v["typeID"]: (n, v.get("volume", 0.0)) for n, v in ORE_TYPES.items
 ORE_REFINE = load_json("ore_refine.json", {"refine": {}, "minerals": {}})
 # Reprocessing-Skills: typeID -> Bonus je Stufe. Basis NPC-Station 50%.
 REPROCESS_SKILLS = {3385: 0.03, 3389: 0.02}  # Reprocessing, Reprocessing Efficiency
+# Module und alles andere ausser Erz laufen ueber Scrapmetal Processing
+# (typeID am 11.09.2026 im SDE-Dump nachgesehen: 12196). Er kommt ZU den
+# beiden allgemeinen Skills dazu, nicht an ihre Stelle.
+SCRAP_SKILL = 12196
+SCRAP_PRO_STUFE = 0.02
+# Basis einer NPC-Station. Strukturen mit Rigs koennen deutlich mehr,
+# Standings und Implantate ebenfalls. Canary kennt davon nichts, deshalb
+# ist jede Zahl hier eine Untergrenze und wird auch so ausgewiesen.
+REFINE_BASIS = 0.50
 MINING_TOOLS = sorted(load_json("mining_tools.json", []), key=len, reverse=True)
 # Gruppen, die in Highsec regelmaessig Miner und Transporter abschiessen, aus
 # oeffentlichen Killmails erhoben (Skript gank_groups.py, wird mitgeliefert und
@@ -430,6 +440,15 @@ def sys_names():
 # Marktpreis-Suche. Liegt als Datei bei; der Server haelt sie im Speicher und
 # liefert nur die passenden Vorschlaege, damit die Oberflaeche leicht bleibt.
 MARKET_TYPES = load_json("market_types.json", {})
+# Was beim Zerlegen aus Modulen, Munition, Schiffen, Drohnen und
+# Implantaten herauskommt: 6.508 Typen, gebaut von baue_refine_items.py
+# aus derselben Quelle wie ore_refine.json (Wunsch MelvinMafia,
+# 11.09.2026). Erze haben ihre eigene Datei und ihre eigenen Skills.
+REFINE_ITEMS = (load_json("refine_items.json", {}) or {}).get("items") or {}
+# typeID -> Name, fuer die Anzeige der Materialien. market_types.json
+# steht andersherum da, und ein zweites Mal mitliefern waere derselbe
+# Inhalt in zwei Dateien.
+TYP_NAMEN = {int(v): k for k, v in MARKET_TYPES.items()}
 # Vorsortiert nach Namenslaenge: kurze, exakte Treffer sollen oben stehen.
 _MARKET_INDEX = sorted(((n.lower(), n) for n in MARKET_TYPES), key=lambda x: len(x[0]))
 # Nur die Namen, klein geschrieben. Dient als Sperre fuer die Fracht-Erkennung:
@@ -6911,6 +6930,8 @@ class Esi(threading.Thread):
         for sid, per in REPROCESS_SKILLS.items():
             rep *= (1 + per * lvl.get(sid, 0))
         c["reprocess"] = round(rep, 4)
+        # Dasselbe fuer alles, was kein Erz ist: Scrapmetal Processing.
+        c["scrap"] = round(rep * (1 + SCRAP_PRO_STUFE * lvl.get(SCRAP_SKILL, 0)), 4)
         c["skills_next"] = time.time() + 6 * 3600
 
     def sync_mining(self, name, c):
@@ -11312,6 +11333,117 @@ def resolve_item_ids(names):
                 # naechsten Mal wieder gefragt.
             DB.commit()
     return out
+
+
+# Unter diesem Unterschied sagt Canary nichts. Bei fuenf Prozent ist die
+# Aussage wertlos: die Ausbeute haengt an Anlage, Rigs und Standings, die
+# Canary nicht kennt, und der Marktpreis schwankt taeglich mehr als das.
+ZERLEGE_SCHWELLE = 0.15
+
+
+def zerlege_ausbeute(char=None):
+    """Welcher Anteil beim Zerlegen wirklich herauskommt.
+
+    Mit EVE-Login der echte Wert aus den Skills des Charakters, sonst die
+    Basis einer NPC-Station ohne jeden Skill. Rueckgabe (Anteil, Quelle)."""
+    chars = (CONFIG.get("esi") or {}).get("chars", {})
+    if char and chars.get(char, {}).get("scrap"):
+        return chars[char]["scrap"], char
+    beste, wer = 0.0, None
+    for nm, c in chars.items():
+        if (c.get("scrap") or 0) > beste:
+            beste, wer = c["scrap"], nm
+    if beste:
+        return beste, wer
+    return REFINE_BASIS, None
+
+
+def zerlege_bilanz(text, char=None, region=None):
+    """Lohnt sich Zerlegen oder Verkaufen? Je Posten beides ausrechnen.
+
+    WUNSCH MelvinMafia, 11.09.2026: "Ich moechte ein Modul oder mehrere
+    Module in ein Feld kopieren und dann druecke ich auf einen Button und
+    Canary sagt mir welche Module mehr bringen wenn man sie zerlegt und
+    welche man besser verkauft."
+
+    Verglichen wird der SOFORTVERKAUF auf beiden Seiten: das Modul in die
+    hoechste Kauforder gegen die Materialien in ihre Kauforders. Alles andere
+    waere ein Vergleich von Aepfeln mit Wartezeit."""
+    region = str(region or CONFIG.get("region") or "10000002")
+    qty = parse_inventar_text(text)
+    if not qty:
+        return {"ok": False, "fehler": "Keine Zeile erkannt. Im Spiel den "
+                                       "Frachtraum markieren, kopieren und "
+                                       "hier einfuegen."}
+    ids_map = resolve_item_ids(list(qty))
+    unbekannt = sorted(n for n in qty if n not in ids_map)
+
+    # Alle Preise in EINER Abfrage: die Gegenstaende selbst und alles, was
+    # aus ihnen herausfallen kann.
+    ids = set(ids_map.values())
+    for tid in list(ids):
+        for mid, _ in (REFINE_ITEMS.get(str(tid)) or {}).get("o", []):
+            ids.add(mid)
+    pm = hub_prices(region, ids) if ids else {}
+
+    anteil, wer = zerlege_ausbeute(char)
+    zeilen, ohne_preis = [], []
+    for name, menge in qty.items():
+        tid = ids_map.get(name)
+        if not tid:
+            continue
+        verkauf = (pm.get(tid, (0, 0))[0] or 0) * menge
+        rezept = REFINE_ITEMS.get(str(tid))
+        posten, zerlegt, fehlt = [], 0.0, False
+        portion = int((rezept or {}).get("p") or 1)
+        # Ganze Portionen: 40 Geschosse von 100 lassen sich nicht zerlegen.
+        portionen = int(menge // portion) if rezept else 0
+        if rezept and portionen:
+            for mid, roh in rezept["o"]:
+                stueck = int(roh * portionen * anteil)
+                preis = pm.get(mid, (0, 0))[0] or 0
+                if not preis:
+                    fehlt = True
+                if stueck <= 0:
+                    continue
+                zerlegt += stueck * preis
+                posten.append({"name": TYP_NAMEN.get(mid) or str(mid),
+                               "menge": stueck, "isk": round(stueck * preis)})
+            posten.sort(key=lambda x: -x["isk"])
+        if fehlt:
+            ohne_preis.append(name)
+        # Das Urteil. "unklar" ist eine ehrliche Antwort und keine Ausrede:
+        # unter der Schwelle entscheidet der Tagespreis, nicht die Rechnung.
+        if not rezept:
+            rat = "verkaufen"
+        elif not portionen:
+            rat = "zu_wenig"
+        elif not verkauf and not zerlegt:
+            rat = "kein_preis"
+        elif zerlegt > verkauf * (1 + ZERLEGE_SCHWELLE):
+            rat = "zerlegen"
+        elif verkauf > zerlegt * (1 + ZERLEGE_SCHWELLE):
+            rat = "verkaufen"
+        else:
+            rat = "unklar"
+        zeilen.append({
+            "name": name, "menge": menge, "tid": tid,
+            "verkauf": round(verkauf), "zerlegen": round(zerlegt),
+            "diff": round(zerlegt - verkauf), "rat": rat,
+            "portion": portion, "portionen": portionen,
+            "posten": posten[:6], "teilpreise": fehlt})
+    # Groesster Unterschied zuerst: das ist die Zeile, wegen der man fragt.
+    zeilen.sort(key=lambda z: -abs(z["diff"]))
+    summe_v = sum(z["verkauf"] for z in zeilen)
+    summe_z = sum(z["zerlegen"] for z in zeilen if z["rat"] == "zerlegen")
+    summe_v_nur = sum(z["verkauf"] for z in zeilen if z["rat"] != "zerlegen")
+    return {"ok": True, "zeilen": zeilen, "unbekannt": unbekannt,
+            "ohne_preis": sorted(set(ohne_preis)),
+            "anteil": round(anteil * 100, 1), "wer": wer,
+            "region": region, "regionname": REGIONS.get(region, region),
+            "alles_verkaufen": round(summe_v),
+            "gemischt": round(summe_z + summe_v_nur),
+            "schwelle": int(ZERLEGE_SCHWELLE * 100)}
 
 
 def calc_loot(text):
@@ -15912,6 +16044,13 @@ class Handler(BaseHTTPRequestHandler):
                 DB.commit()
             self._send(json.dumps({"ok": True, "isk": isk, "unknown": res.get("unknown", [])}))
             return
+        elif action == "zerlegen":
+            # Zerlegen oder verkaufen. Rechnet nur, speichert nichts.
+            self._send(json.dumps(
+                zerlege_bilanz(body.get("text") or "",
+                               (body.get("char") or "").strip() or None),
+                ensure_ascii=False))
+            return
         elif action == "skillplan":
             # Skillplan-Berater: reine Rechnung, nichts wird gespeichert.
             self._send(json.dumps(skillplan_analyse(body.get("text") or ""),
@@ -16636,6 +16775,20 @@ tr.lvl-yellow td{background:rgba(228,179,76,.07)}
    Zeile blieb der Dialog gemessene 620px breit, obwohl width auf 880
    stand. Eine Routenzeile mit Stationsnamen braucht 405px. */
 #routeDlg{width:min(880px,94vw);max-width:880px}
+#zerDlg{width:min(900px,94vw);max-width:900px}
+#zerIn{background:var(--inset);border:1px solid var(--line);color:inherit;
+ border-radius:8px;padding:6px 8px;font:inherit}
+.zertab{width:100%;border-collapse:collapse;margin-top:6px;font-size:12px}
+.zertab th{text-align:left;font-size:10px;letter-spacing:1px;
+ text-transform:uppercase;color:var(--dim);padding:2px 6px}
+.zertab td{padding:3px 6px;border-top:1px solid var(--line);
+ vertical-align:top}
+.zertab .r{text-align:right;font-variant-numeric:tabular-nums}
+.zerz:hover{background:var(--inset)}
+/* Die Summenzeile. Sie beantwortet die eigentliche Frage: was bringt
+   der ganze Haufen, wenn man dem Rat folgt. */
+.zersum{display:flex;flex-wrap:wrap;gap:16px;align-items:center;
+ margin-top:10px;padding-top:8px;border-top:1px solid var(--line)}
 .triphinweis .tripweiter{color:var(--cyan);cursor:pointer;text-decoration:underline;margin-left:6px}
 .triphinweis .tripweg{cursor:pointer;opacity:.55;margin-left:8px}
 .triphinweis .tripweg:hover{opacity:1;color:var(--red)}
@@ -17541,6 +17694,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
    <span class="pill" id="obsBtn" title="Overlay fuer OBS einrichten: Aussehen waehlen, Adresse kopieren, in OBS als Browser-Quelle einfuegen. Mit Anleitung.">🎥 OBS Overlay</span>
    <span class="pill" id="uhrBtn" title="Stoppuhr fuer eine Aktivitaet: starten, pausieren, am Ende als Trip speichern. Zaehlt mit, wieviel in der Zeit gefoerdert wurde.">⏱ Stoppuhr</span>
    <span class="pill" id="setBtn" title="EVE-Einstellungen sichern, wiederherstellen und das UI eines Charakters auf andere uebertragen. Alpha.">💾 EVE-Einstellungen</span>
+   <span class="pill" id="zerBtn" title="Beute einfügen: Canary sagt je Posten, ob Zerlegen oder Verkaufen mehr bringt.">♻ Zerlegen?</span>
    <span class="pill" id="routeBtn" title="Routen speichern und mit einem Klick als Wegpunkte in den Client schreiben.">🧭 Routen</span>
    <span class="pill" id="skillBtn" title="Skillplan aus dem Spiel einfügen: zeigt, welche Attribute der Plan wirklich braucht, und sortiert ihn auf Wunsch nach Attribut-Paaren um.">🎓 Skillplan</span>
   </div></span>
@@ -17815,6 +17969,18 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
  </div>
 </dialog>
 
+<dialog id="zerDlg">
+ <h2>♻ Zerlegen oder verkaufen?</h2>
+ <p class="sub">Im Spiel den Frachtraum oder die Beute markieren, kopieren und hier einfügen. Canary rechnet für jeden Posten beides aus: was die höchste Kauforder für den Gegenstand zahlt, und was die Materialien einbringen, die beim Zerlegen herausfallen. Verglichen wird auf beiden Seiten der Sofortverkauf, sonst wäre es ein Vergleich mit Wartezeit.</p>
+ <textarea id="zerIn" rows="7" style="width:100%" placeholder="Beute hier einfügen, eine Zeile je Posten, etwa: 200mm AutoCannon I&#9;9"></textarea>
+ <div class="btnrow" style="margin-top:8px"><button class="btn" id="zerGo">Rechnen</button>
+  <select id="zerChar"></select>
+  <span class="sub" id="zerStat"></span></div>
+ <div id="zerErg"></div>
+ <div class="btnrow" style="margin-top:10px">
+  <button class="btn" onclick="document.getElementById('zerDlg').close()">Schließen</button>
+ </div>
+</dialog>
 <dialog id="routeDlg">
  <h2>🧭 Routen</h2>
  <p class="sub">Wege, die du immer wieder fliegst, einmal zusammenstellen und danach mit einem Klick als Wegpunkte in den Client schreiben. Canary setzt die Route, geflogen wird sie von dir: den Autopiloten startest du im Spiel wie sonst auch. Der Charakter muss dafür eingeloggt sein.</p>
@@ -19633,6 +19799,104 @@ function routeSchieben(i,j,um){
  routeZeichnen();
  routeSichern();
 }
+
+// ===========================================================================
+// Zerlegen oder verkaufen (Wunsch MelvinMafia, 11.09.2026)
+// ===========================================================================
+//
+// Seine Bitte: "Ich moechte ein Modul oder mehrere Module in ein Feld kopieren
+// und dann druecke ich auf einen Button und Canary sagt mir welche Module mehr
+// bringen wenn man sie zerlegt und welche man besser verkauft."
+//
+// Gerechnet wird im Server, hier steht nur die Anzeige. Wichtig dabei: die
+// Ausbeute haengt an Anlage, Rigs und Standings, die Canary nicht kennt. Jede
+// Zahl ist deshalb eine Untergrenze, und das steht auch da.
+const ZER_RAT = {
+ zerlegen:   ['♻ zerlegen',  'grn'],
+ verkaufen:  ['💰 verkaufen', 'kkisk'],
+ unklar:     ['≈ egal',      'sub'],
+ zu_wenig:   ['zu wenig',    'sub'],
+ kein_preis: ['kein Preis',  'sub'],
+};
+
+function zerChars(){
+ const sel=document.getElementById('zerChar');
+ if(!sel)return;
+ const en=lang==='en';
+ // Nur Charaktere, deren Skills Canary kennt: an denen haengt die Ausbeute.
+ const mit=((state&&state.esi&&state.esi.chars)||[]).map(c=>c.name);
+ sel.innerHTML=`<option value="">${en?'best skills':'beste Skills'}</option>`
+  +mit.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+}
+
+function zerZeile(z,en){
+ const [txt,cls]=ZER_RAT[z.rat]||['?',''];
+ const mat=(z.posten||[]).map(p=>esc(p.name)+' '+fmt(p.menge)).join(' · ');
+ const hinweis=z.rat==='zu_wenig'
+  ?`<div class="sub">${en?`needs ${fmt(z.portion)} at a time, you have ${fmt(z.menge)}`
+                        :`zerlegt wird in ${fmt(z.portion)}er Portionen, du hast ${fmt(z.menge)}`}</div>`
+  :(mat?`<div class="sub">${mat}${z.teilpreise?(en?' · some materials unpriced':' · für einzelne Materialien fehlt der Preis'):''}</div>`:'');
+ return `<tr class="zerz">
+  <td>${esc(z.name)}<span class="sub"> ×${fmt(z.menge)}</span>${hinweis}</td>
+  <td class="r">${fmtM(z.verkauf)}</td>
+  <td class="r">${z.rat==='zu_wenig'||!z.zerlegen?'—':fmtM(z.zerlegen)}</td>
+  <td class="r ${z.diff>0?'grn':(z.diff<0?'':'sub')}">${z.diff>0?'+':''}${fmtM(z.diff)}</td>
+  <td class="${cls}">${txt}</td></tr>`;
+}
+
+function zerMalen(r){
+ const en=lang==='en';
+ const ziel=document.getElementById('zerErg');
+ if(!ziel)return;
+ if(!r||!r.ok){
+  ziel.innerHTML=`<div class="cardwarn" style="margin-top:10px">${
+    esc((r&&r.fehler)||(en?'Server not reachable':'Server nicht erreichbar'))}</div>`;
+  return;
+ }
+ const zerl=r.zeilen.filter(z=>z.rat==='zerlegen');
+ const gewinn=r.gemischt-r.alles_verkaufen;
+ let h=`<div class="sect" style="margin-top:12px">${en?'Per item':'Je Posten'}</div>
+  <table class="zertab"><tr><th>${en?'Item':'Gegenstand'}</th>
+   <th class="r">${en?'sell':'verkaufen'}</th><th class="r">${en?'reprocess':'zerlegen'}</th>
+   <th class="r">${en?'difference':'Unterschied'}</th><th>${en?'verdict':'Rat'}</th></tr>
+   ${r.zeilen.map(z=>zerZeile(z,en)).join('')}</table>`;
+ h+=`<div class="zersum">
+   <span>${en?'Everything sold':'Alles verkaufen'}: <b>${fmtM(r.alles_verkaufen)} ISK</b></span>
+   <span>${en?'Mixed as advised':'Gemischt wie geraten'}: <b class="grn">${fmtM(r.gemischt)} ISK</b></span>
+   <span class="${gewinn>0?'grn':'sub'}">${gewinn>0?'+':''}${fmtM(gewinn)} ISK</span></div>`;
+ // Worauf die Zahlen beruhen. Ohne das ist eine ISK-Zahl eine Behauptung.
+ h+=`<div class="sub" style="margin-top:8px">${en
+  ?`Yield ${r.anteil} % ${r.wer?('from '+esc(r.wer)+"'s skills"):'(no EVE login, so a station without any skill)'}. A structure with rigs, standings or implants gives more, Canary does not know those: the reprocessing side is a lower bound. Prices are the highest buy orders in ${esc(r.regionname)}. Below ${r.schwelle} % difference Canary says nothing, the daily price swings more than that.`
+  :`Ausbeute ${r.anteil} % ${r.wer?('aus den Skills von '+esc(r.wer)):'(ohne EVE-Login, also eine Station ganz ohne Skills)'}. Mit einer Struktur samt Rigs, guten Standings oder Implantaten kommt mehr heraus, davon weiß Canary nichts: die Zerlege-Seite ist eine Untergrenze. Preise sind die höchsten Kauforders in ${esc(r.regionname)}. Unter ${r.schwelle} % Unterschied sagt Canary nichts, so viel schwankt der Tagespreis ohnehin.`}</div>`;
+ if((r.unbekannt||[]).length)h+=`<div class="sub" style="margin-top:6px">${
+   en?'Not recognised':'Nicht erkannt'}: ${r.unbekannt.map(esc).join(', ')}</div>`;
+ ziel.innerHTML=h;
+ const st=document.getElementById('zerStat');
+ if(st)st.textContent=en
+  ?`${r.zeilen.length} items, ${zerl.length} worth reprocessing`
+  :`${r.zeilen.length} Posten, davon ${zerl.length} zum Zerlegen`;
+}
+
+document.getElementById('zerBtn').onclick=()=>{
+ const m=document.getElementById('toolsMenu'); if(m)m.hidden=true;
+ zerChars();
+ const d=document.getElementById('zerDlg');
+ d.showModal();
+ if(lang!=='de')tr(d);
+};
+
+document.getElementById('zerGo').onclick=async()=>{
+ const en=lang==='en';
+ const st=document.getElementById('zerStat');
+ st.textContent=en?'Fetching prices …':'Hole Preise …';
+ let r;
+ try{
+  r=await post({action:'zerlegen',
+                text:document.getElementById('zerIn').value,
+                char:document.getElementById('zerChar').value||''});
+ }catch(e){r=null;}
+ zerMalen(r);
+};
 
 document.getElementById('routeBtn').onclick=()=>{
  const m=document.getElementById('toolsMenu'); if(m)m.hidden=true;

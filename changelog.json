@@ -1,5 +1,25 @@
 [
  {
+  "v": "3.2.0",
+  "d": "2026-09-11",
+  "de": [
+   "NEU: „♻ Zerlegen?“ im Menü 🧰 Werkzeuge. Beute einfügen, Knopf drücken, und Canary sagt für jeden Posten, ob Zerlegen oder Verkaufen mehr bringt. Wunsch von MelvinMafia: „Ich möchte ein Modul oder mehrere Module in ein Feld kopieren und dann drücke ich auf einen Button und Canary sagt mir welche Module mehr bringen wenn man sie zerlegt und welche man besser verkauft.“",
+   "Verglichen wird auf beiden Seiten der Sofortverkauf: das Modul in die höchste Kauforder gegen die Materialien in ihre Kauforders. Alles andere wäre ein Vergleich mit Wartezeit. Je Zeile stehen beide Beträge, der Unterschied und der Rat, sortiert nach dem größten Unterschied. Unten die Zahl, wegen der man fragt: was der ganze Haufen bringt, wenn man dem Rat folgt.",
+   "Dafür liegt eine neue Datei bei, refine_items.json mit 6.508 Rezepten für Module, Munition, Schiffe, Drohnen und Implantate. Sie kommt aus derselben Quelle wie die Erz-Tabelle, und das wurde vor dem Bau nachgeprüft: Veldspar steht dort mit 400 Tritanium je 100 Einheiten, Zeichen für Zeichen wie in ore_refine.json.",
+   "Die Ausbeute kommt aus deinen Skills, sobald ein EVE-Login da ist, sonst gilt eine Station ganz ohne Skills. In beiden Fällen ist es eine Untergrenze, denn Strukturen mit Rigs, gute Standings und Implantate bringen mehr, und davon weiß Canary nichts. Das steht auch unter der Tabelle statt im Kleingedruckten.",
+   "Drei Dinge, die Canary bewusst NICHT behauptet. Unter 15 Prozent Unterschied sagt es „egal“, denn so viel schwankt der Tagespreis ohnehin. Wer 40 von 100 Geschossen hat, bekommt „zu wenig“ statt einer Empfehlung, die er gar nicht ausführen kann: 503 Munitionstypen zerlegen nur in Hunderterpaketen, 92 sogar in 5.000er. Und die 488 Typen ohne jedes Rezept heißen schlicht „verkaufen“ und nicht „0 ISK beim Zerlegen“.",
+   "Dazu eine neue Prüfung, die es so vorher nicht gab: jede mitgelieferte Datendatei muss in ALLEN VIER Auslieferungslisten stehen. Beim Bauen wäre die neue Datei in keiner davon gelandet, und das Ergebnis wäre bei jedem Nutzer ein stumm totes Feature gewesen."
+  ],
+  "en": [
+   "NEW: „♻ Reprocess?“ in the 🧰 Tools menu. Paste your loot, press the button, and Canary tells you for every item whether reprocessing or selling brings more. Requested by MelvinMafia: „I want to copy a module or several modules into a field, press a button, and Canary tells me which modules bring more when reprocessed and which are better sold.“",
+   "Both sides are valued at the instant sale: the module into the highest buy order against its materials into theirs. Anything else would compare against waiting. Each row shows both amounts, the difference and the verdict, sorted by the largest difference. At the bottom, the figure you actually asked for: what the whole pile brings if you follow the advice.",
+   "A new file ships with it, refine_items.json with 6,508 recipes for modules, ammunition, ships, drones and implants. It comes from the same source as the ore table, and that was verified before building: Veldspar sits there with 400 Tritanium per 100 units, character for character as in ore_refine.json.",
+   "The yield comes from your skills as soon as an EVE login is present, otherwise a station without any skill applies. Either way it is a lower bound, because structures with rigs, good standings and implants give more, and Canary knows none of those. That is stated under the table, not in fine print.",
+   "Three things Canary deliberately does NOT claim. Below 15 percent difference it says „either way“, because the daily price swings more than that. Anyone holding 40 of 100 rounds gets „not enough“ instead of advice they cannot follow: 503 ammunition types only reprocess in batches of 100, 92 in batches of 5,000. And the 488 types with no recipe at all simply say „sell“, not „0 ISK when reprocessed“.",
+   "Plus a new test that did not exist before: every shipped data file must appear in ALL FOUR delivery lists. While building, the new file would have landed in none of them, and the result would have been a silently dead feature for every user."
+  ]
+ },
+ {
   "v": "3.1.0",
   "d": "2026-09-11",
   "de": [
