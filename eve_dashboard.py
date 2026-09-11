@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "3.0.2"
+VERSION = "3.0.3"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1756,6 +1756,10 @@ def load_config():
            # wer eine Route anlegt, will sie auch vom zweiten Rechner
            # aus setzen koennen.
            "routen": [],
+           # Weggeklickte Hinweise. In der Konfiguration und nicht im
+           # Browser, damit das Wegklicken einen Browserwechsel
+           # ueberlebt (Nirahse, 10.09.2026). Siehe HINWEISE.
+           "hinweise_weg": [],
            "update_url": "https://raw.githubusercontent.com/Eve-Online-Askend/eve-canary/main"}
     if CONFIG_PATH.exists():
         try:
@@ -3185,6 +3189,42 @@ def refresh_gank_list():
     with CONFIG_LOCK:
         CONFIG["gank_stamp"] = stamp
         save_config()
+
+
+# Wegklickbare Hinweise auf Neuerungen. Je Eintrag der Tag, an dem der
+# Hinweis ABLAEUFT.
+#
+# MELDUNG Nirahse, 10.09.2026: "Ich habe die gelbe Box schon mehrfach
+# weggedrueckt, nehme aber keine neue Anordnung wahr. Sie kommt jeden Tag
+# wieder. Evtl. ist die Meldung ueberfluessig."
+#
+# Er hatte in beidem recht. Die Box erklaerte eine Neuordnung vom 15.08.2026
+# und stand am 11.09. immer noch da, also 27 Tage. Ein "Neu:", das einen
+# Monat steht, ist kein Hinweis mehr, und wer Canary seither zum ersten Mal
+# installiert, bekommt eine Aenderung gegenueber einem Zustand erklaert, den
+# er nie gesehen hat. Sie ist deshalb ersatzlos raus.
+#
+# Und das Wegklicken lag im localStorage. Das haengt an Browser UND Adresse:
+# zwei Rechner, zwei Browser, ein privates Fenster oder "Site-Daten beim
+# Schliessen loeschen", und der Hinweis ist wieder da. Eine Entscheidung, die
+# fuer die INSTALLATION gelten soll, gehoert in die Konfiguration, genau wie
+# beim Kopf der Missionsseite. Die Skins liegen zu Recht im Browser, ein
+# "nie wieder" nicht.
+#
+# Zwei Wochen sind die Frist. Wer in der Zeit nicht hinsieht, hat den Hinweis
+# nicht gebraucht.
+HINWEISE = {
+    # Name          laeuft ab am
+    "misskopf":     "2026-09-20",   # kompakter Kopf der Missionsseite
+}
+
+
+def hinweise_offen():
+    """Welche Hinweise heute noch gezeigt werden duerfen."""
+    heute = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    weg = set(CONFIG.get("hinweise_weg") or [])
+    return sorted(k for k, bis in HINWEISE.items()
+                  if k not in weg and heute < bis)
 
 
 def _ver(v):
@@ -11930,6 +11970,7 @@ def state_info():
             "price_src": PRICE_SOURCE.get(str(CONFIG["region"]), "fuzzwork"),
             "watchlist": CONFIG.get("watchlist", []), "goal": CONFIG.get("goal"),
             "routen": CONFIG.get("routen", []),
+            "hinweise": hinweise_offen(),
             "esi": {"client_id": (CONFIG.get("esi") or {}).get("client_id", ""),
                     "cb": esi.redirect_uri(),
                     "chars": [dict({"name": n, "status": esi.status.get(n, "warte auf Abgleich …"),
@@ -15935,6 +15976,18 @@ class Handler(BaseHTTPRequestHandler):
         elif action == "market_item":
             self._send(json.dumps(market_item(body.get("name") or "")))
             return
+        elif action == "hinweis_weg":
+            name = str(body.get("name") or "")
+            if name in HINWEISE:
+                with CONFIG_LOCK:
+                    weg = list(CONFIG.get("hinweise_weg") or [])
+                    if name not in weg:
+                        weg.append(name)
+                    CONFIG["hinweise_weg"] = weg
+                save_config()
+            self._send(json.dumps({"ok": True,
+                                   "hinweise": hinweise_offen()}))
+            return
         elif action == "besuchte_systeme":
             # Die eigenen Systeme aus dem Flugschreiber, meistbesuchte zuerst.
             # Genau daraus besteht eine Farmroute, und das ist der Teil, den
@@ -16332,9 +16385,6 @@ header{position:relative;z-index:40}
  padding:8px 12px;background:var(--card);border:1px solid var(--line);border-radius:10px}
 #livebar[hidden]{display:none}
 #livebar .lbl{font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim);margin:0 2px}
-#kopfHinweis{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid var(--gold);
- border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:12px}
-#kopfHinweis[hidden]{display:none}
 .pill.rolef{padding:4px 9px}
 .rolesel{appearance:none;-webkit-appearance:none;background:var(--inset);border:1px solid var(--line);
  color:var(--dim);font-size:10px;padding:2px 6px;border-radius:20px;cursor:pointer;flex:none}
@@ -16852,12 +16902,11 @@ html[data-skin=cockpit] body>#alerts,
 html[data-skin=cockpit] body>#hero,
 html[data-skin=cockpit] body>#setup,
 html[data-skin=cockpit] body>#updBanner,
-html[data-skin=cockpit] body>#kopfHinweis,
 html[data-skin=cockpit] body>#livebar,
 html[data-skin=cockpit] body>#grid{margin:0 0 var(--s3)}
-/* kopfHinweis und livebar kamen mit dem Kopfleisten-Umbau (v2.32/v2.33) und
-   fehlten in dieser Liste, deshalb tanzten genau sie aus dem 24er-Rhythmus
-   (gemeldet aus dem Discord, 17.08.2026). */
+/* livebar kam mit dem Kopfleisten-Umbau (v2.32/v2.33) und fehlte in dieser
+   Liste, deshalb tanzte sie aus dem 24er-Rhythmus (gemeldet aus dem Discord,
+   17.08.2026). Der Anordnungs-Hinweis stand hier bis v3.0.3 daneben. */
 html[data-skin=cockpit] body>#loadtxt{margin-bottom:var(--s1)}
 /* margin-top ausdruecklich auf null: sonst addiert sich der eigene obere
    Abstand des naechsten Blocks dazu und aus 8 werden 10. */
@@ -17488,8 +17537,6 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
 </nav>
 <div id="esihinweis"></div>
 <div id="viewinfo"></div>
-<div id="kopfHinweis" hidden>💡 <b>Neue Anordnung:</b> <span>Die Live-Steuerung steht jetzt direkt über den Karten, die Werkzeuge (Overlay, OBS, Stoppuhr, EVE-Einstellungen) stecken im Menü 🧰 oben rechts, der Handelsplatz ist ein Auswahlfeld, und die Sprache liegt als Flaggen ganz rechts außen.</span>
- <span class="pill" id="hinweisZu" style="margin-left:auto">Nicht mehr anzeigen</span></div>
 <div id="livebar" hidden>
  <span class="lbl">Ansicht</span>
  <span class="pill modesel" data-mode="mining" title="Mining-Ansicht">⛏ Mining</span><span class="pill modesel" data-mode="combat" title="PvP- und Missions-Ansicht">⚔ PvP &amp; Missionen</span>
@@ -19050,10 +19097,6 @@ document.addEventListener('click',e=>{
  if(!(e.target.closest&&e.target.closest('.hwrap'))){const m=$('#toolsMenu');if(m&&!m.hidden)m.hidden=true;}
 });
 $('#regionSel').onchange=async()=>{await post({action:'region',region:$('#regionSel').value});tick();};
-// Einmal-Hinweis auf die neue Anordnung, gewuenscht von Askend. Wer ihn
-// wegklickt, sieht ihn nie wieder (localStorage).
-if(!localStorage.getItem('kopfHinweisWeg'))$('#kopfHinweis').hidden=false;
-$('#hinweisZu').onclick=()=>{localStorage.setItem('kopfHinweisWeg','1');$('#kopfHinweis').hidden=true;};
 // "Alle einklappen" im Planeten-Tab: die Live-Leiste ist dort versteckt,
 // der kleine Knopf in der Karte ruft denselben Handler.
 document.addEventListener('click',e=>{
@@ -19073,8 +19116,10 @@ document.addEventListener('click',e=>{
   }}
  if(e.target.id==='kkAn'){missKopfSetzen('kompakt');return;}
  if(e.target.id==='kkWeg'){
-  localStorage.setItem('kkHinweisWeg','true');
-  if(lastMissionD)renderMissions(lastMissionD);
+  post({action:'hinweis_weg',name:'misskopf'}).then(a=>{
+   if(state&&a&&a.hinweise)state.hinweise=a.hinweise;
+   if(lastMissionD)renderMissions(lastMissionD);
+  }).catch(()=>{});
   return;
  }
  if(e.target.classList&&e.target.classList.contains('mkopfpille')){
@@ -23491,7 +23536,10 @@ function kompakterKopf(d, t, m, tag, wIsk, wMis, lootHeute){
 // dorthin zu zeigen, ist eine halbe Nachricht.
 function missKopfHinweis(){
  if(missKopf==='kompakt')return '';
- if(lsGet('kkHinweisWeg',false))return '';
+ // Der Server entscheidet, ob dieser Hinweis noch gilt: weggeklickt wird in
+ // der Konfiguration gemerkt (ueberlebt einen Browserwechsel), und nach
+ // zwei Wochen laeuft er von selbst ab. Siehe HINWEISE im Server.
+ if(!((state&&state.hinweise)||[]).includes('misskopf'))return '';
  const en=lang==='en';
  return `<div class="cardhint kkhinweis" style="grid-column:1/-1">
   <b>${en?'New: a compact header for this page':'Neu: ein kompakter Kopf für diese Seite'}</b>
@@ -24346,9 +24394,6 @@ const EN = {
 '🧰 Werkzeuge ▾':'🧰 Tools ▾','Ansicht':'View','Rollen':'Roles','Karten':'Cards',
 'Overlay, OBS Overlay, Stoppuhr und EVE-Einstellungen':'Overlay, OBS overlay, stopwatch and EVE settings',
 'Handelsplatz: bestimmt die Marktpreise überall in Canary':'Trade hub: sets the market prices everywhere in Canary',
-'Neue Anordnung:':'New layout:','Nicht mehr anzeigen':'Do not show again',
-'Die Live-Steuerung steht jetzt direkt über den Karten, die Werkzeuge (Overlay, OBS, Stoppuhr, EVE-Einstellungen) stecken im Menü 🧰 oben rechts, der Handelsplatz ist ein Auswahlfeld, und die Sprache liegt als Flaggen ganz rechts außen.':
- 'The live controls now sit right above the cards, the tools (overlay, OBS, stopwatch, EVE settings) live in the 🧰 menu at the top right, the trade hub is a dropdown, and the language sits as flags at the far right.',
 '↕ Reihenfolge':'↕ Order','▭ Karten':'▭ Cards',
 'nach vorn':'move forward','nach hinten':'move back',
 'Reihenfolge der Charakter-Karten festlegen, mit den Pfeilen an den Karten. Wird in Canary gespeichert und gilt in jedem Browser und im Overlay.':

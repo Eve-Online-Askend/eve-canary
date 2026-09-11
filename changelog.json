@@ -1,5 +1,21 @@
 [
  {
+  "v": "3.0.3",
+  "d": "2026-09-11",
+  "de": [
+   "Die gelbe Box mit der neuen Anordnung ist weg, und wegklickbare Hinweise halten jetzt wirklich. Gemeldet von Nirahse: „Ich habe die gelbe Box schon mehrfach weggedrückt, nehme aber keine neue Anordnung wahr. Sie kommt jeden Tag wieder. Evtl. ist die Meldung überflüssig.“",
+   "Er hatte in beidem recht, und es waren zwei verschiedene Fehler. Erstens: die Neuordnung kam am 15. August, der Kasten stand am 11. September immer noch da. 27 Tage. Ein „Neu:“, das einen Monat steht, ist kein Hinweis mehr, sondern Tapete, und wer Canary seither zum ersten Mal installiert hat, bekam eine Änderung gegenüber einem Zustand erklärt, den er nie gesehen hat. Ersatzlos raus.",
+   "Zweitens: das Wegklicken lag im localStorage des Browsers. Der hängt an Browser UND Adresse. Zwei Rechner, zwei Browser, ein privates Fenster oder ein Browser, der Site-Daten beim Schließen löscht, und der Hinweis war wieder da. Eine Entscheidung, die für die Installation gelten soll, gehört in die Konfiguration, genauso wie die Wahl des Missions-Kopfes. Die Skins liegen zu Recht im Browser, ein „nie wieder“ nicht.",
+   "Daraus ist eine Regel geworden statt einer Einzellösung. Jeder Hinweis auf eine Neuerung trägt jetzt den Tag, an dem er abläuft, und verschwindet dann von selbst. Die Frist sind zwei Wochen: wer in der Zeit nicht hinsieht, hat den Hinweis nicht gebraucht. Der Hinweis auf den kompakten Missions-Kopf hängt ab sofort auch daran und läuft am 20. September ab."
+  ],
+  "en": [
+   "The yellow box about the new layout is gone, and dismissible hints now actually stay dismissed. Reported by Nirahse: „I have dismissed the yellow box several times, but I do not notice any new layout. It comes back every day. Maybe the message is simply unnecessary.“",
+   "He was right on both counts, and they were two separate bugs. First: the layout change landed on 15 August, the box was still there on 11 September. 27 days. A „New:“ that stands for a month is no longer a hint, it is wallpaper, and anyone who installed Canary since then had a change explained to them against a state they never saw. Removed for good.",
+   "Second: dismissing it lived in the browser localStorage. That is tied to the browser AND the address. Two machines, two browsers, a private window, or a browser that clears site data on close, and the hint was back. A decision meant to apply to the installation belongs in the configuration, just like the choice of mission header. Skins rightly live in the browser, a „never again“ does not.",
+   "That turned into a rule rather than a one off fix. Every hint about something new now carries the day it expires and then disappears by itself. The window is two weeks: anyone who has not looked by then did not need the hint. The hint about the compact mission header is on that rule from now on and expires on 20 September."
+  ]
+ },
+ {
   "v": "3.0.2",
   "d": "2026-09-10",
   "de": [
