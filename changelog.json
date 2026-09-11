@@ -1,5 +1,23 @@
 [
  {
+  "v": "3.1.0",
+  "d": "2026-09-11",
+  "de": [
+   "Eine zweite Vorlage für „Attack of the Drones“, gemeldet von Nirahse. Es war seine zweite Meldung zu derselben Mission: die erste vom 13. August war längst eingebaut, und trotzdem stand über dem neuen Lauf wieder nichts.",
+   "Der Grund ist lehrreich. Seine beiden Läufe derselben Mission teilen nur 7 von 13 Gegnertypen, also 53,8 Prozent. Die Schwelle für geteilte Vorlagen liegt bei 80. Auch der Kern aus beiden Meldungen hätte nicht getragen, 7 Gegner gegen je 10 sind 70 Prozent. Diese Mission würfelt ihre Ratten zu stark, als dass ein Lauf den nächsten wiedererkennen könnte.",
+   "Deshalb stehen jetzt zwei Vorlagen unter demselben Namen, was die Vorlagendatei ausdrücklich erlaubt: dieselbe Mission wird von verschiedenen Auftraggebern angeboten und hat dann andere Ratten. Geprüft an 3.180 echten Kampf-Abschnitten aus 1.433 gespendeten Logdateien: kein einziger Fehltreffer, der engste Fall lag bei 77 Prozent. Beide gemeldeten Läufe werden erkannt, ein gewöhnlicher Drohnenkampf nicht.",
+   "Ehrlich dazu: bei dieser Mission bleibt die Erkennung wackelig. Ein dritter Lauf mit wieder anderen Ratten kann erneut danebengehen. Der sichere Weg wäre der NPC-Funk, der in beiden Meldungen Zeichen für Zeichen gleich ist, aber dafür fehlt ein Prüfbestand: der Funk steht in den Local-Chatlogs, und alle gespendeten Logs sind Gamelogs.",
+   "Neu ist auch eine Prüfung, die beide Richtungen festhält, und zwei Werkzeuge im Prüfordner laufen wieder: sie hatten beim Verschieben in den Unterordner eine Pfadebene verloren und starteten gar nicht mehr."
+  ],
+  "en": [
+   "A second template for „Attack of the Drones“, reported by Nirahse. It was his second report about the same mission: the first from 13 August had long been built in, and still the new run came up unnamed.",
+   "The reason is instructive. His two runs of the same mission share only 7 of 13 enemy types, that is 53.8 percent. The threshold for shared templates is 80. Even the core of both reports would not have carried, 7 enemies against 10 each is 70 percent. This mission rolls its rats too freely for one run to recognise the next.",
+   "So two templates now sit under the same name, which the template file explicitly allows: the same mission is offered by different agents and then brings different rats. Checked against 3,180 real combat stretches from 1,433 donated log files: not a single false hit, the closest case was 77 percent. Both reported runs are recognised, an ordinary drone fight is not.",
+   "Said plainly: recognition stays shaky for this mission. A third run with yet other rats may well come up unnamed again. The safe route would be the NPC chatter, which is identical character for character in both reports, but there is no body of evidence for it: that chatter lives in the local chat logs, and every donated log is a game log.",
+   "Also new is a test that pins down both directions, and two tools in the test folder work again: they had lost a path level when they were moved into a subfolder and would not start at all."
+  ]
+ },
+ {
   "v": "3.0.4",
   "d": "2026-09-11",
   "de": [

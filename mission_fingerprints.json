@@ -82,6 +82,23 @@
    ],
    "n": 1,
    "q": "Meldung #11 von Nirahse, 15.08.2026. Blood Raiders L4. Die Kathedrale allein ist KEINE Signatur: sie steht auch in der Anomalie Blood Raider Cathedral Base, an 4 echten Anomalie-Laeufen gemessen (19 bis 22 Prozent Aehnlichkeit). Vorlage gegen 213 fremde Kampf-Abschnitte gehalten: 0 Fehltreffer bei 80 Prozent, hoechster fremder Wert 32."
+  },
+  {
+   "m": "Attack of the Drones",
+   "g": [
+    "alvus ruler",
+    "atomizer alvum",
+    "bomber alvum",
+    "defeater alvatis",
+    "dismantler alvior",
+    "predator alvior",
+    "siege alvatis",
+    "strain infester alvi",
+    "strain render alvi",
+    "supreme alvus parasite"
+   ],
+   "n": 1,
+   "q": "Nirahse, Meldung #12, 30.08.2026. ZWEITE Variante derselben Mission: gegen die Vorlage aus Meldung #9 nur 53,8 % aehnlich, 7 von 13 Gegnertypen. Der Kern aus beiden Meldungen haette nur 7 Gegner und damit 70 % gegen jeden der beiden Laeufe, also ebenfalls unter der Schwelle von 80 % fuer geteilte Vorlagen. Deshalb zwei getrennte Vorlagen, siehe _mehrere. Kollision geprueft an 3.180 Kampf-Abschnitten aus 1.433 gespendeten Logdateien: kein einziger Treffer, der engste Fall lag bei 77 %."
   }
  ]
 }
