@@ -1,5 +1,21 @@
 [
  {
+  "v": "3.0.4",
+  "d": "2026-09-11",
+  "de": [
+   "Canary warnt nicht mehr über Charaktere, die gar nicht mehr im Spiel sind. Gemeldet von Nirahse: „Nicht mehr laufende Mining Laser werden gemeldet, obwohl der Char schon ausgeloggt ist.“ Und Vile Gangster direkt darauf: „Stimmt, ist mir auch schon aufgefallen, plus dass auf einmal eine Soundmeldung kommt, dass die Minilaser von Char X aus sind, man was hab ich erschrocken. Char war natürlich schon ausgeloggt.“",
+   "Betroffen waren genau zwei Warnungen: „Seit X Minuten kein Erz“ und „Abbaurate nur noch X%“. Alle anderen hängen an einer frischen Logzeile und können für einen ausgeloggten Charakter gar nicht auslösen. Diese beiden brauchen keine Zeile, nur Zeit, und genau das war die Lücke. Der Schreck mit dem Ton kommt aus derselben Quelle: die Oberfläche macht aus der Alarmliste Klang und Sprachansage, wer den Alarm verhindert, verhindert beides.",
+   "Erkannt wird das über den Online-Status aus dem EVE-Login. Aus dem Logbuch allein geht es nicht: ein ausgeloggter Charakter schreibt gar keine Zeilen mehr, und das sieht genauso aus wie ein Laser, der stillsteht. Der Status ist 60 Sekunden zwischengespeichert und wird alle zwei Minuten geholt, Canary weiß also nach spätestens rund drei Minuten Bescheid. Kam in dieser Lücke noch eine Warnung durch, wird sie zurückgenommen, samt Merker: wer sich wieder einloggt und dessen Laser wirklich steht, wird erneut gewarnt.",
+   "Ohne EVE-Login bleibt es beim bisherigen Behelf über die Log-Aktivität. Und die Regel dafür steht jetzt an EINER Stelle: die Charakterkarte benutzte sie längst, der Alarm nicht. Zwei Fassungen derselben Regel gehen irgendwann auseinander, und hier waren sie schon auseinander."
+  ],
+  "en": [
+   "Canary no longer warns about characters who are not in the game any more. Reported by Nirahse: „mining lasers that stopped are reported even though the char has already logged off.“ And Vile Gangster right after: „true, I noticed that too, plus a sound alert suddenly telling me the mining lasers of char X are off, and boy did that startle me. The char had of course already logged off.“",
+   "Exactly two warnings were affected: „no ore for X minutes“ and „mining rate down to X%“. All the others hang off a fresh log line and cannot fire for a logged off character at all. These two need no line, only time, and that was the gap. The fright with the sound comes from the same source: the interface turns the alert list into sound and speech, so preventing the alert prevents both.",
+   "It is detected through the online status from the EVE login. The log alone cannot do it: a logged off character writes no lines at all, which looks exactly like a laser standing still. The status is cached for 60 seconds and fetched every two minutes, so Canary knows within about three minutes. If a warning slipped through that gap it is withdrawn, along with its marker: log back in with a laser that really is stopped and you get warned again.",
+   "Without an EVE login the previous fallback over log activity stays. And the rule now lives in ONE place: the character card had been using it all along, the alert had not. Two versions of the same rule drift apart eventually, and here they already had."
+  ]
+ },
+ {
   "v": "3.0.3",
   "d": "2026-09-11",
   "de": [

@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "3.0.3"
+VERSION = "3.0.4"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -767,6 +767,31 @@ ESI_PRICE_TTL = 300          # ESI cached Orders 5 min — so lange halten auch 
 PORT_DEFAULT = 8765
 SESSION_MAX_AGE = 3 * 3600  # Log länger unverändert -> Session gilt als beendet, keine Live-Karte
 ACTIVE_WINDOW = 300  # ohne Log-Ereignis in den letzten X s gilt ein Char als inaktiv
+
+
+def char_aktiv(s):
+    """Ist dieser Charakter gerade im Spiel?
+
+    Zuerst ESI: der Online-Status ist die einzige verlaessliche Auskunft. Ein
+    ausgeloggter Char schreibt naemlich gar keine Logzeilen mehr, und das
+    sieht aus dem Log genauso aus wie einer, dessen Laser stillsteht. Genau
+    daran ist die Stillstands-Warnung gescheitert.
+
+    MELDUNG Nirahse, 10.09.2026: "Nicht mehr laufende Mining Laser werden
+    gemeldet, obwohl der Char schon ausgeloggt ist." Und Vile Gangster
+    daraufhin: "plus dass auf einmal eine Soundmeldung kommt, dass die
+    Minilaser von Char X aus sind, man was hab ich erschrocken. Char war
+    natuerlich schon ausgeloggt."
+
+    Ohne EVE-Login bleibt nur die Log-Aktivitaet als Behelf. Die Karte hat
+    diese Regel laengst benutzt, der Alarm nicht: deshalb steht sie jetzt
+    hier und wird von beiden aufgerufen."""
+    ec = (CONFIG.get("esi") or {}).get("chars", {}).get(s.name)
+    online = (ec or {}).get("online")
+    if isinstance(online, bool):
+        return online
+    return (s.last_event_ts is not None
+            and (time.time() - s.last_event_ts) < ACTIVE_WINDOW)
 # Schweres Wasser pro Sekunde Kernlaufzeit (ESI-Dogma: Medium/Large Industrial Core,
 # T1 = 100/min, T2 = 200/min — gilt für Porpoise und Orca gleichermassen)
 HW_RATE = {"t1": 100 / 60.0, "t2": 200 / 60.0}
@@ -4691,6 +4716,19 @@ class Ingest(threading.Thread):
                     # Rauschen. (base-cur) = fehlende m³/min, mal Intervall in Minuten.
                     if base > 0 and cur < 0.85 * base:
                         s.lost_m3 += (base - cur) * (dt / 60.0)
+                # Wer nicht im Spiel ist, bekommt keine Mining-Warnung, und
+                # eine schon stehende wird zurueckgenommen. Sonst meldet
+                # Canary noch minutenlang einen Stillstand, den niemand
+                # beheben kann, samt Sprachansage (Nirahse und Vile Gangster,
+                # 10.09.2026). Die Marken werden mit zurueckgesetzt: loggt er
+                # wieder ein und der Laser steht wirklich, soll die Warnung
+                # erneut kommen duerfen.
+                if not char_aktiv(s):
+                    alerts.resolve(("idle", "rate"), s.name)
+                    s.idle_alerted = False
+                    s.low_alerted = False
+                    s.low_since = None
+                    continue
                 if thr <= 0:
                     continue
                 # Command Ships / Booster (Orca/Porpoise/Rorqual oder laufender
@@ -10740,9 +10778,7 @@ def snapshot_live():
         esi_char = (CONFIG.get("esi") or {}).get("chars", {}).get(s.name)
         # Aktiv/Online: ESI-Online-Status falls vorhanden (Scope granted), sonst
         # Log-Aktivität (letztes Ereignis < ACTIVE_WINDOW). Fallback deckt alle Chars ab.
-        esi_online = (esi_char or {}).get("online")
-        log_active = s.last_event_ts is not None and (time.time() - s.last_event_ts) < ACTIVE_WINDOW
-        active = esi_online if isinstance(esi_online, bool) else log_active
+        active = char_aktiv(s)
         # Porpoise/Orca/Rorqual minern nur mit Drohnen (kein Strip Miner) -> keine
         # Laser-Warnungen. Läuft ein Industriekern, ist es ebenfalls so ein Boost-Schiff.
         _shipname = (esi_char or {}).get("ship") or ""
