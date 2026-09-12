@@ -1,5 +1,23 @@
 [
  {
+  "v": "3.3.0",
+  "d": "2026-09-12",
+  "de": [
+   "Behebt den zu hohen Fuellstand im Overlay, gemeldet von Nirahse: „Overlay zeigt mehr an als der tatsaechliche Fuellstand. Der Unterschied veraendert sich mit zunehmendem Fuellstand, ist also keine Konstante.“ Sein Balken stand auf 6.000 von 11.500 m³ (52 Prozent), das Inventarfenster im Spiel auf 1.653,5 (14 Prozent).",
+   "Zuerst seine Frage: nein, der naechste Foerderzyklus wird nicht vorweggenommen. Jede Menge zaehlt erst, wenn ihre Logzeile da ist. Der Balken mischt zwei Quellen, die ESI-Messung des Erzladeraums (genau, aber bis zu eine Stunde alt) und die Zaehlung aus den Gamelogs (sekundengenau). Addiert werden darf nur die Veraenderung seit der Messung, und dafuer muss zu der Messung ein Log-Stand desselben Augenblicks gehoeren.",
+   "Genau der fehlte. War der Charakter beim Abgleich nicht eingeloggt, setzte Canary den Log-Bezugspunkt stillschweigend auf null und behauptete damit „Laderaum war X, Zaehlung war null“. Nach dem Einloggen landete jedes gefoerderte m³ auf einem bis zu eine Stunde alten Laderaum obendrauf. Jetzt gilt ein Anker ohne Bezugspunkt nicht mehr.",
+   "Zweite Ursache: EVE protokolliert Ladungstransfers nicht. Wer in eine Orca umlaedt, hat einen leeren Laderaum, den die Zaehlung weiter als voll fuehrt. Beweisbar wird es an der Obergrenze, denn mehr als seine Kapazitaet fasst kein Laderaum. An Nirahses eigenen Logs gemessen, 84 Mining-Sitzungen: in 9 von 28 Sitzungen mit bekanntem Schiff (32,1 Prozent) stieg die Schaetzung ueber den echten Laderaum, viermal ueber das Dreifache, im Hoechstfall auf 44.297 m³ in einem Hulk mit 11.500. Ab dieser Grenze gilt die Messung statt der Zaehlung.",
+   "Und der Balken sagt jetzt selbst, woraus er besteht: satt gezeichnet ist der gemessene Teil, blass der aus den Gamelogs dazugezaehlte, dahinter steht das Alter der Messung. In allen vier Ansichten, also Laderaum-Kachel, OBS-Overlay und beide Fassungen des allgemeinen Overlays."
+  ],
+  "en": [
+   "Fixes the ore hold bar reading too high in the overlay, reported by Nirahse: “the overlay shows more than the actual fill level, and the difference changes as the hold fills, so it is not a constant.” His bar said 6,000 of 11,500 m³ (52 per cent) while the in-game inventory said 1,653.5 (14 per cent).",
+   "His question first: no, the next mining cycle is not counted in advance. Every amount counts once its log line appears. The bar mixes two sources, the ESI measurement of the ore hold (exact, but up to an hour old) and the count from the game logs (accurate to the second). Only the change since the measurement may be added, and that requires a log reading from the same moment.",
+   "That reading was missing. If the character was not logged in during the check, Canary quietly set the log reference to zero, claiming “hold was X, count was zero”. After logging in, every cubic metre mined landed on top of an up to hour-old hold. An anchor without a reference point no longer counts.",
+   "Second cause: EVE does not log cargo transfers. Unload into an Orca and your hold is empty while the count still calls it full. The capacity proves it, because no hold takes more than it holds. Measured against Nirahse's own logs, 84 mining sessions: in 9 of the 28 sessions with a known ship (32.1 per cent) the estimate rose above the real ore hold, four times above three times its size, at most to 44,297 m³ in a Hulk holding 11,500. Past that line the measurement wins.",
+   "And the bar now says what it is made of: solid is the measured part, pale what the game logs added since, with the age of the measurement behind it. In all four views, that is the ore hold tile, the OBS overlay and both versions of the general overlay."
+  ]
+ },
+ {
   "v": "3.2.1",
   "d": "2026-09-12",
   "de": [

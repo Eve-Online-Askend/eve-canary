@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "3.2.1"
+VERSION = "3.3.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -7610,8 +7610,24 @@ class Esi(threading.Thread):
             # alt (gemessen: Fenster exakt 3.600 s), die Logs sind
             # sekundengenau. Wer beides zusammenlegt, bekommt einen Balken,
             # der live mitlaeuft und sich stuendlich selbst geraderueckt.
+            # log_hold_m3 gibt None zurueck, wenn fuer den Charakter gerade
+            # keine Sitzung laeuft, also wenn er nicht eingeloggt ist. Das
+            # frueher hier stehende "or 0" machte daraus eine 0 und damit die
+            # Behauptung "Laderaum war X m3, Log-Stand war null". Loggte er
+            # sich danach ein, landete jedes gefoerderte m3 auf einem bis zu
+            # eine Stunde alten Laderaum obendrauf.
+            #
+            # MELDUNG Nirahse, 12.09.2026: "Overlay zeigt mehr an als der
+            # tatsaechliche Fuellstand." Sein Balken stand auf 6.000 von
+            # 11.500 m3 (52 %), das Spiel zeigte 1.653,5 (14 %). Genau diese
+            # Rechnung: 4.347 alter Anker plus 1.653 gezaehlt.
+            #
+            # Jetzt sagt ohne_log, dass zu dieser Messung kein Log-Stand
+            # gehoert. Ohne Bezugspunkt gilt der Anker nicht.
+            lade_log = log_hold_m3(name)
             c["ore_hold"] = {"m3": round(erz_m3), "as_of": int(asof),
-                             "next": int(nxt), "log_m3": log_hold_m3(name) or 0}
+                             "next": int(nxt), "log_m3": lade_log or 0,
+                             "ohne_log": lade_log is None}
 
     def loc_info(self, c, loc_id):
         """Name + Typ-ID eines Lagerorts (Typ-ID fuer das Stations-Icon). NPC-Stationen
@@ -9637,15 +9653,50 @@ const dauerMS=s=>{s=Math.max(0,Math.round(s||0));
 // soll, ist das die falsche Stelle zum Runden.
 const m3kurz=n=>{n=Math.round(n||0); const a=Math.abs(n);
  return a>=1e5?fmt(Math.round(n/1e3))+' K':a>=1e3?nk(n/1e3,1)+' K':fmt(n);};
+// Zwei Quellen, ein Balken: die ESI-Messung des Erzladeraums ist genau,
+// aber bis zu eine Stunde alt (gemessen: Expires minus Last-Modified ist
+// exakt 3.600 s), die Gamelogs sind sekundengenau, sehen aber nur, was
+// gefoerdert und komprimiert wird. Addiert werden darf nur die VERAENDERUNG
+// seit der Messung, und das setzt voraus, dass zu der Messung ein Log-Stand
+// desselben Augenblicks gehoert.
+//
+// Rueckgabe: m3/cap/pct wie bisher, dazu
+//   gemessen  Zeitpunkt der ESI-Messung, 0 = reine Log-Schaetzung
+//   mess      der Teil von m3, der gemessen ist (Rest ist gezaehlt)
+//   ueber     die Log-Zaehlung lag ueber dem Laderaum, also wurde ohne
+//             Logzeile abgeladen
 function erzFuellung(c){
  const cap=(c&&c.ore_cap)||0;
  if(!cap)return null;              // Schiff ohne Erzladeraum: kein Balken
  const log=(c&&c.hold_m3)||0, oh=c&&c.ore_hold;
- let m3=log, gemessen=0;
- if(oh&&typeof oh.m3==='number'&&log>=(oh.log_m3||0)){
-  m3=oh.m3+(log-(oh.log_m3||0)); gemessen=oh.as_of||0;
+ const mess=(oh&&typeof oh.m3==='number')?oh.m3:null;
+ // Kein Bezugspunkt, kein Anker. ohne_log heisst: der Charakter war beim
+ // Abgleich nicht eingeloggt, es gibt keinen Log-Stand zu dieser Messung.
+ const bez=(mess!==null&&!oh.ohne_log&&typeof oh.log_m3==='number')?oh.log_m3:null;
+ let m3=log, gemessen=0, anteil=0;
+ if(bez!==null&&log>=bez){
+  m3=mess+(log-bez); gemessen=oh.as_of||0; anteil=mess;
  }
- return {m3:m3,cap:cap,pct:Math.max(0,Math.min(100,m3*100/cap)),gemessen:gemessen};
+ // BEWEISBAR ZU VIEL: in einen Erzladeraum passt nicht mehr als seine
+ // Kapazitaet. Steht die Rechnung darueber, hat Erz den Laderaum ohne
+ // Logzeile verlassen (Umladen in eine Orca, in einen Behaelter, an einen
+ // Mitspieler). EVE protokolliert Ladungstransfers nicht, die Zaehlung kann
+ // das also nicht wissen, aber die Obergrenze verraet es.
+ //
+ // An Nirahses eigenen Logs gemessen, 84 Mining-Sitzungen: in 9 von 28
+ // Sitzungen mit bekanntem Schiff (32,1 %) stieg die Log-Schaetzung ueber
+ // den echten Laderaum, viermal ueber das Dreifache, im Hoechstfall auf
+ // 44.297 m3 in einem Hulk mit 11.500. Ab hier gilt die Messung.
+ let ueber=false;
+ if(m3>cap*1.02){
+  ueber=true;
+  if(mess!==null){m3=Math.min(mess,cap); gemessen=oh.as_of||0; anteil=m3;}
+  else m3=cap;
+ }
+ if(m3>cap)m3=cap;
+ if(anteil>m3)anteil=m3;
+ return {m3:m3,cap:cap,pct:Math.max(0,Math.min(100,m3*100/cap)),
+         gemessen:gemessen,mess:anteil,ueber:ueber};
 }
 // --- Ende Zahlen ---------------------------------------------------------
 
@@ -9773,9 +9824,22 @@ function fuellBalken(c) {
     : 'Nur aus den Gamelogs geschätzt. ';
   const tip = fmt(Math.round(f.m3)) + ' von ' + fmt(f.cap) + ' m³ ('
     + Math.round(f.pct) + '%). ' + alt
-    + 'Wer in eine Orca ablädt, sieht hier zu viel: das steht in keinem Log.';
+    + (f.ueber
+        ? 'Die Zählung lag über dem Laderaum, es wurde also ohne Logzeile '
+          + 'abgeladen. Gezeigt wird deshalb die gemessene Zahl.'
+        : !f.gemessen
+        ? 'Ohne Messung ist der ganze Balken blass gezeichnet.'
+        : 'Satt gezeichnet ist der gemessene Teil, blass der aus den '
+          + 'Gamelogs dazugezählte.');
+  // Zwei Streifen uebereinander: der blasse ist der ganze Stand, der satte
+  // der gemessene Teil davon. Beide liegen auf left:0, der zweite malt
+  // ueber den ersten. Braucht kein eigenes CSS.
+  const mp = f.m3 > 0 ? Math.min(100, f.mess * 100 / f.m3) : 0;
   return '<div class="hold" title="' + esc(tip) + '">'
-    + '<div class="holdf ' + cls + '" style="width:' + f.pct.toFixed(1) + '%"></div>'
+    + '<div class="holdf ' + cls + '" style="opacity:.4;width:'
+    + f.pct.toFixed(1) + '%"></div>'
+    + (mp > 0 ? '<div class="holdf ' + cls + '" style="width:'
+        + (f.pct * mp / 100).toFixed(1) + '%"></div>' : '')
     + '<span class="holdt">' + m3kurz(f.m3) + ' / ' + m3kurz(f.cap)
     + ' m³ &middot; ' + Math.round(f.pct) + '%</span></div>';
 }
@@ -18099,15 +18163,50 @@ const dauerMS=s=>{s=Math.max(0,Math.round(s||0));
 // soll, ist das die falsche Stelle zum Runden.
 const m3kurz=n=>{n=Math.round(n||0); const a=Math.abs(n);
  return a>=1e5?fmt(Math.round(n/1e3))+' K':a>=1e3?nk(n/1e3,1)+' K':fmt(n);};
+// Zwei Quellen, ein Balken: die ESI-Messung des Erzladeraums ist genau,
+// aber bis zu eine Stunde alt (gemessen: Expires minus Last-Modified ist
+// exakt 3.600 s), die Gamelogs sind sekundengenau, sehen aber nur, was
+// gefoerdert und komprimiert wird. Addiert werden darf nur die VERAENDERUNG
+// seit der Messung, und das setzt voraus, dass zu der Messung ein Log-Stand
+// desselben Augenblicks gehoert.
+//
+// Rueckgabe: m3/cap/pct wie bisher, dazu
+//   gemessen  Zeitpunkt der ESI-Messung, 0 = reine Log-Schaetzung
+//   mess      der Teil von m3, der gemessen ist (Rest ist gezaehlt)
+//   ueber     die Log-Zaehlung lag ueber dem Laderaum, also wurde ohne
+//             Logzeile abgeladen
 function erzFuellung(c){
  const cap=(c&&c.ore_cap)||0;
  if(!cap)return null;              // Schiff ohne Erzladeraum: kein Balken
  const log=(c&&c.hold_m3)||0, oh=c&&c.ore_hold;
- let m3=log, gemessen=0;
- if(oh&&typeof oh.m3==='number'&&log>=(oh.log_m3||0)){
-  m3=oh.m3+(log-(oh.log_m3||0)); gemessen=oh.as_of||0;
+ const mess=(oh&&typeof oh.m3==='number')?oh.m3:null;
+ // Kein Bezugspunkt, kein Anker. ohne_log heisst: der Charakter war beim
+ // Abgleich nicht eingeloggt, es gibt keinen Log-Stand zu dieser Messung.
+ const bez=(mess!==null&&!oh.ohne_log&&typeof oh.log_m3==='number')?oh.log_m3:null;
+ let m3=log, gemessen=0, anteil=0;
+ if(bez!==null&&log>=bez){
+  m3=mess+(log-bez); gemessen=oh.as_of||0; anteil=mess;
  }
- return {m3:m3,cap:cap,pct:Math.max(0,Math.min(100,m3*100/cap)),gemessen:gemessen};
+ // BEWEISBAR ZU VIEL: in einen Erzladeraum passt nicht mehr als seine
+ // Kapazitaet. Steht die Rechnung darueber, hat Erz den Laderaum ohne
+ // Logzeile verlassen (Umladen in eine Orca, in einen Behaelter, an einen
+ // Mitspieler). EVE protokolliert Ladungstransfers nicht, die Zaehlung kann
+ // das also nicht wissen, aber die Obergrenze verraet es.
+ //
+ // An Nirahses eigenen Logs gemessen, 84 Mining-Sitzungen: in 9 von 28
+ // Sitzungen mit bekanntem Schiff (32,1 %) stieg die Log-Schaetzung ueber
+ // den echten Laderaum, viermal ueber das Dreifache, im Hoechstfall auf
+ // 44.297 m3 in einem Hulk mit 11.500. Ab hier gilt die Messung.
+ let ueber=false;
+ if(m3>cap*1.02){
+  ueber=true;
+  if(mess!==null){m3=Math.min(mess,cap); gemessen=oh.as_of||0; anteil=m3;}
+  else m3=cap;
+ }
+ if(m3>cap)m3=cap;
+ if(anteil>m3)anteil=m3;
+ return {m3:m3,cap:cap,pct:Math.max(0,Math.min(100,m3*100/cap)),
+         gemessen:gemessen,mess:anteil,ueber:ueber};
 }
 // --- Ende Zahlen ---------------------------------------------------------
 // HTML-Escape: Spieler-/Corp-/Schiffsnamen aus Logs, ESI und zKillboard sind
@@ -20468,12 +20567,22 @@ function ladeBalken(c){
   :(en?'Estimated from the game logs only. ':'Nur aus den Gamelogs geschätzt. ');
  const tip=fmt(Math.round(f.m3))+(en?' of ':' von ')+fmt(f.cap)+' m³ ('
   +Math.round(f.pct)+'%). '+alt
-  +(en?'Unloading into an Orca shows too much here: no log records it.'
-      :'Abladen in eine Orca zeigt hier zu viel: das steht in keinem Log.');
+  +(f.ueber
+    ?(en?'The log count exceeded the ore hold, so ore was unloaded without a log line. The measured figure is shown instead.'
+        :'Die Zählung lag über dem Laderaum, es wurde also ohne Logzeile abgeladen. Gezeigt wird deshalb die gemessene Zahl.')
+    :!f.gemessen
+    ?(en?'Without a measurement the whole bar is drawn pale.'
+        :'Ohne Messung ist der ganze Balken blass gezeichnet.')
+    :(en?'Solid is the measured part, pale what the game logs added since.'
+        :'Satt gezeichnet ist der gemessene Teil, blass der aus den Gamelogs dazugezählte.'));
+ // Blasser Streifen = ganzer Stand, satter Streifen = gemessener Teil.
+ const mp=f.m3>0?Math.min(100,f.mess*100/f.m3):0;
  return '<div title="'+esc(tip)+'" style="position:relative;height:10px;'
   +'margin-top:6px;border-radius:5px;background:var(--line);overflow:hidden">'
   +'<div style="position:absolute;left:0;top:0;bottom:0;border-radius:5px;'
-  +'transition:width .4s ease;width:'+f.pct.toFixed(1)+'%;background:'+farbe+'"></div>'
+  +'transition:width .4s ease;opacity:.4;width:'+f.pct.toFixed(1)+'%;background:'+farbe+'"></div>'
+  +(mp>0?'<div style="position:absolute;left:0;top:0;bottom:0;border-radius:5px;'
+    +'transition:width .4s ease;width:'+(f.pct*mp/100).toFixed(1)+'%;background:'+farbe+'"></div>':'')
   +'<span style="position:absolute;left:0;right:0;top:0;text-align:center;'
   +'font-size:8px;font-weight:700;line-height:10px;color:#fff;'
   +'text-shadow:0 1px 2px rgba(0,0,0,.95)">'+Math.round(f.pct)+'%</span></div>';
@@ -21178,6 +21287,8 @@ border-radius:8px;padding:6px 10px;margin-bottom:5px}
 .ovh{height:3px;border-radius:2px;background:#1e2636;margin-top:1px;
  overflow:hidden}
 .ovh i{display:block;height:3px;border-radius:2px}
+/* Der satte Teil im blassen Balken: gemessen gegen gezaehlt. */
+.ovh i b{display:block;height:3px;border-radius:2px}
 .ovht{font-size:9px;color:#8a97a8;line-height:1.3;margin-top:1px}
 /* Flottensumme, abgesetzt durch eine Linie statt durch einen weiteren Kasten:
    im Overlay ist jeder Rahmen ein Stueck Hoehe, das im Stream fehlt. */
@@ -21259,10 +21370,20 @@ function drawOverlayCanvas(d){
   if(fv){
    const bx=26, bw=W-36-bx, by=y-8;
    x.fillStyle='#1e2636';x.fillRect(bx,by,bw,3);
-   x.fillStyle=fv.pct>=95?'#e8564f':fv.pct>=80?'#e8c645':'#4fd47f';
-   x.fillRect(bx,by,Math.max(1,bw*Math.min(100,fv.pct)/100),3);
+   const fc=fv.pct>=95?'#e8564f':fv.pct>=80?'#e8c645':'#4fd47f';
+   // Dieselbe Zweiteilung wie in der HTML-Fassung: blass der ganze Stand,
+   // satt der gemessene Teil davon.
+   const wt=Math.max(1,bw*Math.min(100,fv.pct)/100);
+   const wm=fv.m3>0?wt*Math.min(1,fv.mess/fv.m3):0;
+   x.globalAlpha=.35;x.fillStyle=fc;x.fillRect(bx,by,wt,3);x.globalAlpha=1;
+   if(wm>=1){x.fillStyle=fc;x.fillRect(bx,by,wm,3);}
+   const fa=fv.gemessen
+    ?' · '+(lang==='en'?'measured ':'gemessen vor ')
+      +Math.round((Date.now()/1000-fv.gemessen)/60)
+      +(lang==='en'?' min ago':' min')
+    :' · '+(lang==='en'?'log estimate':'aus Logs geschätzt');
    x.textAlign='left';x.fillStyle='#8a94a6';x.font='10px sans-serif';
-   x.fillText(m3kurz(fv.m3)+' / '+m3kurz(fv.cap)+' m³ · '+Math.round(fv.pct)+'%',bx,by+13);
+   x.fillText(m3kurz(fv.m3)+' / '+m3kurz(fv.cap)+' m³ · '+Math.round(fv.pct)+'%'+fa,bx,by+13);
    y+=18;
   }
  });
@@ -21401,8 +21522,21 @@ function ovBalken(c){
  // 28,7 Prozent, aber zwei Hulks mit demselben Laderaum bekamen
  // verschieden lange Balken, weil "Nirahse Haginen" laenger ist als
  // "Miko Tadaki".
- return `<div class="ovhw"><div class="ovh"><i style="width:${f.pct.toFixed(1)}%;background:${farbe}"></i></div>`
-  +`<div class="ovht">${m3kurz(f.m3)} / ${m3kurz(f.cap)} m³ · ${Math.round(f.pct)}%</div></div>`;
+ //
+ // MELDUNG Nirahse, 12.09.2026: "Wie rechnet das Overlay den Fuellstand?
+ // Anzeige und Live-Stand sind nicht gleich." Deshalb sagt der Balken
+ // jetzt selbst, woraus er besteht: satt der gemessene Teil, blass der
+ // aus den Gamelogs dazugezaehlte, und im Text steht das Alter der
+ // Messung. Wer eine Zahl sieht, soll auch sehen, wie sicher sie ist.
+ const mp=f.m3>0?Math.min(100,f.mess*100/f.m3):0;
+ const en=lang==='en';
+ const alt=f.gemessen
+  ?' · '+(en?'measured ':'gemessen vor ')
+    +Math.round((Date.now()/1000-f.gemessen)/60)+(en?' min ago':' min')
+  :' · '+(en?'log estimate':'aus Logs geschätzt');
+ return `<div class="ovhw"><div class="ovh"><i style="width:${f.pct.toFixed(1)}%;background:${farbe}55">`
+  +`<b style="width:${mp.toFixed(1)}%;background:${farbe}"></b></i></div>`
+  +`<div class="ovht">${m3kurz(f.m3)} / ${m3kurz(f.cap)} m³ · ${Math.round(f.pct)}%${alt}</div></div>`;
 }
 
 async function overlayTick(){

@@ -1,5 +1,5 @@
 {
- "version": "3.2.1",
+ "version": "3.3.0",
  "files": [
   "eve_dashboard.py",
   "ore_types.json",
@@ -23,5 +23,5 @@
   "install.sh"
  ],
  "repo": "Eve-Online-Askend/eve-canary",
- "tag": "v3.2.1"
+ "tag": "v3.3.0"
 }
