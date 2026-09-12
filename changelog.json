@@ -1,5 +1,21 @@
 [
  {
+  "v": "3.2.1",
+  "d": "2026-09-12",
+  "de": [
+   "Behebt die unterschiedlich langen Laderaum-Balken im Overlay, gemeldet von Nirahse: „Die Längen sind unterschiedlich. Orientiert sich an der Länge des Strings / Namens darüber.“ Genau so war es, und die Diagnose saß auf den Punkt.",
+   "Der Balken stand in derselben Spalte wie Name und Schiff, und die hatte keine Breitenangabe: sie war so breit wie ihr längster Text. Die Prozentzahl war jedes Mal richtig, nur bedeuteten ihre 100 Prozent bei jedem Charakter etwas anderes. In seinem Bild bekamen zwei Hulks mit demselben Laderaum verschieden lange Balken, weil „Nirahse Haginen“ mehr Zeichen hat als „Miko Tadaki“.",
+   "Jetzt hat der Balken seine eigene Zeile über die volle Breite. Im echten Overlay-Stylesheet bei 380 Pixeln nachgemessen, mit seinen drei Charakteren: vorher hing die Rahmenbreite am Namen, jetzt sind alle drei Rahmen 339 Pixel breit und nur die Füllung unterscheidet sich, 28, 100 und 97 Pixel bei 8,2, 29,6 und 28,7 Prozent. Der Umbruch kostet zwei Pixel Höhe, im Overlay ist jede Zeile Platz, der im Stream fehlt.",
+   "Die gezeichnete Fassung für Firefox und Safari war nie betroffen: dort steht die Breite als Rechnung im Code und hing nie am Text. Fünf neue Prüfungen halten beide Fassungen jetzt darauf fest."
+  ],
+  "en": [
+   "Fixes the unequal ore hold bars in the overlay, reported by Nirahse: „the lengths differ. It follows the length of the string / name above it.“ That is exactly what happened, and the diagnosis was spot on.",
+   "The bar sat in the same column as the name and ship, and that column had no width of its own: it was as wide as its longest text. The percentage was right every time, but its 100 percent meant something different for each character. In his screenshot two Hulks with the same ore hold got bars of different length, because „Nirahse Haginen“ has more characters than „Miko Tadaki“.",
+   "The bar now has a row of its own across the full width. Measured in the real overlay stylesheet at 380 pixels with his three characters: the frame width used to follow the name, now all three frames are 339 pixels and only the fill differs, 28, 100 and 97 pixels at 8.2, 29.6 and 28.7 percent. The extra row costs two pixels of height; in an overlay every row is space missing from the stream.",
+   "The drawn version for Firefox and Safari was never affected: there the width is a calculation in code and never followed the text. Five new tests now hold both versions to it."
+  ]
+ },
+ {
   "v": "3.2.0",
   "d": "2026-09-11",
   "de": [

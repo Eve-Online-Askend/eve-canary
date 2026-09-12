@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "3.2.0"
+VERSION = "3.2.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -21149,8 +21149,16 @@ body{background:#0b0e14;padding:8px;overflow-y:auto}
 .hd{display:flex;justify-content:space-between;align-items:center;font-size:9px;
 letter-spacing:1.5px;color:#5d6b80;margin-bottom:6px}
 .hd b{color:#35c8e8}
-.row{display:flex;align-items:center;gap:8px;background:#121722;border:1px solid #1e2636;
+/* flex-wrap, damit der Laderaum-Balken in eine EIGENE Zeile rutscht und
+   die volle Breite bekommt. row-gap bleibt klein: im Overlay ist jede
+   Zeile Hoehe, die im Stream fehlt. */
+.row{display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;
+row-gap:2px;background:#121722;border:1px solid #1e2636;
 border-radius:8px;padding:6px 10px;margin-bottom:5px}
+/* Name, Schiff und Status nehmen den Platz zwischen Punkt und ISK.
+   Ohne flex:1 war diese Spalte so breit wie ihr laengster Text, und
+   genau daran hing die Balkenlaenge (Nirahse, 12.09.2026). */
+.ovmid{flex:1;min-width:0}
 .dot{width:9px;height:9px;border-radius:50%;flex:none}
 .ok{background:#4fd47f}.warn{background:#e8c645}
 .bad{background:#e8564f;animation:p .9s infinite}
@@ -21166,7 +21174,8 @@ border-radius:8px;padding:6px 10px;margin-bottom:5px}
    bekommst das auch in die Overview rein unter den Char?"). Drei Pixel
    hoch: im Overlay ist jede Zeile Hoehe, die im Stream fehlt, und die
    Farbe traegt die Information ohnehin allein. */
-.ovh{height:3px;border-radius:2px;background:#1e2636;margin-top:3px;
+.ovhw{flex-basis:100%;min-width:100%}
+.ovh{height:3px;border-radius:2px;background:#1e2636;margin-top:1px;
  overflow:hidden}
 .ovh i{display:block;height:3px;border-radius:2px}
 .ovht{font-size:9px;color:#8a97a8;line-height:1.3;margin-top:1px}
@@ -21381,8 +21390,19 @@ function ovBalken(c){
  const f=erzFuellung(c);
  if(!f)return '';
  const farbe=f.pct>=95?'#e8564f':f.pct>=80?'#e8c645':'#4fd47f';
- return `<div class="ovh"><i style="width:${f.pct.toFixed(1)}%;background:${farbe}"></i></div>`
-  +`<div class="ovht">${m3kurz(f.m3)} / ${m3kurz(f.cap)} m³ · ${Math.round(f.pct)}%</div>`;
+ // EIN Block, der in der Zeile umbricht und die VOLLE Breite nimmt.
+ //
+ // MELDUNG Nirahse, 12.09.2026: "Die Laengen sind unterschiedlich.
+ // Orientiert sich an der Laenge des Strings / Namens darueber." Er hatte
+ // genau recht. Der Balken stand in der Spalte mit Name und Schiff, und die
+ // hat keine Flex-Angabe: sie ist so breit wie ihr laengster Text. Die
+ // Prozentzahl war richtig, nur ihre 100 Prozent bedeuteten bei jedem
+ // Charakter etwas anderes. Nachgemessen an seinen dreien: 8,2 / 29,6 /
+ // 28,7 Prozent, aber zwei Hulks mit demselben Laderaum bekamen
+ // verschieden lange Balken, weil "Nirahse Haginen" laenger ist als
+ // "Miko Tadaki".
+ return `<div class="ovhw"><div class="ovh"><i style="width:${f.pct.toFixed(1)}%;background:${farbe}"></i></div>`
+  +`<div class="ovht">${m3kurz(f.m3)} / ${m3kurz(f.cap)} m³ · ${Math.round(f.pct)}%</div></div>`;
 }
 
 async function overlayTick(){
@@ -21403,10 +21423,10 @@ async function overlayTick(){
    `<div class="hd"><span>🐤 <b>CANARY</b></span><span>${new Date().toLocaleTimeString()}</span></div>`+
    ovChars(d).map(c=>{const [cls,txt]=ovStatus(c,d.state);
     return `<div class="row"><span class="dot ${cls}"></span>
-     <span><div class="nm">${esc(c.name)} <span class="sys">· ${esc(c.system)}</span></div>
+     <span class="ovmid"><div class="nm">${esc(c.name)} <span class="sys">· ${esc(c.system)}</span></div>
      ${c.ship?`<div class="shp">${esc(c.ship)}</div>`:''}
-     ${txt?`<div class="st ${cls==='bad'?'bad':''}">${txt}</div>`:''}${ovBalken(c)}</span>
-     <span class="val">${fmtM(c.total_isk)}<small>${fmt(c.m3h)} m³/h</small></span></div>`;}).join('')+
+     ${txt?`<div class="st ${cls==='bad'?'bad':''}">${txt}</div>`:''}</span>
+     <span class="val">${fmtM(c.total_isk)}<small>${fmt(c.m3h)} m³/h</small></span>${ovBalken(c)}</div>`;}).join('')+
    // Flottensumme. Im Stream ist das die Zahl, nach der im Chat gefragt wird:
    // was hat die Truppe zusammen geholt. Einzelwerte stehen darueber, hier
    // zaehlt nur das Ergebnis. Nur zeigen, wenn wirklich gefoerdert wurde,
