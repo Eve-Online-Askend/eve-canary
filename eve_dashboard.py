@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "3.3.0"
+VERSION = "3.3.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -6425,6 +6425,58 @@ ERZ_FLAGS = ("SpecializedOreHold", "SpecializedIceHold",
 # nicht, das ist zugleich die Regel fuer "kein Fuellstandsbalken".
 ATTR_ERZLADERAUM = 1556
 
+# Attribut 1556 ist nur der GRUNDWERT. Fuenf Schiffe haben Effekte, die ihn
+# je Skillstufe vergroessern (Dogma-Operator 6, also prozentual und je Effekt
+# multipliziert).
+#
+# MELDUNG Mekkes, 12.09.2026: "bei Canary zeigt er falsche Werte bei der
+# Macki Cargo an". Sein Mackinaw stand auf 7,0 K / 31,5 K m3 = 22 Prozent.
+# Mit Mining Barge V und Exhumers V fasst ein Mackinaw aber
+# 31.500 x 1,25 x 1,125 = 44.296,9 m3, dann sind es 16 Prozent.
+#
+# GEMESSEN am 12.09.2026 mit pruefungen/werkzeuge/erzladeraum_boni_messen.py:
+# alle 18 veroeffentlichten Schiffe mit Attribut 1556 aus dem SDE, ihre
+# Effekte ueber ESI, und der Skill zu jedem Bonus-Attribut ueber die
+# Skill-Effekte gesucht, nicht ueber den Namen. Jeder Bonus gehoert zu genau
+# einem Skill. Die uebrigen 13 (Venture, Prospect, Endurance, Pioneer,
+# Outrider, Perseverance, Procurer, Covetor, Skiff, Hulk, Rorqual und die
+# beiden Consortium Issues) haben keinen Bonus, dort ist der Grundwert der
+# Laderaum. Deshalb stimmte Nirahses Hulk mit 11.500 m3 genau.
+#
+# Nicht erfasst: Module, Rigs oder Implantate, die den Erzladeraum aendern.
+# Typ -> [(Prozent je Stufe, Skill-ID)]
+ERZLADERAUM_BONI = {
+    656: [(10.0, 3340)],                    # Miasmos    Gallente Hauler
+    17478: [(5.0, 17940)],                  # Retriever  Mining Barge
+    22548: [(5.0, 17940), (2.5, 22551)],    # Mackinaw   Mining Barge, Exhumers
+    28606: [(5.0, 29637)],                  # Orca       Industrial Command Ships
+    42244: [(5.0, 29637)],                  # Porpoise   Industrial Command Ships
+}
+ERZLADERAUM_SKILLS = sorted({sk for boni in ERZLADERAUM_BONI.values()
+                             for _, sk in boni})
+
+
+def erzladeraum_mit_skills(tid, basis, stufen):
+    """Erzladeraum in m3 mit den trainierten Skills des Charakters.
+
+    stufen: {Skill-ID: Stufe}, Schluessel als Zahl oder Text (aus der
+    config.json kommen sie als Text zurueck). None heisst: Skills unbekannt,
+    etwa weil der Scope fehlt. Dann bleibt es beim Grundwert."""
+    try:
+        cap = float(basis or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    if cap <= 0 or not stufen:
+        return cap
+    for prozent, skill in ERZLADERAUM_BONI.get(tid, ()):
+        stufe = stufen.get(skill, stufen.get(str(skill), 0)) or 0
+        try:
+            stufe = max(0, min(5, int(stufe)))
+        except (TypeError, ValueError):
+            stufe = 0
+        cap *= 1 + prozent * stufe / 100.0
+    return cap
+
 
 def hw_kern(in_ship):
     """Welcher Industriekern ist EINGEBAUT? Sonst None.
@@ -6932,6 +6984,11 @@ class Esi(threading.Thread):
         c["reprocess"] = round(rep, 4)
         # Dasselbe fuer alles, was kein Erz ist: Scrapmetal Processing.
         c["scrap"] = round(rep * (1 + SCRAP_PRO_STUFE * lvl.get(SCRAP_SKILL, 0)), 4)
+        # Stufen der Skills, die den Erzladeraum vergroessern (Mekkes,
+        # 12.09.2026). Als Text-Schluessel, weil config.json ohnehin nur
+        # Text-Schluessel kennt.
+        c["hold_skills"] = {str(sk): int(lvl.get(sk, 0))
+                            for sk in ERZLADERAUM_SKILLS}
         c["skills_next"] = time.time() + 6 * 3600
 
     def sync_mining(self, name, c):
@@ -7834,7 +7891,9 @@ class Esi(threading.Thread):
                 # eines Typs einen oeffentlichen Aufruf (0,15 s gemessen),
                 # danach aus dem Cache. 0 heisst: Schiff ohne Erzladeraum,
                 # dann zeigt die Oberflaeche keinen Balken.
-                c["ore_cap"] = self.ore_capacity(ship["ship_type_id"])
+                c["ore_cap"] = erzladeraum_mit_skills(
+                    ship["ship_type_id"], self.ore_capacity(ship["ship_type_id"]),
+                    c.get("hold_skills"))
                 if time.time() >= c.get("assets_next", 0):
                     self.sync_ship(name, c, ship)
                 # Online-Status (Scope esi-location.read_online.v1). Fehlt der Scope
@@ -7855,6 +7914,10 @@ class Esi(threading.Thread):
                 try:
                     if time.time() >= c.get("skills_next", 0):
                         self.sync_skills(name, c)
+                        c["ore_cap"] = erzladeraum_mit_skills(
+                            ship["ship_type_id"],
+                            self.ore_capacity(ship["ship_type_id"]),
+                            c.get("hold_skills"))
                 except Exception:
                     c.pop("skill_bonus", None)
                     c["skills_next"] = time.time() + 1800
@@ -9683,10 +9746,14 @@ function erzFuellung(c){
  // Mitspieler). EVE protokolliert Ladungstransfers nicht, die Zaehlung kann
  // das also nicht wissen, aber die Obergrenze verraet es.
  //
- // An Nirahses eigenen Logs gemessen, 84 Mining-Sitzungen: in 9 von 28
- // Sitzungen mit bekanntem Schiff (32,1 %) stieg die Log-Schaetzung ueber
- // den echten Laderaum, viermal ueber das Dreifache, im Hoechstfall auf
- // 44.297 m3 in einem Hulk mit 11.500. Ab hier gilt die Messung.
+ // BERICHTIGT in v3.3.1: hier stand, an Nirahses Logs sei in 32 Prozent
+ // der Sitzungen eine Zaehlung ueber dem Laderaum belegt, bis 44.297 m3 in
+ // einem Hulk. Das war falsch. 44.297 ist exakt ein Mackinaw mit Mining
+ // Barge V und Exhumers V (31.500 x 1,25 x 1,125), das Schiff hatte ich aus
+ // einem spaeteren Screenshot uebertragen. Die Regel bleibt richtig, der
+ // Beleg war es nicht. Und sie braucht den Laderaum MIT Skills, sonst kappt
+ // sie einen vollen Mackinaw beim Grundwert (Mekkes, 12.09.2026), siehe
+ // erzladeraum_mit_skills.
  let ueber=false;
  if(m3>cap*1.02){
   ueber=true;
@@ -18193,10 +18260,14 @@ function erzFuellung(c){
  // Mitspieler). EVE protokolliert Ladungstransfers nicht, die Zaehlung kann
  // das also nicht wissen, aber die Obergrenze verraet es.
  //
- // An Nirahses eigenen Logs gemessen, 84 Mining-Sitzungen: in 9 von 28
- // Sitzungen mit bekanntem Schiff (32,1 %) stieg die Log-Schaetzung ueber
- // den echten Laderaum, viermal ueber das Dreifache, im Hoechstfall auf
- // 44.297 m3 in einem Hulk mit 11.500. Ab hier gilt die Messung.
+ // BERICHTIGT in v3.3.1: hier stand, an Nirahses Logs sei in 32 Prozent
+ // der Sitzungen eine Zaehlung ueber dem Laderaum belegt, bis 44.297 m3 in
+ // einem Hulk. Das war falsch. 44.297 ist exakt ein Mackinaw mit Mining
+ // Barge V und Exhumers V (31.500 x 1,25 x 1,125), das Schiff hatte ich aus
+ // einem spaeteren Screenshot uebertragen. Die Regel bleibt richtig, der
+ // Beleg war es nicht. Und sie braucht den Laderaum MIT Skills, sonst kappt
+ // sie einen vollen Mackinaw beim Grundwert (Mekkes, 12.09.2026), siehe
+ // erzladeraum_mit_skills.
  let ueber=false;
  if(m3>cap*1.02){
   ueber=true;

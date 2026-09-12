@@ -1,5 +1,23 @@
 [
  {
+  "v": "3.3.1",
+  "d": "2026-09-12",
+  "de": [
+   "Behebt die falsche Laderaum-Kapazität beim Mackinaw, gemeldet von Mekkes: „bei Canary zeigt er falsche Werte bei der Macki Cargo an“. Sein Balken stand auf 7,0 K / 31,5 K m³, also 22 Prozent.",
+   "31.500 m³ ist nur der Grundwert des Schiffs. Der Mackinaw bekommt je Stufe Mining Barge 5 Prozent und je Stufe Exhumers 2,5 Prozent mehr Erzladeraum, mit beiden auf V sind es 44.297 m³. Dann waren es bei Mekkes 16 statt 22 Prozent.",
+   "Nachgemessen über alle 18 Schiffe mit Erzladeraum: fünf haben so einen Bonus. Retriever (Mining Barge), Mackinaw (Mining Barge und Exhumers), Porpoise und Orca (Industrial Command Ships), Miasmos (Gallente Hauler). Canary rechnet jetzt mit den trainierten Skills des Charakters. Ohne Skill-Daten bleibt es beim Grundwert.",
+   "Das behebt auch einen Fehler aus v3.3.0: die neue Obergrenzen-Regel rechnete mit dem Grundwert und kappte einen vollen Mackinaw bei 31.500 m³.",
+   "Und eine Berichtigung zu v3.3.0: dort stand, an Nirahses Logs sei in 32 Prozent der Sitzungen eine Zählung über dem Laderaum belegt, bis 44.297 m³ in einem Hulk. Das stimmt nicht. 44.297 m³ ist genau ein voll geskillter Mackinaw, das Schiff hatte ich falsch zugeordnet. Die Behebung des fehlenden Bezugspunkts beim Einloggen aus v3.3.0 ist davon nicht betroffen."
+  ],
+  "en": [
+   "Fixes the wrong ore hold capacity for the Mackinaw, reported by Mekkes: “Canary shows wrong values for the Macki cargo”. His bar read 7.0 K / 31.5 K m³, 22 per cent.",
+   "31,500 m³ is only the ship's base value. The Mackinaw gains 5 per cent ore hold per Mining Barge level and 2.5 per cent per Exhumers level, 44,297 m³ with both at V. For Mekkes that is 16 per cent, not 22.",
+   "Measured across all 18 ships with an ore hold: five have such a bonus. Retriever (Mining Barge), Mackinaw (Mining Barge and Exhumers), Porpoise and Orca (Industrial Command Ships), Miasmos (Gallente Hauler). Canary now uses the character's trained skills. Without skill data it stays at the base value.",
+   "This also fixes a bug from v3.3.0: the new upper-limit rule used the base value and capped a full Mackinaw at 31,500 m³.",
+   "And a correction to v3.3.0: it said Nirahse's logs showed a count above the ore hold in 32 per cent of sessions, up to 44,297 m³ in a Hulk. That is wrong. 44,297 m³ is exactly a fully skilled Mackinaw, I had assigned the wrong ship. The fix for the missing reference point at login from v3.3.0 is not affected."
+  ]
+ },
+ {
   "v": "3.3.0",
   "d": "2026-09-12",
   "de": [
