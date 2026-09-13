@@ -1,5 +1,19 @@
 [
  {
+  "v": "3.3.2",
+  "d": "2026-09-13",
+  "de": [
+   "Canary erkennt jetzt die Guristas-Mission Pirate Slaughter (Stufe 4), gemeldet von ju-bar über das Missionsformular. Danke für die Meldung mit allen 22 Gegnern und dem Funk.",
+   "Erkannt wird sie am Pith Communications Officer. In den gespendeten Logs steht dieser Gegner in 137 Kämpfen aus fünf Jahren, und zwar immer zusammen mit genau dieser Besatzung, nie in einer anderen. Die gemeldete Zusammenstellung als Vorlage hätte dagegen kaum geholfen: die Läufe schwanken so stark, dass sie nur 3 von 38 sauberen Läufen erkannt hätte.",
+   "Vor dem Einbau gegen 4.617 Kampfabschnitte mit Guristas geprüft: kein Lauf, den Canary heute schon richtig benennt, bekommt einen falschen Namen. Die Genauigkeit steht bewusst auf 85 und damit unter den ganz eindeutigen Namen, weil alle Belege aus einer Spielergruppe stammen."
+  ],
+  "en": [
+   "Canary now recognises the Guristas mission Pirate Slaughter (level 4), reported by ju-bar through the mission form. Thanks for the report with all 22 enemies and the NPC chatter.",
+   "It is recognised by the Pith Communications Officer. In the donated logs this enemy appears in 137 fights over five years, always with exactly this crew and never with any other. The reported line-up as a template would have helped little: runs vary so much that it would have recognised only 3 of 38 clean runs.",
+   "Checked before adding against 4,617 combat stretches with Guristas: no run that Canary already names correctly gets a wrong name. Accuracy is deliberately set to 85, below the truly unique names, because all the evidence comes from one group of players."
+  ]
+ },
+ {
   "v": "3.3.1",
   "d": "2026-09-12",
   "de": [
