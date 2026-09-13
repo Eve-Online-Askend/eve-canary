@@ -1,5 +1,19 @@
 [
  {
+  "v": "3.3.3",
+  "d": "2026-09-13",
+  "de": [
+   "Routen lassen sich jetzt über ein Auswahlmenü öffnen, Wunsch von Dune2Man: „könnte man bei mehreren routen die über nen auswahlmenü laden statt alle auf einer seite zum scrollen?“",
+   "Der Routen-Dialog zeigt nur noch eine Route, die im Menü gewählte. Jeder Eintrag nennt den Namen und die Zahl der Wegpunkte. Canary merkt sich die zuletzt geöffnete Route, eine neue Route wird gleich angezeigt, und nach dem Löschen landest du auf der davor. Wer nur eine Route hat, sieht kein Menü.",
+   "Dabei behoben, bevor es jemand merken konnte: die Vorschläge unter „oft besucht“ zählten die Routen nach ihrer Position im Dialog. Mit nur einer sichtbaren Route wäre ein Klick immer in der ersten gelandet."
+  ],
+  "en": [
+   "Routes can now be opened from a selection menu, a wish from Dune2Man: “could routes be loaded from a selection menu instead of all on one page to scroll through?”",
+   "The route dialog now shows a single route, the one chosen in the menu. Each entry gives the name and the number of waypoints. Canary remembers the route you last opened, a new route is shown straight away, and after deleting one you land on the route before it. With only one route there is no menu.",
+   "Fixed along the way before anyone could notice: the suggestions under “often visited” counted routes by their position in the dialog. With only one route visible, a click would always have landed in the first route."
+  ]
+ },
+ {
   "v": "3.3.2",
   "d": "2026-09-13",
   "de": [

@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "3.3.2"
+VERSION = "3.3.3"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -18120,6 +18120,10 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   <select id="routeChar"></select>
   <span class="sub" id="routeStat"></span>
  </div>
+ <div class="btnrow" id="routeWahlZeile" style="margin-top:6px" hidden>
+  <span class="sub">Route</span>
+  <select id="routeWahl"></select>
+ </div>
  <div id="routeListe" style="margin-top:10px"></div>
  <div class="btnrow" style="margin-top:10px">
   <button class="btn" id="routeNeu">+ Neue Route</button>
@@ -19785,6 +19789,37 @@ function attrName(a,en){const l=ATTR_LABEL[a];return l?l[en?1:0]:a;}
 let routen=[], routeSuchTimer=null, routeBesucht=[], routeStListe=[],
     routeSec={};
 
+// Welche Route gerade offen ist. WUNSCH Dune2Man, 13.09.2026: "koennte man
+// bei mehreren routen die ueber nen auswahlmenue laden statt alle auf einer
+// seite zum scrollen?" Bis v3.3.2 stand jede Route als eigener Kasten
+// untereinander, bei 20 Routen mit bis zu 30 Wegpunkten ein langer Weg.
+// Jetzt zeigt der Dialog genau eine, gewaehlt ueber das Menue.
+//
+// Gemerkt wird die Wahl im Browser, nicht auf dem Server: sie ist eine
+// Ansichtssache dieses Fensters, keine Eigenschaft der Route.
+let routeAktiv=0;
+try{routeAktiv=+(localStorage.getItem('canaryRouteAktiv')||0)||0;}catch(e){}
+function routeAktivSetzen(i){
+ routeAktiv=Math.max(0,Math.min(i,routen.length-1));
+ try{localStorage.setItem('canaryRouteAktiv',String(routeAktiv));}catch(e){}
+}
+
+// Das Menue selbst. Unter zwei Routen gibt es nichts auszuwaehlen, dann
+// bleibt die Zeile weg.
+// "1 Wegpunkt", "3 Wegpunkte". Im Menue faellt ein falscher Plural sofort auf.
+function wpZahl(n){
+ return n+' '+(lang==='en'?(n===1?'waypoint':'waypoints'):(n===1?'Wegpunkt':'Wegpunkte'));
+}
+function routeWahlFuellen(){
+ const sel=document.getElementById('routeWahl');
+ const zeile=document.getElementById('routeWahlZeile');
+ if(!sel)return;
+ const en=lang==='en';
+ if(zeile)zeile.hidden=routen.length<2;
+ sel.innerHTML=routen.map((r,i)=>`<option value="${i}">${esc(r.name||('Route '+(i+1)))} (${wpZahl((r.systeme||[]).length)})</option>`).join('');
+ sel.value=String(routeAktiv);
+}
+
 function routeStatus(t,gut){
  const st=document.getElementById('routeStat');
  if(!st)return;
@@ -19857,7 +19892,13 @@ function routeZeichnen(){
  // Dune2Mans erste echte Route mit 14 Halten lief dabei ueber vier Zeilen,
  // und der 405 px breite Stationseintrag brach das Muster ganz. Gemessen am
  // 09.09.2026 bei Full HD. Deshalb jetzt eine Zeile je Wegpunkt.
+ routeAktivSetzen(routeAktiv);
+ routeWahlFuellen();
+ // Gezeichnet wird nur die gewaehlte Route, aber mit ihrem ECHTEN Index:
+ // alle data-Knoepfe unten (Setzen, Loeschen, Verschieben, Station) rechnen
+ // mit ihm und bleiben dadurch unveraendert.
  w.innerHTML=routen.map((r,i)=>{
+  if(i!==routeAktiv)return '';
   const eintraege=(r.systeme||[]).map(wpForm);
   r.systeme=eintraege;
   // Zweimal dasselbe System OHNE Station: genau der Fall, den Dune2Man
@@ -19883,7 +19924,7 @@ function routeZeichnen(){
   return `<div class="routebox">
   <div class="routekopf">
    <input class="routename" data-rname="${i}" value="${esc(r.name||'')}" maxlength="40">
-   <span class="sub">${eintraege.length} ${en?'waypoints':'Wegpunkte'}</span>
+   <span class="sub">${wpZahl(eintraege.length)}</span>
    <span class="spacer"></span>
    <button class="btn" data-rset="${i}">${en?'Set':'Setzen'}</button>
    <button class="btn" data-rdel="${i}" title="${en?'Delete route':'Route löschen'}">🗑</button>
@@ -19892,7 +19933,7 @@ function routeZeichnen(){
     en?'no systems yet':'noch keine Systeme'}</div>`}</div>
   ${warn}
   <div class="routestat" data-rstat="${i}"></div>
-  <div class="routeadd">
+  <div class="routeadd" data-ridx="${i}">
    <input class="routesuch" data-rsuch="${i}" placeholder="${
      en?'add system …':'System hinzufügen …'}" autocomplete="off">
    <div class="routetreffer" data-rtreffer="${i}"></div>
@@ -19908,8 +19949,11 @@ function routeZeichnen(){
 function routeVorschlaege(){
  if(!routeBesucht.length)return;
  const en=lang==='en';
- document.querySelectorAll('.routeadd').forEach((el,i)=>{
+ document.querySelectorAll('.routeadd').forEach(el=>{
   if(el.querySelector('.routehaeufig'))return;
+  // Der echte Index der Route, nicht die Position im Dialog: seit dem
+  // Auswahlmenue steht immer nur ein Kasten da, und der ist nicht Route 1.
+  const i=+el.dataset.ridx;
   const d=document.createElement('div');
   d.className='routehaeufig';
   d.innerHTML=`<span class="sub">${en?'often visited':'oft besucht'}:</span> `
@@ -20089,8 +20133,16 @@ document.getElementById('routeNeu').onclick=()=>{
   return;
  }
  routen.push({name:(lang==='en'?'Route ':'Route ')+(routen.length+1),systeme:[]});
+ // Die neue Route gleich zeigen. Sonst legt man sie an und sieht nichts.
+ routeAktivSetzen(routen.length-1);
  routeZeichnen();
  routeSichern();
+};
+
+document.getElementById('routeWahl').onchange=e=>{
+ routeAktivSetzen(+e.target.value);
+ routeStatus('');
+ routeZeichnen();
 };
 
 // Ein einziger Verteiler fuer alles Anklickbare im Dialog. Die Kaesten werden
@@ -20098,7 +20150,13 @@ document.getElementById('routeNeu').onclick=()=>{
 // weg.
 document.addEventListener('click',e=>{
  const del=e.target.closest('[data-rdel]');
- if(del){routen.splice(+del.dataset.rdel,1);routeZeichnen();routeSichern();return;}
+ if(del){
+  const i=+del.dataset.rdel;
+  routen.splice(i,1);
+  // Auf der Route davor landen, bei der ersten auf der neuen ersten.
+  routeAktivSetzen(i>0?i-1:0);
+  routeZeichnen();routeSichern();return;
+ }
  const sysdel=e.target.closest('[data-rsysdel]');
  if(sysdel){
   const t=sysdel.dataset.rsysdel.split('.');
@@ -20159,7 +20217,11 @@ document.addEventListener('input',e=>{
  if(nm){
   const i=+nm.dataset.rname;
   if(routen[i]){routen[i].name=nm.value;clearTimeout(routeSuchTimer);
-   routeSuchTimer=setTimeout(routeSichern,600);}
+   routeSuchTimer=setTimeout(routeSichern,600);
+   // Nur den Eintrag im Menue nachziehen, nicht neu zeichnen: das Feld
+   // verloere sonst mitten im Tippen den Fokus.
+   const opt=document.querySelector('#routeWahl option[value="'+i+'"]');
+   if(opt)opt.textContent=(nm.value||('Route '+(i+1)))+' ('+wpZahl((routen[i].systeme||[]).length)+')';}
   return;
  }
  const su=e.target.closest('[data-rsuch]');
