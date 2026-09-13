@@ -99,6 +99,26 @@
    ],
    "n": 1,
    "q": "Nirahse, Meldung #12, 30.08.2026. ZWEITE Variante derselben Mission: gegen die Vorlage aus Meldung #9 nur 53,8 % aehnlich, 7 von 13 Gegnertypen. Der Kern aus beiden Meldungen haette nur 7 Gegner und damit 70 % gegen jeden der beiden Laeufe, also ebenfalls unter der Schwelle von 80 % fuer geteilte Vorlagen. Deshalb zwei getrennte Vorlagen, siehe _mehrere. Kollision geprueft an 3.180 Kampf-Abschnitten aus 1.433 gespendeten Logdateien: kein einziger Treffer, der engste Fall lag bei 77 %."
+  },
+  {
+   "m": "Pirate Invasion",
+   "g": [
+    "centatis specter",
+    "centatis wraith",
+    "centii loyal minion",
+    "centii loyal servant",
+    "centior abomination",
+    "centior devourer",
+    "centum fiend",
+    "centum hellhound",
+    "centus lord",
+    "centus mutant lord",
+    "centus plague lord",
+    "centus savage lord",
+    "centus slave lord"
+   ],
+   "n": 1,
+   "q": "Nirahse, Meldung #14, 13.09.2026, Stufe 4 Sansha. Alle 13 Gegner sind gewoehnliche Sansha, eine Namens-Signatur scheidet deshalb aus (siehe The Blockade, Meldung #8). Der gemeldete Funk 'More Sansha emerge from the shadows.' ebenfalls nicht: eve-survival (PirateInvasion4sa) nennt fuer diese Mission keine NPC-Nachricht, der Satz klingt nach allgemeiner Verstaerkung, und die gespendeten Gamelogs enthalten keinen Local-Funk, gemessen werden kann er also nicht. Kollision gemessen an 2.476 Kampf-Abschnitten aus allen Dateien mit Sansha-Schlachtschiffen (Nirahse, blacy, neue logs): 28 Treffer ueber 80 %, ALLE von Nirahse Haginen und Miko Tadaki, alle im Hochsicherheitsraum 0,5 bis 0,9, 2 bis 9 Minuten nach dem Abdocken, wiederkehrend in denselben Agentensystemen (Funtanainen 9, Dresi 8), mit genau dem Schiffspool aus eve-survival einschliesslich Centus Beast Lord als Extra. Das sind echte Laeufe dieser Mission. In den Dateien der beiden fremden Spender kein einziger Treffer. Keine Kollision mit den vorhandenen Vorlagen."
   }
  ]
 }

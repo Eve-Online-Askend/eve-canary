@@ -1,5 +1,19 @@
 [
  {
+  "v": "3.3.4",
+  "d": "2026-09-13",
+  "de": [
+   "Canary erkennt jetzt die Sansha-Mission Pirate Invasion (Stufe 4), gemeldet von Nirahse über das Missionsformular. Danke!",
+   "Die Mission hat nur gewöhnliche Sansha-Gegner, deshalb läuft die Erkennung über die Zusammenstellung der 13 Gegnertypen. Vor dem Einbau gegen 2.476 Kampfabschnitte mit Sansha-Schlachtschiffen aus den gespendeten Logs geprüft: 28 würden erkannt, und alle 28 sind echte Läufe dieser Mission, im Hochsicherheitsraum kurz nach dem Abdocken und mit genau den Schiffen, die eve-survival für sie nennt. In den Logs der anderen Spender springt die Vorlage kein einziges Mal an.",
+   "Die gemeldete Funkzeile wird bewusst nicht genutzt: eve-survival nennt für diese Mission keine NPC-Nachricht, und der Satz klingt nach einer allgemeinen Sansha-Verstärkung, die auch anderswo kommen kann."
+  ],
+  "en": [
+   "Canary now recognises the Sansha mission Pirate Invasion (level 4), reported by Nirahse through the mission form. Thanks!",
+   "The mission only has ordinary Sansha enemies, so it is recognised by the line-up of its 13 enemy types. Checked before adding against 2,476 combat stretches with Sansha battleships from the donated logs: 28 would be recognised, and all 28 are real runs of this mission, in high-security space shortly after undocking and with exactly the ships eve-survival lists for it. In the other donors' logs the template never fires.",
+   "The reported NPC line is deliberately not used: eve-survival lists no NPC message for this mission, and the sentence reads like general Sansha reinforcements that can show up elsewhere too."
+  ]
+ },
+ {
   "v": "3.3.3",
   "d": "2026-09-13",
   "de": [
