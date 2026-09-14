@@ -1,5 +1,21 @@
 [
  {
+  "v": "3.4.1",
+  "d": "2026-09-14",
+  "de": [
+   "Die Zahl „Asteroiden“ in der 30-Tage-Übersicht, im Gesamt-Tab und auf der Live-Karte heißt jetzt, was sie wirklich zählt: Modul-Stopps an leeren Brocken. Gefragt hatte Vile Gangster: „in so einem Belt hier sind 19 Eis Brocken ... aber in Summe waren das keine 140 Stück. Wie kommen die 140 zustande?“",
+   "EVE schreibt die Zeile für einen leer gebaggerten Brocken je Modul und nennt den Brocken nicht. Zwei Harvester am selben Brocken ergeben zwei Zeilen, und die Übersicht zählt alle Charaktere zusammen. Zusammenfassen lässt sich das nicht zuverlässig: Die Module am selben Brocken schalten mit versetzten Zyklen ab, oft Minuten auseinander. Deshalb steht jetzt die ehrliche Zahl da, mit einer Erklärung beim Darüberfahren.",
+   "Dabei behoben: gezählt wurde bisher jede Meldung, die mit einem Mining-Modul beginnt. An 43.546 solchen Zeilen gemessen waren 608 gar kein leerer Brocken, sondern „außer Reichweite“, „Kondensator leer“, „Ziel nicht gelockt“ oder Meldungen beim Fitten. Die zählen jetzt nicht mehr mit, lösen aber weiter die Warnung aus, wenn ein Laser steht. Keine einzige echte Leer-Meldung geht dabei verloren.",
+   "Beim ersten Start liest Canary die Logs einmal neu ein, damit auch die vergangenen Tage stimmen, soweit die Logdateien noch da sind."
+  ],
+  "en": [
+   "The “asteroids” figure in the 30-day overview, the totals tab and the live card is now named for what it really counts: module stops at empty rocks. Vile Gangster asked: “there are 19 ice rocks in this belt ... but that was nowhere near 140. Where do the 140 come from?”",
+   "EVE writes the line for a depleted rock once per module and does not name the rock. Two harvesters on the same rock give two lines, and the overview adds up all characters. This cannot be merged reliably: modules on the same rock shut off with offset cycles, often minutes apart. So the honest figure is shown now, with an explanation on hover.",
+   "Fixed along the way: every message starting with a mining module used to count. Measured on 43,546 such lines, 608 were no empty rock at all but “out of range”, “capacitor empty”, “target not locked” or fitting messages. They no longer count, but still trigger the warning when a laser stops. Not a single real depletion line is lost.",
+   "On first start Canary reads the logs once more so past days are right too, as far as the log files still exist."
+  ]
+ },
+ {
   "v": "3.4.0",
   "d": "2026-09-14",
   "de": [

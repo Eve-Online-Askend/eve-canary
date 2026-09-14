@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "3.4.0"
+VERSION = "3.4.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -1687,10 +1687,42 @@ def parse_line(raw):
         for tool in MINING_TOOLS:
             # Modulnamen sind nie lokalisiert: "Strip Miner I* schaltet ab, …"
             if text.startswith(tool):
+                # Nicht jede Zeile, die mit einem Mining-Modul beginnt, meint
+                # einen leeren Brocken. MELDUNG Vile Gangster, 14.09.2026:
+                # "in so einem Belt hier sind 19 Eis Brocken ... aber in Summe
+                # waren das keine 140 Stueck". An 43.546 so gezaehlten Zeilen
+                # aus allen gespendeten Logs gemessen:
+                #   42.938  "... a pale shadow of its former glory"  (leer)
+                #      491  "... strayed to a distance of N m"       (Reichweite)
+                #       20  "... requires N units of charge"         (Kondensator)
+                #   rund 90 "... its target, Veldspar, is not locked"
+                # Die drei letzten schalten den Laser ebenfalls ab und bleiben
+                # deshalb ein Signal fuer die Warnung "Laser aus", zaehlen
+                # aber nicht mehr als leerer Brocken.
+                #
+                # Die Unterscheidung ist bewusst sprachunabhaengig: die echte
+                # Leer-Zeile enthaelt nie eine Zahl und nie einen Erznamen,
+                # die anderen immer eins von beiden. Kein Modulname in
+                # mining_tools.json enthaelt eine Ziffer (nachgesehen).
+                rest = text[len(tool):]
+                # Zwei Zeilen beginnen mit dem Modulnamen, haben mit Abbau aber
+                # gar nichts zu tun: Fitten ("does not fit in this slot") und
+                # der Drohnenhangar ("cannot be dropped"). Je einmal in allen
+                # gespendeten Logs, trotzdem kein Grund, sie mitzuzaehlen.
+                if ("does not fit in this slot" in rest
+                        or "cannot be dropped because" in rest):
+                    return {**base, "kind": "noise", "key": "modul_fitting", "value": 1}
+                if (re.search(r"\d", rest)
+                        or any(h in ORE_TYPES for h in hints)
+                        or any(o in rest for o in ORE_TYPES)):
+                    return {**base, "kind": "modul_stopp", "key": tool, "value": 1}
                 return {**base, "kind": "depleted", "key": tool, "value": 1}
         if hints == ["Asteroid"]:
-            # Modul versucht Zyklus auf zerstörtem/ungültigem Ziel — Asteroid weg
-            return {**base, "kind": "depleted", "key": "Ziel verloren", "value": 1}
+            # "Einheit* kann diesen Vorgang nur fuer einen Gegenstand der Gruppe
+            # Asteroid* ausfuehren": ein Modul auf dem falschen Ziel. Frueher als
+            # leerer Brocken gezaehlt, ist aber keiner (einziger Fall in allen
+            # gespendeten Logs, 14.09.2026). Signal fuer "Laser aus" bleibt.
+            return {**base, "kind": "modul_stopp", "key": "Ziel verloren", "value": 1}
         if (len(hints) == 1 and hints[0] in ORE_TYPES
                 and not hints[0].startswith("Compressed")
                 and not any(ch.isdigit() for ch in text)):
@@ -2396,7 +2428,12 @@ def zu_merken(char_id, ts):
 #      die englischen Fassungen zaehlten. Dazu die englische Drohnen-Meldung
 #      "need to deposit their current loads", die es sechs Versionen lang nur
 #      in einer Fassung gab, die im Log gar nicht vorkommt.
-PARSE_VER = "16"
+# v17: der Zaehler fuer leere Brocken nahm jede Zeile, die mit einem
+#      Mining-Modul beginnt, also auch "ausser Reichweite", "Kondensator leer",
+#      "Ziel nicht gelockt", Fitten und Drohnenhangar (608 von 43.546 Zeilen,
+#      Meldung Vile Gangster 14.09.2026). Die Tage sollen rueckwirkend richtig
+#      werden, soweit die Logs noch da sind.
+PARSE_VER = "17"
 
 
 def _paare_summieren(*listen):
@@ -4131,8 +4168,11 @@ class CharSession:
                               ev.get("station"))
                 if ev.get("system"):     # Ziel des Undocks = aktueller Ort
                     self.system = ev["system"]
-        elif k == "depleted":
-            self.depleted += 1
+        elif k in ("depleted", "modul_stopp"):
+            # Beide schalten ein Modul ab, fuer die Laser-Warnung sind sie
+            # gleich. Gezaehlt als leerer Brocken wird nur "depleted".
+            if k == "depleted":
+                self.depleted += 1
             if "Drone" not in ev["key"]:
                 # Dauerstatus "Laser aus": Normalrate vor dem Ausfall merken
                 # (Median der letzten vollen Minuten), damit die Erholung
@@ -5209,7 +5249,7 @@ class Ingest(threading.Thread):
                         for ev in batch:
                             if ev["kind"] in ("drone_engage", "hold_reset",
                                               "travel", "system_status",
-                                              "fahndung"):
+                                              "fahndung", "modul_stopp"):
                                 continue  # reine Live-Signale, nicht historisieren
                             merken(ev["day"], ev["kind"], ev["key"], ev["value"], ev.get("ts"))
                             if ev["kind"] == "dmg_out" and "weapon" in ev:
@@ -20913,7 +20953,7 @@ function miningCardHtml(c){
    ${c.rate_low?`<div class="cardwarn">⚠ Abbaurate nur noch ${c.rate_low}%. Vermutlich ist ein Modul oder eine Drohne aus.</div>`:''}
    ${mineIdle(c,state)?`<div class="cardwarn">⚠ Seit ${Math.round(c.mine_idle/60)} min kein Erz. Laser und Drohnen prüfen!</div>`:''}
    ${(localStorage.getItem('iskCoach')==='1'&&c.lost_isk>=1000&&!c.command_ship)?`<div class="cardwarn">💸 ${lang==='en'?'Downtime loss this session':'Stillstand-Verlust diese Session'}: ≈ ${fmtM(c.lost_isk)} ISK${c.lost_paused?(lang==='en'?' <span style="color:var(--dim);font-weight:400">(paused, docked/warp)</span>':' <span style="color:var(--dim);font-weight:400">(pausiert, angedockt/Warp)</span>'):''}</div>`:''}
-   <div class="sub">${c.trips>0?'Trip '+(c.trips+1)+' · seit Abdocken':'Session'} ${c.session_min} min · ${c.depleted} Asteroiden leergebaggert${c.boost?' · '+c.boost.n+' in der Flotte':''} · Preise: ${state.price_src==='esi'?'ESI · ':''}${state.regions[state.region]}</div>
+   <div class="sub">${c.trips>0?'Trip '+(c.trips+1)+' · seit Abdocken':'Session'} ${c.session_min} min · <span title="${lang==='en'?'How often a mining module shut off at a depleted rock. Counted per module and per character: two lasers on the same rock count twice, three characters on it three times as often. The log does not say which rock it was.':'So oft hat ein Mining-Modul an einem leer gebaggerten Brocken abgeschaltet. Gezählt je Modul und je Charakter: zwei Laser am selben Brocken zählen zweimal, drei Charaktere daran dreimal so oft. Welcher Brocken es war, steht nicht im Log.'}">${c.depleted} ${lang==='en'?'module stops at empty rocks':'Modul-Stopps an leeren Brocken'}</span>${c.boost?' · '+c.boost.n+' in der Flotte':''} · Preise: ${state.price_src==='esi'?'ESI · ':''}${state.regions[state.region]}</div>
    ${dangerLine(c)}
    <div class="stats">
     <div class="stat" title="${lang==='en'?'Everything earned this session: ore at current buy prices plus bounties.':'Alles, was diese Sitzung eingebracht hat: Erz zu aktuellen Kaufpreisen plus Bounties.'}"><div class="l">${c.trips>0?'ISK Trip':'ISK Session'}</div><div class="v isk">${fmtM(c.total_isk)}</div></div>
@@ -21291,7 +21331,7 @@ function renderMonth(days,kristalle,verschnitt){
    <span><span class="dot" style="background:var(--green)"></span>Bounties</span>
    ${days.some(d=>d.verlust>0)?`<span><span class="dot" style="background:var(--red)"></span>${lang==='en'?'Real losses (crystals, ships)':'Reale Verluste (Kristalle, Schiffe)'}</span>`:''}</div>
    <table>${days.slice().reverse().map(d=>
-    `<tr><td>${d.day}</td><td class="r">${fmt(d.m3)} m³</td><td class="r">${fmt(d.depleted)} Asteroiden</td><td class="r out">${fmtM(d.dmg_out)} dmg</td><td class="r in">${d.verlust?('−'+fmtM(d.verlust)):'·'}</td><td class="r isk">${fmtM(d.total)} ISK</td></tr>`).join('')}</table>
+    `<tr><td>${d.day}</td><td class="r">${fmt(d.m3)} m³</td><td class="r" title="${lang==='en'?'How often a mining module shut off at a depleted rock. Counted per module and per character: two lasers on the same rock count twice, three characters on it three times as often. The log does not say which rock it was.':'So oft hat ein Mining-Modul an einem leer gebaggerten Brocken abgeschaltet. Gezählt je Modul und je Charakter: zwei Laser am selben Brocken zählen zweimal, drei Charaktere daran dreimal so oft. Welcher Brocken es war, steht nicht im Log.'}">${fmt(d.depleted)} ${lang==='en'?'stops':'Stopps'}</td><td class="r out">${fmtM(d.dmg_out)} dmg</td><td class="r in">${d.verlust?('−'+fmtM(d.verlust)):'·'}</td><td class="r isk">${fmtM(d.total)} ISK</td></tr>`).join('')}</table>
   </div>`+verschnittCard(verschnitt)+kristallCard(kristalle);
 }
 // Bergbau-Verluste je Monat und Erz (Eron Solette): der Rueckstand der
@@ -21334,7 +21374,7 @@ function renderTotal(t){
  const maxOre=Math.max(1,...t.ores.map(o=>o.isk));
  $('#grid').innerHTML=`<div class="card">
    <div class="char">Gesamt${state.baseline_day?' (seit '+state.baseline_day+')':''}</div>
-   <div class="sub">${t.days_active} aktive Tage · ${fmt(t.depleted)} Asteroiden leergebaggert</div>
+   <div class="sub">${t.days_active} aktive Tage · <span title="${lang==='en'?'How often a mining module shut off at a depleted rock. Counted per module and per character: two lasers on the same rock count twice, three characters on it three times as often. The log does not say which rock it was.':'So oft hat ein Mining-Modul an einem leer gebaggerten Brocken abgeschaltet. Gezählt je Modul und je Charakter: zwei Laser am selben Brocken zählen zweimal, drei Charaktere daran dreimal so oft. Welcher Brocken es war, steht nicht im Log.'}">${fmt(t.depleted)} ${lang==='en'?'module stops at empty rocks':'Modul-Stopps an leeren Brocken'}</span></div>
    <div class="stats">
     <div class="stat" title="Erz-Wert plus Bounties. Das ist die Summe, die unten in der Spalte ISK gesamt je Charakter noch einmal aufgeteilt steht."><div class="l">ISK gesamt</div><div class="v isk">${fmtM(t.total_isk)}</div></div>
     <div class="stat" title="Was dein gefoerdertes Erz zu den heutigen Marktpreisen der gewaehlten Region bringen wuerde. Nicht das, was du damals dafuer bekommen hast."><div class="l">Erz-Wert</div><div class="v isk">${fmtM(t.ore_isk)}</div></div>
@@ -25269,7 +25309,7 @@ const EN = {
 'Alles, was über die Schiffs-Kompression gelaufen ist':'Everything run through ship compression',
 'Noch nichts komprimiert':'Nothing compressed yet','Pro Charakter':'Per character',
 'Gesamt nach Typ':'Total by type','Menge':'Amount','Typ':'Type','Stk':'units',
-'seit Abdocken':'since undocking','Asteroiden leergebaggert':'asteroids depleted',
+'seit Abdocken':'since undocking',
 'Lieferungen mit vervielfachtem Ertrag. Canary erkennt sie daran, dass die Menge ein exaktes Vielfaches deiner Normallieferung ist. Gezeigt wird nur der Teil, der über die Normalmenge hinausging.':
  'Deliveries with multiplied yield. Canary spots them because the amount is an exact multiple of your normal delivery. Only the part beyond the normal amount is shown.',
 'per ⛽ setzen':'set via ⛽',
@@ -25720,7 +25760,7 @@ const EN = {
 const EN_PATTERNS = [
  [/^Erz [(]/, 'Ore ('], [/^Laderaum ≈/, 'Cargo ≈'],
  [/vs[.] gestern/, 'vs. yesterday'],
- [/aktive Tage/, 'active days'], [/Asteroiden leergebaggert/, 'asteroids depleted'],
+ [/aktive Tage/, 'active days'],
  [/Bonus-Erträge \\(([0-9]+) von ([0-9]+)/, 'Bonus yields ($1 of $2'],
  [/abgeschaltet, Drohnen prüfen!/, 'switched off, check drones!'],
  [/abgeschaltet, Ziel prüfen/, 'switched off, check target'],
