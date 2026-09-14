@@ -1,5 +1,21 @@
 [
  {
+  "v": "3.4.0",
+  "d": "2026-09-14",
+  "de": [
+   "Die Erz-Schatzkammer rechnet den Mineralienwert jetzt mit deiner Raffinerie, gemeldet von Vile Gangster: „Der Preis beim raffinierten Erz ist, finde ich, verzerrend, da hier nur der unterste Wert ran gezogen wird.“ Er hatte recht. Canary rechnete mit einer NPC-Station und empfahl ihm deshalb, komprimiert zu verkaufen, obwohl er auf einer Tatara 80,9 % Ausbeute hat.",
+   "Unter „Raffinerie ändern“ wählst du die Anlage (NPC-Station, Athanor oder Tatara, jeweils mit T1- oder T2-Rigs), die Sicherheitsstufe, dein Implantat und die Abgabe der Anlage. Die Empfehlung rechnet danach, und eine Zeile darunter zeigt, was dieselben Mineralien auf jeder anderen Anlage wert wären. Grün steht dort jede Anlage, auf der sich Raffinieren gegenüber dem Verkauf lohnt.",
+   "Dabei behoben: der erzspezifische Skill fehlte ganz, also Ice Processing, Simple Ore Processing und die anderen. Auf Stufe V sind das 10 Prozent mehr Ausbeute, auch an der NPC-Station. Canary liest die Stufe jetzt je Erz aus deinen Skills.",
+   "Geprüft an Vile Gangsters eigener Zahl: Tatara mit T2-Rigs im Highsec, alle Skills auf V und RX-804 ergeben 80,92 %, er nannte 80,9 %. Vorgabe bleibt die NPC-Station, damit sich für niemanden still eine Zahl ändert."
+  ],
+  "en": [
+   "The ore vault now values refining with your refinery, reported by Vile Gangster: “the refined price is misleading because only the lowest value is used.” He was right. Canary assumed an NPC station and so advised him to sell compressed, although he gets 80.9 per cent yield on a Tatara.",
+   "Under “Change refinery” you pick the facility (NPC station, Athanor or Tatara, each with T1 or T2 rigs), the security level, your implant and the facility tax. The advice follows your choice, and a line below shows what the same minerals would be worth at every other facility. Every facility where refining beats selling is shown in green.",
+   "Fixed along the way: the ore-specific skill was missing entirely, meaning Ice Processing, Simple Ore Processing and the rest. At level V that is 10 per cent more yield, at NPC stations too. Canary now reads the level for each ore from your skills.",
+   "Checked against Vile Gangster's own number: a Tatara with T2 rigs in highsec, all skills at V and an RX-804 give 80.92 per cent, he reported 80.9. The default stays the NPC station so nobody's numbers change without their doing."
+  ]
+ },
+ {
   "v": "3.3.4",
   "d": "2026-09-13",
   "de": [

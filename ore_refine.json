@@ -18,7 +18,8 @@
      "name": "Megacyte",
      "qty": 120
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Arkonor II-Grade": {
    "portion": 100,
@@ -38,7 +39,8 @@
      "name": "Megacyte",
      "qty": 126
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Arkonor III-Grade": {
    "portion": 100,
@@ -58,7 +60,8 @@
      "name": "Megacyte",
      "qty": 132
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Arkonor IV-Grade": {
    "portion": 100,
@@ -78,7 +81,8 @@
      "name": "Megacyte",
      "qty": 138
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Bistot": {
    "portion": 100,
@@ -98,7 +102,8 @@
      "name": "Zydrine",
      "qty": 160
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Bistot II-Grade": {
    "portion": 100,
@@ -118,7 +123,8 @@
      "name": "Zydrine",
      "qty": 168
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Bistot III-Grade": {
    "portion": 100,
@@ -138,7 +144,8 @@
      "name": "Zydrine",
      "qty": 176
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Bistot IV-Grade": {
    "portion": 100,
@@ -158,7 +165,8 @@
      "name": "Zydrine",
      "qty": 184
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Crokite": {
    "portion": 100,
@@ -178,7 +186,8 @@
      "name": "Nocxium",
      "qty": 800
     }
-   ]
+   ],
+   "skill": 60379
   },
   "Crokite II-Grade": {
    "portion": 100,
@@ -198,7 +207,8 @@
      "name": "Nocxium",
      "qty": 840
     }
-   ]
+   ],
+   "skill": 60379
   },
   "Crokite III-Grade": {
    "portion": 100,
@@ -218,7 +228,8 @@
      "name": "Nocxium",
      "qty": 880
     }
-   ]
+   ],
+   "skill": 60379
   },
   "Crokite IV-Grade": {
    "portion": 100,
@@ -238,7 +249,8 @@
      "name": "Nocxium",
      "qty": 920
     }
-   ]
+   ],
+   "skill": 60379
   },
   "Dark Ochre": {
    "portion": 100,
@@ -258,7 +270,8 @@
      "name": "Nocxium",
      "qty": 320
     }
-   ]
+   ],
+   "skill": 60379
   },
   "Dark Ochre II-Grade": {
    "portion": 100,
@@ -278,7 +291,8 @@
      "name": "Nocxium",
      "qty": 336
     }
-   ]
+   ],
+   "skill": 60379
   },
   "Dark Ochre III-Grade": {
    "portion": 100,
@@ -298,7 +312,8 @@
      "name": "Nocxium",
      "qty": 352
     }
-   ]
+   ],
+   "skill": 60379
   },
   "Dark Ochre IV-Grade": {
    "portion": 100,
@@ -318,7 +333,8 @@
      "name": "Nocxium",
      "qty": 368
     }
-   ]
+   ],
+   "skill": 60379
   },
   "Hedbergite": {
    "portion": 100,
@@ -333,7 +349,8 @@
      "name": "Nocxium",
      "qty": 120
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Hedbergite II-Grade": {
    "portion": 100,
@@ -348,7 +365,8 @@
      "name": "Nocxium",
      "qty": 126
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Hedbergite III-Grade": {
    "portion": 100,
@@ -363,7 +381,8 @@
      "name": "Nocxium",
      "qty": 132
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Hedbergite IV-Grade": {
    "portion": 100,
@@ -378,7 +397,8 @@
      "name": "Nocxium",
      "qty": 138
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Hemorphite": {
    "portion": 100,
@@ -393,7 +413,8 @@
      "name": "Nocxium",
      "qty": 90
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Hemorphite II-Grade": {
    "portion": 100,
@@ -408,7 +429,8 @@
      "name": "Nocxium",
      "qty": 95
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Hemorphite III-Grade": {
    "portion": 100,
@@ -423,7 +445,8 @@
      "name": "Nocxium",
      "qty": 99
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Hemorphite IV-Grade": {
    "portion": 100,
@@ -438,7 +461,8 @@
      "name": "Nocxium",
      "qty": 104
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Jaspet": {
    "portion": 100,
@@ -453,7 +477,8 @@
      "name": "Nocxium",
      "qty": 50
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Jaspet II-Grade": {
    "portion": 100,
@@ -468,7 +493,8 @@
      "name": "Nocxium",
      "qty": 53
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Jaspet III-Grade": {
    "portion": 100,
@@ -483,7 +509,8 @@
      "name": "Nocxium",
      "qty": 55
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Jaspet IV-Grade": {
    "portion": 100,
@@ -498,7 +525,8 @@
      "name": "Nocxium",
      "qty": 58
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Kernite": {
    "portion": 100,
@@ -513,7 +541,8 @@
      "name": "Isogen",
      "qty": 120
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Kernite II-Grade": {
    "portion": 100,
@@ -528,7 +557,8 @@
      "name": "Isogen",
      "qty": 126
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Kernite III-Grade": {
    "portion": 100,
@@ -543,7 +573,8 @@
      "name": "Isogen",
      "qty": 132
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Kernite IV-Grade": {
    "portion": 100,
@@ -558,7 +589,8 @@
      "name": "Isogen",
      "qty": 138
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Plagioclase": {
    "portion": 100,
@@ -573,7 +605,8 @@
      "name": "Mexallon",
      "qty": 70
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Plagioclase II-Grade": {
    "portion": 100,
@@ -588,7 +621,8 @@
      "name": "Mexallon",
      "qty": 74
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Plagioclase III-Grade": {
    "portion": 100,
@@ -603,7 +637,8 @@
      "name": "Mexallon",
      "qty": 77
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Plagioclase IV-Grade": {
    "portion": 100,
@@ -618,7 +653,8 @@
      "name": "Mexallon",
      "qty": 81
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Pyroxeres": {
    "portion": 100,
@@ -633,7 +669,8 @@
      "name": "Mexallon",
      "qty": 30
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Pyroxeres II-Grade": {
    "portion": 100,
@@ -648,7 +685,8 @@
      "name": "Mexallon",
      "qty": 32
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Pyroxeres III-Grade": {
    "portion": 100,
@@ -663,7 +701,8 @@
      "name": "Mexallon",
      "qty": 33
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Pyroxeres IV-Grade": {
    "portion": 100,
@@ -678,7 +717,8 @@
      "name": "Mexallon",
      "qty": 35
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Pyroxeres 0-Grade": {
    "portion": 100,
@@ -693,7 +733,8 @@
      "name": "Mexallon",
      "qty": 15
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Scordite": {
    "portion": 100,
@@ -708,7 +749,8 @@
      "name": "Pyerite",
      "qty": 110
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Scordite II-Grade": {
    "portion": 100,
@@ -723,7 +765,8 @@
      "name": "Pyerite",
      "qty": 114
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Scordite III-Grade": {
    "portion": 100,
@@ -738,7 +781,8 @@
      "name": "Pyerite",
      "qty": 119
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Scordite IV-Grade": {
    "portion": 100,
@@ -753,7 +797,8 @@
      "name": "Pyerite",
      "qty": 125
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Scordite 0-Grade": {
    "portion": 100,
@@ -768,7 +813,8 @@
      "name": "Pyerite",
      "qty": 55
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Spodumain": {
    "portion": 100,
@@ -798,7 +844,8 @@
      "name": "Megacyte",
      "qty": 40
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Spodumain II-Grade": {
    "portion": 100,
@@ -828,7 +875,8 @@
      "name": "Megacyte",
      "qty": 42
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Spodumain III-Grade": {
    "portion": 100,
@@ -858,7 +906,8 @@
      "name": "Megacyte",
      "qty": 44
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Spodumain IV-Grade": {
    "portion": 100,
@@ -888,7 +937,8 @@
      "name": "Megacyte",
      "qty": 46
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Veldspar": {
    "portion": 100,
@@ -898,7 +948,8 @@
      "name": "Tritanium",
      "qty": 400
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Veldspar II-Grade": {
    "portion": 100,
@@ -908,7 +959,8 @@
      "name": "Tritanium",
      "qty": 420
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Veldspar III-Grade": {
    "portion": 100,
@@ -918,7 +970,8 @@
      "name": "Tritanium",
      "qty": 440
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Veldspar IV-Grade": {
    "portion": 100,
@@ -928,7 +981,8 @@
      "name": "Tritanium",
      "qty": 460
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Veldspar 0-Grade": {
    "portion": 100,
@@ -938,7 +992,8 @@
      "name": "Tritanium",
      "qty": 200
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Clear Icicle": {
    "portion": 1,
@@ -963,7 +1018,8 @@
      "name": "Strontium Clathrates",
      "qty": 1
     }
-   ]
+   ],
+   "skill": 18025
   },
   "Glacial Mass": {
    "portion": 1,
@@ -988,7 +1044,8 @@
      "name": "Hydrogen Isotopes",
      "qty": 414
     }
-   ]
+   ],
+   "skill": 18025
   },
   "Blue Ice": {
    "portion": 1,
@@ -1013,7 +1070,8 @@
      "name": "Oxygen Isotopes",
      "qty": 414
     }
-   ]
+   ],
+   "skill": 18025
   },
   "White Glaze": {
    "portion": 1,
@@ -1038,7 +1096,8 @@
      "name": "Nitrogen Isotopes",
      "qty": 414
     }
-   ]
+   ],
+   "skill": 18025
   },
   "Glare Crust": {
    "portion": 1,
@@ -1058,7 +1117,8 @@
      "name": "Strontium Clathrates",
      "qty": 35
     }
-   ]
+   ],
+   "skill": 18025
   },
   "Dark Glitter": {
    "portion": 1,
@@ -1078,7 +1138,8 @@
      "name": "Strontium Clathrates",
      "qty": 69
     }
-   ]
+   ],
+   "skill": 18025
   },
   "Gelidus": {
    "portion": 1,
@@ -1098,7 +1159,8 @@
      "name": "Strontium Clathrates",
      "qty": 104
     }
-   ]
+   ],
+   "skill": 18025
   },
   "Krystallos": {
    "portion": 1,
@@ -1118,7 +1180,8 @@
      "name": "Strontium Clathrates",
      "qty": 173
     }
-   ]
+   ],
+   "skill": 18025
   },
   "Blue Ice IV-Grade": {
    "portion": 1,
@@ -1143,7 +1206,8 @@
      "name": "Oxygen Isotopes",
      "qty": 483
     }
-   ]
+   ],
+   "skill": 18025
   },
   "White Glaze IV-Grade": {
    "portion": 1,
@@ -1168,7 +1232,8 @@
      "name": "Nitrogen Isotopes",
      "qty": 483
     }
-   ]
+   ],
+   "skill": 18025
   },
   "Glacial Mass IV-Grade": {
    "portion": 1,
@@ -1193,7 +1258,8 @@
      "name": "Hydrogen Isotopes",
      "qty": 483
     }
-   ]
+   ],
+   "skill": 18025
   },
   "Clear Icicle IV-Grade": {
    "portion": 1,
@@ -1218,7 +1284,8 @@
      "name": "Strontium Clathrates",
      "qty": 1
     }
-   ]
+   ],
+   "skill": 18025
   },
   "Gneiss": {
    "portion": 100,
@@ -1238,7 +1305,8 @@
      "name": "Isogen",
      "qty": 800
     }
-   ]
+   ],
+   "skill": 60379
   },
   "Gneiss II-Grade": {
    "portion": 100,
@@ -1258,7 +1326,8 @@
      "name": "Isogen",
      "qty": 840
     }
-   ]
+   ],
+   "skill": 60379
   },
   "Gneiss III-Grade": {
    "portion": 100,
@@ -1278,7 +1347,8 @@
      "name": "Isogen",
      "qty": 880
     }
-   ]
+   ],
+   "skill": 60379
   },
   "Gneiss IV-Grade": {
    "portion": 100,
@@ -1298,7 +1368,8 @@
      "name": "Isogen",
      "qty": 920
     }
-   ]
+   ],
+   "skill": 60379
   },
   "Mercoxit": {
    "portion": 100,
@@ -1308,7 +1379,8 @@
      "name": "Morphite",
      "qty": 140
     }
-   ]
+   ],
+   "skill": 12189
   },
   "Mercoxit II-Grade": {
    "portion": 100,
@@ -1318,7 +1390,8 @@
      "name": "Morphite",
      "qty": 147
     }
-   ]
+   ],
+   "skill": 12189
   },
   "Mercoxit III-Grade": {
    "portion": 100,
@@ -1328,7 +1401,8 @@
      "name": "Morphite",
      "qty": 154
     }
-   ]
+   ],
+   "skill": 12189
   },
   "Omber": {
    "portion": 100,
@@ -1343,7 +1417,8 @@
      "name": "Isogen",
      "qty": 75
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Omber II-Grade": {
    "portion": 100,
@@ -1358,7 +1433,8 @@
      "name": "Isogen",
      "qty": 79
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Omber III-Grade": {
    "portion": 100,
@@ -1373,7 +1449,8 @@
      "name": "Isogen",
      "qty": 83
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Omber IV-Grade": {
    "portion": 100,
@@ -1388,7 +1465,8 @@
      "name": "Isogen",
      "qty": 86
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Zeolites": {
    "portion": 100,
@@ -1408,7 +1486,8 @@
      "name": "Atmospheric Gases",
      "qty": 65
     }
-   ]
+   ],
+   "skill": 46152
   },
   "Sylvite": {
    "portion": 100,
@@ -1428,7 +1507,8 @@
      "name": "Evaporite Deposits",
      "qty": 65
     }
-   ]
+   ],
+   "skill": 46152
   },
   "Bitumens": {
    "portion": 100,
@@ -1448,7 +1528,8 @@
      "name": "Hydrocarbons",
      "qty": 65
     }
-   ]
+   ],
+   "skill": 46152
   },
   "Coesite": {
    "portion": 100,
@@ -1468,7 +1549,8 @@
      "name": "Silicates",
      "qty": 65
     }
-   ]
+   ],
+   "skill": 46152
   },
   "Brimful Zeolites": {
    "portion": 100,
@@ -1488,7 +1570,8 @@
      "name": "Atmospheric Gases",
      "qty": 75
     }
-   ]
+   ],
+   "skill": 46152
   },
   "Glistening Zeolites": {
    "portion": 100,
@@ -1508,7 +1591,8 @@
      "name": "Atmospheric Gases",
      "qty": 130
     }
-   ]
+   ],
+   "skill": 46152
   },
   "Brimful Sylvite": {
    "portion": 100,
@@ -1528,7 +1612,8 @@
      "name": "Evaporite Deposits",
      "qty": 75
     }
-   ]
+   ],
+   "skill": 46152
   },
   "Glistening Sylvite": {
    "portion": 100,
@@ -1548,7 +1633,8 @@
      "name": "Evaporite Deposits",
      "qty": 130
     }
-   ]
+   ],
+   "skill": 46152
   },
   "Brimful Bitumens": {
    "portion": 100,
@@ -1568,7 +1654,8 @@
      "name": "Hydrocarbons",
      "qty": 75
     }
-   ]
+   ],
+   "skill": 46152
   },
   "Glistening Bitumens": {
    "portion": 100,
@@ -1588,7 +1675,8 @@
      "name": "Hydrocarbons",
      "qty": 130
     }
-   ]
+   ],
+   "skill": 46152
   },
   "Brimful Coesite": {
    "portion": 100,
@@ -1608,7 +1696,8 @@
      "name": "Silicates",
      "qty": 75
     }
-   ]
+   ],
+   "skill": 46152
   },
   "Glistening Coesite": {
    "portion": 100,
@@ -1628,7 +1717,8 @@
      "name": "Silicates",
      "qty": 130
     }
-   ]
+   ],
+   "skill": 46152
   },
   "Cobaltite": {
    "portion": 100,
@@ -1638,7 +1728,8 @@
      "name": "Cobalt",
      "qty": 40
     }
-   ]
+   ],
+   "skill": 46153
   },
   "Euxenite": {
    "portion": 100,
@@ -1648,7 +1739,8 @@
      "name": "Scandium",
      "qty": 40
     }
-   ]
+   ],
+   "skill": 46153
   },
   "Titanite": {
    "portion": 100,
@@ -1658,7 +1750,8 @@
      "name": "Titanium",
      "qty": 40
     }
-   ]
+   ],
+   "skill": 46153
   },
   "Scheelite": {
    "portion": 100,
@@ -1668,7 +1761,8 @@
      "name": "Tungsten",
      "qty": 40
     }
-   ]
+   ],
+   "skill": 46153
   },
   "Copious Cobaltite": {
    "portion": 100,
@@ -1678,7 +1772,8 @@
      "name": "Cobalt",
      "qty": 46
     }
-   ]
+   ],
+   "skill": 46153
   },
   "Twinkling Cobaltite": {
    "portion": 100,
@@ -1688,7 +1783,8 @@
      "name": "Cobalt",
      "qty": 80
     }
-   ]
+   ],
+   "skill": 46153
   },
   "Copious Euxenite": {
    "portion": 100,
@@ -1698,7 +1794,8 @@
      "name": "Scandium",
      "qty": 46
     }
-   ]
+   ],
+   "skill": 46153
   },
   "Twinkling Euxenite": {
    "portion": 100,
@@ -1708,7 +1805,8 @@
      "name": "Scandium",
      "qty": 80
     }
-   ]
+   ],
+   "skill": 46153
   },
   "Copious Titanite": {
    "portion": 100,
@@ -1718,7 +1816,8 @@
      "name": "Titanium",
      "qty": 46
     }
-   ]
+   ],
+   "skill": 46153
   },
   "Twinkling Titanite": {
    "portion": 100,
@@ -1728,7 +1827,8 @@
      "name": "Titanium",
      "qty": 80
     }
-   ]
+   ],
+   "skill": 46153
   },
   "Copious Scheelite": {
    "portion": 100,
@@ -1738,7 +1838,8 @@
      "name": "Tungsten",
      "qty": 46
     }
-   ]
+   ],
+   "skill": 46153
   },
   "Twinkling Scheelite": {
    "portion": 100,
@@ -1748,7 +1849,8 @@
      "name": "Tungsten",
      "qty": 80
     }
-   ]
+   ],
+   "skill": 46153
   },
   "Otavite": {
    "portion": 100,
@@ -1763,7 +1865,8 @@
      "name": "Cadmium",
      "qty": 40
     }
-   ]
+   ],
+   "skill": 46154
   },
   "Sperrylite": {
    "portion": 100,
@@ -1778,7 +1881,8 @@
      "name": "Platinum",
      "qty": 40
     }
-   ]
+   ],
+   "skill": 46154
   },
   "Vanadinite": {
    "portion": 100,
@@ -1793,7 +1897,8 @@
      "name": "Vanadium",
      "qty": 40
     }
-   ]
+   ],
+   "skill": 46154
   },
   "Chromite": {
    "portion": 100,
@@ -1808,7 +1913,8 @@
      "name": "Chromium",
      "qty": 40
     }
-   ]
+   ],
+   "skill": 46154
   },
   "Lavish Otavite": {
    "portion": 100,
@@ -1823,7 +1929,8 @@
      "name": "Cadmium",
      "qty": 46
     }
-   ]
+   ],
+   "skill": 46154
   },
   "Shimmering Otavite": {
    "portion": 100,
@@ -1838,7 +1945,8 @@
      "name": "Cadmium",
      "qty": 80
     }
-   ]
+   ],
+   "skill": 46154
   },
   "Lavish Sperrylite": {
    "portion": 100,
@@ -1853,7 +1961,8 @@
      "name": "Platinum",
      "qty": 46
     }
-   ]
+   ],
+   "skill": 46154
   },
   "Shimmering Sperrylite": {
    "portion": 100,
@@ -1868,7 +1977,8 @@
      "name": "Platinum",
      "qty": 80
     }
-   ]
+   ],
+   "skill": 46154
   },
   "Lavish Vanadinite": {
    "portion": 100,
@@ -1883,7 +1993,8 @@
      "name": "Vanadium",
      "qty": 46
     }
-   ]
+   ],
+   "skill": 46154
   },
   "Shimmering Vanadinite": {
    "portion": 100,
@@ -1898,7 +2009,8 @@
      "name": "Vanadium",
      "qty": 80
     }
-   ]
+   ],
+   "skill": 46154
   },
   "Lavish Chromite": {
    "portion": 100,
@@ -1913,7 +2025,8 @@
      "name": "Chromium",
      "qty": 46
     }
-   ]
+   ],
+   "skill": 46154
   },
   "Shimmering Chromite": {
    "portion": 100,
@@ -1928,7 +2041,8 @@
      "name": "Chromium",
      "qty": 80
     }
-   ]
+   ],
+   "skill": 46154
   },
   "Carnotite": {
    "portion": 100,
@@ -1948,7 +2062,8 @@
      "name": "Technetium",
      "qty": 50
     }
-   ]
+   ],
+   "skill": 46155
   },
   "Zircon": {
    "portion": 100,
@@ -1968,7 +2083,8 @@
      "name": "Hafnium",
      "qty": 50
     }
-   ]
+   ],
+   "skill": 46155
   },
   "Pollucite": {
    "portion": 100,
@@ -1988,7 +2104,8 @@
      "name": "Caesium",
      "qty": 50
     }
-   ]
+   ],
+   "skill": 46155
   },
   "Cinnabar": {
    "portion": 100,
@@ -2008,7 +2125,8 @@
      "name": "Mercury",
      "qty": 50
     }
-   ]
+   ],
+   "skill": 46155
   },
   "Replete Carnotite": {
    "portion": 100,
@@ -2028,7 +2146,8 @@
      "name": "Technetium",
      "qty": 58
     }
-   ]
+   ],
+   "skill": 46155
   },
   "Glowing Carnotite": {
    "portion": 100,
@@ -2048,7 +2167,8 @@
      "name": "Technetium",
      "qty": 100
     }
-   ]
+   ],
+   "skill": 46155
   },
   "Replete Zircon": {
    "portion": 100,
@@ -2068,7 +2188,8 @@
      "name": "Hafnium",
      "qty": 58
     }
-   ]
+   ],
+   "skill": 46155
   },
   "Glowing Zircon": {
    "portion": 100,
@@ -2088,7 +2209,8 @@
      "name": "Hafnium",
      "qty": 100
     }
-   ]
+   ],
+   "skill": 46155
   },
   "Replete Pollucite": {
    "portion": 100,
@@ -2108,7 +2230,8 @@
      "name": "Caesium",
      "qty": 58
     }
-   ]
+   ],
+   "skill": 46155
   },
   "Glowing Pollucite": {
    "portion": 100,
@@ -2128,7 +2251,8 @@
      "name": "Caesium",
      "qty": 100
     }
-   ]
+   ],
+   "skill": 46155
   },
   "Replete Cinnabar": {
    "portion": 100,
@@ -2148,7 +2272,8 @@
      "name": "Mercury",
      "qty": 58
     }
-   ]
+   ],
+   "skill": 46155
   },
   "Glowing Cinnabar": {
    "portion": 100,
@@ -2168,7 +2293,8 @@
      "name": "Mercury",
      "qty": 100
     }
-   ]
+   ],
+   "skill": 46155
   },
   "Xenotime": {
    "portion": 100,
@@ -2193,7 +2319,8 @@
      "name": "Dysprosium",
      "qty": 22
     }
-   ]
+   ],
+   "skill": 46156
   },
   "Monazite": {
    "portion": 100,
@@ -2218,7 +2345,8 @@
      "name": "Neodymium",
      "qty": 22
     }
-   ]
+   ],
+   "skill": 46156
   },
   "Loparite": {
    "portion": 100,
@@ -2243,7 +2371,8 @@
      "name": "Promethium",
      "qty": 22
     }
-   ]
+   ],
+   "skill": 46156
   },
   "Ytterbite": {
    "portion": 100,
@@ -2268,7 +2397,8 @@
      "name": "Thulium",
      "qty": 22
     }
-   ]
+   ],
+   "skill": 46156
   },
   "Bountiful Xenotime": {
    "portion": 100,
@@ -2293,7 +2423,8 @@
      "name": "Dysprosium",
      "qty": 25
     }
-   ]
+   ],
+   "skill": 46156
   },
   "Shining Xenotime": {
    "portion": 100,
@@ -2318,7 +2449,8 @@
      "name": "Dysprosium",
      "qty": 44
     }
-   ]
+   ],
+   "skill": 46156
   },
   "Bountiful Monazite": {
    "portion": 100,
@@ -2343,7 +2475,8 @@
      "name": "Neodymium",
      "qty": 25
     }
-   ]
+   ],
+   "skill": 46156
   },
   "Shining Monazite": {
    "portion": 100,
@@ -2368,7 +2501,8 @@
      "name": "Neodymium",
      "qty": 44
     }
-   ]
+   ],
+   "skill": 46156
   },
   "Bountiful Loparite": {
    "portion": 100,
@@ -2393,7 +2527,8 @@
      "name": "Promethium",
      "qty": 25
     }
-   ]
+   ],
+   "skill": 46156
   },
   "Shining Loparite": {
    "portion": 100,
@@ -2418,7 +2553,8 @@
      "name": "Promethium",
      "qty": 44
     }
-   ]
+   ],
+   "skill": 46156
   },
   "Bountiful Ytterbite": {
    "portion": 100,
@@ -2443,7 +2579,8 @@
      "name": "Thulium",
      "qty": 25
     }
-   ]
+   ],
+   "skill": 46156
   },
   "Shining Ytterbite": {
    "portion": 100,
@@ -2468,7 +2605,8 @@
      "name": "Thulium",
      "qty": 44
     }
-   ]
+   ],
+   "skill": 46156
   },
   "Hiemal Tricarboxyl Condensate": {
    "portion": 100,
@@ -2478,7 +2616,8 @@
      "name": "Chromodynamic Tricarboxyls",
      "qty": 2
     }
-   ]
+   ],
+   "skill": 12195
   },
   "Amethystic Crystallite": {
    "portion": 1000,
@@ -2488,7 +2627,8 @@
      "name": "Chromodynamic Tricarboxyls",
      "qty": 2
     }
-   ]
+   ],
+   "skill": 12195
   },
   "Talassonite": {
    "portion": 100,
@@ -2508,7 +2648,8 @@
      "name": "Megacyte",
      "qty": 32
     }
-   ]
+   ],
+   "skill": 60381
   },
   "Talassonite II-Grade": {
    "portion": 100,
@@ -2528,7 +2669,8 @@
      "name": "Megacyte",
      "qty": 34
     }
-   ]
+   ],
+   "skill": 60381
   },
   "Talassonite III-Grade": {
    "portion": 100,
@@ -2548,7 +2690,8 @@
      "name": "Megacyte",
      "qty": 35
     }
-   ]
+   ],
+   "skill": 60381
   },
   "Rakovene": {
    "portion": 100,
@@ -2568,7 +2711,8 @@
      "name": "Zydrine",
      "qty": 200
     }
-   ]
+   ],
+   "skill": 60381
   },
   "Rakovene II-Grade": {
    "portion": 100,
@@ -2588,7 +2732,8 @@
      "name": "Zydrine",
      "qty": 210
     }
-   ]
+   ],
+   "skill": 60381
   },
   "Rakovene III-Grade": {
    "portion": 100,
@@ -2608,7 +2753,8 @@
      "name": "Zydrine",
      "qty": 220
     }
-   ]
+   ],
+   "skill": 60381
   },
   "Nesosilicate Rakovene": {
    "portion": 100,
@@ -2633,7 +2779,8 @@
      "name": "Neo-Jadarite",
      "qty": 65
     }
-   ]
+   ],
+   "skill": 60381
   },
   "Bezdnacine": {
    "portion": 100,
@@ -2653,7 +2800,8 @@
      "name": "Megacyte",
      "qty": 128
     }
-   ]
+   ],
+   "skill": 60381
   },
   "Bezdnacine II-Grade": {
    "portion": 100,
@@ -2673,7 +2821,8 @@
      "name": "Megacyte",
      "qty": 134
     }
-   ]
+   ],
+   "skill": 60381
   },
   "Bezdnacine III-Grade": {
    "portion": 100,
@@ -2693,7 +2842,8 @@
      "name": "Megacyte",
      "qty": 141
     }
-   ]
+   ],
+   "skill": 60381
   },
   "Mordunium": {
    "portion": 100,
@@ -2703,7 +2853,8 @@
      "name": "Pyerite",
      "qty": 97
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Mordunium II-Grade": {
    "portion": 100,
@@ -2713,7 +2864,8 @@
      "name": "Pyerite",
      "qty": 101
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Mordunium III-Grade": {
    "portion": 100,
@@ -2723,7 +2875,8 @@
      "name": "Pyerite",
      "qty": 107
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Mordunium IV-Grade": {
    "portion": 100,
@@ -2733,7 +2886,8 @@
      "name": "Pyerite",
      "qty": 112
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Ytirium": {
    "portion": 100,
@@ -2743,7 +2897,8 @@
      "name": "Isogen",
      "qty": 240
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Ytirium II-Grade": {
    "portion": 100,
@@ -2753,7 +2908,8 @@
      "name": "Isogen",
      "qty": 252
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Ytirium III-Grade": {
    "portion": 100,
@@ -2763,7 +2919,8 @@
      "name": "Isogen",
      "qty": 264
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Ytirium IV-Grade": {
    "portion": 100,
@@ -2773,7 +2930,8 @@
      "name": "Isogen",
      "qty": 276
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Eifyrium": {
    "portion": 100,
@@ -2783,7 +2941,8 @@
      "name": "Zydrine",
      "qty": 266
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Eifyrium II-Grade": {
    "portion": 100,
@@ -2793,7 +2952,8 @@
      "name": "Zydrine",
      "qty": 279
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Eifyrium III-Grade": {
    "portion": 100,
@@ -2803,7 +2963,8 @@
      "name": "Zydrine",
      "qty": 293
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Eifyrium IV-Grade": {
    "portion": 100,
@@ -2813,7 +2974,8 @@
      "name": "Zydrine",
      "qty": 306
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Ducinium": {
    "portion": 100,
@@ -2823,7 +2985,8 @@
      "name": "Megacyte",
      "qty": 170
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Ducinium II-Grade": {
    "portion": 100,
@@ -2833,7 +2996,8 @@
      "name": "Megacyte",
      "qty": 179
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Ducinium III-Grade": {
    "portion": 100,
@@ -2843,7 +3007,8 @@
      "name": "Megacyte",
      "qty": 187
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Ducinium IV-Grade": {
    "portion": 100,
@@ -2853,7 +3018,8 @@
      "name": "Megacyte",
      "qty": 196
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Kylixium": {
    "portion": 100,
@@ -2873,7 +3039,8 @@
      "name": "Mexallon",
      "qty": 550
     }
-   ]
+   ],
+   "skill": 60379
   },
   "Kylixium II-Grade": {
    "portion": 100,
@@ -2893,7 +3060,8 @@
      "name": "Mexallon",
      "qty": 578
     }
-   ]
+   ],
+   "skill": 60379
   },
   "Kylixium III-Grade": {
    "portion": 100,
@@ -2913,7 +3081,8 @@
      "name": "Mexallon",
      "qty": 605
     }
-   ]
+   ],
+   "skill": 60379
   },
   "Kylixium IV-Grade": {
    "portion": 100,
@@ -2933,7 +3102,8 @@
      "name": "Mexallon",
      "qty": 633
     }
-   ]
+   ],
+   "skill": 60379
   },
   "Nocxite": {
    "portion": 100,
@@ -2953,7 +3123,8 @@
      "name": "Nocxium",
      "qty": 105
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Nocxite II-Grade": {
    "portion": 100,
@@ -2973,7 +3144,8 @@
      "name": "Nocxium",
      "qty": 111
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Nocxite III-Grade": {
    "portion": 100,
@@ -2993,7 +3165,8 @@
      "name": "Nocxium",
      "qty": 116
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Nocxite IV-Grade": {
    "portion": 100,
@@ -3013,7 +3186,8 @@
      "name": "Nocxium",
      "qty": 121
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Ueganite": {
    "portion": 100,
@@ -3028,7 +3202,8 @@
      "name": "Megacyte",
      "qty": 40
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Ueganite II-Grade": {
    "portion": 100,
@@ -3043,7 +3218,8 @@
      "name": "Megacyte",
      "qty": 42
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Ueganite III-Grade": {
    "portion": 100,
@@ -3058,7 +3234,8 @@
      "name": "Megacyte",
      "qty": 44
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Ueganite IV-Grade": {
    "portion": 100,
@@ -3073,7 +3250,8 @@
      "name": "Megacyte",
      "qty": 46
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Hezorime": {
    "portion": 100,
@@ -3093,7 +3271,8 @@
      "name": "Zydrine",
      "qty": 60
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Hezorime II-Grade": {
    "portion": 100,
@@ -3113,7 +3292,8 @@
      "name": "Zydrine",
      "qty": 63
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Hezorime III-Grade": {
    "portion": 100,
@@ -3133,7 +3313,8 @@
      "name": "Zydrine",
      "qty": 66
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Hezorime IV-Grade": {
    "portion": 100,
@@ -3153,7 +3334,8 @@
      "name": "Zydrine",
      "qty": 69
     }
-   ]
+   ],
+   "skill": 60380
   },
   "Griemeer": {
    "portion": 100,
@@ -3168,7 +3350,8 @@
      "name": "Isogen",
      "qty": 80
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Griemeer II-Grade": {
    "portion": 100,
@@ -3183,7 +3366,8 @@
      "name": "Isogen",
      "qty": 84
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Griemeer III-Grade": {
    "portion": 100,
@@ -3198,7 +3382,8 @@
      "name": "Isogen",
      "qty": 88
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Griemeer IV-Grade": {
    "portion": 100,
@@ -3213,7 +3398,8 @@
      "name": "Isogen",
      "qty": 92
     }
-   ]
+   ],
+   "skill": 60378
   },
   "Tyranite": {
    "portion": 100,
@@ -3223,7 +3409,8 @@
      "name": "Eleutrium",
      "qty": 1035
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Raspite X-Grade": {
    "portion": 100,
@@ -3243,7 +3430,8 @@
      "name": "Crystalline Raspite",
      "qty": 10
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Polycrase X-Grade": {
    "portion": 100,
@@ -3263,7 +3451,8 @@
      "name": "Crystalline Polycrase",
      "qty": 10
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Moissanite X-Grade": {
    "portion": 100,
@@ -3283,7 +3472,8 @@
      "name": "Crystalline Moissanite",
      "qty": 10
     }
-   ]
+   ],
+   "skill": 60377
   },
   "Kangite X-Grade": {
    "portion": 100,
@@ -3303,7 +3493,8 @@
      "name": "Crystalline Kangite",
      "qty": 10
     }
-   ]
+   ],
+   "skill": 60377
   }
  },
  "minerals": {

@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "3.3.4"
+VERSION = "3.4.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -267,6 +267,88 @@ ORE_BY_TID = {v["typeID"]: (n, v.get("volume", 0.0)) for n, v in ORE_TYPES.items
 ORE_REFINE = load_json("ore_refine.json", {"refine": {}, "minerals": {}})
 # Reprocessing-Skills: typeID -> Bonus je Stufe. Basis NPC-Station 50%.
 REPROCESS_SKILLS = {3385: 0.03, 3389: 0.02}  # Reprocessing, Reprocessing Efficiency
+
+# Wo raffiniert wird. MELDUNG Vile Gangster, 14.09.2026: "Der Preis beim
+# raffinierten Erz ist, finde ich, verzerrend, da hier nur der unterste Wert
+# ran gezogen wird." Canary rechnete stur mit einer NPC-Station und ohne den
+# erzspezifischen Skill. Er raffiniert auf einer Tatara und kommt auf 80,9 %,
+# Canary zeigte 63 %. Die Empfehlung "komprimiert verkaufen" stand deshalb
+# auf einer falschen Grundlage.
+#
+# Formel laut EVE University (Reprocessing, abgerufen 14.09.2026):
+#   (50 + Rig) x (1 + Sec) x (1 + Rumpf) x (1 + 0,03 R) x (1 + 0,02 Re)
+#     x (1 + 0,02 Erzskill) x (1 + Implantat)
+# Rig T1 +1, T2 +3. Sec Hoch 0, Low 6 %, Null 12 %, nur fuer Strukturen.
+# Rumpf Athanor 2 %, Tatara 5,5 %. Implantat RX-801/802/804 1/2/4 %.
+#
+# GEPRUEFT an Vile Gangsters eigener Zahl: Tatara, T2-Rigs, Hochsicherheit,
+# alle Skills V, RX-804 ergibt 80,92 %. Er nannte 80,9 %.
+#
+# Anlage -> (Rig-Punkte, Rumpfbonus, ist Struktur)
+RAFF_ANLAGEN = {
+    "npc": (0, 0.0, False),
+    "athanor_t1": (1, 0.02, True),
+    "athanor_t2": (3, 0.02, True),
+    "tatara_t1": (1, 0.055, True),
+    "tatara_t2": (3, 0.055, True),
+}
+RAFF_SEC = {"hoch": 0.0, "low": 0.06, "null": 0.12}
+RAFF_IMPLANTATE = (0, 1, 2, 4)
+RAFF_VORGABE = {"anlage": "npc", "sec": "hoch", "implantat": 0, "abgabe": 0.0}
+
+
+def raffinerie_einstellung(roh=None):
+    """Die Raffinerie-Wahl, geprueft. Unbekanntes faellt auf die Vorgabe."""
+    roh = roh if isinstance(roh, dict) else (CONFIG.get("raffinerie") or {})
+    e = dict(RAFF_VORGABE)
+    if roh.get("anlage") in RAFF_ANLAGEN:
+        e["anlage"] = roh["anlage"]
+    if roh.get("sec") in RAFF_SEC:
+        e["sec"] = roh["sec"]
+    try:
+        if int(roh.get("implantat")) in RAFF_IMPLANTATE:
+            e["implantat"] = int(roh["implantat"])
+    except (TypeError, ValueError):
+        pass
+    try:
+        e["abgabe"] = round(max(0.0, min(50.0, float(roh.get("abgabe")))), 2)
+    except (TypeError, ValueError):
+        pass
+    return e
+
+
+def raffinerie_ausbeute(e, grund_faktor, erz_stufe):
+    """Ausbeute als Anteil (0..1), OHNE Abgabe.
+
+    grund_faktor: (1 + 0,03 Reprocessing) x (1 + 0,02 Reprocessing Efficiency).
+    erz_stufe: Stufe des erzspezifischen Skills, 0 wenn unbekannt."""
+    rig, rumpf, struktur = RAFF_ANLAGEN.get(e["anlage"], RAFF_ANLAGEN["npc"])
+    y = (50 + rig) / 100.0
+    if struktur:
+        # Die Sicherheitsstufe wirkt nur auf Strukturen. Eine NPC-Station im
+        # Nullsec raffiniert nicht besser als eine in Jita.
+        y *= 1 + RAFF_SEC.get(e["sec"], 0.0)
+    y *= 1 + rumpf
+    y *= grund_faktor
+    y *= 1 + 0.02 * max(0, min(5, int(erz_stufe or 0)))
+    y *= 1 + e["implantat"] / 100.0
+    return y
+
+
+def raff_stufen(c):
+    """(Grundfaktor, {Skill-ID-Text: Stufe}) eines Charakters, oder None.
+
+    Aeltere Konfigurationen kennen die einzelnen Stufen noch nicht, nur den
+    fertigen Wert "reprocess" (0,5 mal Grundfaktor). Dann gilt der, ohne
+    Erzskill, bis der naechste Skill-Abgleich die Stufen nachliefert."""
+    st = c.get("refine_skills")
+    if isinstance(st, dict):
+        f = ((1 + 0.03 * int(st.get("3385", 0) or 0))
+             * (1 + 0.02 * int(st.get("3389", 0) or 0)))
+        return f, st
+    if c.get("reprocess"):
+        return float(c["reprocess"]) / 0.50, {}
+    return None
 # Module und alles andere ausser Erz laufen ueber Scrapmetal Processing
 # (typeID am 11.09.2026 im SDE-Dump nachgesehen: 12196). Er kommt ZU den
 # beiden allgemeinen Skills dazu, nicht an ihre Stelle.
@@ -1794,6 +1876,10 @@ def load_config():
            # den Fuessen weggezogen. Ein wegklickbarer Hinweis zeigt auf
            # die neue Fassung.
            "missionskopf": "klassisch",
+           # Wo raffiniert wird, fuer den Verwertungs-Berater in der
+           # Erz-Schatzkammer (Vile Gangster, 14.09.2026). Vorgabe ist die
+           # NPC-Station, damit sich fuer niemanden still eine Zahl aendert.
+           "raffinerie": dict(RAFF_VORGABE),
            # Gespeicherte Routen, je Eintrag
            #   {"name": ..., "systeme": [Systemname, ...]}
            # Sie gehoeren an die Installation, nicht an einen Browser:
@@ -6975,15 +7061,24 @@ class Esi(threading.Thread):
         for sid, per in MINING_YIELD_SKILLS.items():
             mult *= (1 + per * lvl.get(sid, 0))
         c["skill_bonus"] = round((mult - 1) * 100)
-        # Reprocessing-Ausbeute (Basis NPC-Station 50%, mal Reprocessing + Reprocessing
-        # Efficiency). Ohne Struktur-Rigs/Standings/Implantate/erz-spezifische Skills,
-        # daher eine konservative Untergrenze fuer den Erz-Verwertungs-Berater.
+        # Reprocessing-Grundwert (NPC-Station 50 %, mal Reprocessing und
+        # Reprocessing Efficiency). Genutzt vom Zerleger und als Rueckfall fuer
+        # alte Konfigurationen. Der Verwertungs-Berater rechnet seit v3.4.0 mit
+        # den Einzelstufen in refine_skills und der gewaehlten Raffinerie,
+        # siehe raffinerie_ausbeute.
         rep = 0.50
         for sid, per in REPROCESS_SKILLS.items():
             rep *= (1 + per * lvl.get(sid, 0))
         c["reprocess"] = round(rep, 4)
         # Dasselbe fuer alles, was kein Erz ist: Scrapmetal Processing.
         c["scrap"] = round(rep * (1 + SCRAP_PRO_STUFE * lvl.get(SCRAP_SKILL, 0)), 4)
+        # Einzelstufen fuer die Raffinerie-Rechnung (Vile Gangster,
+        # 14.09.2026): die beiden allgemeinen Skills und jeder erzspezifische,
+        # der in ore_refine.json vorkommt. Text-Schluessel wegen config.json.
+        erz_skills = {int(o.get("skill")) for o in
+                      (ORE_REFINE.get("refine") or {}).values() if o.get("skill")}
+        c["refine_skills"] = {str(sk): int(lvl.get(sk, 0))
+                              for sk in sorted(set(REPROCESS_SKILLS) | erz_skills)}
         # Stufen der Skills, die den Erzladeraum vergroessern (Mekkes,
         # 12.09.2026). Als Text-Schluessel, weil config.json ohnehin nur
         # Text-Schluessel kennt.
@@ -7912,7 +8007,8 @@ class Esi(threading.Thread):
                 # alle 120 s erneut und erzeugte dauerhaft 403er bei CCP. Wie bei
                 # den Planeten daher eine halbe Stunde Ruhe.
                 try:
-                    if time.time() >= c.get("skills_next", 0):
+                    if (time.time() >= c.get("skills_next", 0)
+                            or "refine_skills" not in c):
                         self.sync_skills(name, c)
                         c["ore_cap"] = erzladeraum_mit_skills(
                             ship["ship_type_id"],
@@ -10321,10 +10417,21 @@ def query_ore_advisor(region):
                     roh_units[key] = roh_units.get(key, 0) + o["units"]
     if not units:
         return None
-    # Beste Reprocessing-Ausbeute ueber die verbundenen Chars.
-    yields = [(c.get("reprocess"), nm) for nm, c in
-              ((CONFIG.get("esi") or {}).get("chars", {})).items() if c.get("reprocess")]
-    yfrac, ychar = (max(yields) if yields else (0.50, None))
+    e = raffinerie_einstellung()
+    # Skills je Charakter. Ohne jeden Abgleich rechnet Canary wie frueher mit
+    # nackten 50 Prozent, dann aber als solche gekennzeichnet.
+    kandidaten = []
+    for nm, c in ((CONFIG.get("esi") or {}).get("chars", {})).items():
+        st = raff_stufen(c)
+        if st:
+            kandidaten.append((nm, st[0], st[1]))
+    if not kandidaten:
+        kandidaten = [(None, 1.0, {})]
+    rezepte = ORE_REFINE.get("refine") or {}
+
+    def ausbeute_fuer(ore, faktor, stufen, einst):
+        sk = (rezepte.get(ore) or {}).get("skill")
+        return raffinerie_ausbeute(einst, faktor, stufen.get(str(sk), 0) if sk else 0)
     # Preise fuer Roh, Komprimiert und alle Mineralien in einem Abruf.
     tids = set()
     for ore in units:
@@ -10343,8 +10450,23 @@ def query_ore_advisor(region):
     # noch fehlten — eine falsche Zahl ist schlimmer als eine fehlende Anzeige.
     if not tids <= set(pm):
         return None
+    # Die Abgabe der Anlage geht vom Mineralienwert ab. Bei NPC-Stationen
+    # haengt sie an den Standings (5 % bei null), bei Strukturen stellt der
+    # Besitzer sie ein. Canary kennt beides nicht, deshalb ein Eingabefeld.
+    netto = 1 - e["abgabe"] / 100.0
+
+    def summe_raff(faktor, stufen, einst):
+        return sum(refine_value(o, u, ausbeute_fuer(o, faktor, stufen, einst), pm)
+                   for o, u in units.items()) * netto
+
+    # Bester Charakter = der mit dem hoechsten Mineralienwert. Welche Skills
+    # zaehlen, haengt am Erz, der Charakter mit dem besten Reprocessing ist
+    # nicht automatisch der beste fuer Eis.
+    ychar, yfaktor, ystufen = max(kandidaten,
+                                  key=lambda k: summe_raff(k[1], k[2], e))
     rows = []
     t_raw = t_comp = t_ref = 0.0
+    ymin, ymax = 1.0, 0.0
     for ore, u in units.items():
         t = ORE_TYPES.get(ore, {})
         comp = ORE_TYPES.get("Compressed " + ore)
@@ -10353,19 +10475,35 @@ def query_ore_advisor(region):
         # Komprimieren und Raffinieren gehen dagegen mit dem ganzen Bestand.
         raw = u_roh * pm.get(t.get("typeID"), (0, 0))[0]
         cmp_ = u * pm.get(comp["typeID"], (0, 0))[0] if comp else 0.0
-        ref = refine_value(ore, u, yfrac, pm)
+        y_ore = ausbeute_fuer(ore, yfaktor, ystufen, e)
+        ymin, ymax = min(ymin, y_ore), max(ymax, y_ore)
+        ref = refine_value(ore, u, y_ore, pm) * netto
         best = max((("raw", raw), ("comp", cmp_), ("refine", ref)), key=lambda x: x[1])[0]
         t_raw += raw
         t_comp += cmp_
         t_ref += ref
         rows.append({"ore": ore, "units": u, "units_roh": u_roh,
                      "raw": round(raw), "comp": round(cmp_),
-                     "refine": round(ref), "best": best})
+                     "refine": round(ref), "best": best,
+                     "yield": round(y_ore, 4)})
     rows.sort(key=lambda r: -max(r["raw"], r["comp"], r["refine"]))
     tot = {"raw": round(t_raw), "comp": round(t_comp), "refine": round(t_ref)}
     overall = max(tot, key=tot.get)
-    return {"hub": REGIONS.get(str(region), str(region)), "yield": yfrac,
-            "yield_char": ychar, "totals": tot, "best": overall, "rows": rows}
+    # Dieselbe Rechnung fuer jede Anlage, mit Sicherheit, Implantat und
+    # Abgabe wie gewaehlt. Vile Gangster wollte die Szenarien nebeneinander
+    # sehen, um zu entscheiden, ob sich der Weg zu einer besseren Raffinerie
+    # lohnt.
+    vergleich = {k: round(summe_raff(yfaktor, ystufen, dict(e, anlage=k)))
+                 for k in RAFF_ANLAGEN}
+    return {"hub": REGIONS.get(str(region), str(region)),
+            "yield": round(ymax, 4), "yield_min": round(ymin, 4),
+            "yield_char": ychar,
+            # voll: Einzelstufen samt Erzskill. teilweise: nur der alte
+            # Gesamtwert aus Reprocessing, der Erzskill fehlt bis zum
+            # naechsten Skill-Abgleich. keine: gar keine Skill-Daten.
+            "skills": ("voll" if ystufen else ("teilweise" if ychar else "keine")),
+            "einstellung": e, "vergleich": vergleich,
+            "totals": tot, "best": overall, "rows": rows}
 
 
 def baseline_filter(rows):
@@ -16000,6 +16138,13 @@ class Handler(BaseHTTPRequestHandler):
             CONFIG["share_ore"] = bool(body.get("on"))
         elif action == "share_pve":
             CONFIG["share_pve"] = bool(body.get("on"))
+        elif action == "raffinerie":
+            e = raffinerie_einstellung(body)
+            with CONFIG_LOCK:
+                CONFIG["raffinerie"] = e
+            save_config()
+            self._send(json.dumps({"ok": True, "einstellung": e}))
+            return
         elif action == "missionskopf":
             # Nur die zwei bekannten Werte, sonst bliebe irgendein Text
             # in der Konfiguration stehen und die Seite faende keinen
@@ -18112,6 +18257,7 @@ padding:7px 14px;border-radius:8px;cursor:pointer;margin:4px 6px 0 0}
   <button class="btn" onclick="document.getElementById('zerDlg').close()">Schließen</button>
  </div>
 </dialog>
+<dialog id="raffDlg"><div id="raffInhalt"></div></dialog>
 <dialog id="routeDlg">
  <h2>🧭 Routen</h2>
  <p class="sub">Wege, die du immer wieder fliegst, einmal zusammenstellen und danach mit einem Klick als Wegpunkte in den Client schreiben. Canary setzt die Route, geflogen wird sie von dir: den Autopiloten startest du im Spiel wie sonst auch. Der Charakter muss dafür eingeloggt sein.</p>
@@ -18531,7 +18677,7 @@ const VIEW_INFO={
  wallet:{d:'Dein Wallet unter der Lupe. Oben die Bilanz: Einnahmen, Ausgaben und was unterm Strich bleibt, je Kategorie und umschaltbar für 7 Tage, 30 Tage oder alles. Darunter der Handel im Detail, welches Item wirklich Gewinn bringt und was Gebühren und Steuer fressen, dazu Ranglisten nach Umsatz und verkaufter Menge.',
   q:'Daten: nur über den EVE-Login, aus deinem Wallet-Journal und deinen Markt-Transaktionen. Beides ist bis zu eine Stunde alt. Die Käufe kommen aus den Transaktionen und nicht aus dem Journal, denn EVE bucht eine Kauforder schon beim Einstellen als hinterlegte Sicherheit, und die käme bei Storno zurück. Gewinn wird per FIFO gerechnet, also jeder Verkauf gegen deine ältesten Einkäufe desselben Typs. Als Handel zählen nur Sachen, die du gekauft UND verkauft hast, sonst würde dein eigenes Schiff als Riesenverlust dastehen. Was du nur verkauft hast, etwa selbst gefördertes Erz, steht deshalb in einer eigenen Liste.'},
  vault:{d:'Dein Erz in den Stationen, und der Rat, was sich mehr lohnt: roh verkaufen, komprimiert verkaufen oder einschmelzen.',
-  q:'Daten: EVE-Login für den Bestand, Marktpreise von Fuzzwork. Der Einschmelz-Wert ist vorsichtig gerechnet, dein echter Erlös liegt eher darüber.'},
+  q:'Daten: EVE-Login für Bestand und Skills, Marktpreise von Fuzzwork. Der Einschmelz-Wert rechnet mit der Raffinerie, die du auswählst.'},
  rechner:{d:'Ein Preisrechner. Frachtraum im Spiel markieren, kopieren, hier einfügen, und du siehst sofort, was es an welchem Handelsplatz wert ist.',
   q:'Daten: Marktpreise von Fuzzwork für die großen Handelsplätze. Der Text, den du einfügst, bleibt auf deinem Rechner.'},
  beute:{d:'Zeigt dir, was ein Lauf eingebracht hat. Du fügst deinen Frachtraum zweimal ein, einmal vor und einmal nach der Mission oder dem Abyss, und Canary rechnet aus, was dazugekommen und was verbraucht worden ist. Das Ergebnis lässt sich mit einem Klick kopieren und passt in das Loot-Feld einer Mission.',
@@ -22647,6 +22793,106 @@ function renderWallet(w){
   }).catch(()=>{});
  };
 }
+// ===========================================================================
+// Raffinerie im Verwertungs-Berater (Meldung Vile Gangster, 14.09.2026)
+// ===========================================================================
+// "Der Preis beim raffinierten Erz ist, finde ich, verzerrend, da hier nur der
+// unterste Wert ran gezogen wird." Canary rechnete mit einer NPC-Station und
+// ohne den erzspezifischen Skill. Jetzt waehlt man die Anlage, und darunter
+// steht, was dieselben Mineralien auf jeder anderen Anlage wert waeren.
+//
+// Die Knoepfe liegen im Zwei-Sekunden-Takt von #grid, deshalb nur ein Knopf
+// dort, alles Einstellbare im Dialog.
+let raffLetzte=null;
+const RAFF_NAMEN={
+ npc:['NPC-Station','NPC station'],
+ athanor_t1:['Athanor, T1-Rigs','Athanor, T1 rigs'],
+ athanor_t2:['Athanor, T2-Rigs','Athanor, T2 rigs'],
+ tatara_t1:['Tatara, T1-Rigs','Tatara, T1 rigs'],
+ tatara_t2:['Tatara, T2-Rigs','Tatara, T2 rigs']};
+const RAFF_SEC_NAMEN={hoch:['Highsec','Highsec'],low:['Lowsec','Lowsec'],
+ null:['Nullsec oder Wurmloch','Nullsec or wormhole']};
+
+function raffName(k,en){const x=RAFF_NAMEN[k];return x?x[en?1:0]:k;}
+
+function raffProzent(y){return nk((y||0)*100,1)+' %';}
+
+function raffZeile(a,en){
+ const e=a.einstellung||{anlage:'npc',sec:'hoch',implantat:0,abgabe:0};
+ const struktur=e.anlage!=='npc';
+ const teile=[raffName(e.anlage,en)];
+ if(struktur)teile.push(RAFF_SEC_NAMEN[e.sec][en?1:0]);
+ teile.push(e.implantat?('RX-80'+({1:'1',2:'2',4:'4'})[e.implantat]):(en?'no implant':'kein Implantat'));
+ teile.push((en?'tax ':'Abgabe ')+nk(e.abgabe||0,1)+' %');
+ const ymin=a.yield_min||a.yield||0, ymax=a.yield||0;
+ const ausbeute=Math.abs(ymax-ymin)<0.0005?raffProzent(ymax)
+  :raffProzent(ymin)+' '+(en?'to':'bis')+' '+raffProzent(ymax);
+ const v=a.vergleich||{};
+ const schwelle=Math.max(a.totals.raw||0,a.totals.comp||0);
+ const vergleich=Object.keys(RAFF_NAMEN).filter(k=>k in v).map(k=>{
+  const wert=fmtM(v[k]);
+  // Fett die gewaehlte Anlage, gruen jede, auf der Raffinieren mehr bringt
+  // als der bessere Verkauf. Genau das ist die Frage aus der Meldung.
+  const stil=(v[k]>schwelle?'color:var(--green);':'')+(k===e.anlage?'font-weight:700;':'');
+  return `<span style="${stil}">${esc(raffName(k,en))} ${wert}</span>`;
+ }).join(' · ');
+ return `<div class="btnrow" style="margin-top:8px;flex-wrap:wrap">
+   <span class="sub">${en?'Refinery':'Raffinerie'}: <b>${esc(teile.join(' · '))}</b> · ${en?'yield':'Ausbeute'} ${ausbeute}${a.yield_char?' ('+esc(a.yield_char)+')':''}</span>
+   <button class="btn" data-raff="1">${en?'Change refinery':'Raffinerie ändern'}</button>
+  </div>
+  <div class="sub" style="margin-top:4px">${en?'Minerals by refinery':'Mineralienwert je Anlage'}: ${vergleich}</div>
+  <div class="sub" style="margin-top:4px">${a.skills==='teilweise'
+   ?(en?'The ore-specific processing skill is still missing and arrives with the next skill check, within a few minutes. ':'Der erzspezifische Processing-Skill fehlt noch und kommt mit dem nächsten Skill-Abgleich dazu, in wenigen Minuten. '):''}${a.skills!=='keine'
+   ?(en?'Yield from Reprocessing, Reprocessing Efficiency and the processing skill of each ore. Implant and tax come from your choice, Canary cannot read them. Green means refining beats the better sale. Compressing only changes volume, not the minerals.'
+       :'Ausbeute aus Reprocessing, Reprocessing Efficiency und dem Processing-Skill des jeweiligen Erzes. Implantat und Abgabe kommen aus deiner Auswahl, die kann Canary nicht lesen. Grün heißt: Raffinieren bringt mehr als der bessere Verkauf. Komprimieren ändert nur das Volumen, nicht die Mineralien.')
+   :(en?'No skill data yet: yield is calculated without skills. Connect the character with the skills permission.'
+       :'Noch keine Skill-Daten: die Ausbeute ist ohne Skills gerechnet. Den Charakter mit Skill-Berechtigung verbinden.')}</div>`;
+}
+
+function raffDialog(){
+ const en=lang==='en';
+ const e=raffLetzte||{anlage:'npc',sec:'hoch',implantat:0,abgabe:0};
+ const opt=(wert,text,aktiv)=>`<option value="${wert}"${aktiv?' selected':''}>${esc(text)}</option>`;
+ document.getElementById('raffInhalt').innerHTML=`
+  <h2>⚗ ${en?'Refinery':'Raffinerie'}</h2>
+  <p class="sub">${en
+   ?'Where do you refine? Canary uses it for the refine value in the ore vault. The formula is the one from EVE University and matches in-game numbers.'
+   :'Wo raffinierst du? Canary rechnet damit den Mineralienwert in der Erz-Schatzkammer. Die Formel ist die von EVE University und trifft die Zahlen im Spiel.'}</p>
+  <div class="btnrow" style="margin-top:8px"><span class="sub" style="min-width:110px">${en?'Facility':'Anlage'}</span>
+   <select id="raffAnlage">${Object.keys(RAFF_NAMEN).map(k=>opt(k,raffName(k,en),k===e.anlage)).join('')}</select></div>
+  <div class="btnrow" style="margin-top:6px"><span class="sub" style="min-width:110px">${en?'Security':'Sicherheit'}</span>
+   <select id="raffSec">${Object.keys(RAFF_SEC_NAMEN).map(k=>opt(k,RAFF_SEC_NAMEN[k][en?1:0],k===e.sec)).join('')}</select>
+   <span class="sub">${en?'only counts for structures':'zählt nur bei Strukturen'}</span></div>
+  <div class="btnrow" style="margin-top:6px"><span class="sub" style="min-width:110px">${en?'Implant':'Implantat'}</span>
+   <select id="raffImp">${[0,1,2,4].map(k=>opt(k,k?('RX-80'+({1:'1',2:'2',4:'4'})[k]+' (+'+k+' %)'):(en?'none':'keins'),k===e.implantat)).join('')}</select></div>
+  <div class="btnrow" style="margin-top:6px"><span class="sub" style="min-width:110px">${en?'Tax':'Abgabe'}</span>
+   <input id="raffAbgabe" type="number" min="0" max="50" step="0.1" value="${e.abgabe||0}" style="width:80px"> %
+   <span class="sub">${en?'set by the structure owner, at NPC stations it depends on standings (5 % at zero)':'stellt der Besitzer der Struktur ein, bei NPC-Stationen hängt sie an den Standings (5 % bei null)'}</span></div>
+  <div class="btnrow" style="margin-top:12px">
+   <button class="btn" id="raffGo">${en?'Save':'Speichern'}</button>
+   <button class="btn" id="raffZu">${en?'Close':'Schließen'}</button>
+   <span class="sub" id="raffStat"></span></div>`;
+ const d=document.getElementById('raffDlg');
+ document.getElementById('raffZu').onclick=()=>d.close();
+ document.getElementById('raffGo').onclick=()=>{
+  const st=document.getElementById('raffStat');
+  st.textContent=en?'Saving …':'Speichere …';
+  post({action:'raffinerie',
+        anlage:document.getElementById('raffAnlage').value,
+        sec:document.getElementById('raffSec').value,
+        implantat:+document.getElementById('raffImp').value,
+        abgabe:+document.getElementById('raffAbgabe').value}).then(r=>{
+   if(r&&r.ok){raffLetzte=r.einstellung;d.close();tick();}
+   else st.textContent=en?'Not saved':'Nicht gespeichert';
+  }).catch(()=>{st.textContent=en?'Server not reachable':'Server nicht erreichbar';});
+ };
+ d.showModal();
+}
+
+document.addEventListener('click',e=>{
+ if(e.target.closest('[data-raff]'))raffDialog();
+});
+
 function renderVault(v){
  v=v||{}; const chars=v.chars||[];
  if(!chars.length){
@@ -22667,7 +22913,7 @@ function renderVault(v){
  if(a&&a.rows&&a.rows.length){
   const en=lang==='en';
   const opt=(k,label)=>`<div class="advopt${a.best===k?' best':''}"><div class="l">${label}${a.best===k?` <span class="advrec">${en?'best':'empfohlen'}</span>`:''}</div><div class="v isk">${fmtM(a.totals[k]||0)}</div></div>`;
-  const yld=Math.round((a.yield||0.5)*100);
+  raffLetzte=a.einstellung||null;
   html+=`<div class="card" style="grid-column:1/-1">
     <div class="chead"><span class="char">💡 ${en?'Best way to process':'Bester Verwertungsweg'}</span> <span class="sub">· ${en?'valued for':'bewertet für'} ${esc(a.hub)}</span></div>
     <div class="advrow">
@@ -22675,7 +22921,7 @@ function renderVault(v){
       ${opt('comp',en?'Sell compressed':'Komprimiert verkaufen')}
       ${opt('refine',en?'Refine to minerals':'Zu Mineralien raffinieren')}
     </div>
-    <div class="sub" style="margin-top:6px">${en?'Refine yield':'Refine-Ausbeute'} ${yld}%${a.yield_char?' ('+esc(a.yield_char)+')':''} · ${en?'NPC station 50% base from your reprocessing skills; excludes structure rigs, standings, implants and ore-specific skills that raise it, so refine is a conservative floor. Compressing changes only volume, not the minerals.':'NPC-Station 50% Basis aus deinen Reprocessing-Skills; ohne Struktur-Rigs, Standings, Implantate und erz-spezifische Skills, die es erhöhen, Refine ist also eine konservative Untergrenze. Komprimieren ändert nur das Volumen, nicht die Mineralien.'}</div>`;
+    ${raffZeile(a,en)}`;
   const rws=a.rows.slice(0,12);
   html+=`<table class="fleetcomp advtbl"><tr><th>${en?'Ore':'Erz'}</th><th class="r">${en?'Units':'Menge'}</th><th class="r">${en?'Raw':'Roh'}</th><th class="r">${en?'Compressed':'Kompr.'}</th><th class="r">${en?'Refine':'Raffiniert'}</th></tr>`
    +rws.map(r=>`<tr><td>${esc(r.ore)}</td><td class="r">${fmt(r.units)}</td><td class="r${r.best==='raw'?' advb':''}">${fmtM(r.raw)}</td><td class="r${r.best==='comp'?' advb':''}">${fmtM(r.comp)}</td><td class="r${r.best==='refine'?' advb':''}">${fmtM(r.refine)}</td></tr>`).join('')
@@ -25428,8 +25674,8 @@ const EN = {
  'Data: only through the EVE login. Careful: storage levels are only as fresh as the last time you opened the colony in game. The expiry times, however, are always correct.',
 'Dein Erz in den Stationen, und der Rat, was sich mehr lohnt: roh verkaufen, komprimiert verkaufen oder einschmelzen.':
  'Your ore sitting in stations, plus advice on what pays more: selling it raw, selling it compressed or reprocessing it.',
-'Daten: EVE-Login für den Bestand, Marktpreise von Fuzzwork. Der Einschmelz-Wert ist vorsichtig gerechnet, dein echter Erlös liegt eher darüber.':
- 'Data: EVE login for the stock, market prices from Fuzzwork. The reprocessing value is calculated conservatively, your real return is likely higher.',
+'Daten: EVE-Login für Bestand und Skills, Marktpreise von Fuzzwork. Der Einschmelz-Wert rechnet mit der Raffinerie, die du auswählst.':
+ 'Data: EVE login for stock and skills, market prices from Fuzzwork. The reprocessing value uses the refinery you choose.',
 'Ein Preisrechner. Frachtraum im Spiel markieren, kopieren, hier einfügen, und du siehst sofort, was es an welchem Handelsplatz wert ist.':
  'A price calculator. Select your cargo hold in game, copy it, paste it here, and you immediately see what it is worth at which trade hub.',
 'Zeigt dir, was ein Lauf eingebracht hat. Du fügst deinen Frachtraum zweimal ein, einmal vor und einmal nach der Mission oder dem Abyss, und Canary rechnet aus, was dazugekommen und was verbraucht worden ist. Das Ergebnis lässt sich mit einem Klick kopieren und passt in das Loot-Feld einer Mission.':
