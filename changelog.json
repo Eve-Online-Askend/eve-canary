@@ -1,5 +1,19 @@
 [
  {
+  "v": "3.5.1",
+  "d": "2026-10-05",
+  "de": [
+   "Zwei Nachbesserungen an der Einkaufsliste, beide von Dune2Man gemeldet.",
+   "„das mit dem hervorheben scheint noch nicht zu klappen“: stimmt, in der Tabelle war der jeweils günstigste Preis nicht zu erkennen. Die Markierung hing an einer Klasse, die nur in der Erz-Schatzkammer gilt. Jetzt ist die günstigste Zelle jeder Zeile grün hinterlegt, und die Spalte des insgesamt günstigsten Handelsplatzes trägt das ★ in der Kopfzeile.",
+   "„schön wäre auch wenn man direkt ne einkaufsliste dann mit denen die dort am billigsten sind exportieren kann“: unter der Tabelle steht jetzt für jeden Handelsplatz ein Knopf mit der Zahl der Posten, die dort am günstigsten sind. Ein Klick legt die Liste als Name und Menge in die Zwischenablage, fertig fürs Multibuy-Fenster im Spiel. Dazu ein Knopf, der die ganze Liste für den günstigsten Platz kopiert."
+  ],
+  "en": [
+   "Two follow-ups on the shopping list, both reported by Dune2Man.",
+   "“the highlighting does not seem to work yet”: correct, the cheapest price in each row was not visible. The marker used a class that only applies inside the ore vault table. Now the cheapest cell of every row has a green background, and the column of the overall cheapest hub carries the ★ in its header.",
+   "“it would be nice to export a shopping list with the items that are cheapest there”: below the table there is now a button per trade hub with the number of items cheapest there. One click puts that list on the clipboard as name and quantity, ready for the multibuy window in game. Plus a button that copies the whole list for the cheapest hub."
+  ]
+ },
+ {
   "v": "3.5.0",
   "d": "2026-10-05",
   "de": [

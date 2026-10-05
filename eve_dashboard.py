@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "3.5.0"
+VERSION = "3.5.1"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -17873,6 +17873,13 @@ html[data-skin=cockpit] #packBox svg{
 .advrec{color:var(--green);font-weight:700;font-size:10px;border:1px solid var(--green);border-radius:4px;padding:1px 4px;margin-left:4px}
 .advtbl{margin-top:10px}
 .advtbl td.advb{color:var(--green);font-weight:700}
+/* Die guenstigste Zelle je Zeile in der Einkaufsliste. Zuerst stand hier
+   die Klasse der Schatzkammer-Tabelle, die aber nur unter .advtbl gilt:
+   im Browser war nichts hervorgehoben (Dune2Man, 05.10.2026). Farbe UND
+   Flaeche, damit es in einer Tabelle mit fuenf Zahlenspalten auffaellt. */
+.einkauftbl td.best{color:var(--green);font-weight:700;
+ background:rgba(79,212,127,.13);border-radius:4px}
+.einkauftbl th.besthub,.einkauftbl td.besthub{background:rgba(79,212,127,.05)}
 @media(max-width:640px){.pirow{grid-template-columns:12px 1fr max-content}.pirow .pichar,.pirow .piprod{display:none}}
 /* Live-Missionskampf: EVE-HUD an den Design-Tokens. Verlauf ueber var(--card)/
    var(--inset) (theme-fest), Radius/Border wie die uebrigen Karten, Schaden
@@ -24949,14 +24956,78 @@ async function doEinkauf(){
   <div class="sub" style="margin-top:8px">${en?'★ = cheapest for the whole list':'★ = am günstigsten für die ganze Liste'}${
     teuerste&&best?' · '+(en?'difference to the most expensive hub':'Unterschied zum teuersten Handelsplatz')+': '+fmtM(teuerste-r.hubs[best].sell):''} · ${
     en?'Buying each item at its own cheapest hub':'Jeden Posten am jeweils günstigsten Platz gekauft'}: ${fmtM(r.verteilt)}</div>
-  <table><tr><th>${en?'Item':'Posten'}</th><th class="r">${en?'Qty':'Menge'}</th>`
-   +rids.map(k=>`<th class="r">${esc(r.hubs[k].name)}</th>`).join('')+'</tr>'
+  <table class="einkauftbl"><tr><th>${en?'Item':'Posten'}</th><th class="r">${en?'Qty':'Menge'}</th>`
+   +rids.map(k=>`<th class="r${k===best?' besthub':''}">${esc(r.hubs[k].name)}${k===best?' ★':''}</th>`).join('')+'</tr>'
    +r.items.map(i=>`<tr><td>${esc(i.name)}</td><td class="r">${fmt(i.qty)}</td>`
      +rids.map(k=>{const v=i.hubs[k];
-       return `<td class="r${k===i.best?' advb':''}">${v===undefined?'·':fmtM(v)}</td>`;}).join('')+'</tr>').join('')
+       // Gruen hinterlegt: hier ist genau dieser Posten am billigsten.
+       return `<td class="r${k===i.best?' best':''}${k===best?' besthub':''}">${
+         v===undefined?'·':fmtM(v)}</td>`;}).join('')+'</tr>').join('')
    +'</table>'
+  +einkaufExport(r,rids,best,en)
   +(r.unknown&&r.unknown.length?`<div class="sub" style="margin-top:8px">${en?'Not recognised':'Nicht erkannt'}: ${esc(r.unknown.join(' · '))}</div>`:'');
+ einkaufLetzte=r;
 }
+
+// Je Handelsplatz eine fertige Liste zum Kopieren. WUNSCH Dune2Man,
+// 05.10.2026: "schoen waere auch wenn man direkt ne einkaufsliste dann mit
+// denen die dort am billigsten sind exportieren kann."
+//
+// Format ist Name + Tabulator + Menge: genau das frisst das Multibuy-Fenster
+// im Spiel, und Canary selbst liest es auch wieder ein.
+let einkaufLetzte=null;
+
+function einkaufListeFuer(r,rid,nurBilligste){
+ return (r.items||[]).filter(i=>nurBilligste?i.best===rid:(rid in i.hubs))
+  .map(i=>i.name+'\\t'+i.qty).join('\\n');
+}
+
+function einkaufExport(r,rids,best,en){
+ const teile=rids.map(k=>{
+  const anzahl=(r.items||[]).filter(i=>i.best===k).length;
+  if(!anzahl)return '';
+  return `<button class="btn" data-ekexp="${k}">⧉ ${esc(r.hubs[k].name)} (${anzahl} ${
+    anzahl===1?(en?'item':'Posten'):(en?'items':'Posten')})</button>`;
+ }).filter(Boolean).join(' ');
+ return `<div class="btnrow" style="margin-top:10px;flex-wrap:wrap">
+   <span class="sub">${en?'Copy shopping list':'Einkaufsliste kopieren'}:</span>
+   ${best?`<button class="btn" data-ekexp="alle">⧉ ${en?'Everything at':'Alles in'} ${esc(r.hubs[best].name)}</button>`:''}
+   ${teile}
+   <span class="sub" id="einkaufKopiert"></span></div>
+  <div class="sub" style="margin-top:4px">${en
+   ?'Each button copies the items that are cheapest at that hub, as name and quantity. Paste it into the multibuy window in game.'
+   :'Jeder Knopf kopiert die Posten, die an diesem Handelsplatz am günstigsten sind, als Name und Menge. Im Spiel ins Multibuy-Fenster einfügen.'}</div>`;
+}
+
+async function einkaufKopieren(rid){
+ const r=einkaufLetzte;
+ if(!r)return;
+ const en=lang==='en';
+ const txt=(rid==='alle')
+  ? einkaufListeFuer(r,r.billigster,false)
+  : einkaufListeFuer(r,rid,true);
+ const stat=document.getElementById('einkaufKopiert');
+ try{
+  await navigator.clipboard.writeText(txt);
+ }catch(e){
+  // Ohne Zwischenablage-Recht bleibt der alte Weg ueber ein Hilfsfeld.
+  const ta=document.createElement('textarea');
+  ta.value=txt; document.body.appendChild(ta); ta.select();
+  try{document.execCommand('copy');}catch(e2){}
+  ta.remove();
+ }
+ if(stat){
+  const z=txt?txt.split('\\n').length:0;
+  stat.textContent='✓ '+z+' '+(z===1?(en?'item copied':'Posten kopiert')
+                                   :(en?'items copied':'Posten kopiert'));
+  setTimeout(()=>{if(stat)stat.textContent='';},4000);
+ }
+}
+
+document.addEventListener('click',e=>{
+ const b=e.target.closest('[data-ekexp]');
+ if(b)einkaufKopieren(b.dataset.ekexp);
+});
 
 async function doCalc(){
  const text=$('#calcIn').value;
