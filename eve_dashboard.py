@@ -8,6 +8,7 @@ historisch im Browser. Alles lokal, SQLite-Historie, Backups.
 Start:  python eve_dashboard.py   ->  http://localhost:8765
 """
 import base64
+import concurrent.futures
 import email.utils
 import gzip
 import hashlib
@@ -26,7 +27,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "3.5.1"
+VERSION = "3.5.2"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -11790,6 +11791,78 @@ def listen_zeilen(text):
     return qty
 
 
+# Verkaufsorders je (Region, Typ) im HUB-SYSTEM, fuer die Einkaufsliste.
+# Eigener Zwischenspeicher, weil hier nicht nur der beste Preis gebraucht wird,
+# sondern das ganze Buch: wer 3.000 Geschosse kauft, raeumt mehrere Orders ab.
+EK_ORDERS = {}
+EK_ORDERS_LOCK = threading.Lock()
+EK_ORDERS_TTL = 300
+
+
+def verkaufsorders(region, tid):
+    """Alle Verkaufsorders dieses Typs IM HUB-SYSTEM, billigste zuerst.
+
+    MELDUNG Dune2Man, 05.10.2026: "bin jetzt in hek aber das schiff kostet da
+    schon 10 mio mehr als das tool ausgibt". Die Preistabelle, mit der die
+    Einkaufsliste zuerst rechnete, nennt das billigste Angebot IRGENDWO in der
+    Region. Sein Screenshot zeigt es: der Gnosis fuer 39.990.000 steht in
+    Odebeinn, 11 Spruenge weit, in Hek selbst kostet er 49.520.000. Gemessen
+    am 05.10.2026 ueber seine Liste: Region-Minimum gegen Hub-Orderbuch sind
+    beim Gnosis 23,8 Prozent Unterschied.
+
+    Rueckgabe: [(Preis, Menge)], leere Liste wenn dort niemand verkauft."""
+    key = (str(region), int(tid))
+    jetzt = time.time()
+    with EK_ORDERS_LOCK:
+        e = EK_ORDERS.get(key)
+        if e and jetzt - e["ts"] < EK_ORDERS_TTL:
+            return e["orders"]
+    sysid = HUB_SYSTEMS.get(str(region))
+    if not sysid:
+        return []
+    raus, page, pages = [], 1, 1
+    try:
+        while page <= pages and page <= 10:
+            url = (f"{ESI_BASE}/markets/{region}/orders/"
+                   f"?type_id={int(tid)}&order_type=sell&page={page}")
+            req = urllib.request.Request(url, headers={"User-Agent": ESI_UA})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                orders = json.loads(r.read())
+                pages = int(r.headers.get("X-Pages") or 1)
+            for o in orders:
+                if o.get("system_id") == sysid:
+                    raus.append((float(o.get("price") or 0),
+                                 int(o.get("volume_remain") or 0)))
+            page += 1
+    except Exception:
+        # Ein Fehler darf nicht als "gibt es dort nicht" durchgehen, deshalb
+        # auch nicht gespeichert werden.
+        return None
+    raus.sort()
+    with EK_ORDERS_LOCK:
+        EK_ORDERS[key] = {"ts": jetzt, "orders": raus}
+    return raus
+
+
+def orderbuch_kosten(orders, menge):
+    """Was 'menge' Stueck aus diesem Orderbuch kosten, Order fuer Order.
+
+    Die billigste Order hat selten die ganze Menge. Gemessen an Dune2Mans
+    Liste am 05.10.2026: 3.000 Navy-Antimatter kosten in Jita nach billigster
+    Order 75 Mio, wirklich abgeraeumt 302 Mio.
+
+    Rueckgabe (Kosten, geliefert). geliefert < menge heisst: im Hub-System
+    liegt nicht genug."""
+    rest, kosten = menge, 0.0
+    for preis, vol in orders or []:
+        if rest <= 0:
+            break
+        nimm = min(rest, vol)
+        kosten += nimm * preis
+        rest -= nimm
+    return kosten, menge - rest
+
+
 def calc_einkauf(text):
     """Eine Einkaufsliste an allen Handelsplaetzen bepreisen.
 
@@ -11812,36 +11885,48 @@ def calc_einkauf(text):
     ids = set(ids_map.values())
     if not ids:
         return {"ok": True, "items": [], "hubs": {}, "unknown": unknown}
-    preise, hubs = {}, {}
-    for rid, rname in REGIONS.items():
-        try:
-            preise[rid] = hub_prices(rid, ids)
-        except Exception:
-            hubs[rid] = {"name": rname, "error": True}
-    rows, summe, verteilt = [], {rid: 0.0 for rid in preise}, 0.0
+    # Die Orderbuecher aller Hubs parallel holen. Einzeln nacheinander waren
+    # es bei 20 Posten und 5 Handelsplaetzen rund 25 Sekunden.
+    paare = [(rid, tid) for rid in REGIONS for tid in ids]
+    buecher = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        for (rid, tid), o in zip(paare, pool.map(
+                lambda p: verkaufsorders(p[0], p[1]), paare)):
+            buecher[(rid, tid)] = o
+    hubs = {}
+    rows, summe, verteilt = [], {rid: 0.0 for rid in REGIONS}, 0.0
     for name, menge in qty.items():
         if name not in ids_map:
             continue
         tid = ids_map[name]
-        je_hub = {}
-        for rid, pm in preise.items():
-            p = pm.get(tid, (0, 0))[1]
-            # Kein Preis heisst: dort wird dieser Posten nicht verkauft. Das
-            # ist etwas anderes als "kostenlos" und darf keine Summe
-            # schoenrechnen.
-            if p > 0:
-                je_hub[rid] = round(p * menge)
-                summe[rid] += p * menge
-        best = min(je_hub, key=je_hub.get) if je_hub else None
+        je_hub, knapp = {}, {}
+        for rid in REGIONS:
+            o = buecher.get((rid, tid))
+            if o is None:          # Abruf fehlgeschlagen, nicht "nicht da"
+                continue
+            kosten, geliefert = orderbuch_kosten(o, menge)
+            if geliefert <= 0:
+                continue           # dort verkauft das niemand
+            if geliefert < menge:
+                # Teilmenge: der Preis fuer das, was da ist, mit Vermerk. Als
+                # Gesamtsumme taugt der Hub damit nicht.
+                knapp[rid] = geliefert
+            je_hub[rid] = round(kosten)
+            summe[rid] += kosten
+        # Verglichen wird nur, wo die VOLLE Menge zu haben ist.
+        voll = {k: v for k, v in je_hub.items() if k not in knapp}
+        best = min(voll, key=voll.get) if voll else None
         if best:
-            verteilt += je_hub[best]
+            verteilt += voll[best]
         rows.append({"name": name, "qty": menge, "hubs": je_hub,
-                     "best": best,
-                     "fehlt": [rid for rid in preise if rid not in je_hub]})
+                     "best": best, "knapp": knapp,
+                     "fehlt": [rid for rid in REGIONS if rid not in je_hub]})
     rows.sort(key=lambda r: -(r["hubs"].get(r["best"], 0) if r["best"] else 0))
-    for rid in preise:
-        # Vollstaendig ist eine Summe nur, wenn der Hub JEDEN Posten fuehrt.
-        fehlend = sum(1 for r in rows if rid not in r["hubs"])
+    for rid in REGIONS:
+        # Vollstaendig ist eine Summe nur, wenn der Hub JEDEN Posten in voller
+        # Menge im Angebot hat.
+        fehlend = sum(1 for r in rows
+                      if rid not in r["hubs"] or rid in (r.get("knapp") or {}))
         hubs[rid] = {"name": REGIONS[rid], "sell": round(summe[rid]),
                      "fehlt": fehlend}
     gesamt = [rid for rid, h in hubs.items() if not h.get("error") and not h["fehlt"]]
@@ -24839,8 +24924,8 @@ function renderRechner(){
  <div class="card" id="einkaufBox" style="grid-column:1/-1">
   <b>🛒 ${en?'Shopping list':'Einkaufsliste'}</b>
   <div style="font-size:12px;color:var(--dim);margin:6px 0">${en
-   ?'Paste a shopping list, for example the export of a fitting or a multibuy list. Canary prices every item at all five trade hubs and marks where the whole list is cheapest. Prices are what you pay when buying straight from the sell orders.'
-   :'Eine Einkaufsliste einfügen, zum Beispiel den Export einer Fitting-Liste oder einen Multibuy-Block. Canary bepreist jeden Posten an allen fünf Handelsplätzen und zeigt, wo die ganze Liste am billigsten ist. Gerechnet wird mit dem Preis, den du beim Sofortkauf aus den Verkaufsorders zahlst.'}</div>
+   ?'Paste a shopping list, for example the export of a fitting or a multibuy list. Canary prices every item at all five trade hubs, straight from the order book of each hub itself and for the quantity you need, and marks where the whole list is cheapest.'
+   :'Eine Einkaufsliste einfügen, zum Beispiel den Export einer Fitting-Liste oder einen Multibuy-Block. Canary bepreist jeden Posten an allen fünf Handelsplätzen, direkt aus dem Orderbuch des jeweiligen Hubs und für die Menge, die du brauchst, und zeigt, wo die ganze Liste am billigsten ist.'}</div>
   <textarea id="einkaufIn" rows="7" style="width:100%" placeholder="Warp Scrambler II&#9;1&#10;Caldari Navy Antimatter Charge M&#9;3000"></textarea>
   <div style="margin:8px 0"><button class="btn" id="einkaufGo">${en?'Compare':'Vergleichen'}</button> <span id="einkaufStat" style="font-size:12px;color:var(--dim)"></span></div>
   <div id="einkaufOut" style="overflow-x:auto"></div></div>`;
@@ -24950,7 +25035,7 @@ async function doEinkauf(){
      :'Was die ganze Liste hier kostet, bei Sofortkauf aus den Verkaufsorders. Durchschnitt der Region, nicht der Preis an einer einzelnen Station.'}">
     <div class="l">${esc(h.name)}${k===best?' ★':''}</div>
     <div class="v isk" style="font-size:20px">${fmtM(h.sell)}</div>
-    <div class="l">${h.fehlt?`${h.fehlt} ${en?'items not sold here':'Posten dort nicht im Angebot'}`
+    <div class="l">${h.fehlt?`${h.fehlt} ${en?'items not available in full':'Posten dort nicht in voller Menge'}`
       :(spar>0?'+ '+fmtM(spar)+(en?' vs cheapest':' gegenüber dem günstigsten'):(en?'cheapest in total':'in Summe am günstigsten'))}</div></div>`;}).join('')
   +`</div>
   <div class="sub" style="margin-top:8px">${en?'★ = cheapest for the whole list':'★ = am günstigsten für die ganze Liste'}${
@@ -24961,8 +25046,13 @@ async function doEinkauf(){
    +r.items.map(i=>`<tr><td>${esc(i.name)}</td><td class="r">${fmt(i.qty)}</td>`
      +rids.map(k=>{const v=i.hubs[k];
        // Gruen hinterlegt: hier ist genau dieser Posten am billigsten.
-       return `<td class="r${k===i.best?' best':''}${k===best?' besthub':''}">${
-         v===undefined?'·':fmtM(v)}</td>`;}).join('')+'</tr>').join('')
+       const kn=(i.knapp||{})[k];
+       // Liegt im Hub-System nicht genug, ist die Zahl nur der Preis fuer das,
+       // was da ist. Das muss drankleben, sonst sieht sie billig aus.
+       return `<td class="r${k===i.best?' best':''}${k===best?' besthub':''}"${
+         kn?` title="${en?'Only ':'Nur '}${fmt(kn)} ${en?'of':'von'} ${fmt(i.qty)} ${
+           en?'available here':'dort verfügbar'}"`:''}>${
+         v===undefined?'·':fmtM(v)+(kn?' ⚠':'')}</td>`;}).join('')+'</tr>').join('')
    +'</table>'
   +einkaufExport(r,rids,best,en)
   +(r.unknown&&r.unknown.length?`<div class="sub" style="margin-top:8px">${en?'Not recognised':'Nicht erkannt'}: ${esc(r.unknown.join(' · '))}</div>`:'');
@@ -24996,7 +25086,10 @@ function einkaufExport(r,rids,best,en){
    <span class="sub" id="einkaufKopiert"></span></div>
   <div class="sub" style="margin-top:4px">${en
    ?'Each button copies the items that are cheapest at that hub, as name and quantity. Paste it into the multibuy window in game.'
-   :'Jeder Knopf kopiert die Posten, die an diesem Handelsplatz am günstigsten sind, als Name und Menge. Im Spiel ins Multibuy-Fenster einfügen.'}</div>`;
+   :'Jeder Knopf kopiert die Posten, die an diesem Handelsplatz am günstigsten sind, als Name und Menge. Im Spiel ins Multibuy-Fenster einfügen.'}</div>
+  <div class="sub" style="margin-top:4px">${en
+   ?'Prices come from the order book of the hub system itself, not the region, and the full quantity is walked through the book: the cheapest order rarely holds all of it. ⚠ means the hub does not have the full quantity, then the figure only covers what is there.'
+   :'Die Preise kommen aus dem Orderbuch des Hub-Systems selbst, nicht der Region, und die ganze Menge wird durch das Buch gerechnet: die billigste Order hat selten alles. ⚠ heißt, der Platz hat nicht die volle Menge, dann gilt die Zahl nur für das, was da ist.'}</div>`;
 }
 
 async function einkaufKopieren(rid){

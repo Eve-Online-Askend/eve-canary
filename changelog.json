@@ -1,5 +1,21 @@
 [
  {
+  "v": "3.5.2",
+  "d": "2026-10-05",
+  "de": [
+   "Die Einkaufsliste rechnet jetzt mit dem Orderbuch des Handelsplatzes selbst. Gemeldet von Dune2Man: „bin jetzt in hek aber das schiff kostet da schon 10 mio mehr als das tool ausgibt“. Er hatte recht, und sein Screenshot zeigte den Grund: der Gnosis für 39.990.000 stand in Odebeinn, 11 Sprünge von Hek. In Hek selbst kostet er 49.520.000.",
+   "Die Preistabelle, die Canary benutzt hat, nennt das billigste Angebot irgendwo in der ganzen Region. Für einen Verkauf ist das brauchbar, für einen Einkauf nicht: man steht ja an einer bestimmten Station. Jetzt kommen die Preise aus dem Orderbuch des Hub-Systems, also genau dem, was im Spiel im Marktfenster steht.",
+   "Dazu wird die Menge durch das Buch gerechnet. Die billigste Order hat selten alles: 3.000 Navy-Antimatter kosten in Jita nach der billigsten Order 75 Mio, wirklich abgeräumt 302 Mio. An seiner Liste gemessen ändert das die Reihenfolge komplett. Vorher stand Hek mit 69,1 Mio als günstigster Platz da, in Wahrheit kostet die Liste dort 378,0 Mio, weil in Hek schlicht nicht genug günstige Orders liegen. Günstigster Platz ist Jita mit 74,3 Mio.",
+   "Hat ein Handelsplatz nicht die volle Menge, steht ein ⚠ an der Zahl, und für die Gesamtwertung fällt er raus. Die Abfrage läuft für alle fünf Plätze parallel, gemessen 3,5 Sekunden für 20 Posten, danach fünf Minuten aus dem Zwischenspeicher."
+  ],
+  "en": [
+   "The shopping list now uses the order book of the trade hub itself. Reported by Dune2Man: “I am in Hek now but the ship costs 10 million more than the tool says”. He was right, and his screenshot showed why: the Gnosis for 39,990,000 was in Odebeinn, 11 jumps from Hek. In Hek itself it costs 49,520,000.",
+   "The price table Canary used names the cheapest offer anywhere in the whole region. That works for selling, not for buying: you are standing at one particular station. Prices now come from the order book of the hub system, exactly what the market window shows in game.",
+   "On top of that the quantity is walked through the book. The cheapest order rarely holds everything: 3,000 Navy Antimatter cost 75 million by cheapest order in Jita, 302 million actually bought. Measured on his list this changes the ranking completely. Hek used to look cheapest at 69.1 million, in truth the list costs 378.0 million there because Hek simply does not hold enough cheap orders. The cheapest hub is Jita at 74.3 million.",
+   "If a hub does not have the full quantity, a ⚠ sits next to the figure and the hub drops out of the overall ranking. All five hubs are queried in parallel, measured at 3.5 seconds for 20 items, then five minutes from cache."
+  ]
+ },
+ {
   "v": "3.5.1",
   "d": "2026-10-05",
   "de": [
