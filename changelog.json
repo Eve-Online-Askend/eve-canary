@@ -1,5 +1,21 @@
 [
  {
+  "v": "3.5.0",
+  "d": "2026-10-05",
+  "de": [
+   "Neu im Rechner: die Einkaufsliste. Wunsch von Dune2Man: „ist es möglich das ich ne einkaufsliste exportiere und die in canary importiere und mir anzeigen lassen wo was am billigsten ist, z.b. will ich gerade kucken was in jita im vergleich zu dodixie billiger wäre“.",
+   "Liste einfügen, auf Vergleichen drücken, fertig. Canary bepreist jeden Posten an allen fünf Handelsplätzen, zeigt die Summe je Platz, markiert den günstigsten und nennt den Unterschied zum teuersten. In der Tabelle steht jeder Posten mit seinem Preis an jedem Platz, der jeweils billigste ist hervorgehoben. Darunter steht, was die Liste kosten würde, wenn man jeden Posten dort kauft, wo er am billigsten ist.",
+   "Gerechnet wird mit dem Preis, den man beim Sofortkauf aus den Verkaufsorders zahlt. Das ist die andere Richtung als beim Beute-Rechner nebenan, der mit den Kauforders rechnet. Führt ein Handelsplatz einen Posten gar nicht, zählt er nicht als kostenlos: dort steht ein Strich, und der Platz kommt für die Gesamtsumme nicht in Frage.",
+   "Dabei behoben: Listen mit Leerzeichen statt Tabulatoren wurden gar nicht erkannt, etwa wenn sie den Weg über Discord oder eine Textdatei nehmen. An Dune2Mans Liste gemessen: vorher 0 von 20 Posten, jetzt alle 20 mit richtiger Menge. Ein einzelnes Leerzeichen trennt weiterhin nicht, sonst zerfiele jeder Name. Schlusszeilen wie „Gesamt:“ werden übersprungen. Davon hat auch der Beute-Rechner etwas, er nutzt denselben Zeilenleser."
+  ],
+  "en": [
+   "New in the calculator: the shopping list. A wish from Dune2Man: “can I export a shopping list, import it into Canary and see where things are cheapest, for example Jita compared to Dodixie?”",
+   "Paste the list, hit compare. Canary prices every item at all five trade hubs, shows the total per hub, marks the cheapest one and names the gap to the most expensive. The table lists every item with its price at each hub, the cheapest one highlighted. Below it stands what the list would cost buying each item wherever it is cheapest.",
+   "Prices are what you pay buying straight from the sell orders. That is the opposite direction of the loot calculator next to it, which uses the buy orders. If a hub does not sell an item at all it does not count as free: a dash is shown and that hub is out of the running for the total.",
+   "Fixed along the way: lists with spaces instead of tabs were not recognised at all, for instance after a trip through Discord or a text file. Measured on Dune2Man's list: 0 of 20 items before, all 20 with the right quantity now. A single space still does not split a line, otherwise every name would fall apart. Closing lines such as “Total:” are skipped. The loot calculator benefits too, it uses the same line reader."
+  ]
+ },
+ {
   "v": "3.4.1",
   "d": "2026-09-14",
   "de": [

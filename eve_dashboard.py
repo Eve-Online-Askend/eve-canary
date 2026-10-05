@@ -26,7 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "3.4.1"
+VERSION = "3.5.0"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -11755,25 +11755,106 @@ def zerlege_bilanz(text, char=None, region=None):
             "schwelle": int(ZERLEGE_SCHWELLE * 100)}
 
 
-def calc_loot(text):
-    """Beliebige Frachtraum-Kopie (Loot, nicht nur Erz) über alle Handelsplätze
-    bewerten. Namen kommen aus dem ersten Tab-Feld, Menge aus dem Rest."""
+# Spalten einer eingefuegten Liste. EVE trennt mit Tabulatoren, aber beim Weg
+# ueber Discord, Forum oder eine Textdatei werden daraus oft Leerzeichen.
+# Deshalb auch zwei oder mehr Leerzeichen als Trenner. EIN Leerzeichen nicht:
+# damit zerfiele jeder Name ("Warp Scrambler II").
+SPALTEN_TRENNER = re.compile(r"\t+| {2,}")
+# Schlusszeilen einer exportierten Liste, die kein Gegenstand sind.
+SUMMEN_ZEILEN = ("gesamt", "summe", "total", "sum")
+
+
+def listen_zeilen(text):
+    """(Name, Menge) je Zeile einer eingefuegten Liste.
+
+    MELDUNG Dune2Man, 05.10.2026: "ist es moeglich das ich ne einkaufsliste
+    exportiere und die in canary importiere". Seine Liste kam mit Leerzeichen
+    statt Tabulatoren an, und dann erkannte Canary keinen einzigen von
+    20 Posten."""
     qty = {}
     for raw in (text or "").splitlines():
         line = raw.strip()
         if not line:
             continue
-        cols = line.split("\t")
+        cols = SPALTEN_TRENNER.split(line)
         name = cols[0].strip()
-        if not name:
+        if not name or name.rstrip(":").strip().lower() in SUMMEN_ZEILEN:
             continue
-        n = 1
+        menge = 1
         for part in cols[1:] + [""]:
             m = NUM_RE.search(STRIP_RE.sub("", part))
             if m and num(m.group(1)) > 0:
-                n = num(m.group(1))
+                menge = num(m.group(1))
                 break
-        qty[name] = qty.get(name, 0) + n
+        qty[name] = qty.get(name, 0) + menge
+    return qty
+
+
+def calc_einkauf(text):
+    """Eine Einkaufsliste an allen Handelsplaetzen bepreisen.
+
+    WUNSCH Dune2Man, 05.10.2026: "ist es moeglich das ich ne einkaufsliste
+    exportiere und die in canary importiere und mir anzeigen lassen wo was am
+    billigsten ist, z.b. will ich gerade kucken was in jita im vergleich zu
+    dodixie billiger waere ... das ist son ding was aus dem wh heraus darueber
+    entscheidet ob man weiter rollt oder es sich garnicht lohnt."
+
+    Gerechnet wird mit dem SELL-Preis, also dem, was man beim Sofortkauf
+    zahlt. Der Beute-Rechner nebenan macht das Gegenteil (Buy, Sofortverkauf).
+
+    Rueckgabe: je Posten der Preis an jedem Handelsplatz und der guenstigste,
+    dazu die Summe je Handelsplatz. "verteilt" ist die Summe, wenn man jeden
+    Posten dort kauft, wo er am billigsten ist: die Untergrenze, fuer die man
+    aber mehrere Hubs anfliegt."""
+    qty = listen_zeilen(text)
+    ids_map = resolve_item_ids(list(qty))
+    unknown = [x for x in qty if x not in ids_map]
+    ids = set(ids_map.values())
+    if not ids:
+        return {"ok": True, "items": [], "hubs": {}, "unknown": unknown}
+    preise, hubs = {}, {}
+    for rid, rname in REGIONS.items():
+        try:
+            preise[rid] = hub_prices(rid, ids)
+        except Exception:
+            hubs[rid] = {"name": rname, "error": True}
+    rows, summe, verteilt = [], {rid: 0.0 for rid in preise}, 0.0
+    for name, menge in qty.items():
+        if name not in ids_map:
+            continue
+        tid = ids_map[name]
+        je_hub = {}
+        for rid, pm in preise.items():
+            p = pm.get(tid, (0, 0))[1]
+            # Kein Preis heisst: dort wird dieser Posten nicht verkauft. Das
+            # ist etwas anderes als "kostenlos" und darf keine Summe
+            # schoenrechnen.
+            if p > 0:
+                je_hub[rid] = round(p * menge)
+                summe[rid] += p * menge
+        best = min(je_hub, key=je_hub.get) if je_hub else None
+        if best:
+            verteilt += je_hub[best]
+        rows.append({"name": name, "qty": menge, "hubs": je_hub,
+                     "best": best,
+                     "fehlt": [rid for rid in preise if rid not in je_hub]})
+    rows.sort(key=lambda r: -(r["hubs"].get(r["best"], 0) if r["best"] else 0))
+    for rid in preise:
+        # Vollstaendig ist eine Summe nur, wenn der Hub JEDEN Posten fuehrt.
+        fehlend = sum(1 for r in rows if rid not in r["hubs"])
+        hubs[rid] = {"name": REGIONS[rid], "sell": round(summe[rid]),
+                     "fehlt": fehlend}
+    gesamt = [rid for rid, h in hubs.items() if not h.get("error") and not h["fehlt"]]
+    return {"ok": True, "items": rows, "hubs": hubs, "unknown": unknown,
+            "billigster": (min(gesamt, key=lambda r: hubs[r]["sell"])
+                           if gesamt else None),
+            "verteilt": round(verteilt)}
+
+
+def calc_loot(text):
+    """Beliebige Frachtraum-Kopie (Loot, nicht nur Erz) über alle Handelsplätze
+    bewerten. Namen kommen aus der ersten Spalte, Menge aus dem Rest."""
+    qty = listen_zeilen(text)
     ids_map = resolve_item_ids(list(qty))
     unknown = [n for n in qty if n not in ids_map]
     ids = set(ids_map.values())
@@ -16196,6 +16277,9 @@ class Handler(BaseHTTPRequestHandler):
             CONFIG["clip_watch"] = bool(body.get("on"))
         elif action == "calc":
             self._send(json.dumps(calc_hubs(body.get("text") or "")))
+            return
+        elif action == "einkauf":
+            self._send(json.dumps(calc_einkauf(body.get("text") or "")))
             return
         elif action == "loot":
             self._send(json.dumps(calc_loot(body.get("text") or "")))
@@ -24731,6 +24815,7 @@ function renderJobs(j){
 }
 function renderRechner(){
  if(document.getElementById('calcBox'))return;
+ const en=lang==='en';
  $('#grid').innerHTML=`<div class="card mkt" id="mktBox" style="grid-column:1/-1">
   <b>🔎 Einzel-Item</b>
   <div style="font-size:12px;color:var(--dim);margin:6px 0">Item-Namen tippen, Canary schlägt passende vor. Preise kommen aus dem aktuellen Orderbuch (ESI) über alle Handelsplätze.</div>
@@ -24743,8 +24828,19 @@ function renderRechner(){
   Einzelne Zeilen wie "Compressed Veldspar 50000" funktionieren genauso. Auch die Ergebnisse der Bergbauvermessung lassen sich so einfügen, dann steht hier, wie viel Volumen und ISK im Belt liegen.</div>
   <textarea id="calcIn" rows="7" style="width:100%" placeholder="Compressed Veldspar	49.105&#10;Compressed Scordite	42.990"></textarea>
   <div style="margin:8px 0"><button class="btn" id="calcGo">Berechnen</button> <span id="calcStat" style="font-size:12px;color:var(--dim)"></span></div>
-  <div id="calcOut" style="overflow-x:auto"></div></div>`;
+  <div id="calcOut" style="overflow-x:auto"></div></div>
+ <div class="card" id="einkaufBox" style="grid-column:1/-1">
+  <b>🛒 ${en?'Shopping list':'Einkaufsliste'}</b>
+  <div style="font-size:12px;color:var(--dim);margin:6px 0">${en
+   ?'Paste a shopping list, for example the export of a fitting or a multibuy list. Canary prices every item at all five trade hubs and marks where the whole list is cheapest. Prices are what you pay when buying straight from the sell orders.'
+   :'Eine Einkaufsliste einfügen, zum Beispiel den Export einer Fitting-Liste oder einen Multibuy-Block. Canary bepreist jeden Posten an allen fünf Handelsplätzen und zeigt, wo die ganze Liste am billigsten ist. Gerechnet wird mit dem Preis, den du beim Sofortkauf aus den Verkaufsorders zahlst.'}</div>
+  <textarea id="einkaufIn" rows="7" style="width:100%" placeholder="Warp Scrambler II&#9;1&#10;Caldari Navy Antimatter Charge M&#9;3000"></textarea>
+  <div style="margin:8px 0"><button class="btn" id="einkaufGo">${en?'Compare':'Vergleichen'}</button> <span id="einkaufStat" style="font-size:12px;color:var(--dim)"></span></div>
+  <div id="einkaufOut" style="overflow-x:auto"></div></div>`;
  $('#calcGo').onclick=doCalc;
+ $('#einkaufGo').onclick=doEinkauf;
+ const gespeichert=localStorage.getItem('einkaufText');
+ if(gespeichert)$('#einkaufIn').value=gespeichert;
  $('#mktGo').onclick=()=>{$('#mktSug').hidden=true;doMarket();};
  $('#mktIn').oninput=()=>{clearTimeout(mktSugTimer);mktSugTimer=setTimeout(doSuggest,160);};
  $('#mktIn').onkeydown=e=>{
@@ -24816,6 +24912,52 @@ async function uiOpen(kind,tid){
  let r;try{r=await post({action:'ui_open',char,kind,id:Number(tid)});}catch(e){r=null;}
  $('#mktStat').textContent=r?(r.msg||''):'Client nicht erreichbar.';
 }
+// Einkaufsliste: dieselbe Liste an allen Handelsplaetzen, der guenstigste
+// gewinnt. WUNSCH Dune2Man, 05.10.2026: "will ich gerade kucken was in jita im
+// vergleich zu dodixie billiger waere ... das ist son ding was aus dem wh
+// heraus darueber entscheidet ob man weiter rollt oder es sich garnicht lohnt."
+async function doEinkauf(){
+ const en=lang==='en';
+ const text=$('#einkaufIn').value;
+ localStorage.setItem('einkaufText',text);
+ $('#einkaufStat').textContent=en?'Fetching prices from all trade hubs …':'Hole Preise von allen Handelsplätzen …';
+ let r;
+ try{r=await post({action:'einkauf',text});}catch(e){r=null;}
+ if(!$('#einkaufOut'))return;   // Ansicht gewechselt, waehrend die Preise kamen
+ if(!r){$('#einkaufStat').textContent=en?'Price request failed.':'Preisabfrage fehlgeschlagen.';return;}
+ $('#einkaufStat').textContent='';
+ if(!r.items||!r.items.length){
+  $('#einkaufOut').innerHTML=`<div class="sub">${en?'No known items found.':'Keine bekannten Gegenstände erkannt.'}${
+   r.unknown&&r.unknown.length?(en?' Not recognised: ':' Nicht zuzuordnen: ')+esc(r.unknown.join(' · ')):''}</div>`;
+  return;}
+ const rids=Object.keys(r.hubs).filter(k=>!r.hubs[k].error);
+ if(!rids.length){$('#einkaufOut').innerHTML=`<div class="sub">${en?'No price data received.':'Keine Preisdaten erhalten.'}</div>`;return;}
+ const best=r.billigster;
+ const teuerste=rids.filter(k=>!r.hubs[k].fehlt).reduce((a,k)=>Math.max(a,r.hubs[k].sell),0);
+ $('#einkaufOut').innerHTML=
+  `<div class="stats" style="grid-template-columns:repeat(${rids.length},1fr)">`+
+  rids.map(k=>{const h=r.hubs[k];
+   const spar=(best&&!h.fehlt&&k!==best)?h.sell-r.hubs[best].sell:0;
+   return `<div class="stat"${k===best?' style="border-color:var(--green)"':''} title="${en
+     ?'What the whole list costs here, buying straight from the sell orders. Regional average, not the price at one station.'
+     :'Was die ganze Liste hier kostet, bei Sofortkauf aus den Verkaufsorders. Durchschnitt der Region, nicht der Preis an einer einzelnen Station.'}">
+    <div class="l">${esc(h.name)}${k===best?' ★':''}</div>
+    <div class="v isk" style="font-size:20px">${fmtM(h.sell)}</div>
+    <div class="l">${h.fehlt?`${h.fehlt} ${en?'items not sold here':'Posten dort nicht im Angebot'}`
+      :(spar>0?'+ '+fmtM(spar)+(en?' vs cheapest':' gegenüber dem günstigsten'):(en?'cheapest in total':'in Summe am günstigsten'))}</div></div>`;}).join('')
+  +`</div>
+  <div class="sub" style="margin-top:8px">${en?'★ = cheapest for the whole list':'★ = am günstigsten für die ganze Liste'}${
+    teuerste&&best?' · '+(en?'difference to the most expensive hub':'Unterschied zum teuersten Handelsplatz')+': '+fmtM(teuerste-r.hubs[best].sell):''} · ${
+    en?'Buying each item at its own cheapest hub':'Jeden Posten am jeweils günstigsten Platz gekauft'}: ${fmtM(r.verteilt)}</div>
+  <table><tr><th>${en?'Item':'Posten'}</th><th class="r">${en?'Qty':'Menge'}</th>`
+   +rids.map(k=>`<th class="r">${esc(r.hubs[k].name)}</th>`).join('')+'</tr>'
+   +r.items.map(i=>`<tr><td>${esc(i.name)}</td><td class="r">${fmt(i.qty)}</td>`
+     +rids.map(k=>{const v=i.hubs[k];
+       return `<td class="r${k===i.best?' advb':''}">${v===undefined?'·':fmtM(v)}</td>`;}).join('')+'</tr>').join('')
+   +'</table>'
+  +(r.unknown&&r.unknown.length?`<div class="sub" style="margin-top:8px">${en?'Not recognised':'Nicht erkannt'}: ${esc(r.unknown.join(' · '))}</div>`:'');
+}
+
 async function doCalc(){
  const text=$('#calcIn').value;
  localStorage.setItem('calcText',text);
