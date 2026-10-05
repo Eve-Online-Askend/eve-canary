@@ -1,14 +1,14 @@
 {
- "stand": "2026-10-05T20:18:00Z",
+ "stand": "2026-10-05T21:15:03Z",
  "installs": {
   "win": 221,
   "lin": 47
  },
  "downloads": {
-  "total": 2646,
-  "versionen": 280,
+  "total": 2660,
+  "versionen": 281,
   "latest": {
-   "v": "3.5.1",
+   "v": "3.5.2",
    "d": 0
   },
   "top": [
