@@ -27,7 +27,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "3.5.2"
+VERSION = "3.5.3"
 
 # Das Canary-Logo als eingebettetes Bild. Bewusst in der Datei und nicht
 # als Extra-Datei: Canary ist EIN Python-Skript, und der Ladebildschirm
@@ -25022,41 +25022,84 @@ async function doEinkauf(){
   $('#einkaufOut').innerHTML=`<div class="sub">${en?'No known items found.':'Keine bekannten Gegenstände erkannt.'}${
    r.unknown&&r.unknown.length?(en?' Not recognised: ':' Nicht zuzuordnen: ')+esc(r.unknown.join(' · ')):''}</div>`;
   return;}
+ einkaufLetzte=r;
+ einkaufWeg=new Set();     // neue Liste, neue Auswahl
+ einkaufMalen();
+}
+
+// Die Auswertung aus den schon geholten Preisen zeichnen. Getrennt vom Holen,
+// weil das Rausnehmen eines Postens keine neue Abfrage braucht.
+//
+// WUNSCH Dune2Man, 05.10.2026: "was jetzt noch schoen waere wenn man aus der
+// liste nen posten rausloeschen koennte z.b. die teure muni das man ohne diese
+// sieht welches angebot das beste ist ... an sich einfach vorm namen nen button
+// mit x zum rausloeschen."
+function einkaufSummen(r,weg){
  const rids=Object.keys(r.hubs).filter(k=>!r.hubs[k].error);
- if(!rids.length){$('#einkaufOut').innerHTML=`<div class="sub">${en?'No price data received.':'Keine Preisdaten erhalten.'}</div>`;return;}
- const best=r.billigster;
- const teuerste=rids.filter(k=>!r.hubs[k].fehlt).reduce((a,k)=>Math.max(a,r.hubs[k].sell),0);
- $('#einkaufOut').innerHTML=
+ const aktiv=(r.items||[]).filter(i=>!weg.has(i.name));
+ const hubs={}; let verteilt=0;
+ rids.forEach(k=>{hubs[k]={name:r.hubs[k].name,sell:0,fehlt:0};});
+ aktiv.forEach(i=>{
+  rids.forEach(k=>{
+   const v=i.hubs[k];
+   // Was ein Platz nicht fuehrt, zaehlt nicht als 0 ISK, sondern macht seine
+   // Summe unvollstaendig. Dasselbe gilt fuer eine Teilmenge.
+   if(v===undefined){hubs[k].fehlt++;return;}
+   hubs[k].sell+=v;
+   if((i.knapp||{})[k])hubs[k].fehlt++;
+  });
+  const voll=rids.filter(k=>i.hubs[k]!==undefined&&!(i.knapp||{})[k]);
+  if(voll.length)verteilt+=Math.min(...voll.map(k=>i.hubs[k]));
+ });
+ const ganz=rids.filter(k=>!hubs[k].fehlt);
+ const best=ganz.length?ganz.reduce((a,k)=>hubs[k].sell<hubs[a].sell?k:a):null;
+ const teuerste=ganz.reduce((a,k)=>Math.max(a,hubs[k].sell),0);
+ return {rids:rids,aktiv:aktiv,hubs:hubs,best:best,teuerste:teuerste,verteilt:verteilt};
+}
+
+function einkaufMalen(){
+ const r=einkaufLetzte, ziel=document.getElementById('einkaufOut');
+ if(!r||!ziel)return;
+ const en=lang==='en';
+ const S=einkaufSummen(r,einkaufWeg);
+ const rids=S.rids, best=S.best;
+ if(!rids.length){ziel.innerHTML=`<div class="sub">${en?'No price data received.':'Keine Preisdaten erhalten.'}</div>`;return;}
+ ziel.innerHTML=
   `<div class="stats" style="grid-template-columns:repeat(${rids.length},1fr)">`+
-  rids.map(k=>{const h=r.hubs[k];
-   const spar=(best&&!h.fehlt&&k!==best)?h.sell-r.hubs[best].sell:0;
+  rids.map(k=>{const h=S.hubs[k];
+   const spar=(best&&!h.fehlt&&k!==best)?h.sell-S.hubs[best].sell:0;
    return `<div class="stat"${k===best?' style="border-color:var(--green)"':''} title="${en
-     ?'What the whole list costs here, buying straight from the sell orders. Regional average, not the price at one station.'
-     :'Was die ganze Liste hier kostet, bei Sofortkauf aus den Verkaufsorders. Durchschnitt der Region, nicht der Preis an einer einzelnen Station.'}">
+     ?'What the list costs here, from the order book of this hub system, for the quantity you need.'
+     :'Was die Liste hier kostet, aus dem Orderbuch dieses Hub-Systems, für die Menge, die du brauchst.'}">
     <div class="l">${esc(h.name)}${k===best?' ★':''}</div>
     <div class="v isk" style="font-size:20px">${fmtM(h.sell)}</div>
     <div class="l">${h.fehlt?`${h.fehlt} ${en?'items not available in full':'Posten dort nicht in voller Menge'}`
       :(spar>0?'+ '+fmtM(spar)+(en?' vs cheapest':' gegenüber dem günstigsten'):(en?'cheapest in total':'in Summe am günstigsten'))}</div></div>`;}).join('')
   +`</div>
   <div class="sub" style="margin-top:8px">${en?'★ = cheapest for the whole list':'★ = am günstigsten für die ganze Liste'}${
-    teuerste&&best?' · '+(en?'difference to the most expensive hub':'Unterschied zum teuersten Handelsplatz')+': '+fmtM(teuerste-r.hubs[best].sell):''} · ${
-    en?'Buying each item at its own cheapest hub':'Jeden Posten am jeweils günstigsten Platz gekauft'}: ${fmtM(r.verteilt)}</div>
-  <table class="einkauftbl"><tr><th>${en?'Item':'Posten'}</th><th class="r">${en?'Qty':'Menge'}</th>`
-   +rids.map(k=>`<th class="r${k===best?' besthub':''}">${esc(r.hubs[k].name)}${k===best?' ★':''}</th>`).join('')+'</tr>'
-   +r.items.map(i=>`<tr><td>${esc(i.name)}</td><td class="r">${fmt(i.qty)}</td>`
-     +rids.map(k=>{const v=i.hubs[k];
-       // Gruen hinterlegt: hier ist genau dieser Posten am billigsten.
-       const kn=(i.knapp||{})[k];
-       // Liegt im Hub-System nicht genug, ist die Zahl nur der Preis fuer das,
-       // was da ist. Das muss drankleben, sonst sieht sie billig aus.
-       return `<td class="r${k===i.best?' best':''}${k===best?' besthub':''}"${
-         kn?` title="${en?'Only ':'Nur '}${fmt(kn)} ${en?'of':'von'} ${fmt(i.qty)} ${
-           en?'available here':'dort verfügbar'}"`:''}>${
-         v===undefined?'·':fmtM(v)+(kn?' ⚠':'')}</td>`;}).join('')+'</tr>').join('')
+    S.teuerste&&best?' · '+(en?'difference to the most expensive hub':'Unterschied zum teuersten Handelsplatz')+': '+fmtM(S.teuerste-S.hubs[best].sell):''} · ${
+    en?'Buying each item at its own cheapest hub':'Jeden Posten am jeweils günstigsten Platz gekauft'}: ${fmtM(S.verteilt)}${
+    einkaufWeg.size?' · '+einkaufWeg.size+' '+(en?'removed':'rausgenommen')+' <span class="klick" data-ekzurueck="1" style="text-decoration:underline;cursor:pointer">'+(en?'bring all back':'alle zurückholen')+'</span>':''}</div>
+  <table class="einkauftbl"><tr><th></th><th>${en?'Item':'Posten'}</th><th class="r">${en?'Qty':'Menge'}</th>`
+   +rids.map(k=>`<th class="r${k===best?' besthub':''}">${esc(S.hubs[k].name)}${k===best?' ★':''}</th>`).join('')+'</tr>'
+   +(r.items||[]).map(i=>{
+     const weg=einkaufWeg.has(i.name);
+     return `<tr${weg?' style="opacity:.45"':''}><td><span class="sysweg" data-ekweg="${esc(i.name)}" title="${
+       weg?(en?'put back into the comparison':'wieder in den Vergleich nehmen')
+          :(en?'leave this item out':'diesen Posten weglassen')}">${weg?'+':'×'}</span></td>`
+      +`<td${weg?' style="text-decoration:line-through"':''}>${esc(i.name)}</td><td class="r">${fmt(i.qty)}</td>`
+      +rids.map(k=>{const v=i.hubs[k];
+        // Gruen hinterlegt: hier ist genau dieser Posten am billigsten.
+        const kn=(i.knapp||{})[k];
+        // Liegt im Hub-System nicht genug, ist die Zahl nur der Preis fuer das,
+        // was da ist. Das muss drankleben, sonst sieht sie billig aus.
+        return `<td class="r${(!weg&&k===i.best)?' best':''}${k===best?' besthub':''}"${
+          kn?` title="${en?'Only ':'Nur '}${fmt(kn)} ${en?'of':'von'} ${fmt(i.qty)} ${
+            en?'available here':'dort verfügbar'}"`:''}>${
+          v===undefined?'·':fmtM(v)+(kn?' ⚠':'')}</td>`;}).join('')+'</tr>';}).join('')
    +'</table>'
   +einkaufExport(r,rids,best,en)
   +(r.unknown&&r.unknown.length?`<div class="sub" style="margin-top:8px">${en?'Not recognised':'Nicht erkannt'}: ${esc(r.unknown.join(' · '))}</div>`:'');
- einkaufLetzte=r;
 }
 
 // Je Handelsplatz eine fertige Liste zum Kopieren. WUNSCH Dune2Man,
@@ -25065,16 +25108,18 @@ async function doEinkauf(){
 //
 // Format ist Name + Tabulator + Menge: genau das frisst das Multibuy-Fenster
 // im Spiel, und Canary selbst liest es auch wieder ein.
-let einkaufLetzte=null;
+let einkaufLetzte=null, einkaufWeg=new Set();
 
 function einkaufListeFuer(r,rid,nurBilligste){
- return (r.items||[]).filter(i=>nurBilligste?i.best===rid:(rid in i.hubs))
+ // Rausgenommene Posten gehoeren auch nicht in die kopierte Liste.
+ return (r.items||[]).filter(i=>!einkaufWeg.has(i.name))
+  .filter(i=>nurBilligste?i.best===rid:(rid in i.hubs))
   .map(i=>i.name+'\\t'+i.qty).join('\\n');
 }
 
 function einkaufExport(r,rids,best,en){
  const teile=rids.map(k=>{
-  const anzahl=(r.items||[]).filter(i=>i.best===k).length;
+  const anzahl=(r.items||[]).filter(i=>!einkaufWeg.has(i.name)&&i.best===k).length;
   if(!anzahl)return '';
   return `<button class="btn" data-ekexp="${k}">⧉ ${esc(r.hubs[k].name)} (${anzahl} ${
     anzahl===1?(en?'item':'Posten'):(en?'items':'Posten')})</button>`;
@@ -25119,7 +25164,15 @@ async function einkaufKopieren(rid){
 
 document.addEventListener('click',e=>{
  const b=e.target.closest('[data-ekexp]');
- if(b)einkaufKopieren(b.dataset.ekexp);
+ if(b){einkaufKopieren(b.dataset.ekexp);return;}
+ const w=e.target.closest('[data-ekweg]');
+ if(w){
+  const name=w.dataset.ekweg;
+  if(einkaufWeg.has(name))einkaufWeg.delete(name); else einkaufWeg.add(name);
+  einkaufMalen();
+  return;
+ }
+ if(e.target.closest('[data-ekzurueck]')){einkaufWeg=new Set();einkaufMalen();}
 });
 
 async function doCalc(){

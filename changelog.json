@@ -1,5 +1,19 @@
 [
  {
+  "v": "3.5.3",
+  "d": "2026-10-05",
+  "de": [
+   "In der Einkaufsliste lässt sich jetzt jeder Posten mit einem × vor dem Namen aus dem Vergleich nehmen. Wunsch von Dune2Man: „was jetzt noch schön wäre wenn man aus der liste nen posten rauslöschen könnte z.b. die teure muni das man ohne diese sieht welches angebot das beste ist“.",
+   "Die Summen, der günstigste Platz und die Exportknöpfe rechnen sofort neu, ohne neue Preisabfrage. Der Posten bleibt durchgestrichen stehen und kommt mit + zurück, oder alle auf einmal über „alle zurückholen“.",
+   "Sein Beispiel: mit der Munition kostet die Liste in Hek 365,4 Mio, ohne sie 62,5 Mio. Erst dann lassen sich die Handelsplätze überhaupt vernünftig vergleichen."
+  ],
+  "en": [
+   "In the shopping list every item can now be taken out of the comparison with an × in front of its name. A wish from Dune2Man: “it would be nice to delete an item from the list, for instance the expensive ammo, so you can see which hub is best without it”.",
+   "Totals, the cheapest hub and the export buttons recalculate instantly, without asking for prices again. The item stays visible struck through and comes back with +, or all at once via “bring all back”.",
+   "His example: with the ammo the list costs 365.4 million in Hek, without it 62.5 million. Only then can the hubs be compared sensibly at all."
+  ]
+ },
+ {
   "v": "3.5.2",
   "d": "2026-10-05",
   "de": [
